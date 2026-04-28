@@ -1,0 +1,147 @@
+<?php
+namespace NeuralForms;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Main plugin class.
+ *
+ * Responsible for:
+ * - Holding the single plugin instance (singleton).
+ * - Booting each module by registering its hooks.
+ *
+ * It does NOT contain business logic. Each module manages its own hooks
+ * internally; this class simply calls their boot methods in the right order.
+ */
+final class NeuralForms {
+
+    private static ?self $instance = null;
+
+    private function __construct() {
+        $this->boot();
+    }
+
+    /**
+     * Returns the single plugin instance, creating it on first call.
+     * Called via add_action( 'plugins_loaded', 'neural_forms' ).
+     */
+    public static function instance(): self {
+        if ( self::$instance === null ) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Boot sequence — each line here will grow as modules are added in
+     * later steps. For now it's intentionally empty: the plugin loads
+     * cleanly without throwing errors.
+     */
+    private function boot(): void {
+        // Defer textdomain loading to `init` — WP 6.7+ emits a
+        // `_load_textdomain_just_in_time` notice if any `__()` for our domain
+        // fires during `plugins_loaded`. `init` runs before any frontend
+        // rendering or REST/admin handlers, so translations are still available
+        // by the time anything user-visible needs them.
+        add_action( 'init', [ $this, 'load_textdomain' ] );
+        Database::maybe_upgrade();
+        $this->boot_rest();
+        $this->boot_admin();
+        $this->boot_frontend();
+        $this->boot_ai();
+        $this->boot_notifications();
+
+        /**
+         * Fires once Lite has finished booting all built-in modules.
+         *
+         * Add-on plugins (Neural Forms Pro) hook here to register their own
+         * modules — e.g. the Divi integration, which lives entirely in Pro.
+         * Running at the end of boot guarantees every extension point
+         * (filters, action hooks, REST routes, React slots) is already in
+         * place before add-ons attach to them.
+         *
+         * @param self $instance The Lite plugin singleton.
+         */
+        do_action( 'neural_forms_booted', $this );
+    }
+
+    private function boot_rest(): void {
+        \NeuralForms\Rest\RestAPI::boot();
+    }
+
+    private function boot_admin(): void {
+        if ( is_admin() ) {
+            \NeuralForms\Admin\AdminPanel::boot();
+        }
+    }
+
+    /**
+     * Boot all public-facing (non-admin) functionality.
+     *
+     * Not wrapped in is_admin() — intentionally runs in every context:
+     *   • Shortcode registration must run on the frontend.
+     *   • Block type registration (PublicForms Step 6) must run in both
+     *     frontend and admin contexts so the block editor can discover the block.
+     *   • wp_enqueue_scripts (where assets are registered) only fires on the
+     *     frontend, so admin pages are unaffected.
+     */
+    private function boot_frontend(): void {
+        \NeuralForms\Frontend\PublicForms::boot();
+    }
+
+    /**
+     * Boot the AI layer.
+     *
+     * Hooks are always registered regardless of ai_enabled — the individual
+     * handlers self-guard so toggling the setting in the UI takes effect
+     * immediately without requiring a plugin deactivate/reactivate cycle.
+     */
+    private function boot_ai(): void {
+        add_filter( 'cron_schedules', [ \NeuralForms\AI\AIQueueProcessor::class, 'add_cron_interval' ] );
+        \NeuralForms\AI\AIQueueProcessor::boot();
+        \NeuralForms\AI\QueueListener::boot();
+
+        // Log cleanup: daily cron to prune old DB rows and log files.
+        add_action( 'neural_forms_log_cleanup', [ \NeuralForms\Core\Logger::class, 'cleanup' ] );
+
+        // Self-schedule so installs upgrading from a release without this cron
+        // pick it up automatically. wp_schedule_event is a no-op when the
+        // event is already queued.
+        if ( ! wp_next_scheduled( 'neural_forms_log_cleanup' ) ) {
+            wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_log_cleanup' );
+        }
+
+        // Draft retention: daily cron purges non-finalized carousel drafts
+        // older than DRAFT_TTL_DAYS. Finalized drafts (user picked "Use this
+        // reply") are preserved — they're the canonical entry reply.
+        add_action( 'neural_forms_ai_draft_purge', static function () {
+            \NeuralForms\Storage\AIResponseRepository::purge_older_than(
+                \NeuralForms\Storage\AIResponseRepository::DRAFT_TTL_DAYS
+            );
+        } );
+
+        // Self-schedule so existing installs pick up the new cron on upgrade
+        // without requiring a deactivate/reactivate. wp_schedule_event is a
+        // no-op when the event is already queued.
+        if ( ! wp_next_scheduled( 'neural_forms_ai_draft_purge' ) ) {
+            wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_ai_draft_purge' );
+        }
+    }
+
+    private function boot_notifications(): void {
+        \NeuralForms\Notifications\NotificationService::boot();
+    }
+
+    public function load_textdomain(): void {
+        load_plugin_textdomain(
+            'neural-forms',
+            false,
+            NEURAL_FORMS_BASENAME . '/languages'
+        );
+    }
+
+    // Prevent cloning and unserialization of the singleton.
+    public function __clone() {}
+    public function __wakeup() {}
+}

@@ -1,0 +1,53 @@
+# ========================
+# Node / JS
+# ========================
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ========================
+# Build outputs
+# ========================
+# modules/admin/build/ IS committed — clone-and-activate must work without
+# requiring users to run `npm run build` first.
+*.map
+
+# ========================
+# WordPress / PHP
+# ========================
+vendor/
+composer.lock
+
+# ========================
+# Environment / secrets
+# ========================
+.env
+.env.*
+*.key
+
+# ========================
+# OS / Editor
+# ========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ========================
+# Logs
+# ========================
+*.log
+
+# ========================
+# Archives / releases
+# ========================
+*.zip
+*.tar
+*.gz
+
+# ========================
+# Misc
+# ========================
+coverage/
+.cache/
