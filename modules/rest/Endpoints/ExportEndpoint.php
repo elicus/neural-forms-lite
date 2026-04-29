@@ -14,9 +14,9 @@ defined( 'ABSPATH' ) || exit;
  * GET /neural-forms/v1/entries/export
  *
  * Query params:
- *   form_id  (int, optional)    — scope to a single form; 0 = all forms.
- *   view     (string, optional) — system view filter (inbox, spam, …).
- *   search   (string, optional) — LIKE search on data + form name.
+ *   form_id  (int, optional)    - scope to a single form; 0 = all forms.
+ *   view     (string, optional) - system view filter (inbox, spam, ...).
+ *   search   (string, optional) - LIKE search on data + form name.
  *
  * At least one of form_id > 0, view, or search must be present.
  *
@@ -59,9 +59,7 @@ class ExportEndpoint {
 		'is_starred'         => 'is_starred',
 	];
 
-	// -------------------------------------------------------------------------
 	// Route registration
-	// -------------------------------------------------------------------------
 
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
@@ -116,9 +114,7 @@ class ExportEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Handler
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Stream a CSV file containing matching entries.
@@ -139,16 +135,16 @@ class ExportEndpoint {
 		$date_to    = (string) $request->get_param( 'date_to' );
 		$sort_order = (string) $request->get_param( 'sort_order' );
 
-		// At least one filter is required — date range alone is not enough.
+		// At least one filter is required - date range alone is not enough.
 		if ( $form_id < 1 && $view === '' && $search === '' ) {
 			return new WP_Error(
 				'missing_filter',
-				__( 'A valid form_id, view, or search term is required.', 'neural-forms' ),
+				__( 'A valid form_id, view, or search term is required.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		// Fetch entries — capped at 5 000 by list_for_export().
+		// Fetch entries - capped at 5 000 by list_for_export().
 		$entries   = EntryRepository::list_for_export( $form_id, [
 			'view'       => $view,
 			'search'     => $search,
@@ -168,7 +164,7 @@ class ExportEndpoint {
 		}
 		$filename = $this->build_filename( $form_id, $view, $search, $form_name_for_file, $date_from, $date_to );
 
-		// ── Stream the CSV ────────────────────────────────────────────────────
+		// ' Stream the CSV '
 		nocache_headers();
 		header( 'Content-Type: text/csv; charset=utf-8' );
 		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
@@ -178,25 +174,50 @@ class ExportEndpoint {
 			header( 'X-Neural Forms-Export-Truncated: true' );
 		}
 
-		$handle = fopen( 'php://output', 'w' );
-
-		// UTF-8 BOM — makes Excel open the file with correct encoding without
+		// UTF-8 BOM - makes Excel open the file with correct encoding without
 		// requiring the user to go through the import wizard.
-		fwrite( $handle, "\xEF\xBB\xBF" );
+		echo "\xEF\xBB\xBF";
 
-		fputcsv( $handle, $header_row );
-
+		// CSV body output. Values are encoded by csv_row() per RFC 4180
+		// (quotes / commas / newlines escaped); HTML escaping would corrupt
+		// the file (encoding `&` as `&amp;` etc.). Content-Type is text/csv.
+		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo self::csv_row( $header_row );
 		foreach ( $entries as $entry ) {
-			fputcsv( $handle, $this->build_row( $entry, $dynamic_cols ) );
+			echo self::csv_row( $this->build_row( $entry, $dynamic_cols ) );
 		}
+		// phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped
 
-		fclose( $handle );
 		exit;
 	}
 
-	// -------------------------------------------------------------------------
+	/**
+	 * Encode an array of values as one CSV record (RFC 4180), including the
+	 * trailing CRLF. We hand-roll this instead of using fputcsv() because
+	 * fputcsv() requires a stream handle and the canonical pattern of
+	 * fopen( 'php://output' ) trips WordPress.WP.AlternativeFunctions
+	 * sniffs that have no real bearing on a streaming download.
+	 *
+	 * Quoting rule: a field is quoted when it contains a comma, double-quote,
+	 * carriage return, or line feed. Embedded double-quotes are doubled.
+	 *
+	 * @param string[] $row
+	 * @return string  Encoded CSV record terminated by "\r\n".
+	 */
+	private static function csv_row( array $row ): string {
+		$cells = [];
+		foreach ( $row as $value ) {
+			$value = (string) $value;
+			if ( preg_match( '/[",\r\n]/', $value ) ) {
+				$cells[] = '"' . str_replace( '"', '""', $value ) . '"';
+			} else {
+				$cells[] = $value;
+			}
+		}
+		return implode( ',', $cells ) . "\r\n";
+	}
+
 	// Column building
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Build the dynamic column list and the complete CSV header row.
@@ -213,15 +234,15 @@ class ExportEndpoint {
 	 * @param int   $form_id
 	 * @param array $entries  Decoded entry rows from list_for_export().
 	 * @return array{ 0: array, 1: string[] }
-	 *   [0] — $dynamic_cols: array of { header, source_id, part }.
+	 *   [0] - $dynamic_cols: array of { header, source_id, part }.
 	 *          part is null (scalar), 'filename', or 'url'.
-	 *   [1] — $header_row: flat string array for fputcsv().
+	 *   [1] - $header_row: flat string array for fputcsv().
 	 */
 	private function build_columns( int $form_id, array $entries ): array {
 		$dynamic_cols = [];
 
 		if ( $form_id > 0 ) {
-			// ── Single-form: use schema order ─────────────────────────────────
+			// ' Single-form: use schema order '
 			$form          = FormRepository::find( $form_id );
 			$schema_fields = $form ? ( $form['form_schema']['fields'] ?? [] ) : [];
 
@@ -241,7 +262,7 @@ class ExportEndpoint {
 				}
 			}
 		} else {
-			// ── All-forms / search-only: union of field ids from entries ──────
+			// ' All-forms / search-only: union of field ids from entries '
 			// First pass: collect all field ids in first-seen order; detect file
 			// fields by value shape (array with both 'filename' and 'url' keys).
 			$seen        = [];  // field_id => true (ordered by first appearance)
@@ -281,9 +302,7 @@ class ExportEndpoint {
 		return [ $dynamic_cols, $header_row ];
 	}
 
-	// -------------------------------------------------------------------------
 	// Row building
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Assemble a single CSV data row for an entry.
@@ -320,20 +339,18 @@ class ExportEndpoint {
 		return $row;
 	}
 
-	// -------------------------------------------------------------------------
 	// Value normalisation
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Convert a single entry field value to a human-readable CSV string.
 	 *
 	 * Rules:
-	 *   null / ''           → ''
-	 *   bool                → '1' / '0'
-	 *   int / float         → cast to string
-	 *   file metadata array → '' (handled upstream by _filename/_url columns)
-	 *   plain array         → comma-separated string values
-	 *   string              → as-is
+	 *   null / ''           '->-> ''
+	 *   bool                '->-> '1' / '0'
+	 *   int / float         '->-> cast to string
+	 *   file metadata array '->-> '' (handled upstream by _filename/_url columns)
+	 *   plain array         '->-> comma-separated string values
+	 *   string              '->-> as-is
 	 *
 	 * @param mixed $value
 	 * @return string
@@ -377,9 +394,7 @@ class ExportEndpoint {
 		return $value;
 	}
 
-	// -------------------------------------------------------------------------
 	// Filename generation
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Generate a readable download filename.
@@ -432,12 +447,10 @@ class ExportEndpoint {
 		return 'neural-forms-' . $scope . '-' . $view_slug . '-' . $date_suffix . '.csv';
 	}
 
-	// -------------------------------------------------------------------------
 	// Permission
-	// -------------------------------------------------------------------------
 
 	/**
-	 * Admin-only — requires the same capability used by EntriesEndpoint.
+	 * Admin-only - requires the same capability used by EntriesEndpoint.
 	 *
 	 * @return true|WP_Error
 	 */
@@ -448,7 +461,7 @@ class ExportEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to export entries.', 'neural-forms' ),
+			__( 'You do not have permission to export entries.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}

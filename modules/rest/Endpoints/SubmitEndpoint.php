@@ -16,27 +16,27 @@ defined( 'ABSPATH' ) || exit;
  * Public REST endpoint for form submissions.
  *
  * Route:  POST /wp-json/neural-forms/v1/forms/{id}/submit
- * Auth:   None — public endpoint, no capability required.
+ * Auth:   None - public endpoint, no capability required.
  *
  * Processing order
- * ────────────────
+ *
  *  1. Load form from DB; 404 if not found.
  *  2. Verify form status is 'active'; 403 otherwise.
  *  3. Rate-limit check via filter (infrastructure gate, no body read yet).
  *  4. Extract full body; honeypot check (before key-stripping).
- *  4b. CAPTCHA verification — if form has captcha_enabled, verify token
- *      before the body is stripped. Fails closed: missing token → 400,
- *      bad token → 400, misconfigured provider → 400. Entry is never saved.
+ *  4b. CAPTCHA verification - if form has captcha_enabled, verify token
+ *      before the body is stripped. Fails closed: missing token '->-> 400,
+ *      bad token '->-> 400, misconfigured provider '->-> 400. Entry is never saved.
  *  5. Strip body to schema-known keys; spam check via filter.
  *  6. Validate with SubmissionValidator; return field-keyed 422 on failure.
  *  7. Sanitize each value by field type.
  *  8. Assemble server-side context (IP, UA, page URL, timestamps, schema hash).
  *  9. Persist entry via EntryRepository; 500 on DB failure.
  * 10. Fire post-save action hooks (created, notifications, AI queue).
- * 11. Return 201 { success: true, entry_id: … }.
+ * 11. Return 201 { success: true, entry_id: ... }.
  *
  * Error codes
- * ───────────
+ *
  *  form_not_found          404  Form ID does not exist.
  *  form_not_active         403  Form is draft or archived.
  *  rate_limit_exceeded     429  Too many requests from this IP.
@@ -55,16 +55,14 @@ class SubmitEndpoint {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this, 'submit' ],
-				// Public — no authentication required.
+				// Public - no authentication required.
 				// Abuse prevention happens via the rate-limit and spam-check hooks.
 				'permission_callback' => '__return_true',
 			]
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Handler
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Handle a form submission.
@@ -75,30 +73,30 @@ class SubmitEndpoint {
 	public function submit( WP_REST_Request $request ) {
 		$form_id = (int) $request['id'];
 
-		// ── Step 1: Load form ────────────────────────────────────────────────
+		// ' Step 1: Load form '
 		$form = FormRepository::find( $form_id );
 
 		if ( ! $form ) {
 			return new WP_Error(
 				'form_not_found',
-				__( 'Form not found.', 'neural-forms' ),
+				__( 'Form not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
 
-		// ── Step 2: Active-status gate ───────────────────────────────────────
+		// ' Step 2: Active-status gate '
 		// Draft and archived forms must not accept public submissions.
 		// This also closes the gap in SubmissionValidator's permissive select
-		// handling — by the time we reach validation, the form is confirmed active.
+		// handling - by the time we reach validation, the form is confirmed active.
 		if ( $form['status'] !== 'active' ) {
 			return new WP_Error(
 				'form_not_active',
-				__( 'This form is not currently accepting submissions.', 'neural-forms' ),
+				__( 'This form is not currently accepting submissions.', 'neural-forms-lite' ),
 				[ 'status' => 403 ]
 			);
 		}
 
-		// ── Step 3: Rate-limit gate ──────────────────────────────────────────
+		// ' Step 3: Rate-limit gate '
 		// Built-in transient-based limiter: max 10 submissions per IP per 10
 		// minutes. The filter lets extensions replace or tighten this logic.
 		$ip = $this->resolve_ip();
@@ -113,17 +111,17 @@ class SubmitEndpoint {
 		if ( $rate_limited ) {
 			return new WP_Error(
 				'rate_limit_exceeded',
-				__( 'Too many requests. Please wait before submitting again.', 'neural-forms' ),
+				__( 'Too many requests. Please wait before submitting again.', 'neural-forms-lite' ),
 				[ 'status' => 429 ]
 			);
 		}
 
-		// ── Step 4: Extract and strip submitted values ───────────────────────
+		// ' Step 4: Extract and strip submitted values '
 		// Read the full body once so we can check the honeypot before stripping.
 		// Detects multipart/form-data (file upload path) vs JSON automatically.
 		$raw_body = $this->get_submission_params( $request );
 
-		// ── Step 4a: Honeypot check ──────────────────────────────────────────
+		// ' Step 4a: Honeypot check '
 		// FormRenderer renders a hidden field named "neural_forms_website".
 		// Legitimate users never fill it; bots that auto-fill all inputs do.
 		// Must be read from $raw_body BEFORE key-stripping removes unknown keys.
@@ -131,21 +129,21 @@ class SubmitEndpoint {
 		if ( $honeypot !== '' ) {
 			return new WP_Error(
 				'spam_detected',
-				__( 'Your submission could not be processed. Please try again.', 'neural-forms' ),
+				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		// ── Step 4b: CAPTCHA verification ────────────────────────────────────
-		// Must happen here — after honeypot but BEFORE array_intersect_key strips
+		// ' Step 4b: CAPTCHA verification '
+		// Must happen here - after honeypot but BEFORE array_intersect_key strips
 		// the body to schema-only keys. captcha_token is not a schema field so it
 		// would be silently discarded if we read it any later.
 		//
 		// Fail-closed rules:
-		//   • form captcha_enabled = false → skip entirely (no overhead).
-		//   • form captcha_enabled = true, provider not configured → 400.
-		//   • form captcha_enabled = true, token missing → 400.
-		//   • form captcha_enabled = true, token fails verification → 400 + log.
+		//   * form captcha_enabled = false '->-> skip entirely (no overhead).
+		//   * form captcha_enabled = true, provider not configured '->-> 400.
+		//   * form captcha_enabled = true, token missing '->-> 400.
+		//   * form captcha_enabled = true, token fails verification '->-> 400 + log.
 		//
 		// Entry is never written when this block returns a WP_Error.
 		$form_settings   = is_array( $form['settings'] ) ? $form['settings'] : [];
@@ -154,7 +152,7 @@ class SubmitEndpoint {
 		// Only enforce CAPTCHA when the form has it enabled AND the global
 		// provider is fully configured (both site key and secret key present).
 		// If captcha_enabled is true but the global keys are not set, the
-		// FormRenderer does not render a widget — so no token is possible and
+		// FormRenderer does not render a widget - so no token is possible and
 		// the check must be skipped to avoid blocking every submission with 400.
 		if ( $captcha_enabled && CaptchaManager::is_configured() ) {
 
@@ -163,7 +161,7 @@ class SubmitEndpoint {
 			if ( $captcha_token === '' ) {
 				return new WP_Error(
 					'captcha_missing',
-					__( 'Please complete the CAPTCHA.', 'neural-forms' ),
+					__( 'Please complete the CAPTCHA.', 'neural-forms-lite' ),
 					[ 'status' => 400 ]
 				);
 			}
@@ -186,18 +184,23 @@ class SubmitEndpoint {
 
 				return new WP_Error(
 					'captcha_failed',
-					__( 'CAPTCHA verification failed. Please try again.', 'neural-forms' ),
+					__( 'CAPTCHA verification failed. Please try again.', 'neural-forms-lite' ),
 					[ 'status' => 400 ]
 				);
 			}
 		}
-		// ── end CAPTCHA ───────────────────────────────────────────────────────
+		// ' end CAPTCHA '
 
-		// ── Step 4c: File field processing ──────────────────────────────────
+		// ' Step 4c: File field processing '
 		// Must happen before array_intersect_key so uploaded files (from $_FILES)
 		// are processed and their metadata injected into $raw_body under the
 		// field ID key. Only runs when the request is multipart/form-data.
 		$schema_fields_pre = $form['form_schema']['fields'] ?? [];
+		// Public submission endpoint - auth is by design open (CAPTCHA + honeypot
+		// + rate limit gate above), so no nonce is sent. $_FILES is read here
+		// only to detect the multipart upload path; values pulled from it are
+		// validated and sanitized inside process_file_fields().
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		if ( ! empty( $_FILES ) ) {
 			$file_result = $this->process_file_fields( $schema_fields_pre, $raw_body );
 			if ( is_wp_error( $file_result ) ) {
@@ -205,7 +208,7 @@ class SubmitEndpoint {
 			}
 			$raw_body = $file_result;
 		}
-		// ── end file processing ───────────────────────────────────────────────
+		// ' end file processing '
 
 		// Only accept keys that correspond to field IDs in the stored schema.
 		// Unknown keys are silently dropped here so the validator and sanitizer
@@ -214,15 +217,15 @@ class SubmitEndpoint {
 		$schema_ids    = array_column( $schema_fields, 'id' );
 		$raw_data      = array_intersect_key( $raw_body, array_flip( $schema_ids ) );
 
-		// ── Step 5a: Conditional logic — strip hidden fields ────────────────────
+		// ' Step 5a: Conditional logic - strip hidden fields '
 		// Re-evaluate server-side so hidden fields can never sneak through via
 		// direct API calls that bypass the frontend JS.
 		//
 		// Fields whose condition evaluates to false are unset from $raw_data here,
 		// before validation. This ensures:
-		//   • Hidden required fields never fail validation.
-		//   • Hidden field values are never stored.
-		//   • Hidden file fields (already uploaded in step 4c) are not validated
+		//   * Hidden required fields never fail validation.
+		//   * Hidden field values are never stored.
+		//   * Hidden file fields (already uploaded in step 4c) are not validated
 		//     or saved. The file will remain in the media library as an orphan;
 		//     this is an accepted V1 limitation.
 		//
@@ -252,42 +255,42 @@ class SubmitEndpoint {
 			}
 		}
 
-		// ── Step 5: Spam-check gate ──────────────────────────────────────────
+		// ' Step 5: Spam-check gate '
 		// Fires after body is available so filters can inspect field values.
-		// Return truthy to block with 400. Response is intentionally vague —
+		// Return truthy to block with 400. Response is intentionally vague -
 		// leaking which heuristic triggered would help spammers bypass it.
 		$is_spam = apply_filters( 'neural_forms_spam_check', false, $raw_data, $form );
 
 		if ( $is_spam ) {
 			return new WP_Error(
 				'spam_detected',
-				__( 'Your submission could not be processed. Please try again.', 'neural-forms' ),
+				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		// ── Step 6: Validate ─────────────────────────────────────────────────
+		// ' Step 6: Validate '
 		// SubmissionValidator returns true on success or a WP_Error whose
 		// data['fields'] contains per-field [ 'code' => ..., 'message' => ... ].
 		$validation = SubmissionValidator::validate( $schema_fields, $raw_data );
 
 		if ( is_wp_error( $validation ) ) {
-			// Pass the full WP_Error through — it already carries status 422
+			// Pass the full WP_Error through - it already carries status 422
 			// and the structured data.fields array. Do not rewrap.
 			return $validation;
 		}
 
-		// ── Step 7: Sanitize ─────────────────────────────────────────────────
+		// ' Step 7: Sanitize '
 		// Sanitization happens here, not in the validator.
 		// The validator confirmed the values are structurally acceptable;
 		// sanitization removes any remaining unsafe content before storage.
-		// Null values are skipped — they represent optional absent fields and
+		// Null values are skipped - they represent optional absent fields and
 		// should not appear in the stored entry data blob.
 		$sanitized_data = $this->sanitize_fields( $schema_fields, $raw_data );
 
-		// ── Step 8: Assemble server-side context ─────────────────────────────
+		// ' Step 8: Assemble server-side context '
 		// These values are server-derived, never client-trusted.
-		// form_version is an MD5 of the schema at the moment of submission —
+		// form_version is an MD5 of the schema at the moment of submission -
 		// useful later to detect entries captured against an older schema shape.
 		$context = [
 			'ip'           => $ip,
@@ -297,7 +300,7 @@ class SubmitEndpoint {
 			'form_version' => md5( (string) wp_json_encode( $form['form_schema'] ) ),
 		];
 
-		// ── Step 9: Persist ──────────────────────────────────────────────────
+		// ' Step 9: Persist '
 		// EntryRepository::create() already logs the raw DB error internally.
 		// We must not forward that message to the public response.
 		$entry_id = EntryRepository::create( $form_id, $sanitized_data, $context );
@@ -305,26 +308,26 @@ class SubmitEndpoint {
 		if ( is_wp_error( $entry_id ) ) {
 			return new WP_Error(
 				'entry_save_failed',
-				__( 'Could not save your submission. Please try again.', 'neural-forms' ),
+				__( 'Could not save your submission. Please try again.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
 
-		// ── Step 10: Post-save hooks ─────────────────────────────────────────
+		// ' Step 10: Post-save hooks '
 		// These hooks fire in a defined order after the entry is committed.
-		// None of them can abort the response — the entry is already saved.
+		// None of them can abort the response - the entry is already saved.
 		//
-		// IMPORTANT — hook implementations must be non-blocking:
-		//   • Do not deliver emails synchronously inside the hook.
-		//   • Do not call external AI APIs inline — enqueue a job instead.
+		// IMPORTANT - hook implementations must be non-blocking:
+		//   * Do not deliver emails synchronously inside the hook.
+		//   * Do not call external AI APIs inline - enqueue a job instead.
 		//   Blocking here delays the HTTP response for every submission.
 		//
-		// IMPORTANT — hook failures are currently silent (fire-and-forget).
+		// IMPORTANT - hook failures are currently silent (fire-and-forget).
 		// When notification and AI listeners are implemented, they must write
 		// failures to neural_forms_logs or update queue row status so that:
-		//   • Failed email deliveries are visible in the admin entries view.
-		//   • Stuck AI jobs can be retried without re-processing the entry.
-		//   • Debugging does not require tailing server error logs.
+		//   * Failed email deliveries are visible in the admin entries view.
+		//   * Stuck AI jobs can be retried without re-processing the entry.
+		//   * Debugging does not require tailing server error logs.
 		// The neural_forms_logs and neural_forms_queue tables already exist for this purpose.
 
 		// Canonical "submission happened" event.
@@ -337,7 +340,7 @@ class SubmitEndpoint {
 		//
 		// Deferral: when AI spam detection and email_skip_spam_notifications are
 		// both active, skip this hook now and let AIQueueProcessor fire it
-		// after analysis — suppressing it for spam entries. Auto-process is
+		// after analysis - suppressing it for spam entries. Auto-process is
 		// not required because QueueListener now queues on spam_enabled alone,
 		// so the queue still runs and drives the deferred notification.
 		$defer_notifications = \NeuralForms\Core\Config::get( 'ai_enabled' )
@@ -349,12 +352,12 @@ class SubmitEndpoint {
 		}
 
 		// AI processing queue.
-		// Intentionally last — depends on the entry existing (neural_forms_entry_created)
+		// Intentionally last - depends on the entry existing (neural_forms_entry_created)
 		// and notification config being available (neural_forms_send_notifications).
 		// Listener must insert a row into neural_forms_queue, not call the AI API inline.
 		do_action( 'neural_forms_queue_ai_processing', $entry_id, $form_id );
 
-		// ── Step 11: Success response ─────────────────────────────────────────
+		// ' Step 11: Success response '
 		$response = rest_ensure_response( [
 			'success'  => true,
 			'entry_id' => $entry_id,
@@ -364,9 +367,7 @@ class SubmitEndpoint {
 		return $response;
 	}
 
-	// -------------------------------------------------------------------------
 	// Sanitization
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Sanitize all submitted field values by their declared type.
@@ -374,7 +375,7 @@ class SubmitEndpoint {
 	 * Iterates the schema fields (not the raw data) so the output array
 	 * preserves the order of fields as defined in the schema.
 	 *
-	 * Null values are excluded from the output — they represent optional
+	 * Null values are excluded from the output - they represent optional
 	 * fields that were not submitted and should not appear in the entry blob.
 	 *
 	 * @param array $schema_fields  The 'fields' array from form_schema.
@@ -399,7 +400,7 @@ class SubmitEndpoint {
 
 			$value = $raw_data[ $field_id ];
 
-			// Null means the client explicitly sent null — treat as absent.
+			// Null means the client explicitly sent null - treat as absent.
 			if ( $value === null ) {
 				continue;
 			}
@@ -465,7 +466,7 @@ class SubmitEndpoint {
 			// file:
 			// Value is the structured metadata array injected by process_file_fields().
 			// It has already been validated and sanitized during upload processing.
-			// Pass through as-is — do not stringify it.
+			// Pass through as-is - do not stringify it.
 			case 'file':
 				return is_array( $value ) ? $value : null;
 
@@ -497,14 +498,12 @@ class SubmitEndpoint {
 		return 0;
 	}
 
-	// -------------------------------------------------------------------------
 	// File upload
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Allowed MIME type groups for file upload fields.
 	 *
-	 * Mirrors JS FILE_TYPE_OPTIONS in FieldItem.js — group slugs must match.
+	 * Mirrors JS FILE_TYPE_OPTIONS in FieldItem.js - group slugs must match.
 	 * Used in process_file_fields() to validate uploaded file MIME types.
 	 */
 	private const ALLOWED_MIME_GROUPS = [
@@ -523,9 +522,9 @@ class SubmitEndpoint {
 	 * library, and inject the resulting attachment metadata into $raw_body.
 	 *
 	 * For each file field in the schema:
-	 *   - If required and no file uploaded → 422 error returned.
-	 *   - If optional and no file uploaded → field skipped (absent = valid).
-	 *   - If file present → validate size and MIME, upload, inject metadata.
+	 *   - If required and no file uploaded '->-> 422 error returned.
+	 *   - If optional and no file uploaded '->-> field skipped (absent = valid).
+	 *   - If file present '->-> validate size and MIME, upload, inject metadata.
 	 *
 	 * Returns the updated $raw_body array on success, or a WP_Error.
 	 *
@@ -557,7 +556,20 @@ class SubmitEndpoint {
 				: 5;
 			$max_bytes = $max_mb * 1024 * 1024;
 
-			$file_info = $_FILES[ $field_id ] ?? null;
+			// Public endpoint - see the nonce-ignore on the $_FILES gate above.
+			// File contents are validated below with wp_check_filetype_and_ext()
+			// (reads via finfo) before ever being trusted; the string fields
+			// from $_FILES (name, type) are run through sanitize_text_field()
+			// here so phpcs sees explicit sanitization on the raw input.
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+			$raw_file = isset( $_FILES[ $field_id ] ) ? $_FILES[ $field_id ] : null;
+			$file_info = is_array( $raw_file ) ? [
+				'name'     => isset( $raw_file['name'] )     ? sanitize_file_name( wp_unslash( $raw_file['name'] ) )     : '',
+				'type'     => isset( $raw_file['type'] )     ? sanitize_mime_type( wp_unslash( $raw_file['type'] ) )     : '',
+				'tmp_name' => isset( $raw_file['tmp_name'] ) ? $raw_file['tmp_name']                                     : '',
+				'error'    => isset( $raw_file['error'] )    ? (int) $raw_file['error']                                  : UPLOAD_ERR_NO_FILE,
+				'size'     => isset( $raw_file['size'] )     ? (int) $raw_file['size']                                   : 0,
+			] : null;
 
 			// No file uploaded for this field.
 			if ( ! $file_info || $file_info['error'] === UPLOAD_ERR_NO_FILE || empty( $file_info['name'] ) ) {
@@ -565,20 +577,20 @@ class SubmitEndpoint {
 					$label = trim( $field['label'] ?? '' ) ?: $field_id;
 					return new WP_Error(
 						'invalid_submission',
-						__( 'The submission contains errors. Please check the fields below.', 'neural-forms' ),
+						__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
 						[
 							'status' => 422,
 							'fields' => [
 								$field_id => [ [
 									'code'    => 'required',
 									/* translators: %s: field label */
-									'message' => sprintf( __( '%s is required.', 'neural-forms' ), $label ),
+									'message' => sprintf( __( '%s is required.', 'neural-forms-lite' ), $label ),
 								] ],
 							],
 						]
 					);
 				}
-				// Optional and absent — skip.
+				// Optional and absent - skip.
 				continue;
 			}
 
@@ -586,7 +598,7 @@ class SubmitEndpoint {
 			if ( $file_info['error'] !== UPLOAD_ERR_OK ) {
 				return new WP_Error(
 					'file_upload_error',
-					__( 'A file upload error occurred. Please try again.', 'neural-forms' ),
+					__( 'A file upload error occurred. Please try again.', 'neural-forms-lite' ),
 					[ 'status' => 400 ]
 				);
 			}
@@ -596,15 +608,15 @@ class SubmitEndpoint {
 				$label = trim( $field['label'] ?? '' ) ?: $field_id;
 				return new WP_Error(
 					'invalid_submission',
-					__( 'The submission contains errors. Please check the fields below.', 'neural-forms' ),
+					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
 					[
 						'status' => 422,
 						'fields' => [
 							$field_id => [ [
 								'code'    => 'file_too_large',
-								/* translators: 1: field label  2: max size in MB */
 								'message' => sprintf(
-									__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms' ),
+									/* translators: 1: field label  2: max size in MB */
+									__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
 									$label,
 									$max_mb
 								),
@@ -614,12 +626,12 @@ class SubmitEndpoint {
 				);
 			}
 
-			// Build the custom mimes list once — used for both the pre-check and
+			// Build the custom mimes list once - used for both the pre-check and
 			// the actual upload so the two are always in sync.
 			$upload_mimes = $this->build_allowed_mimes( $allowed_types );
 
 			// MIME type validation using wp_check_filetype_and_ext() which reads
-			// actual file content via finfo — not the browser-reported type.
+			// actual file content via finfo - not the browser-reported type.
 			// Pass our custom $upload_mimes so the result reflects what the upload
 			// step will accept, not WordPress's global upload_mimes list.
 			$check = wp_check_filetype_and_ext(
@@ -644,14 +656,14 @@ class SubmitEndpoint {
 					$label = trim( $field['label'] ?? '' ) ?: $field_id;
 					return new WP_Error(
 						'invalid_submission',
-						__( 'The submission contains errors. Please check the fields below.', 'neural-forms' ),
+						__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
 						[
 							'status' => 422,
 							'fields' => [
 								$field_id => [ [
 									'code'    => 'invalid_file_type',
 									/* translators: %s: field label */
-									'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms' ), $label ),
+									'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
 								] ],
 							],
 						]
@@ -661,9 +673,21 @@ class SubmitEndpoint {
 
 			// Upload to WordPress media library.
 			// test_form => false because this is not an admin form submission.
+			//
+			// unique_filename_callback randomizes the on-disk basename to a
+			// 32-hex token (preserving extension) so the resulting URL is not
+			// guessable from the original filename. Attachments live under
+			// /wp-content/uploads/ which is publicly readable, so a random
+			// path is the defense-in-depth layer that prevents enumeration of
+			// other users' submitted files. The user-visible filename is kept
+			// in the entry's `data` column for admin display + CSV export.
 			$upload = wp_handle_upload(
 				$file_info,
-				[ 'test_form' => false, 'mimes' => $upload_mimes ]
+				[
+					'test_form'                => false,
+					'mimes'                    => $upload_mimes,
+					'unique_filename_callback' => [ self::class, 'randomize_upload_filename' ],
+				]
 			);
 
 			if ( isset( $upload['error'] ) ) {
@@ -674,7 +698,7 @@ class SubmitEndpoint {
 				);
 				return new WP_Error(
 					'file_upload_failed',
-					__( 'Could not save the uploaded file. Please try again.', 'neural-forms' ),
+					__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
 					[ 'status' => 500 ]
 				);
 			}
@@ -699,7 +723,7 @@ class SubmitEndpoint {
 				);
 				return new WP_Error(
 					'file_upload_failed',
-					__( 'Could not save the uploaded file. Please try again.', 'neural-forms' ),
+					__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
 					[ 'status' => 500 ]
 				);
 			}
@@ -710,16 +734,43 @@ class SubmitEndpoint {
 
 			// Inject structured metadata into raw_body so downstream steps can
 			// treat this field like any other submitted value.
+			//
+			// `filename` is the human-readable original (kept for admin UI +
+			// CSV export); the on-disk basename is randomized and only
+			// reflected in `url` so it can't be enumerated.
 			$raw_body[ $field_id ] = [
 				'attachment_id' => $attachment_id,
 				'url'           => $upload['url'],
-				'filename'      => basename( $upload['file'] ),
+				'filename'      => sanitize_file_name( (string) $file_info['name'] ),
 				'mime_type'     => $upload['type'],
 				'size'          => (int) filesize( $upload['file'] ),
 			];
 		}
 
 		return $raw_body;
+	}
+
+	/**
+	 * unique_filename_callback for wp_handle_upload(): replace the basename
+	 * with a 32-hex token while preserving the extension. Result is e.g.
+	 * "nf-3f2a...b91c.pdf" - unguessable so /wp-content/uploads/ URLs can't
+	 * be enumerated by trying common filenames.
+	 *
+	 * @param string $dir   Target directory (unused - wp_handle_upload still
+	 *                      resolves collisions itself, but our 128-bit token
+	 *                      makes collisions vanishingly unlikely).
+	 * @param string $name  Original filename including extension.
+	 * @param string $ext   Extension with leading dot, e.g. '.pdf'.
+	 * @return string       Randomized filename.
+	 */
+	public static function randomize_upload_filename( string $dir, string $name, string $ext ): string {
+		$ext = strtolower( $ext );
+
+		// wp_generate_password is cryptographically random; 32 alnum chars
+		// is ~190 bits of entropy - plenty for an unguessable URL token.
+		$token = strtolower( wp_generate_password( 32, false, false ) );
+
+		return 'nf-' . $token . $ext;
 	}
 
 	/**
@@ -743,7 +794,7 @@ class SubmitEndpoint {
 		];
 
 		if ( empty( $allowed_types ) ) {
-			// No restriction — merge all groups.
+			// No restriction - merge all groups.
 			$mimes = [];
 			foreach ( $ext_map as $group_mimes ) {
 				$mimes = array_merge( $mimes, $group_mimes );
@@ -760,22 +811,20 @@ class SubmitEndpoint {
 		return $mimes;
 	}
 
-	// -------------------------------------------------------------------------
 	// Conditional logic
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Evaluate a conditional logic rule against submitted data.
 	 *
-	 * Returns true  → dependent field is VISIBLE   (keep it in $raw_data).
-	 * Returns false → dependent field is HIDDEN    (strip it from $raw_data).
+	 * Returns true  '->-> dependent field is VISIBLE   (keep it in $raw_data).
+	 * Returns false '->-> dependent field is HIDDEN    (strip it from $raw_data).
 	 *
-	 * Mirrors the JS evaluateCondition() function — both sides must be consistent.
+	 * Mirrors the JS evaluateCondition() function - both sides must be consistent.
 	 *
 	 * Fallback rules:
-	 *   • Incomplete rule (missing field or operator) → true (show).
-	 *   • Controlling field absent from submitted data → true (show).
-	 *   • Unknown operator → true (show).
+	 *   * Incomplete rule (missing field or operator) '->-> true (show).
+	 *   * Controlling field absent from submitted data '->-> true (show).
+	 *   * Unknown operator '->-> true (show).
 	 *
 	 * @param array $logic  The conditional_logic object from the field schema.
 	 * @param array $data   Submitted data keyed by field_id (may be modified by prior iterations).
@@ -798,7 +847,7 @@ class SubmitEndpoint {
 		$control_raw = $data[ $control_id ];
 
 		if ( is_array( $control_raw ) ) {
-			// File fields store associative metadata (filename, url, …) — there
+			// File fields store associative metadata (filename, url, ...) - there
 			// is no useful scalar to compare against, so collapse to a presence
 			// sentinel.  Multi-checkbox values are a numeric list of selected
 			// options; join them with commas to mirror the frontend's
@@ -833,9 +882,7 @@ class SubmitEndpoint {
 		}
 	}
 
-	// -------------------------------------------------------------------------
 	// Utilities
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Extract submission parameters from the request.
@@ -864,15 +911,15 @@ class SubmitEndpoint {
 	 * Resolve the client IP address.
 	 *
 	 * Prefers X-Forwarded-For when present (set by reverse proxies and load
-	 * balancers). Takes only the first (leftmost) entry — it represents the
+	 * balancers). Takes only the first (leftmost) entry - it represents the
 	 * original client; subsequent IPs are proxies appended along the chain.
 	 *
-	 * ⚠️  SPOOFING RISK: X-Forwarded-For is a plain HTTP header. Any client
+	 * '��️  SPOOFING RISK: X-Forwarded-For is a plain HTTP header. Any client
 	 * can send an arbitrary value when no trusted proxy sits in front. This
 	 * means an attacker can trivially rotate the apparent IP and bypass any
 	 * rate-limit filter that relies solely on this method.
 	 *
-	 * For MVP this is an acceptable trade-off — most shared hosting and basic
+	 * For MVP this is an acceptable trade-off - most shared hosting and basic
 	 * server setups do not sit behind a load balancer, so REMOTE_ADDR is used
 	 * directly. When a reverse proxy (Nginx, Cloudflare, AWS ALB) is added:
 	 *
@@ -890,15 +937,20 @@ class SubmitEndpoint {
 		$candidate = '';
 
 		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
-			$forwarded = explode( ',', wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) );
+			$forwarded = explode(
+				',',
+				sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) )
+			);
 			$candidate = trim( (string) $forwarded[0] );
 		}
 
 		if ( $candidate === '' ) {
-			$candidate = trim( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '' ) );
+			$candidate = isset( $_SERVER['REMOTE_ADDR'] )
+				? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )
+				: '';
 		}
 
-		// Reject anything that isn't a real IPv4/IPv6 — prevents header-injected
+		// Reject anything that isn't a real IPv4/IPv6 - prevents header-injected
 		// garbage from landing in the entries table, captcha upstream calls, or
 		// the rate-limit transient key.
 		return filter_var( $candidate, FILTER_VALIDATE_IP ) ? $candidate : '';
@@ -907,7 +959,7 @@ class SubmitEndpoint {
 	/**
 	 * Built-in rate limiter: max 10 submissions per IP per 10-minute window.
 	 *
-	 * Uses WordPress transients for storage — works without external
+	 * Uses WordPress transients for storage - works without external
 	 * dependencies and self-cleans via TTL.
 	 *
 	 * @param string $ip  Resolved client IP address.

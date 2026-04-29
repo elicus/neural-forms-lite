@@ -27,8 +27,8 @@ class Activator {
     /**
      * Grant Neural Forms capabilities to the roles that should have them.
      *
-     * add_cap() writes to the database (wp_options → wp_user_roles).
-     * It is safe to call multiple times — WordPress skips it if already set.
+     * add_cap() writes to the database (wp_options -> wp_user_roles).
+     * It is safe to call multiple times - WordPress skips it if already set.
      */
     public static function add_capabilities(): void {
         $roles = [ 'administrator' ];

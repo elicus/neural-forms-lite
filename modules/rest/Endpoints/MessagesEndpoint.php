@@ -28,7 +28,7 @@ defined( 'ABSPATH' ) || exit;
  *       meta       object
  *       created_at string  UTC datetime
  *     },
- *     …
+ *     ...
  *   ]
  *
  * Error codes:
@@ -46,9 +46,7 @@ class MessagesEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Handler
-	// -------------------------------------------------------------------------
 
 	public function get_messages( WP_REST_Request $request ) {
 		$entry_id = (int) $request['id'];
@@ -57,7 +55,7 @@ class MessagesEndpoint {
 		if ( ! $entry ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -67,9 +65,7 @@ class MessagesEndpoint {
 		return rest_ensure_response( $messages );
 	}
 
-	// -------------------------------------------------------------------------
 	// Permission
-	// -------------------------------------------------------------------------
 
 	public function check_permission() {
 		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {
@@ -78,7 +74,7 @@ class MessagesEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to view messages.', 'neural-forms' ),
+			__( 'You do not have permission to view messages.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}

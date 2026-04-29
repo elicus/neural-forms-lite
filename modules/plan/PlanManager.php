@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
  * The plugin does not hardcode plan tiers or feature gates. Instead, it mirrors
  * the capability map returned by the Cloud API and checks features against it.
  *
- * ─── Cloud API contract (expected shape from GET /v1/auth/me) ─────────────────
+ * ' Cloud API contract (expected shape from GET /v1/auth/me) '
  *
  *   {
  *     "plan":         { "id": "pro", "name": "Pro" },
@@ -33,7 +33,7 @@ defined( 'ABSPATH' ) || exit;
  *   - ai_reply_polish      Refine (formerly "polish") a user-composed draft.
  *   - ai_auto_process      Queue analysis automatically on submission.
  *
- * ─── Policy ──────────────────────────────────────────────────────────────────
+ * ' Policy '
  *
  * Fail-open on unknown capabilities: if the cached plan has no entry for a
  * feature, can() returns true. This preserves existing behaviour for users on
@@ -41,7 +41,7 @@ defined( 'ABSPATH' ) || exit;
  * later returns feature_locked for a gated call, the cache is updated and the
  * UI reflects the lock on the next read.
  *
- * ─── Storage ─────────────────────────────────────────────────────────────────
+ * ' Storage '
  *
  * All state lives in a single key on the existing neural_forms_settings option:
  *
@@ -64,9 +64,7 @@ class PlanManager {
 	/** Default when no cached plan exists and no Cloud upgrade_url is known. */
 	const DEFAULT_UPGRADE_URL = 'https://neuralforms.ai/pricing';
 
-	// -------------------------------------------------------------------------
 	// Public API
-	// -------------------------------------------------------------------------
 
 	/**
 	 * True if the current plan grants the given capability.
@@ -108,7 +106,7 @@ class PlanManager {
 	}
 
 	/**
-	 * Default subscription block — used when no plan has been cached yet or
+	 * Default subscription block - used when no plan has been cached yet or
 	 * when the Cloud response omits the block (older API versions).
 	 */
 	private static function default_subscription(): array {
@@ -123,10 +121,10 @@ class PlanManager {
 	 * True when the cached subscription has lapsed past any grace window.
 	 *
 	 * Scenarios:
-	 *   - status 'active' or 'trialing' → false
-	 *   - graceExpiresAt in the future   → false (still covered)
-	 *   - 'pending_cancel' + period_end in the future → false (paid through term)
-	 *   - else → true (expired / cancelled / grace-lapsed)
+	 *   - status 'active' or 'trialing' '->-> false
+	 *   - graceExpiresAt in the future   '->-> false (still covered)
+	 *   - 'pending_cancel' + period_end in the future '->-> false (paid through term)
+	 *   - else '->-> true (expired / cancelled / grace-lapsed)
 	 */
 	public static function is_subscription_expired(): bool {
 		$sub    = self::get_plan()['subscription'];
@@ -236,9 +234,7 @@ class PlanManager {
 		Config::set( 'cloud_plan', [] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Normalization
-	// -------------------------------------------------------------------------
 
 	private static function normalize_response( array $body ): array {
 		$plan_raw    = is_array( $body['plan'] ?? null ) ? $body['plan'] : [];

@@ -2,6 +2,7 @@
 namespace NeuralForms\Frontend;
 
 use NeuralForms\Core\Config;
+use NeuralForms\Forms\FieldRegistry;
 use NeuralForms\Forms\FormRepository;
 
 defined( 'ABSPATH' ) || exit;
@@ -10,11 +11,11 @@ defined( 'ABSPATH' ) || exit;
  * FormRenderer
  *
  * Converts a stored form schema into ready-to-output frontend HTML.
- * Purely presentational — no state mutations, no REST calls, no hooks
+ * Purely presentational - no state mutations, no REST calls, no hooks
  * registered. Every method is stateless.
  *
  * Usage
- * ─────
+ *
  *   echo FormRenderer::render( 42 );
  *
  * The returned HTML is self-contained:
@@ -28,30 +29,28 @@ defined( 'ABSPATH' ) || exit;
  *     server layers fully control the error UX.
  *
  * Asset enqueueing
- * ────────────────
+ *
  *   wp_enqueue_style( 'neural-forms-form' ) and wp_enqueue_script( 'neural-forms-form-submit' )
  *   are called from render(). The handles must be registered first by
  *   PublicForms::boot() (Step 3). WordPress deduplicates enqueue calls, so
  *   rendering multiple forms on one page enqueues the assets exactly once.
  *
  * Escaping contract
- * ─────────────────
+ *
  *   All user-controlled data (field labels, placeholders, option labels,
  *   default values, success messages) passes through esc_attr() or esc_html()
  *   before being written into the HTML string. The caller may echo the return
- *   value directly — no additional escaping is required or should be applied.
+ *   value directly - no additional escaping is required or should be applied.
  */
 class FormRenderer {
 
-	// -------------------------------------------------------------------------
 	// Public API
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Render a form by its database ID.
 	 *
 	 * Returns an empty string (not an exception) when the form is missing or
-	 * inactive — safe to echo directly. Admins (manage_options) additionally
+	 * inactive - safe to echo directly. Admins (manage_options) additionally
 	 * see an inline notice so they can diagnose a wrong ID or status without
 	 * the visitor ever knowing.
 	 *
@@ -68,7 +67,7 @@ class FormRenderer {
 			return static::admin_notice(
 				sprintf(
 					/* translators: %d: form ID */
-					__( 'Neural Forms: no form found with ID %d.', 'neural-forms' ),
+					__( 'Neural Forms: no form found with ID %d.', 'neural-forms-lite' ),
 					$form_id
 				)
 			);
@@ -78,7 +77,7 @@ class FormRenderer {
 			return static::admin_notice(
 				sprintf(
 					/* translators: 1: form name  2: status slug */
-					__( 'Neural Forms: form "%1$s" is not active (status: %2$s).', 'neural-forms' ),
+					__( 'Neural Forms: form "%1$s" is not active (status: %2$s).', 'neural-forms-lite' ),
 					$form['name'],
 					$form['status']
 				)
@@ -86,7 +85,7 @@ class FormRenderer {
 		}
 
 		// Handles registered by PublicForms::boot() (Step 3).
-		// wp_enqueue_* is safe inside shortcode callbacks — the script/style
+		// wp_enqueue_* is safe inside shortcode callbacks - the script/style
 		// output happens in wp_footer() / wp_head(), which run after the_content.
 		// WordPress deduplicates: calling enqueue three times for three forms
 		// on one page produces a single <script> tag.
@@ -112,7 +111,7 @@ class FormRenderer {
 	 * This prevents the submission handler from binding inside the
 	 * editor iframe and avoids double-loading stylesheets.
 	 *
-	 * Also skips the status check — drafts should be previewable in the editor.
+	 * Also skips the status check - drafts should be previewable in the editor.
 	 *
 	 * @param int   $form_id
 	 * @param array $options  Render options from the block (e.g. form_title).
@@ -125,13 +124,11 @@ class FormRenderer {
 			return '';
 		}
 
-		// No wp_enqueue_style/script — editor context handles its own assets.
+		// No wp_enqueue_style/script - editor context handles its own assets.
 		return static::render_form( $form, $options );
 	}
 
-	// -------------------------------------------------------------------------
 	// Form wrapper
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Build the full form HTML from a decoded form array.
@@ -140,7 +137,7 @@ class FormRenderer {
 	 *   .neural-forms-form-wrap
 	 *     form.neural-forms-form[data-neural-forms-id][data-neural-forms-version][novalidate]
 	 *       .neural-forms-form__fields
-	 *         … rendered fields …
+	 *         ... rendered fields ...
 	 *         .neural-forms-form__field--honeypot (hidden)
 	 *       p.neural-forms-form__global-error[role=alert][hidden]
 	 *       button.neural-forms-form__submit
@@ -179,7 +176,7 @@ class FormRenderer {
 		$on_error_message   = (string) ( $on_error['message'] ?? '' );
 		$on_error_url       = esc_url_raw( (string) ( $on_error['url'] ?? '' ) );
 
-		// Success message — uses the new on_success.message if set, then the
+		// Success message - uses the new on_success.message if set, then the
 		// legacy success_message, then a translated default.
 		$legacy_success_msg = (string) ( $settings['success_message'] ?? '' );
 		if ( $on_success_message !== '' ) {
@@ -187,17 +184,23 @@ class FormRenderer {
 		} elseif ( $legacy_success_msg !== '' ) {
 			$success_msg = $legacy_success_msg;
 		} else {
-			$success_msg = __( 'Thank you! Your submission has been received.', 'neural-forms' );
+			$success_msg = __( 'Thank you! Your submission has been received.', 'neural-forms-lite' );
 		}
 
-		// ── Fields ─────────────────────────────────────────────────────────
+		// ' Fields '
+		// Walk fields with index control so we can pair two consecutive
+		// half-width fields into a single .neural-forms-form__row container.
+		// Hidden fields and any other field with width != 'half' render
+		// directly into the column flow without a row wrapper.
 		$fields_html = '';
 		$has_files   = false;
 
+		// Normalize once up front so the pairing loop reads a stable shape.
+		$normalized = [];
 		foreach ( $fields as $field ) {
 			$field = (array) $field;
 
-			// Skip silently — malformed field definitions should never reach
+			// Skip silently - malformed field definitions should never reach
 			// here (FormValidator catches them at save time), but defensive
 			// handling prevents a blank page from a corrupt schema.
 			if ( empty( $field['id'] ) || empty( $field['type'] ) ) {
@@ -208,12 +211,47 @@ class FormRenderer {
 				$has_files = true;
 			}
 
-			$fields_html .= static::render_field( $field, $form_id, $options );
+			// Hidden fields render outside the column grid (no visible wrapper),
+			// so they ignore width entirely and never participate in pairing.
+			$is_pairable = $field['type'] !== 'hidden';
+			$width       = $is_pairable
+				? FieldRegistry::normalize_width( $field['width'] ?? FieldRegistry::WIDTH_FULL )
+				: FieldRegistry::WIDTH_FULL;
+
+			$normalized[] = [ 'field' => $field, 'width' => $width ];
 		}
 
-		// ── Honeypot ───────────────────────────────────────────────────────
+		// Pair-only semantics: a half-width field needs a half-width
+		// partner. An isolated half (no half neighbor on either side)
+		// renders full - never half with empty space next to it.
+		$count = count( $normalized );
+		for ( $i = 0; $i < $count; $i++ ) {
+			$entry = $normalized[ $i ];
+			$next  = $normalized[ $i + 1 ] ?? null;
+
+			$pair = $entry['width'] === FieldRegistry::WIDTH_HALF
+				&& $next !== null
+				&& $next['width'] === FieldRegistry::WIDTH_HALF;
+
+			if ( $pair ) {
+				// Two consecutive halves '->-> render as a single row of two cells.
+				$fields_html .= '<div class="neural-forms-form__row neural-forms-form__row--cols-2">';
+				$fields_html .= static::render_field( $entry['field'], $form_id, $options );
+				$fields_html .= static::render_field( $next['field'],  $form_id, $options );
+				$fields_html .= '</div>';
+				$i++; // consumed two
+				continue;
+			}
+
+			// Default: full-width field, no row wrapper. This includes
+			// "isolated half" - a half without a half neighbor expands
+			// back to full width, matching the form-builder preview.
+			$fields_html .= static::render_field( $entry['field'], $form_id, $options );
+		}
+
+		// ' Honeypot '
 		// Name "neural_forms_website" sounds like a real field to bots but is
-		// intentionally generic — avoids "hp" or "honeypot" patterns that
+		// intentionally generic - avoids "hp" or "honeypot" patterns that
 		// sophisticated bots recognise and skip.
 		//
 		// inline style="display:none" rather than [hidden] attribute: some
@@ -223,11 +261,11 @@ class FormRenderer {
 		// tabindex="-1" removes it from keyboard navigation for legitimate users.
 		// autocomplete="off" prevents browsers from pre-filling it from saved form data.
 		//
-		// SubmitEndpoint checks this field at Step 4b: non-empty → spam_detected 400.
+		// SubmitEndpoint checks this field at Step 4b: non-empty '->-> spam_detected 400.
 		$hp_input_id  = esc_attr( 'neural-forms-' . $form_id . '-website' );
 		$fields_html .= '<div class="neural-forms-form__field neural-forms-form__field--honeypot"'
 						. ' style="display:none" aria-hidden="true">'
-						. '<label for="' . $hp_input_id . '">' . esc_html__( 'Website', 'neural-forms' ) . '</label>'
+						. '<label for="' . $hp_input_id . '">' . esc_html__( 'Website', 'neural-forms-lite' ) . '</label>'
 						. '<input type="text"'
 						. ' id="' . $hp_input_id . '"'
 						. ' name="neural_forms_website"'
@@ -235,12 +273,12 @@ class FormRenderer {
 						. ' autocomplete="off">'
 						. '</div>';
 
-		// ── Assemble ───────────────────────────────────────────────────────
+		// ' Assemble '
 		$html  = '<div class="neural-forms-form-wrap">';
 
-		// Optional form title — block attribute formTitle. When non-empty,
+		// Optional form title - block attribute formTitle. When non-empty,
 		// emit it as a heading at the top of the form. The heading level is
-		// configurable via the title_level option (h1–h6, default h2).
+		// configurable via the title_level option (h1-h6, default h2).
 		$title = isset( $options['form_title'] ) ? (string) $options['form_title'] : '';
 		if ( $title !== '' ) {
 			$lvl = strtolower( (string) ( $options['title_level'] ?? 'h2' ) );
@@ -266,7 +304,7 @@ class FormRenderer {
 			$form_attrs .= ' data-neural-forms-has-files="1"';
 		}
 
-		// On-submit outcome — read by form-submit.js to decide between the
+		// On-submit outcome - read by form-submit.js to decide between the
 		// inline success/error UI and a redirect. Empty URL implies the JS
 		// falls back to the inline path even if mode === 'redirect'.
 		$form_attrs .= ' data-on-success-mode="' . esc_attr( $on_success_mode ) . '"';
@@ -287,12 +325,12 @@ class FormRenderer {
 
 		$html .= '<div class="neural-forms-form__fields">' . $fields_html . '</div>';
 
-		// Global (non-field) error container — populated by JS for 429, 5xx,
+		// Global (non-field) error container - populated by JS for 429, 5xx,
 		// and network failures. role="alert" implies aria-live="assertive" so
 		// screen readers announce it immediately when JS sets its text.
 		$html .= '<p class="neural-forms-form__global-error" role="alert" hidden></p>';
 
-		// ── CAPTCHA widget ──────────────────────────────────────────────────
+		// ' CAPTCHA widget '
 		// Rendered only when the form has captcha_enabled = true AND a provider
 		// with a site key is globally configured. The provider JS SDK (Turnstile
 		// or reCAPTCHA) auto-initialises widgets by CSS class name, so no custom
@@ -322,12 +360,22 @@ class FormRenderer {
 					. '></div>';
 
 				// Enqueue the provider script once per page (WP deduplicates).
+				//
+				// These two URLs MUST be loaded from the upstream service -
+				// CAPTCHA verification depends on the same origin server-side
+				// (challenges.cloudflare.com / www.google.com) issuing the
+				// challenge token that the plugin then verifies via siteverify.
+				// Self-hosting the SDK is not supported by either provider.
+				// Both services are disclosed under "External services" in
+				// readme.txt as required for WordPress.org submission.
+				//
+				// phpcs:disable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
 				if ( $captcha_provider === 'turnstile' ) {
 					wp_enqueue_script(
 						'neural-forms-cf-turnstile',
 						'https://challenges.cloudflare.com/turnstile/v0/api.js',
 						[],
-						null,
+						NEURAL_FORMS_VERSION,
 						true
 					);
 				} elseif ( $captcha_provider === 'recaptcha_v2' ) {
@@ -335,17 +383,18 @@ class FormRenderer {
 						'neural-forms-recaptcha-v2',
 						'https://www.google.com/recaptcha/api.js',
 						[],
-						null,
+						NEURAL_FORMS_VERSION,
 						true
 					);
 				}
+				// phpcs:enable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
 			}
 		}
-		// ── end CAPTCHA ─────────────────────────────────────────────────────
+		// ' end CAPTCHA '
 
 		$html .= '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="neural-forms-form__submit">'
-				. esc_html__( 'Submit', 'neural-forms' )
+				. esc_html__( 'Submit', 'neural-forms-lite' )
 				. '</button>'
 				. '</div>';
 
@@ -362,9 +411,7 @@ class FormRenderer {
 		return $html;
 	}
 
-	// -------------------------------------------------------------------------
 	// Field dispatcher
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Render a single field: label + input + error container, in a wrapper div.
@@ -374,7 +421,7 @@ class FormRenderer {
 	 * the internal markup layout.
 	 *
 	 * @param array $field    Decoded field definition from form_schema['fields'].
-	 * @param int   $form_id  Parent form ID — used to scope element IDs.
+	 * @param int   $form_id  Parent form ID - used to scope element IDs.
 	 * @param array $options  Reserved for future per-field render options.
 	 * @return string
 	 */
@@ -384,12 +431,12 @@ class FormRenderer {
 		$required = ! empty( $field['required'] );
 
 		// Label / placeholder resolution:
-		//   • show_labels (block-level)  → render every field's label visibly
+		//   * show_labels (block-level)  '->-> render every field's label visibly
 		//     above its input. Falls back to per-field $field['show_label']
 		//     when the option is absent (e.g. shortcode usage).
-		//   • show_placeholders (block-level, default true) → render the
+		//   * show_placeholders (block-level, default true) '->-> render the
 		//     placeholder. When false, no field gets a placeholder.
-		//   • Placeholder source: user-defined $field['placeholder'] wins.
+		//   * Placeholder source: user-defined $field['placeholder'] wins.
 		//     If empty AND the label is hidden, fall back to label-as-
 		//     placeholder so the user still sees a hint inside the input.
 		$lbl              = (string) ( $field['label'] ?? '' );
@@ -415,13 +462,13 @@ class FormRenderer {
 		$field['show_label'] = $show_label;
 
 		// Hidden fields render as a bare <input type="hidden"> with no wrapper,
-		// label, or error slot — they are invisible to the user.
+		// label, or error slot - they are invisible to the user.
 		if ( $type === 'hidden' ) {
 			$input_id = 'neural-forms-' . $form_id . '-' . $field_id;
 			return static::render_hidden( $field, $input_id );
 		}
 
-		// ── Conditional logic data attribute ───────────────────────────────────
+		// ' Conditional logic data attribute '
 		// When a field has conditional_logic.enabled = true and references another
 		// field, emit data-conditional so form-submit.js can evaluate visibility
 		// client-side without knowing the full schema.
@@ -450,8 +497,8 @@ class FormRenderer {
 		$error_id = $input_id . '-error';
 
 		// Field-level label.
-		// • Default: empty — the label is carried by the placeholder.
-		// • show_label = true: emit a visible <label> above the input. Skipped
+		// * Default: empty - the label is carried by the placeholder.
+		// * show_label = true: emit a visible <label> above the input. Skipped
 		//   for checkbox / acceptance (their inline label already serves as
 		//   the question) and for radio / checkboxes (their renderers expose
 		//   the label as a visible <legend> instead).
@@ -470,7 +517,7 @@ class FormRenderer {
 						. '</label>';
 		}
 
-		// ── Input ──────────────────────────────────────────────────────────
+		// ' Input '
 		switch ( $type ) {
 			case 'email':
 				$input_html = static::render_email( $field, $input_id, $error_id );
@@ -521,7 +568,7 @@ class FormRenderer {
 				break;
 		}
 
-		// ── Error slot ─────────────────────────────────────────────────────
+		// ' Error slot '
 		// Pre-rendered empty and hidden. On a 422 response, JS removes [hidden],
 		// sets textContent, and adds .has-error to the wrapper div.
 		//
@@ -536,7 +583,7 @@ class FormRenderer {
 					. ' hidden'
 					. '></p>';
 
-		// ── Wrapper ────────────────────────────────────────────────────────
+		// ' Wrapper '
 		return '<div'
 			. ' class="neural-forms-form__field neural-forms-form__field--' . esc_attr( $type ) . '"'
 			. ' data-neural-forms-field-id="' . esc_attr( $field_id ) . '"'
@@ -548,9 +595,7 @@ class FormRenderer {
 			. '</div>';
 	}
 
-	// -------------------------------------------------------------------------
 	// Per-type renderers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Single-line text input.
@@ -672,7 +717,7 @@ class FormRenderer {
 
 		$attrs .= ' aria-describedby="' . esc_attr( $error_id ) . '"';
 
-		// esc_textarea() encodes HTML entities and preserves line breaks —
+		// esc_textarea() encodes HTML entities and preserves line breaks -
 		// correct for <textarea> content (different from esc_attr/esc_html).
 		return '<textarea ' . $attrs . '>' . esc_textarea( $default ) . '</textarea>';
 	}
@@ -696,7 +741,7 @@ class FormRenderer {
 
 		$attrs .= ' aria-describedby="' . esc_attr( $error_id ) . '"';
 
-		$options_html = '<option value="">' . esc_html__( 'Select…', 'neural-forms' ) . '</option>';
+		$options_html = '<option value="">' . esc_html__( 'Select...', 'neural-forms-lite' ) . '</option>';
 
 		foreach ( $options as $option ) {
 			$option = (array) $option;
@@ -704,11 +749,11 @@ class FormRenderer {
 
 			// If the builder left the value field empty, use the label as the
 			// effective value. This keeps the stored submission value meaningful
-			// ("Blue") rather than an empty string that displays as "—" in Entry Detail.
+			// ("Blue") rather than an empty string that displays as "-" in Entry Detail.
 			$raw_val = (string) ( $option['value'] ?? '' );
 			$val     = $raw_val !== '' ? $raw_val : $label;
 
-			// Skip options that have neither a value nor a label — nothing useful to render.
+			// Skip options that have neither a value nor a label - nothing useful to render.
 			if ( $val === '' ) {
 				continue;
 			}
@@ -791,7 +836,7 @@ class FormRenderer {
 	 * Checkbox group. Multiple checkboxes sharing one field name.
 	 *
 	 * Uses name="fieldId[]" so the browser (and form-submit.js) submits
-	 * an array of selected values. Structure mirrors render_radio() — a
+	 * an array of selected values. Structure mirrors render_radio() - a
 	 * <fieldset> wrapping individual checkbox+label pairs.
 	 */
 	private static function render_checkboxes( array $field, string $input_id, string $error_id ): string {
@@ -876,7 +921,7 @@ class FormRenderer {
 	}
 
 	/**
-	 * Checkbox. Input renders before its label — standard UX convention.
+	 * Checkbox. Input renders before its label - standard UX convention.
 	 *
 	 * value="1": SubmissionValidator::CHECKED_CHECKBOX_VALUES includes '1' and
 	 * int 1 as the "checked" representation. Unchecked checkboxes are not
@@ -923,7 +968,7 @@ class FormRenderer {
 	/**
 	 * Acceptance checkbox. Functionally identical to checkbox but semantically
 	 * distinct for CF7 migration compatibility and form builder UX.
-	 * Always renders unchecked (no default_value support) — the user must
+	 * Always renders unchecked (no default_value support) - the user must
 	 * actively consent.
 	 */
 	private static function render_acceptance( array $field, string $input_id, string $error_id ): string {
@@ -1052,7 +1097,7 @@ class FormRenderer {
 	 * Build the accept attribute string from an array of allowed type group slugs.
 	 *
 	 * Maps each group slug to the MIME types that WordPress considers valid for
-	 * that group. Returns a comma-separated string ready for <input accept="…">,
+	 * that group. Returns a comma-separated string ready for <input accept="...">,
 	 * or an empty string when the array is empty (no restriction).
 	 *
 	 * @param string[] $allowed_types  e.g. ['image', 'pdf']
@@ -1080,9 +1125,7 @@ class FormRenderer {
 		return implode( ',', array_unique( $mimes ) );
 	}
 
-	// -------------------------------------------------------------------------
 	// Shared helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Build the shared attribute string for single-line text-like inputs:
@@ -1118,7 +1161,7 @@ class FormRenderer {
 
 		// aria-describedby links the input to its error container so screen
 		// readers announce the error message when the input receives focus
-		// after a failed submission — without the user having to navigate away.
+		// after a failed submission - without the user having to navigate away.
 		$attrs .= ' aria-describedby="' . esc_attr( $error_id ) . '"';
 
 		return $attrs;
@@ -1140,7 +1183,7 @@ class FormRenderer {
 		}
 
 		if ( $public_text === '' ) {
-			$public_text = __( 'This form is currently unavailable. Please try again later.', 'neural-forms' );
+			$public_text = __( 'This form is currently unavailable. Please try again later.', 'neural-forms-lite' );
 		}
 
 		return '<div class="neural-forms-form-wrap"><p class="neural-forms-form-unavailable">'

@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
  * Calls the Neural Forms Cloud AI service instead of a local model provider.
  *
  * The cloud handles prompt building, provider selection, and spam classification.
- * The plugin sends structured entry/form data and receives a normalized result —
+ * The plugin sends structured entry/form data and receives a normalized result -
  * no prompt logic lives here.
  *
  * Endpoints:
@@ -41,9 +41,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		return 'neural-forms-cloud';
 	}
 
-	// -------------------------------------------------------------------------
 	// AIAnalysisProviderInterface
-	// -------------------------------------------------------------------------
 
 	/**
 	 * POST /v1/ai/analyze
@@ -78,7 +76,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			'form'     => $this->format_form( $form ),
 		];
 
-		// Reanalyze promotion context — the API uses these to step up the tier
+		// Reanalyze promotion context - the API uses these to step up the tier
 		// ladder (plan-clamped server-side). First analyze sends neither; the
 		// API treats that as "first pass" and runs the cheap fast tier.
 		$prev_tier     = isset( $entry['ai_tier'] )     ? (string) $entry['ai_tier']     : '';
@@ -163,7 +161,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			'text'     => $draft,
 			// Required by the API's per-entry click budget (5 clicks / 2h).
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
-			// Per-installation discriminator — folded into the click-budget
+			// Per-installation discriminator - folded into the click-budget
 			// scope on the cloud so two installs sharing one API key with
 			// overlapping entry IDs don't share a budget.
 			'site_url' => site_url(),
@@ -188,7 +186,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * Fetches plan, capabilities, and quota for the authenticated workspace.
 	 * Used by PlanManager to populate the local capability cache after a
 	 * successful test-connection. See PlanManager for the expected response
-	 * shape — the raw body is returned here and normalized there.
+	 * shape - the raw body is returned here and normalized there.
 	 *
 	 * @throws \RuntimeException  On transport failure or non-2xx response.
 	 */
@@ -196,9 +194,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		return $this->get( '/v1/auth/me' );
 	}
 
-	// -------------------------------------------------------------------------
 	// HTTP transport
-	// -------------------------------------------------------------------------
 
 	/**
 	 * POST to a cloud endpoint and return the decoded response body.
@@ -219,7 +215,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 		if ( is_wp_error( $response ) ) {
 			throw new \RuntimeException(
-				'Neural Forms Cloud request failed: ' . $response->get_error_message()
+				'Neural Forms Cloud request failed: ' . esc_html( $response->get_error_message() )
 			);
 		}
 
@@ -232,19 +228,24 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			// without parsing messages. Surface them as a typed exception.
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
 			if ( in_array( $body_code, [ 'feature_locked', 'quota_exceeded' ], true ) ) {
+				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : [];
 				throw new CloudPlanException(
-					(string) ( $data['message'] ?? $body_code ),
-					$body_code,
-					$code,
-					(string) ( $data['feature']     ?? '' ),
-					is_array( $data['quota'] ?? null ) ? $data['quota'] : [],
-					(string) ( $data['upgrade_url'] ?? '' )
+					esc_html( (string) ( $data['message'] ?? $body_code ) ),
+					esc_html( $body_code ),
+					(int) $code,
+					esc_html( (string) ( $data['feature']     ?? '' ) ),
+					// self::esc_quota() recursively esc_html()s every scalar
+					// inside the quota array; phpcs can't see across method
+					// boundaries, so suppress the false positive here.
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+					self::esc_quota( $quota ),
+					esc_html( (string) ( $data['upgrade_url'] ?? '' ) )
 				);
 			}
 
 			$msg = ( is_array( $data ) && isset( $data['message'] ) )
-				? $data['message']
-				: "HTTP {$code}";
+				? (string) $data['message']
+				: 'HTTP ' . (int) $code;
 
 			$code_slug = $body_code !== '' ? ' [' . $body_code . ']' : '';
 
@@ -254,13 +255,13 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 				: '';
 
 			throw new \RuntimeException(
-				"Neural Forms Cloud API error{$code_slug}: {$msg}{$body_hint}"
+				esc_html( "Neural Forms Cloud API error{$code_slug}: {$msg}{$body_hint}" )
 			);
 		}
 
 		if ( ! is_array( $data ) ) {
 			throw new \RuntimeException(
-				'Neural Forms Cloud returned non-JSON response: ' . substr( $raw, 0, 200 )
+				'Neural Forms Cloud returned non-JSON response: ' . esc_html( substr( $raw, 0, 200 ) )
 			);
 		}
 
@@ -282,7 +283,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 		if ( is_wp_error( $response ) ) {
 			throw new \RuntimeException(
-				'Neural Forms Cloud request failed: ' . $response->get_error_message()
+				'Neural Forms Cloud request failed: ' . esc_html( $response->get_error_message() )
 			);
 		}
 
@@ -293,25 +294,30 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		if ( $code < 200 || $code >= 300 ) {
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
 			if ( in_array( $body_code, [ 'feature_locked', 'quota_exceeded' ], true ) ) {
+				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : [];
 				throw new CloudPlanException(
-					(string) ( $data['message'] ?? $body_code ),
-					$body_code,
-					$code,
-					(string) ( $data['feature']     ?? '' ),
-					is_array( $data['quota'] ?? null ) ? $data['quota'] : [],
-					(string) ( $data['upgrade_url'] ?? '' )
+					esc_html( (string) ( $data['message'] ?? $body_code ) ),
+					esc_html( $body_code ),
+					(int) $code,
+					esc_html( (string) ( $data['feature']     ?? '' ) ),
+					// self::esc_quota() recursively esc_html()s every scalar
+					// inside the quota array; phpcs can't see across method
+					// boundaries, so suppress the false positive here.
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+					self::esc_quota( $quota ),
+					esc_html( (string) ( $data['upgrade_url'] ?? '' ) )
 				);
 			}
 
-			$msg       = is_array( $data ) && isset( $data['message'] ) ? $data['message'] : "HTTP {$code}";
+			$msg       = is_array( $data ) && isset( $data['message'] ) ? (string) $data['message'] : 'HTTP ' . (int) $code;
 			$code_slug = $body_code !== '' ? ' [' . $body_code . ']' : '';
 
-			throw new \RuntimeException( "Neural Forms Cloud API error{$code_slug}: {$msg}" );
+			throw new \RuntimeException( esc_html( "Neural Forms Cloud API error{$code_slug}: {$msg}" ) );
 		}
 
 		if ( ! is_array( $data ) ) {
 			throw new \RuntimeException(
-				'Neural Forms Cloud returned non-JSON response: ' . substr( $raw, 0, 200 )
+				'Neural Forms Cloud returned non-JSON response: ' . esc_html( substr( $raw, 0, 200 ) )
 			);
 		}
 
@@ -323,7 +329,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 *
 	 * Passes the final array through the neural_forms_cloud_request_headers
 	 * filter so add-on plugins (e.g. Neural Forms Pro) can inject their own
-	 * headers — typically a license key — without this class needing to know
+	 * headers - typically a license key - without this class needing to know
 	 * they exist. The core auth headers are always set first so a badly
 	 * behaved filter can never silently remove them.
 	 */
@@ -340,9 +346,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		return is_array( $filtered ) ? array_merge( $filtered, $headers ) : $headers;
 	}
 
-	// -------------------------------------------------------------------------
 	// Payload helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Flatten an entry row to the shape the cloud API expects.
@@ -365,15 +369,31 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		];
 	}
 
-	// -------------------------------------------------------------------------
 	// Response normalization
-	// -------------------------------------------------------------------------
+
+	/**
+	 * Recursively run esc_html() on the scalar values of a quota array so
+	 * the result is safe to hand to a thrown exception. Non-scalar values
+	 * (which the cloud API never returns under `quota`) are dropped.
+	 */
+	private static function esc_quota( array $quota ): array {
+		$out = [];
+		foreach ( $quota as $key => $value ) {
+			$safe_key = is_string( $key ) ? esc_html( $key ) : $key;
+			if ( is_array( $value ) ) {
+				$out[ $safe_key ] = self::esc_quota( $value );
+			} elseif ( is_scalar( $value ) ) {
+				$out[ $safe_key ] = esc_html( (string) $value );
+			}
+		}
+		return $out;
+	}
 
 	/** Allowed tier slugs mirrored from the API's model-registry. */
 	const VALID_TIERS = [ 'fast', 'balanced', 'smart', 'premium' ];
 
 	/**
-	 * Clamp the API's tier_used field to a known slug. Null/invalid → 'fast'.
+	 * Clamp the API's tier_used field to a known slug. Null/invalid '->-> 'fast'.
 	 * Ensures we never persist garbage in the entries.ai_tier column even if
 	 * the cloud returns an unexpected value (e.g. future tier we haven't added).
 	 */

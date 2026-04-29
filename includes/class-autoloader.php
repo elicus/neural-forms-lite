@@ -5,14 +5,14 @@ defined( 'ABSPATH' ) || exit;
  * Maps Neural Forms namespaces to file paths.
  *
  * Rules:
- *   NeuralForms\{Class}              → includes/class-{lowercase}.php
- *   NeuralForms\{Module}\{Class}     → modules/{lowercase-module}/{Class}.php
- *   NeuralForms\{Module}\{Sub}\{Class} → modules/{lowercase-module}/{Sub}/{Class}.php
+ *   NeuralForms\{Class}              '->-> includes/class-{lowercase}.php
+ *   NeuralForms\{Module}\{Class}     '->-> modules/{lowercase-module}/{Class}.php
+ *   NeuralForms\{Module}\{Sub}\{Class} '->-> modules/{lowercase-module}/{Sub}/{Class}.php
  *
  * Examples:
- *   NeuralForms\Activator               → includes/class-activator.php
- *   NeuralForms\Forms\FormRepository    → modules/forms/FormRepository.php
- *   NeuralForms\AI\Providers\OpenAI     → modules/ai/Providers/OpenAI.php
+ *   NeuralForms\Activator               '->-> includes/class-activator.php
+ *   NeuralForms\Forms\FormRepository    '->-> modules/forms/FormRepository.php
+ *   NeuralForms\AI\Providers\OpenAI     '->-> modules/ai/Providers/OpenAI.php
  */
 class NeuralForms_Autoloader {
 
@@ -28,7 +28,7 @@ class NeuralForms_Autoloader {
             return;
         }
 
-        // Strip the top-level prefix → e.g. "Forms\FormRepository"
+        // Strip the top-level prefix '->-> e.g. "Forms\FormRepository"
         $relative = substr( $class, strlen( self::NAMESPACE_PREFIX ) );
         $parts     = explode( '\\', $relative );
 

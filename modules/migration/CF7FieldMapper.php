@@ -7,7 +7,7 @@ defined( 'ABSPATH' ) || exit;
  * Maps Contact Form 7 field tags to Neural Forms field definitions.
  *
  * Handles type conversion, option mapping, and unique ID generation.
- * All methods are static and pure — no side effects.
+ * All methods are static and pure - no side effects.
  */
 class CF7FieldMapper {
 
@@ -32,7 +32,7 @@ class CF7FieldMapper {
 	];
 
 	/**
-	 * CF7 types that cannot be migrated — silently skipped with a warning.
+	 * CF7 types that cannot be migrated - silently skipped with a warning.
 	 */
 	const UNSUPPORTED = [
 		'quiz',
@@ -141,7 +141,7 @@ class CF7FieldMapper {
 			'required' => (bool) $tag['required'],
 		];
 
-		// Placeholder — for text-like fields.
+		// Placeholder - for text-like fields.
 		if ( in_array( $nf_type, [ 'text', 'email', 'url', 'tel', 'number', 'textarea' ], true ) ) {
 			$field['placeholder'] = $tag['placeholder'] ?? '';
 		}
@@ -151,12 +151,12 @@ class CF7FieldMapper {
 			$field['default_value'] = $tag['default_value'];
 		}
 
-		// Options — for select, radio, checkboxes.
+		// Options - for select, radio, checkboxes.
 		if ( in_array( $nf_type, [ 'select', 'radio', 'checkboxes' ], true ) ) {
 			$field['options'] = self::map_options( $tag );
 		}
 
-		// Numeric constraints — number, range, date.
+		// Numeric constraints - number, range, date.
 		if ( in_array( $nf_type, [ 'number', 'range', 'date' ], true ) ) {
 			if ( ( $tag['min'] ?? '' ) !== '' ) {
 				$field['min'] = $tag['min'];
@@ -166,7 +166,7 @@ class CF7FieldMapper {
 			}
 		}
 
-		// Step — number, range.
+		// Step - number, range.
 		if ( in_array( $nf_type, [ 'number', 'range' ], true ) ) {
 			if ( ( $tag['step'] ?? '' ) !== '' ) {
 				$field['step'] = $tag['step'];
@@ -183,15 +183,13 @@ class CF7FieldMapper {
 			}
 		}
 
-		// Acceptance — no extra properties needed beyond required.
-		// Hidden — default_value is already handled above.
+		// Acceptance - no extra properties needed beyond required.
+		// Hidden - default_value is already handled above.
 
 		return $field;
 	}
 
-	// -------------------------------------------------------------------------
 	// Private helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Derive a human-readable label from the CF7 tag name.

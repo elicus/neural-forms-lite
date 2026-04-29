@@ -45,9 +45,7 @@ class ReplyEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Handler
-	// -------------------------------------------------------------------------
 
 	public function send_reply( WP_REST_Request $request ) {
 		$entry_id = (int) $request['id'];
@@ -56,7 +54,7 @@ class ReplyEndpoint {
 		if ( ! $entry ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -69,7 +67,7 @@ class ReplyEndpoint {
 		if ( ! is_email( $to ) ) {
 			return new WP_Error(
 				'invalid_recipient',
-				__( 'The recipient email address is not valid.', 'neural-forms' ),
+				__( 'The recipient email address is not valid.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -77,13 +75,13 @@ class ReplyEndpoint {
 		if ( $body === '' ) {
 			return new WP_Error(
 				'empty_body',
-				__( 'Reply body cannot be empty.', 'neural-forms' ),
+				__( 'Reply body cannot be empty.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
 		if ( $subject === '' ) {
-			$subject = __( 'Re: Your submission', 'neural-forms' );
+			$subject = __( 'Re: Your submission', 'neural-forms-lite' );
 		}
 
 		$sent = wp_mail( $to, $subject, $body );
@@ -92,7 +90,7 @@ class ReplyEndpoint {
 			Logger::log(
 				'reply_send_failed',
 				'error',
-				'wp_mail() returned false — check WordPress email configuration.',
+				'wp_mail() returned false - check WordPress email configuration.',
 				[ 'to' => $to, 'subject' => $subject ],
 				$entry_id
 			);
@@ -114,7 +112,7 @@ class ReplyEndpoint {
 
 			return new WP_Error(
 				'reply_send_failed',
-				__( 'Could not send the reply. Please check your WordPress email configuration.', 'neural-forms' ),
+				__( 'Could not send the reply. Please check your WordPress email configuration.', 'neural-forms-lite' ),
 				[ 'status' => 500, 'message_id' => $failed_message_id ]
 			);
 		}
@@ -123,12 +121,12 @@ class ReplyEndpoint {
 			'reply_sent',
 			'info',
 			/* translators: %s: recipient email address */
-			sprintf( __( 'Reply sent to %s.', 'neural-forms' ), $to ),
+			sprintf( __( 'Reply sent to %s.', 'neural-forms-lite' ), $to ),
 			[ 'to' => $to, 'subject' => $subject ],
 			$entry_id
 		);
 
-		// A reply was sent — the entry no longer needs a reply.
+		// A reply was sent - the entry no longer needs a reply.
 		EntryRepository::update( $entry_id, [ 'needs_reply' => 0 ] );
 
 		// Persist the outgoing message so it appears in the thread view.
@@ -150,9 +148,7 @@ class ReplyEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Permission
-	// -------------------------------------------------------------------------
 
 	public function check_permission() {
 		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {
@@ -161,14 +157,12 @@ class ReplyEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to send replies.', 'neural-forms' ),
+			__( 'You do not have permission to send replies.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Arg definitions
-	// -------------------------------------------------------------------------
 
 	private function post_args(): array {
 		return [

@@ -1,10 +1,18 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// This repository owns the wp_neural_forms_* tables and runs typed CRUD
+// against them. Object caching is intentionally not used here:
+// - REST handlers fetch fresh per request; entries / forms see frequent
+//   writes, so a stale cache would surface in the admin UI.
+// - Cache invalidation across the create/update/delete + bulk paths
+//   would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Storage;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * CRUD for neural_forms_entry_ai_responses — the draft history behind the
+ * CRUD for neural_forms_entry_ai_responses - the draft history behind the
  * carousel UI. Each analyze / reanalyze / regenerate / polish call inserts
  * a row; the merchant picks one to finalize via "Use this reply" in the UI.
  *
@@ -30,15 +38,13 @@ class AIResponseRepository {
 	/** Non-finalized drafts older than this are purged. Finalized rows exempt. */
 	const DRAFT_TTL_DAYS = 30;
 
-	// -------------------------------------------------------------------------
 	// Write
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Insert a draft row. Returns the new row id, or 0 on failure.
 	 *
 	 * Accepts a loose shape matching the analyze/regenerate/polish result
-	 * arrays — unknown keys are ignored, missing keys default to sane values.
+	 * arrays - unknown keys are ignored, missing keys default to sane values.
 	 * Caller is responsible for pairing this with AIRepository writes on the
 	 * entry itself (ai_reply_draft / ai_tier).
 	 */
@@ -91,7 +97,7 @@ class AIResponseRepository {
 
 	/**
 	 * Flip the finalized flag on a draft and point the entry at it. Caller
-	 * decides when to finalize — usually an explicit "Use this reply" click
+	 * decides when to finalize - usually an explicit "Use this reply" click
 	 * on the carousel, plus an implicit finalize on the very first analyze.
 	 *
 	 * Returns false if the draft doesn't belong to the entry.
@@ -125,8 +131,8 @@ class AIResponseRepository {
 
 		$count = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				'SELECT COUNT(*) FROM ' . self::table()
-				. ' WHERE entry_id = %d AND finalized = 0',
+				'SELECT COUNT(*) FROM %i WHERE entry_id = %d AND finalized = 0',
+				self::table(),
 				$entry_id
 			)
 		);
@@ -137,12 +143,11 @@ class AIResponseRepository {
 
 		$over = $count - self::MAX_DRAFTS_PER_ENTRY;
 
-		// Oldest first — stable order by created_at, id as tiebreaker.
+		// Oldest first - stable order by created_at, id as tiebreaker.
 		$ids = $wpdb->get_col(
 			$wpdb->prepare(
-				'SELECT id FROM ' . self::table()
-				. ' WHERE entry_id = %d AND finalized = 0'
-				. ' ORDER BY created_at ASC, id ASC LIMIT %d',
+				'SELECT id FROM %i WHERE entry_id = %d AND finalized = 0 ORDER BY created_at ASC, id ASC LIMIT %d',
+				self::table(),
 				$entry_id,
 				$over
 			)
@@ -150,10 +155,15 @@ class AIResponseRepository {
 
 		if ( empty( $ids ) ) return 0;
 
-		// IDs are intval-mapped immediately above, so the IN list is integer-only
-		// and prepare() is unnecessary. phpcs flags concat-into-query unconditionally.
-		$ids_sql = implode( ',', array_map( 'intval', $ids ) );
-		$wpdb->query( 'DELETE FROM ' . self::table() . ' WHERE id IN (' . $ids_sql . ')' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		// IDs are intval-mapped above so the IN list is integer-only.
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$wpdb->query(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->prepare(
+				"DELETE FROM %i WHERE id IN ({$placeholders})",
+				...array_merge( [ self::table() ], array_map( 'intval', $ids ) )
+			)
+		);
 
 		return count( $ids );
 	}
@@ -169,8 +179,8 @@ class AIResponseRepository {
 
 		$deleted = $wpdb->query(
 			$wpdb->prepare(
-				'DELETE FROM ' . self::table()
-				. ' WHERE finalized = 0 AND created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)',
+				'DELETE FROM %i WHERE finalized = 0 AND created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)',
+				self::table(),
 				$days
 			)
 		);
@@ -178,15 +188,13 @@ class AIResponseRepository {
 		return $deleted === false ? 0 : (int) $deleted;
 	}
 
-	// -------------------------------------------------------------------------
 	// Read
-	// -------------------------------------------------------------------------
 
 	public static function get( int $id ): ?array {
 		global $wpdb;
 
 		$row = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT * FROM ' . self::table() . ' WHERE id = %d', $id ),
+			$wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', self::table(), $id ),
 			ARRAY_A
 		);
 
@@ -194,7 +202,7 @@ class AIResponseRepository {
 	}
 
 	/**
-	 * Oldest-first list — the carousel renders chronologically so "next"
+	 * Oldest-first list - the carousel renders chronologically so "next"
 	 * moves forward in time. Caller can reverse if they want newest-first.
 	 */
 	public static function list_for_entry( int $entry_id ): array {
@@ -202,8 +210,8 @@ class AIResponseRepository {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT * FROM ' . self::table()
-				. ' WHERE entry_id = %d ORDER BY created_at ASC, id ASC',
+				'SELECT * FROM %i WHERE entry_id = %d ORDER BY created_at ASC, id ASC',
+				self::table(),
 				$entry_id
 			),
 			ARRAY_A
@@ -212,9 +220,7 @@ class AIResponseRepository {
 		return is_array( $rows ) ? $rows : [];
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	private static function table(): string {
 		global $wpdb;

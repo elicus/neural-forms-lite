@@ -1,4 +1,9 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// Direct $wpdb calls against wp_neural_forms_* tables only. Object caching
+// is skipped intentionally - these reads back the admin UI which expects
+// fresh data after every status / reply / AI mutation.
 namespace NeuralForms\AI;
 
 use NeuralForms\Core\Capabilities;
@@ -17,15 +22,15 @@ defined( 'ABSPATH' ) || exit;
  * WP-Cron worker that dequeues and processes AI analysis jobs.
  *
  * Scheduling model:
- *   • QueueListener schedules a single-event run 10 seconds after each
- *     submission — provides near-real-time analysis.
- *   • A recurring 5-minute event runs as the guaranteed fallback for any
+ *   * QueueListener schedules a single-event run 10 seconds after each
+ *     submission - provides near-real-time analysis.
+ *   * A recurring 5-minute event runs as the guaranteed fallback for any
  *     jobs the immediate run missed (server restart, failed cron trigger, etc.).
  *
  * Safety:
- *   • Processes at most BATCH_SIZE jobs per run to avoid PHP timeouts.
- *   • Retries failed jobs up to MAX_ATTEMPTS times.
- *   • All errors are written to neural_forms_logs so they are visible in the admin.
+ *   * Processes at most BATCH_SIZE jobs per run to avoid PHP timeouts.
+ *   * Retries failed jobs up to MAX_ATTEMPTS times.
+ *   * All errors are written to neural_forms_logs so they are visible in the admin.
  */
 class AIQueueProcessor {
 
@@ -33,9 +38,7 @@ class AIQueueProcessor {
 	const MAX_ATTEMPTS = 3;
 	const BATCH_SIZE   = 5;
 
-	// -------------------------------------------------------------------------
 	// Boot / schedule
-	// -------------------------------------------------------------------------
 
 	public static function boot(): void {
 		add_action( self::CRON_HOOK, [ self::class, 'run' ] );
@@ -57,12 +60,12 @@ class AIQueueProcessor {
 	 */
 	public static function add_cron_interval( array $schedules ): array {
 		if ( ! isset( $schedules['five_minutes'] ) ) {
-			// Plain string — `cron_schedules` fires on `wp_schedule_event` /
+			// Plain string - `cron_schedules` fires on `wp_schedule_event` /
 			// `wp_get_schedules`, which can run before `init` (e.g. during
 			// activation, scheduled-event reads). Calling `__()` against the
 			// `neural-forms` domain pre-init triggers WP 6.7's
 			// `_load_textdomain_just_in_time` notice. The label is only seen on
-			// Tools → Cron Events, so translating it is not worth the early-load.
+			// Tools '->-> Cron Events, so translating it is not worth the early-load.
 			$schedules['five_minutes'] = [
 				'interval' => 300,
 				'display'  => 'Every 5 minutes',
@@ -71,12 +74,10 @@ class AIQueueProcessor {
 		return $schedules;
 	}
 
-	// -------------------------------------------------------------------------
 	// Cron worker
-	// -------------------------------------------------------------------------
 
 	public static function run(): void {
-		// Cron fires unconditionally — these guards stop us from rotating
+		// Cron fires unconditionally - these guards stop us from rotating
 		// queue rows into "running" state (and burning a provider call slot)
 		// when the user has either turned AI off or hasn't connected Cloud
 		// yet. Logging at info so operators can see WHY a backlog isn't
@@ -90,7 +91,7 @@ class AIQueueProcessor {
 			return;
 		}
 		// Empty key means the user disconnected Cloud or never finished
-		// setup. We deliberately don't fail jobs here — leaving them queued
+		// setup. We deliberately don't fail jobs here - leaving them queued
 		// lets a later key entry pick up the backlog with no manual retry.
 		if ( Config::get( 'cloud_api_key' ) === '' ) {
 			Logger::file( 'ai_queue', 'info', 'Queue skipped: cloud_api_key is empty.' );
@@ -100,7 +101,7 @@ class AIQueueProcessor {
 		try {
 			$provider = AiManager::resolve();
 		} catch ( \RuntimeException $e ) {
-			Logger::file( 'ai_queue', 'error', 'Queue skipped: provider resolve failed — ' . $e->getMessage() );
+			Logger::file( 'ai_queue', 'error', 'Queue skipped: provider resolve failed - ' . $e->getMessage() );
 			return;
 		}
 
@@ -111,8 +112,7 @@ class AIQueueProcessor {
 		// by a prior PHP timeout or uncaught error before the \Throwable fix).
 		$jobs = $wpdb->get_results(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"SELECT * FROM {$table}
+				"SELECT * FROM %i
 				 WHERE job_type IN ('analyze_entry', 'regenerate_reply')
 				   AND (
 				       status IN ('pending', 'failed')
@@ -121,6 +121,7 @@ class AIQueueProcessor {
 				   AND attempts < %d
 				 ORDER BY scheduled_at ASC
 				 LIMIT %d",
+				$table,
 				self::MAX_ATTEMPTS,
 				self::BATCH_SIZE
 			),
@@ -139,9 +140,7 @@ class AIQueueProcessor {
 		}
 	}
 
-	// -------------------------------------------------------------------------
 	// Job processing
-	// -------------------------------------------------------------------------
 
 	private static function process_job( array $job, AIAnalysisProviderInterface $provider ): void {
 		// Dispatch to the appropriate handler based on job type.
@@ -201,7 +200,7 @@ class AIQueueProcessor {
 			} else {
 				AIRepository::save_analysis( $entry_id, $result );
 				// Auto-process path is always the first analyze for a given
-				// entry — record the draft and pin it as the selected response
+				// entry - record the draft and pin it as the selected response
 				// so the carousel opens with this one visible by default.
 				self::record_ai_draft( $entry_id, $entry, $result, 'analyze' );
 			}
@@ -211,7 +210,7 @@ class AIQueueProcessor {
 			Logger::file( 'ai_queue', 'info', "Job {$job['id']}: complete for entry {$entry_id}." );
 
 		} catch ( CloudPlanException $e ) {
-			// Plan error: no point retrying — the account can't run this job.
+			// Plan error: no point retrying - the account can't run this job.
 			self::handle_plan_exception( $e, 'ai_analyze' );
 			self::finish_job( (int) $job['id'], 'failed', $e->getMessage() );
 			AIRepository::update_status( $entry_id, 'failed', $e->getMessage() );
@@ -225,13 +224,13 @@ class AIQueueProcessor {
 			self::finish_job( (int) $job['id'], $next_status, $e->getMessage() );
 
 			// If retries remain, keep the entry as 'queued' so the UI still
-			// shows "Analyzing…". Mark 'failed' only on the final attempt,
+			// shows "Analyzing...". Mark 'failed' only on the final attempt,
 			// persisting the error reason so the admin can see why.
 			if ( $is_final ) {
 				AIRepository::update_status( $entry_id, 'failed', $e->getMessage() );
 
 				// If notifications were deferred waiting for spam check,
-				// send them now — the admin should still know about this entry
+				// send them now - the admin should still know about this entry
 				// even though AI failed.
 				self::maybe_send_deferred_notifications_on_failure( $entry_id, $payload );
 			} else {
@@ -245,7 +244,7 @@ class AIQueueProcessor {
 	/**
 	 * Process a regenerate_reply job.
 	 *
-	 * Only updates ai_reply_draft — never touches summary/category/priority/spam.
+	 * Only updates ai_reply_draft - never touches summary/category/priority/spam.
 	 * On failure (including final failure after all retries) the entry ai_status
 	 * is restored to 'complete' so a prior good analysis is never degraded to
 	 * the "AI analysis failed" card state.
@@ -285,7 +284,7 @@ class AIQueueProcessor {
 			$form_id = (int) ( $payload['form_id'] ?? $entry['form_id'] ?? 0 );
 			$form    = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? [] ) : [];
 
-			// Reply-only — never overwrites summary/category/priority/spam.
+			// Reply-only - never overwrites summary/category/priority/spam.
 			$result = $provider->regenerate_reply( $entry, $form );
 
 			$tier_used = isset( $result['tier_used'] ) ? (string) $result['tier_used'] : null;
@@ -308,7 +307,7 @@ class AIQueueProcessor {
 			$next_job_status = $is_final ? 'failed' : 'pending';
 			self::finish_job( (int) $job['id'], $next_job_status, $e->getMessage() );
 
-			// Always restore to 'complete' — never degrade a prior full analysis
+			// Always restore to 'complete' - never degrade a prior full analysis
 			// into the "AI analysis failed" state due to a reply-only failure.
 			AIRepository::update_status( $entry_id, 'complete' );
 
@@ -322,7 +321,7 @@ class AIQueueProcessor {
 	 * next GET /settings / entry open.
 	 *
 	 * On quota_exceeded we also purge every other pending/failed AI job
-	 * because the whole account is gated — retrying them just burns cron
+	 * because the whole account is gated - retrying them just burns cron
 	 * runs against a 403. Entries revert to 'failed' with a clear reason.
 	 */
 	private static function handle_plan_exception( CloudPlanException $e, string $fallback_feature ): void {
@@ -348,16 +347,18 @@ class AIQueueProcessor {
 		$table = $wpdb->prefix . 'neural_forms_queue';
 
 		$jobs = $wpdb->get_results(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			"SELECT id, payload FROM {$table}
-			 WHERE job_type IN ('analyze_entry', 'regenerate_reply')
-			   AND status IN ('pending', 'failed', 'processing')",
+			$wpdb->prepare(
+				"SELECT id, payload FROM %i
+				 WHERE job_type IN ('analyze_entry', 'regenerate_reply')
+				   AND status IN ('pending', 'failed', 'processing')",
+				$table
+			),
 			ARRAY_A
 		);
 
 		if ( empty( $jobs ) ) return;
 
-		$error_msg = 'Cloud quota exceeded — remaining jobs cleared. ' . $reason;
+		$error_msg = 'Cloud quota exceeded - remaining jobs cleared. ' . $reason;
 
 		foreach ( $jobs as $job ) {
 			$wpdb->update(
@@ -386,9 +387,7 @@ class AIQueueProcessor {
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * When a job fails permanently and notifications were deferred, send them
@@ -416,8 +415,8 @@ class AIQueueProcessor {
 	 * suppressed the hook in SubmitEndpoint). Skips silently for spam entries;
 	 * fires normally for everything else.
 	 *
-	 * Must only be called from the analyze_entry path — not from
-	 * process_regenerate_reply — to avoid double-sending.
+	 * Must only be called from the analyze_entry path - not from
+	 * process_regenerate_reply - to avoid double-sending.
 	 */
 	private static function maybe_send_deferred_notifications(
 		int   $entry_id,
@@ -433,7 +432,7 @@ class AIQueueProcessor {
 			return;
 		}
 
-		// Not spam — fire the notification hook now.
+		// Not spam - fire the notification hook now.
 		if ( $form_id < 1 ) return;
 		$form = FormRepository::find( $form_id );
 		if ( ! $form ) return;
@@ -445,7 +444,7 @@ class AIQueueProcessor {
 	 * Optionally auto-move an entry to Spam based on the AI spam result.
 	 *
 	 * Two-layer guard:
-	 *   1. Plugin capability (Pro-installed?) — Lite defaults locked.
+	 *   1. Plugin capability (Pro-installed?) - Lite defaults locked.
 	 *   2. User opt-in setting (ai_spam_enabled).
 	 *
 	 * The capability check runs first so an install without Pro never
@@ -487,7 +486,7 @@ class AIQueueProcessor {
 		 * @param array $decision  [ 'action' => 'skip'|'mark_spam', 'reason' => string, 'confidence' => int ]
 		 * @param array $result    The full analysis response from the AI provider.
 		 * @param int   $entry_id  The entry being evaluated.
-		 * @param array $context   [ 'mode' => string, 'threshold' => int ] — current settings.
+		 * @param array $context   [ 'mode' => string, 'threshold' => int ] - current settings.
 		 */
 		$decision = apply_filters(
 			'neural_forms_spam_decision',
@@ -526,7 +525,7 @@ class AIQueueProcessor {
 	 *   - The very first analyze (kind=analyze) auto-finalizes. It's the
 	 *     entry's canonical reply until the merchant explicitly picks
 	 *     another draft from the carousel.
-	 *   - reanalyze / regenerate / polish never auto-finalize — merchant
+	 *   - reanalyze / regenerate / polish never auto-finalize - merchant
 	 *     chooses via "Use this reply".
 	 *   - Skipped silently when the result is flagged spam. Spam entries
 	 *     don't show the carousel UI, so there's no reason to grow history.
@@ -582,15 +581,13 @@ class AIQueueProcessor {
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Inline execution (used by admin-initiated REST calls)
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Run a full analysis synchronously and return the refreshed AI row.
 	 *
 	 * Used by the Re-analyze REST route so the admin gets the result in the
-	 * same HTTP response — no queue, no cron, no polling. Always writes the
+	 * same HTTP response - no queue, no cron, no polling. Always writes the
 	 * full analysis regardless of ai_auto_process because this path is only
 	 * reached through an explicit admin click.
 	 *

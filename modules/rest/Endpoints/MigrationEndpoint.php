@@ -8,11 +8,11 @@ use WP_REST_Request;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * REST endpoints for CF7 → Neural Forms migration.
+ * REST endpoints for CF7 '->-> Neural Forms migration.
  *
- *   GET  /migration/cf7/forms               — list all CF7 forms with compatibility info
- *   GET  /migration/cf7/preview/(?P<id>\d+) — preview what the import would produce
- *   POST /migration/cf7/import/(?P<id>\d+)  — execute the import
+ *   GET  /migration/cf7/forms               - list all CF7 forms with compatibility info
+ *   GET  /migration/cf7/preview/(?P<id>\d+) - preview what the import would produce
+ *   POST /migration/cf7/import/(?P<id>\d+)  - execute the import
  */
 class MigrationEndpoint {
 
@@ -119,7 +119,7 @@ class MigrationEndpoint {
 			);
 		}
 
-		// Duplicate blocked — return 409 with existing import details.
+		// Duplicate blocked - return 409 with existing import details.
 		if ( ! empty( $result['duplicate'] ) ) {
 			return new \WP_Error(
 				'duplicate_import',

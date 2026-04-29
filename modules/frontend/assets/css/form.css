@@ -4,21 +4,21 @@
  * Base styles for Neural Forms frontend forms.
  *
  * Philosophy
- * ──────────
+ *
  * Functional, not decorative. Every colour and dimension is expressed as a
  * CSS custom property so a theme can override the full look by redefining
  * a handful of variables on .neural-forms-form without fighting specificity.
  *
- * Naming: BEM — .neural-forms-form__element--modifier
+ * Naming: BEM - .neural-forms-form__element--modifier
  * Resets: box-sizing only; no global * reset that could break a theme.
  */
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Custom properties
    Override any of these on .neural-forms-form in your theme stylesheet:
    .neural-forms-form { --neural-forms-border: #your-color; }
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form {
 
@@ -54,12 +54,12 @@
     /* Motion */
     --neural-forms-transition:     border-color 0.15s ease, box-shadow 0.15s ease;
 
-    /* Fields — inputs, textareas, selects */
+    /* Fields - inputs, textareas, selects */
     --neural-forms-field-bg:       #fff;      /* input background colour       */
     --neural-forms-border-width:   1px;       /* input border width            */
     --neural-forms-input-font-size:1rem;      /* input font size               */
 
-    /* Submit button — override these via block formatting controls.
+    /* Submit button - override these via block formatting controls.
        Background inherits the active theme's primary/accent color via
        theme.json presets, falling back to a tasteful indigo. */
     --neural-forms-btn-bg:         var(--wp--preset--color--primary, var(--wp--preset--color--accent, var(--wp--preset--color--vivid-cyan-blue, #4f46e5)));
@@ -70,19 +70,19 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Outer wrapper (.neural-forms-form-wrap)
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form-wrap {
-    /* Block container only — width and max-width left to the theme. */
+    /* Block container only - width and max-width left to the theme. */
     width: 100%;
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Form element
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form {
     box-sizing: border-box;
@@ -97,19 +97,19 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Submitting state
    Applied by form-submit.js while a fetch is in-flight.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form--submitting {
     opacity: 0.7;
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Fields container
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__fields {
     display: flex;
@@ -119,9 +119,35 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
+   Multi-column row
+   Wraps two consecutive half-width fields into a side-by-side pair. Each
+   __field already has its own internal layout, so the row just supplies
+   the grid track. Mobile collapses to one column so half-width fields
+   never become unusably narrow on small screens.
+ */
+
+.neural-forms-form__row {
+    display: grid;
+    gap: var(--neural-forms-field-gap);
+}
+
+.neural-forms-form__row--cols-2 {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* Mobile collapse - drop pairing so each field gets full width. The
+   600px breakpoint matches what most WP block themes consider "small". */
+@media ( max-width: 600px ) {
+    .neural-forms-form__row--cols-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+/*
    Individual field wrapper
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__field {
     display: flex;
@@ -129,7 +155,7 @@
     gap: 0.25rem;
 }
 
-/* Type modifiers — currently identical layout, present as hooks for themes. */
+/* Type modifiers - currently identical layout, present as hooks for themes. */
 .neural-forms-form__field--text,
 .neural-forms-form__field--email,
 .neural-forms-form__field--phone,
@@ -139,22 +165,22 @@
     /* no override needed at base level */
 }
 
-/* Checkbox row collapses its own gap — the checkbox-wrapper handles spacing. */
+/* Checkbox row collapses its own gap - the checkbox-wrapper handles spacing. */
 .neural-forms-form__field--checkbox {
     gap: 0;
 }
 
-/* Honeypot — enforce hidden even if an external CSS rule targets display. */
+/* Honeypot - enforce hidden even if an external CSS rule targets display. */
 .neural-forms-form__field--honeypot {
     display: none !important;
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Error state (field wrapper)
    Added by form-submit.js on a 422 response.
    Descendant selectors colour the input without JS needing to touch it.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__field--has-error .neural-forms-form__input,
 .neural-forms-form__field--has-error .neural-forms-form__textarea,
@@ -168,13 +194,13 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Labels
    By default placeholders carry the field's intent (no visible <label>). When
    the builder enables show_label on a field, a block-level label is rendered
    above the input via the --block modifier. Per-option labels for
    checkbox / radio groups always render inline.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__label--block {
     display: block;
@@ -199,7 +225,7 @@
     margin-left: 0.125rem;
 }
 
-/* Visually hidden legend — accessible label for grouped fieldsets. */
+/* Visually hidden legend - accessible label for grouped fieldsets. */
 .neural-forms-form .screen-reader-text {
     position: absolute !important;
     clip: rect(1px, 1px, 1px, 1px);
@@ -213,10 +239,10 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Text-like inputs  (text · email · phone)
    Number shares this class plus its own modifier below.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__input {
     display: block;
@@ -251,7 +277,7 @@
     cursor: not-allowed;
 }
 
-/* Number — remove browser-native spinner arrows for a cleaner look.
+/* Number - remove browser-native spinner arrows for a cleaner look.
    The server enforces min/max/step, so the arrows are not load-bearing. */
 .neural-forms-form__input--number::-webkit-inner-spin-button,
 .neural-forms-form__input--number::-webkit-outer-spin-button {
@@ -264,9 +290,9 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Textarea
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__textarea {
     display: block;
@@ -302,9 +328,9 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Select
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__select {
     display: block;
@@ -341,9 +367,9 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Radio
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__radio-group {
     border: none;
@@ -369,9 +395,9 @@
     accent-color: var(--neural-forms-border-focus);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Checkbox Group (multi-option checkboxes)
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__checkbox-group {
     border: none;
@@ -388,11 +414,11 @@
     gap: 0.5rem;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Checkbox
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
-/* Wrapper: horizontal row — input then label, aligned to first text baseline. */
+/* Wrapper: horizontal row - input then label, aligned to first text baseline. */
 .neural-forms-form__checkbox-wrapper {
     display: flex;
     align-items: flex-start;
@@ -411,9 +437,9 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Date
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__input--date {
     display: block;
@@ -436,9 +462,9 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Range slider
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__range-wrapper {
     display: flex;
@@ -462,10 +488,10 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Field error message
    Populated and un-hidden by form-submit.js on 422.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__field-error {
     /* margin:0 overrides any theme p { margin } rule */
@@ -473,14 +499,14 @@
     color: var(--neural-forms-error-text);
     font-size: 0.8125rem;   /* 13px at base-16 */
     line-height: 1.25;
-    /* [hidden] attribute handles visibility — no display:none needed here */
+    /* [hidden] attribute handles visibility - no display:none needed here */
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Global error (429, 403, 5xx, network failures)
    Populated and un-hidden by form-submit.js.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__global-error {
     margin: 0 0 1rem;
@@ -494,11 +520,11 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Success state
    Revealed by form-submit.js on 201; sibling of <form> so hiding the form
    does not also hide this element.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__success {
     padding: 1rem 1.25rem;
@@ -516,9 +542,9 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    File input
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__file-input {
     display: block;
@@ -558,13 +584,13 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    CAPTCHA widget
    Rendered between the global-error paragraph and the submit button when a
    provider is configured and the form has captcha_enabled = true.
-   The widget iframe itself is injected by the provider SDK — this rule only
+   The widget iframe itself is injected by the provider SDK - this rule only
    controls the wrapper spacing so it doesn't sit flush against adjacent elements.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__captcha {
     margin-top: 16px;
@@ -572,11 +598,11 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Submit button
-   Dark neutral default — easy to override with the custom property or a
+   Dark neutral default - easy to override with the custom property or a
    theme selector targeting .neural-forms-form__submit directly.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 /* Wrapper: controls horizontal alignment of the button. */
 .neural-forms-form__submit-wrap {
@@ -618,10 +644,10 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Submit button spinner
    Shown inline inside the button during form submission.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 @keyframes neural-forms-spin {
     to { transform: rotate( 360deg ); }
@@ -639,20 +665,20 @@
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    Success message focus outline
-   Remove the visible outline when focused programmatically — the green box
+   Remove the visible outline when focused programmatically - the green box
    itself is the visual indicator. Screen readers still announce it.
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__success:focus {
     outline: none;
 }
 
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/*
    "Submit another response" link inside the success box
-   ───────────────────────────────────────────────────────────────────────────── */
+ */
 
 .neural-forms-form__reset-link {
     display: inline-block;

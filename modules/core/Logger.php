@@ -10,15 +10,15 @@ defined( 'ABSPATH' ) || exit;
  * (visible in admin); verbose debug/error traces go to daily log files.
  *
  * Public API
- * ──────────
- *   Logger::log( ... )   → database only  (admin-visible activity trail)
- *   Logger::file( ... )  → file only      (debug/diagnostic traces)
- *   Logger::both( ... )  → database + file (actionable errors)
+ *
+ *   Logger::log( ... )   '->-> database only  (admin-visible activity trail)
+ *   Logger::file( ... )  '->-> file only      (debug/diagnostic traces)
+ *   Logger::both( ... )  '->-> database + file (actionable errors)
  *
  * File logs are stored in wp-content/uploads/neural-forms/logs/ with daily
  * rotation and automatic .htaccess protection.
  *
- * All methods are fire-and-forget — failures are silently swallowed so logging
+ * All methods are fire-and-forget - failures are silently swallowed so logging
  * can never break a request or submission.
  */
 class Logger {
@@ -26,9 +26,7 @@ class Logger {
 	/** @var bool Whether the log directory has been verified this request. */
 	private static bool $dir_ready = false;
 
-	// -------------------------------------------------------------------------
 	// Public API
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Write a log entry to the wp_neural_forms_logs table.
@@ -39,7 +37,7 @@ class Logger {
 	 * @param string   $event_type  Machine-readable event slug (max 100 chars).
 	 * @param string   $status      Severity: 'info', 'warning', or 'error'.
 	 * @param string   $message     Human-readable description of the event.
-	 * @param array    $payload     Contextual data — will be JSON-encoded.
+	 * @param array    $payload     Contextual data - will be JSON-encoded.
 	 * @param int|null $entry_id    Related entry ID when applicable.
 	 */
 	public static function log(
@@ -61,7 +59,7 @@ class Logger {
 	 * @param string $channel  Logical channel, e.g. 'ai_queue', 'captcha', 'upload'.
 	 * @param string $level    Severity: 'debug', 'info', 'warning', 'error'.
 	 * @param string $message  Human-readable log line.
-	 * @param array  $context  Extra data — JSON-encoded inline.
+	 * @param array  $context  Extra data - JSON-encoded inline.
 	 */
 	public static function file(
 		string $channel,
@@ -97,9 +95,7 @@ class Logger {
 		self::write_file( $channel ?: $event_type, $status, $message, $payload );
 	}
 
-	// -------------------------------------------------------------------------
 	// Database writer
-	// -------------------------------------------------------------------------
 
 	private static function write_db(
 		string $event_type,
@@ -134,9 +130,7 @@ class Logger {
 		$wpdb->insert( $wpdb->prefix . 'neural_forms_logs', $data, $formats );
 	}
 
-	// -------------------------------------------------------------------------
 	// File writer
-	// -------------------------------------------------------------------------
 
 	private static function write_file(
 		string $channel,
@@ -158,13 +152,11 @@ class Logger {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			file_put_contents( $file, $line, FILE_APPEND | LOCK_EX );
 		} catch ( \Throwable $e ) {
-			// Swallow — logging must never break anything.
+			// Swallow - logging must never break anything.
 		}
 	}
 
-	// -------------------------------------------------------------------------
 	// Directory bootstrap
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Ensure the log directory exists with web-access protection.
@@ -203,9 +195,7 @@ class Logger {
 		return $dir;
 	}
 
-	// -------------------------------------------------------------------------
 	// Cleanup (called by daily cron)
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Delete DB log rows older than 60 days and log files older than 14 days.

@@ -1,4 +1,9 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// Direct $wpdb calls against wp_neural_forms_* tables only. Object caching
+// is skipped intentionally - these reads back the admin UI which expects
+// fresh data after every status / reply / AI mutation.
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Storage\EntryRepository;
@@ -19,8 +24,8 @@ defined( 'ABSPATH' ) || exit;
  *
  * Base: /wp-json/neural-forms/v1/entries
  *
- * GET  /entries           → paginated list for a form (data field omitted)
- * GET  /entries/{id}      → full single entry including decoded data field
+ * GET  /entries           '->-> paginated list for a form (data field omitted)
+ * GET  /entries/{id}      '->-> full single entry including decoded data field
  *
  * Both routes require the neural_forms_manage_forms capability.
  *
@@ -39,7 +44,7 @@ class EntriesEndpoint {
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		// List — optional form_id and/or view query param.
+		// List - optional form_id and/or view query param.
 		register_rest_route( $ns, '/entries', [
 			[
 				'methods'             => 'GET',
@@ -49,7 +54,7 @@ class EntriesEndpoint {
 			],
 		] );
 
-		// Counts — registered BEFORE /entries/(?P<id>...) so 'counts' is not
+		// Counts - registered BEFORE /entries/(?P<id>...) so 'counts' is not
 		// interpreted as a numeric ID by WordPress's route resolver.
 		register_rest_route( $ns, '/entries/counts', [
 			'methods'             => 'GET',
@@ -71,7 +76,7 @@ class EntriesEndpoint {
 			'args'                => $this->bulk_args(),
 		] );
 
-		// AI rerun actions — registered before /entries/{id} so the action
+		// AI rerun actions - registered before /entries/{id} so the action
 		// suffixes are not swallowed by the generic numeric-ID pattern.
 		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/reanalyze', [
 			'methods'             => 'POST',
@@ -117,7 +122,7 @@ class EntriesEndpoint {
 			]
 		);
 
-		// Detail — returns full entry including the data field.
+		// Detail - returns full entry including the data field.
 		register_rest_route( $ns, '/entries/(?P<id>[\d]+)', [
 			[
 				'methods'             => 'GET',
@@ -138,9 +143,7 @@ class EntriesEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Handlers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * GET /entries
@@ -166,7 +169,7 @@ class EntriesEndpoint {
 		if ( $form_id < 1 && $view === '' && $search === '' ) {
 			return new WP_Error(
 				'missing_filter',
-				__( 'A valid form_id, view, or search term is required.', 'neural-forms' ),
+				__( 'A valid form_id, view, or search term is required.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -184,7 +187,7 @@ class EntriesEndpoint {
 			static function ( array $entry ): array {
 				$entry['preview'] = array_slice( $entry['data'] ?? [], 0, 3, true );
 				unset( $entry['data'] );
-				// Suppress verbose spam reason in list payloads — available in single GET.
+				// Suppress verbose spam reason in list payloads - available in single GET.
 				unset( $entry['ai_spam_reason'] );
 				return $entry;
 			},
@@ -223,7 +226,7 @@ class EntriesEndpoint {
 		$ids    = array_map( 'intval', (array) $request->get_param( 'ids' ) );
 		$action = (string) $request->get_param( 'action' );
 
-		// Permanent delete is handled separately — it is a hard DELETE, not a
+		// Permanent delete is handled separately - it is a hard DELETE, not a
 		// field update, so it bypasses the $field_map / bulk_update path.
 		if ( $action === 'delete' ) {
 			$deleted = EntryRepository::bulk_delete( $ids );
@@ -243,7 +246,7 @@ class EntriesEndpoint {
 		if ( ! isset( $field_map[ $action ] ) ) {
 			return new WP_Error(
 				'invalid_bulk_action',
-				__( 'Unknown bulk action.', 'neural-forms' ),
+				__( 'Unknown bulk action.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -260,14 +263,14 @@ class EntriesEndpoint {
 	 *
 	 * form_name note:
 	 *   EntryRepository::get() does not JOIN neural_forms_forms, so form_name is
-	 *   always null here. This is intentional — the label "Deleted form" or any
+	 *   always null here. This is intentional - the label "Deleted form" or any
 	 *   other human fallback belongs in the React UI, not in storage or API logic.
 	 *
 	 *   If the detail view needs form_name, the preferred approaches are:
 	 *     a) React already has it from the list row that opened the detail view
 	 *        and can pass it down without an extra API call.
 	 *     b) Add a FormRepository::find( $entry['form_id'] ) lookup here and
-	 *        merge name into the response — acceptable since detail is one row,
+	 *        merge name into the response - acceptable since detail is one row,
 	 *        not a paginated list.
 	 *   Either way, nothing changes in the repository layer.
 	 *
@@ -281,7 +284,7 @@ class EntriesEndpoint {
 		if ( ! $entry ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -302,9 +305,9 @@ class EntriesEndpoint {
 	 * Queue a fresh full AI analysis for an existing entry.
 	 *
 	 * Guards:
-	 *  • 503 if AI is not configured (feature off or API key absent).
-	 *  • 404 if the entry does not exist.
-	 *  • 409 if a job is already running (ai_status queued or processing).
+	 *  * 503 if AI is not configured (feature off or API key absent).
+	 *  * 404 if the entry does not exist.
+	 *  * 409 if a job is already running (ai_status queued or processing).
 	 *
 	 * @param WP_REST_Request $request
 	 * @return \WP_REST_Response|WP_Error
@@ -327,13 +330,13 @@ class EntriesEndpoint {
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
-			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms' ), [ 'status' => 404 ] );
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
 		}
 
 		$busy = $this->check_ai_not_busy( $entry );
 		if ( is_wp_error( $busy ) ) return $busy;
 
-		// Run inline — admin-initiated, so we block on the Cloud call and
+		// Run inline - admin-initiated, so we block on the Cloud call and
 		// return the fresh analysis in the same response. Removes the 5s
 		// scheduled-event delay + WP-Cron pickup latency + UI poll cycle.
 		try {
@@ -348,7 +351,7 @@ class EntriesEndpoint {
 		} catch ( \Throwable $e ) {
 			return new WP_Error(
 				'ai_analyze_failed',
-				$e->getMessage() ?: __( 'AI analysis failed. Please try again.', 'neural-forms' ),
+				$e->getMessage() ?: __( 'AI analysis failed. Please try again.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -361,9 +364,9 @@ class EntriesEndpoint {
 	 * Does not overwrite summary, category, priority, or spam fields.
 	 *
 	 * Guards:
-	 *  • 503 if AI is not configured.
-	 *  • 404 if the entry does not exist.
-	 *  • 409 if a job is already running.
+	 *  * 503 if AI is not configured.
+	 *  * 404 if the entry does not exist.
+	 *  * 409 if a job is already running.
 	 *
 	 * @param WP_REST_Request $request
 	 * @return \WP_REST_Response|WP_Error
@@ -385,7 +388,7 @@ class EntriesEndpoint {
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
-			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms' ), [ 'status' => 404 ] );
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
 		}
 
 		$busy = $this->check_ai_not_busy( $entry );
@@ -406,7 +409,7 @@ class EntriesEndpoint {
 		} catch ( \Throwable $e ) {
 			return new WP_Error(
 				'ai_regenerate_failed',
-				$e->getMessage() ?: __( 'Reply regeneration failed. Please try again.', 'neural-forms' ),
+				$e->getMessage() ?: __( 'Reply regeneration failed. Please try again.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -417,12 +420,12 @@ class EntriesEndpoint {
 	 *
 	 * Synchronously polishes a user-provided reply draft with AI.
 	 * The entry is loaded only to verify access; its data is NOT sent to the
-	 * model — the polish prompt works entirely on the user's text.
+	 * model - the polish prompt works entirely on the user's text.
 	 *
 	 * Guards:
-	 *  • 503 if AI is not configured.
-	 *  • 404 if the entry does not exist.
-	 *  • 400 if text param is empty (enforced by arg validation above).
+	 *  * 503 if AI is not configured.
+	 *  * 404 if the entry does not exist.
+	 *  * 400 if text param is empty (enforced by arg validation above).
 	 *
 	 * Returns { polished_reply: string } synchronously.
 	 * Nothing is written to the database.
@@ -445,7 +448,7 @@ class EntriesEndpoint {
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
-			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms' ), [ 'status' => 404 ] );
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
 		}
 
 		$text    = trim( (string) $request->get_param( 'text' ) );
@@ -460,14 +463,14 @@ class EntriesEndpoint {
 		} catch ( \Throwable $e ) {
 			return new WP_Error(
 				'ai_polish_failed',
-				__( 'AI could not refine the reply. Please try again.', 'neural-forms' ),
+				__( 'AI could not refine the reply. Please try again.', 'neural-forms-lite' ),
 				[ 'status' => 502 ]
 			);
 		}
 
 		// Persist the polished output as a carousel draft so the merchant
 		// can flip back to it. Polish never auto-finalizes, never mutates
-		// entries.ai_reply_draft, and leaves summary/category alone — the
+		// entries.ai_reply_draft, and leaves summary/category alone - the
 		// draft is context-only until explicitly picked.
 		AIResponseRepository::insert( $id, AIResponseRepository::KIND_POLISH, [
 			'tier_used'      => $result['tier_used']   ?? 'fast',
@@ -494,7 +497,7 @@ class EntriesEndpoint {
 		if ( ! $entry ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -512,12 +515,12 @@ class EntriesEndpoint {
 	/**
 	 * POST /entries/{id}/ai-responses/{draft_id}/finalize
 	 *
-	 * Pin a draft as the canonical reply for the entry — "Use this reply".
+	 * Pin a draft as the canonical reply for the entry - "Use this reply".
 	 * Swaps entries.ai_selected_response_id and flips the draft's finalized
 	 * flag so the retention cap/TTL skips it forever. Writes the draft's
 	 * reply_draft (or polished_reply for polish kind) into ai_reply_draft so
 	 * the reply composer picks it up. summary/category/priority are promoted
-	 * back onto the entry for analyze/reanalyze kinds only — regenerate and
+	 * back onto the entry for analyze/reanalyze kinds only - regenerate and
 	 * polish carry no new classification.
 	 */
 	public function finalize_ai_response( WP_REST_Request $request ) {
@@ -528,7 +531,7 @@ class EntriesEndpoint {
 		if ( ! $entry ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -537,7 +540,7 @@ class EntriesEndpoint {
 		if ( ! $draft || (int) $draft['entry_id'] !== $id ) {
 			return new WP_Error(
 				'draft_not_found',
-				__( 'Draft not found for this entry.', 'neural-forms' ),
+				__( 'Draft not found for this entry.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -546,13 +549,13 @@ class EntriesEndpoint {
 		if ( ! $ok ) {
 			return new WP_Error(
 				'finalize_failed',
-				__( 'Could not finalize draft.', 'neural-forms' ),
+				__( 'Could not finalize draft.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
 
 		// Copy the draft's reply text onto the entry so the composer shows
-		// the chosen reply. Polish kind has no reply_draft — use polished_reply.
+		// the chosen reply. Polish kind has no reply_draft - use polished_reply.
 		$kind       = (string) $draft['kind'];
 		$reply_text = $kind === AIResponseRepository::KIND_POLISH
 			? (string) ( $draft['polished_reply'] ?? '' )
@@ -562,7 +565,7 @@ class EntriesEndpoint {
 		AIRepository::update_reply_draft( $id, $reply_text, $tier );
 
 		// For analyze/reanalyze drafts the classification fields are part of
-		// the draft — promote them back onto the entry so toggling between
+		// the draft - promote them back onto the entry so toggling between
 		// drafts swaps the whole analysis card, not just the reply text.
 		if ( in_array( $kind, [ AIResponseRepository::KIND_ANALYZE, AIResponseRepository::KIND_REANALYZE ], true ) ) {
 			AIRepository::save_analysis( $id, [
@@ -631,7 +634,7 @@ class EntriesEndpoint {
 		if ( ! $existing ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -661,7 +664,7 @@ class EntriesEndpoint {
 		if ( empty( $fields ) ) {
 			return new WP_Error(
 				'no_fields',
-				__( 'No updatable fields provided.', 'neural-forms' ),
+				__( 'No updatable fields provided.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -671,7 +674,7 @@ class EntriesEndpoint {
 		if ( ! $ok ) {
 			return new WP_Error(
 				'entry_update_failed',
-				__( 'Could not update entry.', 'neural-forms' ),
+				__( 'Could not update entry.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -688,7 +691,7 @@ class EntriesEndpoint {
 	}
 
 	/**
-	 * Kept for backward compatibility — delegates to update_entry.
+	 * Kept for backward compatibility - delegates to update_entry.
 	 */
 	public function update_entry_status( WP_REST_Request $request ) {
 		return $this->update_entry( $request );
@@ -711,7 +714,7 @@ class EntriesEndpoint {
 		if ( ! EntryRepository::get( $id ) ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -721,7 +724,7 @@ class EntriesEndpoint {
 		if ( ! $ok ) {
 			return new WP_Error(
 				'entry_delete_failed',
-				__( 'Could not delete the entry.', 'neural-forms' ),
+				__( 'Could not delete the entry.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -729,9 +732,7 @@ class EntriesEndpoint {
 		return rest_ensure_response( [ 'deleted' => true, 'id' => $id ] );
 	}
 
-	// -------------------------------------------------------------------------
 	// AI rerun helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Return WP_Error 403 when the plan does not grant the given capability,
@@ -748,7 +749,7 @@ class EntriesEndpoint {
 
 		return new WP_Error(
 			'feature_locked',
-			__( 'This feature is not available on your current plan.', 'neural-forms' ),
+			__( 'This feature is not available on your current plan.', 'neural-forms-lite' ),
 			[
 				'status'      => 403,
 				'feature'     => $feature,
@@ -792,7 +793,7 @@ class EntriesEndpoint {
 		) {
 			return new WP_Error(
 				'ai_not_configured',
-				__( 'AI is not configured. Enable AI and add an API key in Settings.', 'neural-forms' ),
+				__( 'AI is not configured. Enable AI and add an API key in Settings.', 'neural-forms-lite' ),
 				[ 'status' => 503 ]
 			);
 		}
@@ -804,7 +805,7 @@ class EntriesEndpoint {
 	 * Return WP_Error 409 when the entry already has a queued or processing job.
 	 *
 	 * Safety valve: if the entry claims to be busy but no active job exists in
-	 * the queue, the entry is orphaned — reset it so the user isn't locked out.
+	 * the queue, the entry is orphaned - reset it so the user isn't locked out.
 	 */
 	private function check_ai_not_busy( array $entry ) {
 		$busy = [ 'queued', 'processing' ];
@@ -814,14 +815,15 @@ class EntriesEndpoint {
 
 		// Check if an active job actually exists for this entry.
 		global $wpdb;
-		// LIKE pattern interpolates (int) $entry['id'] — integer cast first, then
+		// LIKE pattern interpolates (int) $entry['id'] - integer cast first, then
 		// passed via the %s placeholder which adds quoting. Safe from injection.
 		$active_job = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->prefix}neural_forms_queue
+				'SELECT COUNT(*) FROM %i
 				 WHERE payload LIKE %s
-				   AND status IN ('pending', 'processing')
-				   AND attempts < %d",
+				   AND status IN ( \'pending\', \'processing\' )
+				   AND attempts < %d',
+				$wpdb->prefix . 'neural_forms_queue',
 				'%"entry_id":' . (int) $entry['id'] . '%',
 				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
 			)
@@ -830,20 +832,18 @@ class EntriesEndpoint {
 		if ( (int) $active_job > 0 ) {
 			return new WP_Error(
 				'ai_already_processing',
-				__( 'An AI job for this entry is already running.', 'neural-forms' ),
+				__( 'An AI job for this entry is already running.', 'neural-forms-lite' ),
 				[ 'status' => 409 ]
 			);
 		}
 
-		// No active job — entry is orphaned. Reset so the user can retry.
+		// No active job - entry is orphaned. Reset so the user can retry.
 		\NeuralForms\AI\AIRepository::update_status( (int) $entry['id'], 'failed' );
 
 		return true;
 	}
 
-// -------------------------------------------------------------------------
 	// Permission
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Both routes are admin-only.
@@ -859,19 +859,17 @@ class EntriesEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to view entries.', 'neural-forms' ),
+			__( 'You do not have permission to view entries.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Arg definitions
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Query parameter definitions for GET /entries.
 	 *
-	 * form_id is intentionally not marked required here — a missing or zero
+	 * form_id is intentionally not marked required here - a missing or zero
 	 * value is caught manually in the handler so we can return missing_form_id
 	 * rather than WordPress's generic rest_missing_callback_param error.
 	 *
@@ -880,7 +878,7 @@ class EntriesEndpoint {
 	 * cap internally as a defence-in-depth measure.
 	 *
 	 * status is validated against EntryRepository::VALID_STATUSES so adding a
-	 * new status to the repository automatically allows it here — no duplicate
+	 * new status to the repository automatically allows it here - no duplicate
 	 * list to maintain.
 	 */
 	private function list_args(): array {

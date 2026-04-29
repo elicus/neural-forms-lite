@@ -6,7 +6,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Detects Contact Form 7 forms and parses their field tags.
  *
- * Reads CF7 data via the WPCF7_ContactForm API — no direct DB queries.
+ * Reads CF7 data via the WPCF7_ContactForm API - no direct DB queries.
  * All methods are static and read-only; CF7 data is never modified.
  */
 class CF7Detector {
@@ -62,7 +62,7 @@ class CF7Detector {
 	/**
 	 * Parse all field tags from a CF7 form.
 	 *
-	 * Returns an array of normalized tag descriptors — one per data field.
+	 * Returns an array of normalized tag descriptors - one per data field.
 	 * Non-data tags (submit, response, recaptcha, etc.) are excluded.
 	 *
 	 * @param int|\WPCF7_ContactForm $form  CF7 form ID or instance.
@@ -116,9 +116,7 @@ class CF7Detector {
 		return $result;
 	}
 
-	// -------------------------------------------------------------------------
 	// Private helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Extract placeholder text from a CF7 tag.

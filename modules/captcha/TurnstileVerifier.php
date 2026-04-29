@@ -29,9 +29,7 @@ class TurnstileVerifier implements CaptchaVerifierInterface {
 		$this->secret_key = $secret_key;
 	}
 
-	// -------------------------------------------------------------------------
 	// CaptchaVerifierInterface
-	// -------------------------------------------------------------------------
 
 	/**
 	 * @inheritDoc
@@ -55,7 +53,7 @@ class TurnstileVerifier implements CaptchaVerifierInterface {
 		if ( is_wp_error( $response ) ) {
 			return new \WP_Error(
 				'captcha_unreachable',
-				__( 'Could not reach CAPTCHA verification service.', 'neural-forms' ),
+				__( 'Could not reach CAPTCHA verification service.', 'neural-forms-lite' ),
 				[
 					'provider' => 'turnstile',
 					'wp_error' => $response->get_error_message(),
@@ -68,7 +66,7 @@ class TurnstileVerifier implements CaptchaVerifierInterface {
 		if ( ! is_array( $decoded ) || empty( $decoded['success'] ) ) {
 			return new \WP_Error(
 				'captcha_failed',
-				__( 'CAPTCHA verification failed.', 'neural-forms' ),
+				__( 'CAPTCHA verification failed.', 'neural-forms-lite' ),
 				[
 					'provider'    => 'turnstile',
 					'error_codes' => $decoded['error-codes'] ?? [],

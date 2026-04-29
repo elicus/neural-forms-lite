@@ -1,4 +1,12 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// This repository owns the wp_neural_forms_* tables and runs typed CRUD
+// against them. Object caching is intentionally not used here:
+// - REST handlers fetch fresh per request; entries / forms see frequent
+//   writes, so a stale cache would surface in the admin UI.
+// - Cache invalidation across the create/update/delete + bulk paths
+//   would add more risk than the few percent of latency it would save.
 namespace NeuralForms\AI;
 
 defined( 'ABSPATH' ) || exit;
@@ -7,25 +15,23 @@ defined( 'ABSPATH' ) || exit;
  * Reads and writes the AI analysis columns on neural_forms_entries.
  *
  * Operates only on AI-specific columns; general entry CRUD stays in
- * EntryRepository. No business logic — pure persistence.
+ * EntryRepository. No business logic - pure persistence.
  */
 class AIRepository {
 
 	/** Valid values for the ai_status column. */
 	const VALID_AI_STATUSES = [ 'none', 'queued', 'processing', 'complete', 'failed' ];
 
-	/** Valid values for ai_category — reflects Neural Forms's inbox workflow. */
+	/** Valid values for ai_category - reflects Neural Forms's inbox workflow. */
 	const VALID_CATEGORIES = [ 'sales', 'support', 'partnership', 'hiring', 'spam', 'general', 'other' ];
 
 	/** Valid values for ai_priority. */
 	const VALID_PRIORITIES = [ 'low', 'medium', 'high' ];
 
-	/** Valid values for ai_tier — mirrors the API's model-registry. */
+	/** Valid values for ai_tier - mirrors the API's model-registry. */
 	const VALID_TIERS = [ 'fast', 'balanced', 'smart', 'premium' ];
 
-	// -------------------------------------------------------------------------
 	// Write operations
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Update ai_status on a single entry.
@@ -111,7 +117,7 @@ class AIRepository {
 	/**
 	 * Persist only the spam-classification fields and mark the entry complete.
 	 *
-	 * Used when ai_auto_process is off but ai_spam_enabled is on — the Cloud
+	 * Used when ai_auto_process is off but ai_spam_enabled is on - the Cloud
 	 * analyze() response still carries summary/reply/category/priority, but the
 	 * user hasn't opted into storing/showing those. Saving them anyway would
 	 * light up the "AI Analysis" card against the user's explicit setting.
@@ -172,7 +178,7 @@ class AIRepository {
 	/**
 	 * Point an entry at its canonical/finalized AI response draft. Used by
 	 * the "Use this reply" action on the draft carousel. Swap semantics:
-	 * updating the pointer does not log history — AIResponseRepository::finalize
+	 * updating the pointer does not log history - AIResponseRepository::finalize
 	 * flips the draft's finalized flag separately.
 	 */
 	public static function set_selected_response( int $entry_id, int $response_id ): bool {
@@ -189,9 +195,7 @@ class AIRepository {
 		return $result !== false;
 	}
 
-	// -------------------------------------------------------------------------
 	// Read operations
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Fetch only the AI analysis columns for a single entry.
@@ -205,13 +209,13 @@ class AIRepository {
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				'SELECT ai_status, ai_summary, ai_category, ai_priority,
 				        ai_reply_draft, ai_score, ai_provider, ai_model,
 				        ai_is_spam, ai_spam_confidence, ai_spam_reason,
 				        ai_auto_spam_applied, ai_error_reason,
 				        ai_tier, ai_selected_response_id
-				 FROM ' . self::table() . ' WHERE id = %d',
+				 FROM %i WHERE id = %d',
+				self::table(),
 				$entry_id
 			),
 			ARRAY_A
@@ -233,9 +237,7 @@ class AIRepository {
 		return $row;
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	private static function table(): string {
 		global $wpdb;

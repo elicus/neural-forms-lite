@@ -1,4 +1,12 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// This repository owns the wp_neural_forms_* tables and runs typed CRUD
+// against them. Object caching is intentionally not used here:
+// - REST handlers fetch fresh per request; entries / forms see frequent
+//   writes, so a stale cache would surface in the admin UI.
+// - Cache invalidation across the create/update/delete + bulk paths
+//   would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Storage;
 
 use NeuralForms\Core\Logger;
@@ -13,15 +21,13 @@ defined( 'ABSPATH' ) || exit;
  * - JSON encoding/decoding for the `data` column is handled exclusively here.
  *   Callers always work with plain PHP arrays; they never see a JSON string.
  * - $context carries server-derived metadata (ip, user_agent, page_url,
- *   submitted_at, form_version). It is never mixed into the `data` column —
+ *   submitted_at, form_version). It is never mixed into the `data` column -
  *   `data` contains only sanitized field values from the submission.
- * - No business logic, no hooks — pure persistence.
+ * - No business logic, no hooks - pure persistence.
  */
 class EntryRepository {
 
-	// -------------------------------------------------------------------------
 	// Write operations
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Insert a new entry row.
@@ -29,7 +35,7 @@ class EntryRepository {
 	 * @param int   $form_id         The ID of the form this entry belongs to.
 	 * @param array $sanitized_data  Associative array of field_id => sanitized value.
 	 *                               All values must be of consistent types before
-	 *                               reaching here — the repository stores them as-is.
+	 *                               reaching here - the repository stores them as-is.
 	 *                               In particular: checkbox values must be int (0 or 1),
 	 *                               not bool (true/false) or string ("true"/"false"),
 	 *                               so the JSON blob is uniform for exports and filters.
@@ -66,7 +72,7 @@ class EntryRepository {
 			Logger::file( 'storage', 'error', sprintf( 'wp_json_encode() returned false for form %d', $form_id ) );
 			return new \WP_Error(
 				'entry_encode_failed',
-				__( 'Could not encode submission data.', 'neural-forms' ),
+				__( 'Could not encode submission data.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -97,7 +103,7 @@ class EntryRepository {
 
 			return new \WP_Error(
 				'entry_save_failed',
-				__( 'Could not save the entry.', 'neural-forms' ),
+				__( 'Could not save the entry.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -109,9 +115,9 @@ class EntryRepository {
 	 * Update one or more mutable fields on an entry.
 	 *
 	 * Accepted keys in $fields:
-	 *   status      (string) — validated against VALID_STATUSES
-	 *   is_starred  (int)    — 0 or 1
-	 *   needs_reply (int)    — 0 or 1
+	 *   status      (string) - validated against VALID_STATUSES
+	 *   is_starred  (int)    - 0 or 1
+	 *   needs_reply (int)    - 0 or 1
 	 *
 	 * Unknown keys are silently ignored so callers cannot inject arbitrary columns.
 	 *
@@ -158,7 +164,7 @@ class EntryRepository {
 	}
 
 	/**
-	 * Update the status of an entry (e.g. 'new' → 'read', 'spam', 'trash').
+	 * Update the status of an entry (e.g. 'new' '->-> 'read', 'spam', 'trash').
 	 *
 	 * Thin wrapper around update() for backward compatibility.
 	 *
@@ -173,7 +179,7 @@ class EntryRepository {
 	/**
 	 * Apply the same field updates to multiple entries in one query.
 	 *
-	 * Only updates entries that actually exist — returns the IDs that were
+	 * Only updates entries that actually exist - returns the IDs that were
 	 * successfully updated (may be a subset of $ids if some did not exist).
 	 *
 	 * Accepted keys in $fields: same as update().
@@ -214,22 +220,25 @@ class EntryRepository {
 
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
 		$set_clause   = implode( ', ', $set_parts );
+		$table        = self::table();
 
+		// $set_clause uses field names from the method-internal whitelist
+		// above; $placeholders is a string of '%d' tokens. All user values
+		// flow through ...$set_values + ...$ids '->-> prepare().
 		$query = $wpdb->prepare(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			"UPDATE " . self::table() . " SET {$set_clause} WHERE id IN ({$placeholders})",
-			...array_merge( $set_values, $ids )
+			"UPDATE %i SET {$set_clause} WHERE id IN ({$placeholders})",
+			...array_merge( [ $table ], $set_values, $ids )
 		);
-
 		$wpdb->query( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		// Return the subset of requested IDs that actually exist in the table.
 		$confirmed_placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
 		$confirmed = $wpdb->get_col(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"SELECT id FROM " . self::table() . " WHERE id IN ({$confirmed_placeholders})",
-				...$ids
+				"SELECT id FROM %i WHERE id IN ({$confirmed_placeholders})",
+				...array_merge( [ $table ], $ids )
 			)
 		);
 
@@ -240,12 +249,12 @@ class EntryRepository {
 	 * Return entry counts for each system view, optionally scoped to a form.
 	 *
 	 * Views:
-	 *   inbox       — status IN ('new','read')   — active, non-archived entries
-	 *   unread      — status = 'new'
-	 *   starred     — is_starred = 1
-	 *   needs_reply — needs_reply = 1
-	 *   spam        — status = 'spam'
-	 *   trash       — status = 'trash'
+	 *   inbox       - status IN ('new','read')   - active, non-archived entries
+	 *   unread      - status = 'new'
+	 *   starred     - is_starred = 1
+	 *   needs_reply - needs_reply = 1
+	 *   spam        - status = 'spam'
+	 *   trash       - status = 'trash'
 	 *
 	 * @param int|null $form_id  If non-null, scope counts to a single form.
 	 * @return array { inbox: int, unread: int, starred: int, needs_reply: int, spam: int, trash: int, high_priority: int, spam_suspected: int }
@@ -257,8 +266,10 @@ class EntryRepository {
 		$scope_clause = $form_id ? $wpdb->prepare( ' AND form_id = %d', $form_id ) : '';
 
 		$count = static function ( string $where ) use ( $wpdb, $table, $scope_clause ): int {
+			// $where is a hardcoded literal from the array below; $scope_clause
+			// is already prepared. Table flows through %i.
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$value = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE {$where}{$scope_clause}" );
+			$value = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE {$where}{$scope_clause}", $table ) );
 			return (int) $value;
 		};
 
@@ -298,7 +309,7 @@ class EntryRepository {
 	/**
 	 * Hard-delete multiple entries in one query.
 	 *
-	 * Only deletes entries that actually exist — returns the IDs that were
+	 * Only deletes entries that actually exist - returns the IDs that were
 	 * successfully deleted (may be a subset of $ids if some did not exist).
 	 *
 	 * @param int[] $ids
@@ -315,12 +326,13 @@ class EntryRepository {
 
 		// Capture which IDs actually exist before deleting them.
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$table        = self::table();
 
 		$existing = $wpdb->get_col(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"SELECT id FROM " . self::table() . " WHERE id IN ({$placeholders})",
-				...$ids
+				"SELECT id FROM %i WHERE id IN ({$placeholders})",
+				...array_merge( [ $table ], $ids )
 			)
 		);
 
@@ -333,19 +345,17 @@ class EntryRepository {
 		$del_placeholders = implode( ',', array_fill( 0, count( $existing ), '%d' ) );
 
 		$wpdb->query(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"DELETE FROM " . self::table() . " WHERE id IN ({$del_placeholders})",
-				...$existing
+				"DELETE FROM %i WHERE id IN ({$del_placeholders})",
+				...array_merge( [ $table ], $existing )
 			)
 		);
 
 		return $existing;
 	}
 
-	// -------------------------------------------------------------------------
 	// Read operations
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Fetch a single entry by primary key.
@@ -357,11 +367,7 @@ class EntryRepository {
 		global $wpdb;
 
 		$row = $wpdb->get_row(
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				'SELECT * FROM ' . self::table() . ' WHERE id = %d',
-				$id
-			),
+			$wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', self::table(), $id ),
 			ARRAY_A
 		);
 
@@ -387,8 +393,8 @@ class EntryRepository {
 	 * @param array $args {
 	 *   @type string $view     System view filter (see VALID_VIEWS). Default ''.
 	 *   @type string $status   Filter by status ('any' or VALID_STATUSES value). Default 'any'.
-	 *                          Ignored when $view is set — the view owns the WHERE logic.
-	 *   @type int    $per_page Rows per page (1–100). Default 20.
+	 *                          Ignored when $view is set - the view owns the WHERE logic.
+	 *   @type int    $per_page Rows per page (1-100). Default 20.
 	 *   @type int    $page     1-based page number. Default 1.
 	 *   @type string $orderby  Column to sort by. Default 'created_at'.
 	 *   @type string $order    'ASC' or 'DESC'. Default 'DESC'.
@@ -437,27 +443,29 @@ class EntryRepository {
 		$where_aliased = $clauses['aliased'];
 		$values        = $clauses['values'];
 
-		// COUNT query.
+		// COUNT query - table flows through %i; $where_plain is composed
+		// from method-internal whitelists in build_filter_clauses().
+		$count_args = array_merge( [ $entries_table ], $values );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$count_sql = "SELECT COUNT(*) FROM {$entries_table} {$where_plain}";
-		$total = (int) ( $values
-			? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$values ) ) // phpcs:ignore
-			: $wpdb->get_var( $count_sql ) // phpcs:ignore
+		$total      = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM %i {$where_plain}", ...$count_args )
 		);
 
-		// Main SELECT.
-		$paginated_values = array_merge( $values, [ $per_page, $offset ] );
-
+		// Main SELECT - both table names flow through %i; $orderby is
+		// whitelisted against $allowed_columns and $order is forced to
+		// ASC|DESC, so they are safe to interpolate.
+		$main_args = array_merge( [ $entries_table, $forms_table ], $values, [ $per_page, $offset ] );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$main_sql = "SELECT e.*, f.name AS form_name
-		             FROM {$entries_table} e
-		             LEFT JOIN {$forms_table} f ON e.form_id = f.id
-		             {$where_aliased}
-		             ORDER BY e.{$orderby} {$order}
-		             LIMIT %d OFFSET %d";
-
 		$rows = $wpdb->get_results(
-			$wpdb->prepare( $main_sql, ...$paginated_values ), // phpcs:ignore
+			$wpdb->prepare(
+				"SELECT e.*, f.name AS form_name
+				 FROM %i e
+				 LEFT JOIN %i f ON e.form_id = f.id
+				 {$where_aliased}
+				 ORDER BY e.{$orderby} {$order}
+				 LIMIT %d OFFSET %d",
+				...$main_args
+			),
 			ARRAY_A
 		);
 
@@ -467,9 +475,7 @@ class EntryRepository {
 		];
 	}
 
-	// -------------------------------------------------------------------------
 	// Export
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Fetch all entries matching the given filters, without pagination.
@@ -499,38 +505,36 @@ class EntryRepository {
 		$where   = $clauses['aliased'];
 		$values  = $clauses['values'];
 
-		// Hard cap at 5 000 rows — prevents runaway memory on large installs.
-		$cap_values = array_merge( $values, [ 5000 ] );
-
+		// Hard cap at 5 000 rows - prevents runaway memory on large installs.
+		$cap_args = array_merge( [ $entries_table, $forms_table ], $values, [ 5000 ] );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$sql = "SELECT e.*, f.name AS form_name
-		        FROM {$entries_table} e
-		        LEFT JOIN {$forms_table} f ON e.form_id = f.id
-		        {$where}
-		        ORDER BY e.submitted_at {$export_order}
-		        LIMIT %d";
-
 		$rows = $wpdb->get_results(
-			$wpdb->prepare( $sql, ...$cap_values ), // phpcs:ignore
+			$wpdb->prepare(
+				"SELECT e.*, f.name AS form_name
+				 FROM %i e
+				 LEFT JOIN %i f ON e.form_id = f.id
+				 {$where}
+				 ORDER BY e.submitted_at {$export_order}
+				 LIMIT %d",
+				...$cap_args
+			),
 			ARRAY_A
 		);
 
 		return array_map( [ self::class, 'decode' ], $rows ?: [] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Build the WHERE conditions shared by list() and list_for_export().
 	 *
 	 * Returns two WHERE string variants and a shared parameter array:
-	 *   'plain'   — bare column names, used in COUNT queries (no JOIN).
-	 *   'aliased' — 'e.' prefix on all columns, used in SELECT with LEFT JOIN.
-	 *   'values'  — ordered parameters for $wpdb->prepare().
+	 *   'plain'   - bare column names, used in COUNT queries (no JOIN).
+	 *   'aliased' - 'e.' prefix on all columns, used in SELECT with LEFT JOIN.
+	 *   'values'  - ordered parameters for $wpdb->prepare().
 	 *
-	 * The plain and aliased variants are structurally identical — they differ
+	 * The plain and aliased variants are structurally identical - they differ
 	 * only in column-name prefixes.  The values array is shared between them
 	 * because both variants add placeholders in the same order.
 	 *
@@ -598,10 +602,11 @@ class EntryRepository {
 			$values[]        = $args['status'];
 		}
 
-		// Search — LIKE on the JSON data blob and form name.
+		// Search - LIKE on the JSON data blob and form name.
 		// Plain variant uses a subquery for form name (no JOIN in COUNT query).
 		// Aliased variant references the already-joined f.name column.
 		// Both add exactly 2 placeholders so the shared $values array stays aligned.
+		// $forms_table is `$wpdb->prefix . 'neural_forms_forms'`, never user-derived.
 		$search_term = trim( $args['search'] ?? '' );
 		if ( $search_term !== '' ) {
 			$like = '%' . $wpdb->esc_like( $search_term ) . '%';
@@ -612,7 +617,7 @@ class EntryRepository {
 			$values[]        = $like;
 		}
 
-		// Date range — applied to submitted_at.
+		// Date range - applied to submitted_at.
 		// Expected format: 'YYYY-MM-DD'. Time bounds are added here so a
 		// date_to of '2026-04-16' includes entries submitted at any time on that day.
 		// These args are only populated by list_for_export(); list() never passes
@@ -661,7 +666,7 @@ class EntryRepository {
 		$row['ai_auto_spam_applied'] = isset( $row['ai_auto_spam_applied'] ) ? (int) $row['ai_auto_spam_applied'] : 0;
 
 		// form_name is present when called from list() (LEFT JOIN).
-		// Absent when called from get() (no JOIN) — normalise to null either way
+		// Absent when called from get() (no JOIN) - normalise to null either way
 		// so callers always get a consistent key regardless of which method ran.
 		$row['form_name'] = isset( $row['form_name'] )
 			? (string) $row['form_name']
@@ -692,10 +697,10 @@ class EntryRepository {
 	 * Public so the REST endpoint and any future UI code can reference this
 	 * single list instead of duplicating it.
 	 *
-	 *   new    — just received, not yet reviewed
-	 *   read   — viewed in the admin entries list
-	 *   spam   — flagged by the spam check hook
-	 *   trash  — soft-deleted, pending permanent removal
+	 *   new    - just received, not yet reviewed
+	 *   read   - viewed in the admin entries list
+	 *   spam   - flagged by the spam check hook
+	 *   trash  - soft-deleted, pending permanent removal
 	 */
 	public const VALID_STATUSES = [ 'new', 'read', 'spam', 'trash' ];
 

@@ -13,10 +13,10 @@ defined( 'ABSPATH' ) || exit;
  * Reads global plugin settings to determine the active provider and
  * credentials, then instantiates and delegates to the correct verifier.
  *
- * All methods are static — no instantiation needed.
+ * All methods are static - no instantiation needed.
  *
  * Usage
- * ─────
+ *
  *   if ( CaptchaManager::is_configured() ) {
  *       $result = CaptchaManager::verify( $token, $ip );
  *       if ( is_wp_error( $result ) ) { ... }
@@ -24,9 +24,7 @@ defined( 'ABSPATH' ) || exit;
  */
 class CaptchaManager {
 
-	// -------------------------------------------------------------------------
 	// Public API
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Build and return the verifier for the currently configured provider.
@@ -63,7 +61,7 @@ class CaptchaManager {
 	 *   $captcha_provider !== 'none' && $captcha_site_key !== '' && $captcha_secret_key !== ''
 	 *
 	 * When only one key is configured the widget is never rendered, so the
-	 * backend must also skip enforcement — otherwise every submission gets a
+	 * backend must also skip enforcement - otherwise every submission gets a
 	 * 400 for a token the user was never asked to provide.
 	 *
 	 * Use this before calling verify() to distinguish "not configured"
@@ -80,7 +78,7 @@ class CaptchaManager {
 	 * Verify a CAPTCHA token against the configured provider.
 	 *
 	 * Returns WP_Error with code 'captcha_not_configured' when no provider
-	 * is active — callers should check is_configured() before calling this
+	 * is active - callers should check is_configured() before calling this
 	 * if they need to distinguish misconfiguration from a failed token.
 	 *
 	 * @param string $token  Token from the form submission.
@@ -93,7 +91,7 @@ class CaptchaManager {
 		if ( $verifier === null ) {
 			return new \WP_Error(
 				'captcha_not_configured',
-				__( 'CAPTCHA is not configured.', 'neural-forms' )
+				__( 'CAPTCHA is not configured.', 'neural-forms-lite' )
 			);
 		}
 

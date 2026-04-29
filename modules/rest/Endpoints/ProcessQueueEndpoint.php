@@ -38,7 +38,7 @@ class ProcessQueueEndpoint {
 		if ( ! $ai_enabled || ! $cloud_on || ! $has_key ) {
 			return new WP_Error(
 				'ai_not_configured',
-				__( 'AI is not enabled or no API key is configured.', 'neural-forms' ),
+				__( 'AI is not enabled or no API key is configured.', 'neural-forms-lite' ),
 				[ 'status' => 400, 'ai_enabled' => $ai_enabled, 'cloud_on' => $cloud_on, 'has_key' => $has_key ]
 			);
 		}
@@ -55,7 +55,7 @@ class ProcessQueueEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to trigger AI processing.', 'neural-forms' ),
+			__( 'You do not have permission to trigger AI processing.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}

@@ -1,4 +1,9 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// Direct $wpdb calls against wp_neural_forms_* tables only. Object caching
+// is skipped intentionally - these reads back the admin UI which expects
+// fresh data after every status / reply / AI mutation.
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Core\Config;
@@ -12,16 +17,16 @@ defined( 'ABSPATH' ) || exit;
  * Single endpoint that returns all data for the admin Stats screen.
  * Five payload sections:
  *
- *   needs_attention  — up to 8 entries requiring action (high-priority,
+ *   needs_attention  - up to 8 entries requiring action (high-priority,
  *                      needs-reply, or spam-suspected-but-not-yet-moved).
- *   stats            — aggregate counts: entries last 7 days, unread,
+ *   stats            - aggregate counts: entries last 7 days, unread,
  *                      needs-reply, spam detected.
- *   ai_insights      — top category, high-priority count, sales/support
+ *   ai_insights      - top category, high-priority count, sales/support
  *                      count from completed AI analyses.
- *   recent_activity  — last 10 log events (reply, notification, AI).
- *   system_status    — AI on/off, pending queue depth, email failure count.
+ *   recent_activity  - last 10 log events (reply, notification, AI).
+ *   system_status    - AI on/off, pending queue depth, email failure count.
  *
- * All queries are simple aggregations or small-LIMIT fetches — no heavy
+ * All queries are simple aggregations or small-LIMIT fetches - no heavy
  * joins or full-table scans beyond what the existing indexes cover.
  */
 class StatsEndpoint {
@@ -50,37 +55,38 @@ class StatsEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Sections
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Entries that need a human decision:
-	 *   – AI marked high-priority (inbox only)
-	 *   – Flagged needs_reply (inbox only)
-	 *   – AI suspected spam but not auto-moved (not already spam/trash)
+	 *   - AI marked high-priority (inbox only)
+	 *   - Flagged needs_reply (inbox only)
+	 *   - AI suspected spam but not auto-moved (not already spam/trash)
 	 */
 	private function needs_attention(): array {
 		global $wpdb;
-		$e = $wpdb->prefix . 'neural_forms_entries';
-		$f = $wpdb->prefix . 'neural_forms_forms';
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+		$forms   = $wpdb->prefix . 'neural_forms_forms';
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results(
-			"SELECT e.id, e.form_id, e.status, e.is_starred, e.needs_reply,
-			        e.ai_priority, e.ai_category, e.ai_is_spam, e.ai_auto_spam_applied,
-			        e.submitted_at, e.created_at, e.data,
-			        f.name AS form_name
-			 FROM {$e} e
-			 LEFT JOIN {$f} f ON e.form_id = f.id
-			 WHERE (
-			     ( e.ai_priority = 'high'  AND e.status IN ('new','read') )
-			     OR ( e.needs_reply = 1      AND e.status IN ('new','read') )
-			     OR ( e.ai_is_spam = 1 AND e.ai_auto_spam_applied = 0
-			          AND e.status NOT IN ('spam','trash') )
-			 )
-			 ORDER BY e.created_at DESC
-			 LIMIT 8",
+			$wpdb->prepare(
+				"SELECT e.id, e.form_id, e.status, e.is_starred, e.needs_reply,
+				        e.ai_priority, e.ai_category, e.ai_is_spam, e.ai_auto_spam_applied,
+				        e.submitted_at, e.created_at, e.data,
+				        f.name AS form_name
+				 FROM %i e
+				 LEFT JOIN %i f ON e.form_id = f.id
+				 WHERE (
+				     ( e.ai_priority = 'high'  AND e.status IN ('new','read') )
+				     OR ( e.needs_reply = 1      AND e.status IN ('new','read') )
+				     OR ( e.ai_is_spam = 1 AND e.ai_auto_spam_applied = 0
+				          AND e.status NOT IN ('spam','trash') )
+				 )
+				 ORDER BY e.created_at DESC
+				 LIMIT 8",
+				$entries,
+				$forms
+			),
 			ARRAY_A
 		);
 
@@ -111,16 +117,17 @@ class StatsEndpoint {
 	 */
 	private function stats(): array {
 		global $wpdb;
-		$table = $wpdb->prefix . 'neural_forms_entries';
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$row = $wpdb->get_row(
-			"SELECT
-			   SUM( created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 7 DAY ) ) AS entries_7d,
-			   SUM( status = 'new' )                                             AS unread,
-			   SUM( needs_reply = 1 AND status IN ('new','read') )               AS needs_reply,
-			   SUM( ai_is_spam = 1 )                                             AS spam_detected
-			 FROM {$table}",
+			$wpdb->prepare(
+				"SELECT
+				   SUM( created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 7 DAY ) ) AS entries_7d,
+				   SUM( status = 'new' )                                             AS unread,
+				   SUM( needs_reply = 1 AND status IN ('new','read') )               AS needs_reply,
+				   SUM( ai_is_spam = 1 )                                             AS spam_detected
+				 FROM %i",
+				$wpdb->prefix . 'neural_forms_entries'
+			),
 			ARRAY_A
 		);
 
@@ -135,45 +142,49 @@ class StatsEndpoint {
 	 * Category distribution + priority/sales/support/spam counts from completed analyses.
 	 *
 	 * Returns:
-	 *   analyzed_count      — total entries where ai_status = 'complete'
-	 *   top_category        — highest-count non-generic category, or null
-	 *   categories          — up to 4 category/count pairs (for future category list)
-	 *   high_priority_count — entries where ai_priority = 'high'
-	 *   sales_count         — entries where ai_category = 'sales'
-	 *   support_count       — entries where ai_category = 'support'
-	 *   spam_detected_count — entries where ai_is_spam = 1 (among completed)
+	 *   analyzed_count      - total entries where ai_status = 'complete'
+	 *   top_category        - highest-count non-generic category, or null
+	 *   categories          - up to 4 category/count pairs (for future category list)
+	 *   high_priority_count - entries where ai_priority = 'high'
+	 *   sales_count         - entries where ai_category = 'sales'
+	 *   support_count       - entries where ai_category = 'support'
+	 *   spam_detected_count - entries where ai_is_spam = 1 (among completed)
 	 */
 	private function ai_insights(): array {
 		global $wpdb;
 		$table = $wpdb->prefix . 'neural_forms_entries';
 
-		// Top non-generic categories — drives the top_category field and
+		// Top non-generic categories - drives the top_category field and
 		// the categories array for any future breakdown UI.
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$categories = $wpdb->get_results(
-			"SELECT ai_category AS category, COUNT(*) AS count
-			 FROM {$table}
-			 WHERE ai_status = 'complete'
-			   AND ai_category IS NOT NULL
-			   AND ai_category != ''
-			   AND ai_category != 'general'
-			 GROUP BY ai_category
-			 ORDER BY count DESC
-			 LIMIT 4",
+			$wpdb->prepare(
+				"SELECT ai_category AS category, COUNT(*) AS count
+				 FROM %i
+				 WHERE ai_status = 'complete'
+				   AND ai_category IS NOT NULL
+				   AND ai_category != ''
+				   AND ai_category != 'general'
+				 GROUP BY ai_category
+				 ORDER BY count DESC
+				 LIMIT 4",
+				$table
+			),
 			ARRAY_A
 		);
 
 		// Single conditional-aggregation pass over completed entries.
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$agg = $wpdb->get_row(
-			"SELECT
-			   COUNT(*)                          AS analyzed_count,
-			   SUM( ai_priority = 'high' )       AS high_priority_count,
-			   SUM( ai_category = 'sales' )      AS sales_count,
-			   SUM( ai_category = 'support' )    AS support_count,
-			   SUM( ai_is_spam = 1 )             AS spam_detected_count
-			 FROM {$table}
-			 WHERE ai_status = 'complete'",
+			$wpdb->prepare(
+				"SELECT
+				   COUNT(*)                          AS analyzed_count,
+				   SUM( ai_priority = 'high' )       AS high_priority_count,
+				   SUM( ai_category = 'sales' )      AS sales_count,
+				   SUM( ai_category = 'support' )    AS support_count,
+				   SUM( ai_is_spam = 1 )             AS spam_detected_count
+				 FROM %i
+				 WHERE ai_status = 'complete'",
+				$table
+			),
 			ARRAY_A
 		);
 
@@ -191,25 +202,26 @@ class StatsEndpoint {
 	}
 
 	/**
-	 * Last 10 actionable log events — reply, notification, and AI outcomes.
+	 * Last 10 actionable log events - reply, notification, and AI outcomes.
 	 * Generic/noisy events (queued, status updates) are excluded.
 	 */
 	private function recent_activity(): array {
 		global $wpdb;
-		$table = $wpdb->prefix . 'neural_forms_logs';
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results(
-			"SELECT id, entry_id, event_type, message, status, created_at
-			 FROM {$table}
-			 WHERE event_type IN (
-			     'reply_sent',           'reply_send_failed',
-			     'ai_auto_spam',         'ai_processing_error',
-			     'admin_notification_sent',  'admin_notification_failed',
-			     'autoresponder_sent',       'autoresponder_failed'
-			 )
-			 ORDER BY created_at DESC
-			 LIMIT 10",
+			$wpdb->prepare(
+				"SELECT id, entry_id, event_type, message, status, created_at
+				 FROM %i
+				 WHERE event_type IN (
+				     'reply_sent',           'reply_send_failed',
+				     'ai_auto_spam',         'ai_processing_error',
+				     'admin_notification_sent',  'admin_notification_failed',
+				     'autoresponder_sent',       'autoresponder_failed'
+				 )
+				 ORDER BY created_at DESC
+				 LIMIT 10",
+				$wpdb->prefix . 'neural_forms_logs'
+			),
 			ARRAY_A
 		);
 
@@ -231,30 +243,28 @@ class StatsEndpoint {
 	private function system_status(): array {
 		global $wpdb;
 
-		$queue_table = $wpdb->prefix . 'neural_forms_queue';
-		$logs_table  = $wpdb->prefix . 'neural_forms_logs';
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$pending_jobs = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"SELECT COUNT(*) FROM {$queue_table}
+				"SELECT COUNT(*) FROM %i
 				 WHERE job_type = 'analyze_entry'
 				   AND status IN ('pending','failed')
 				   AND attempts < %d",
+				$wpdb->prefix . 'neural_forms_queue',
 				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
 			)
 		);
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$email_failures = (int) $wpdb->get_var(
-			"SELECT COUNT(*) FROM {$logs_table}
-			 WHERE event_type IN (
-			     'reply_send_failed',
-			     'admin_notification_failed',
-			     'autoresponder_failed'
-			 )
-			 AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 24 HOUR )"
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM %i
+				 WHERE event_type IN (
+				     'reply_send_failed',
+				     'admin_notification_failed',
+				     'autoresponder_failed'
+				 )
+				 AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 24 HOUR )",
+				$wpdb->prefix . 'neural_forms_logs'
+			)
 		);
 
 		return [

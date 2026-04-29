@@ -11,22 +11,22 @@ defined( 'ABSPATH' ) || exit;
  * Registers the [neural-forms] shortcode and routes its attributes to FormRenderer.
  *
  * Supported syntax
- * ────────────────
+ *
  *   [neural-forms id="42"]
  *   [neural-forms slug="contact-form"]
  *
  * When both attributes are supplied, `id` takes precedence.
  *
  * Error handling
- * ──────────────
+ *
  * All failure paths return an empty string for non-admin visitors.
  * Admins (manage_options) receive an inline WP-styled notice that explains
  * exactly what is wrong (missing attributes, invalid ID, slug not found).
  * FormRenderer::render() handles the "form not active" case after the ID
- * is resolved — ShortcodeHandler does not duplicate that check.
+ * is resolved - ShortcodeHandler does not duplicate that check.
  *
  * Double-lookup note (slug path)
- * ──────────────────────────────
+ *
  * When a slug is provided, this class calls FormRepository::find_by_slug()
  * to resolve the ID, then passes that ID to FormRenderer::render() which
  * calls FormRepository::find() again. This is two DB queries for the slug
@@ -36,28 +36,24 @@ defined( 'ABSPATH' ) || exit;
  */
 class ShortcodeHandler {
 
-	// -------------------------------------------------------------------------
 	// Boot
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Register the [neural-forms] shortcode.
 	 *
 	 * Called by PublicForms::boot() on the `init` action.
-	 * add_shortcode() must fire on or before `init` — never in a later hook.
+	 * add_shortcode() must fire on or before `init` - never in a later hook.
 	 */
 	public static function boot(): void {
 		add_shortcode( 'neural-forms', [ static::class, 'handle' ] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Shortcode callback
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Process [neural-forms] shortcode attributes and return rendered HTML.
 	 *
-	 * Shortcode callbacks must be public — WordPress stores the callback
+	 * Shortcode callbacks must be public - WordPress stores the callback
 	 * reference and invokes it outside this class context.
 	 *
 	 * @param  array|string $atts  Shortcode attributes (empty string when none provided).
@@ -76,7 +72,7 @@ class ShortcodeHandler {
 		$raw_id = trim( (string) $atts['id'] );
 		$slug   = trim( (string) $atts['slug'] );
 
-		// ── id attribute ───────────────────────────────────────────────────
+		// ' id attribute '
 		// id takes precedence when both attributes are present.
 		if ( $raw_id !== '' ) {
 			$form_id = (int) $raw_id;
@@ -85,7 +81,7 @@ class ShortcodeHandler {
 				return static::admin_notice(
 					sprintf(
 						/* translators: %s: the supplied id value */
-						__( 'Neural Forms: shortcode "id" must be a positive integer (got "%s").', 'neural-forms' ),
+						__( 'Neural Forms: shortcode "id" must be a positive integer (got "%s").', 'neural-forms-lite' ),
 						$raw_id
 					)
 				);
@@ -95,7 +91,7 @@ class ShortcodeHandler {
 			return FormRenderer::render( $form_id );
 		}
 
-		// ── slug attribute ─────────────────────────────────────────────────
+		// ' slug attribute '
 		if ( $slug !== '' ) {
 			$form = FormRepository::find_by_slug( $slug );
 
@@ -103,7 +99,7 @@ class ShortcodeHandler {
 				return static::admin_notice(
 					sprintf(
 						/* translators: %s: the supplied slug value */
-						__( 'Neural Forms: no form found with slug "%s".', 'neural-forms' ),
+						__( 'Neural Forms: no form found with slug "%s".', 'neural-forms-lite' ),
 						$slug
 					)
 				);
@@ -112,24 +108,18 @@ class ShortcodeHandler {
 			return FormRenderer::render( (int) $form['id'] );
 		}
 
-		// ── Neither attribute provided ─────────────────────────────────────
+		// ' Neither attribute provided '
 		return static::admin_notice(
-			__(
-				'Neural Forms: shortcode requires an id or slug attribute. '
-				. 'Example: [neural-forms id="1"] or [neural-forms slug="contact-form"].',
-				'neural-forms'
-			)
+			__( 'Neural Forms: shortcode requires an id or slug attribute. Example: [neural-forms id="1"] or [neural-forms slug="contact-form"].', 'neural-forms-lite' )
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Render a dismissible admin-only diagnostic notice.
 	 *
-	 * Returns an empty string for all non-admin visitors — safe to echo.
+	 * Returns an empty string for all non-admin visitors - safe to echo.
 	 * Uses standard WordPress notice classes so it integrates with the
 	 * block editor sidebar and the front-end admin bar context.
 	 *

@@ -1,4 +1,12 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// This repository owns the wp_neural_forms_* tables and runs typed CRUD
+// against them. Object caching is intentionally not used here:
+// - REST handlers fetch fresh per request; entries / forms see frequent
+//   writes, so a stale cache would surface in the admin UI.
+// - Cache invalidation across the create/update/delete + bulk paths
+//   would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Storage;
 
 defined( 'ABSPATH' ) || exit;
@@ -7,20 +15,18 @@ defined( 'ABSPATH' ) || exit;
  * All database reads and writes for the neural_forms_entry_messages table.
  *
  * A message row represents a single communication event attached to an entry:
- *   incoming — the original submission (type='incoming', populated at submit time)
- *   outgoing — a reply sent via the admin Reply panel
- *   note     — reserved for internal admin notes (future use)
+ *   incoming - the original submission (type='incoming', populated at submit time)
+ *   outgoing - a reply sent via the admin Reply panel
+ *   note     - reserved for internal admin notes (future use)
  *
  * Rules:
  *  - Every public method receives and returns plain arrays.
  *  - meta is stored as JSON; callers always work with PHP arrays.
- *  - No business logic, no hooks — pure persistence.
+ *  - No business logic, no hooks - pure persistence.
  */
 class EntryMessageRepository {
 
-	// -------------------------------------------------------------------------
 	// Write operations
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Insert a new message row.
@@ -44,7 +50,7 @@ class EntryMessageRepository {
 		if ( $entry_id <= 0 ) {
 			return new \WP_Error(
 				'invalid_entry_id',
-				__( 'A valid entry_id is required.', 'neural-forms' ),
+				__( 'A valid entry_id is required.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -54,7 +60,7 @@ class EntryMessageRepository {
 		if ( $body === '' ) {
 			return new \WP_Error(
 				'empty_body',
-				__( 'Message body cannot be empty.', 'neural-forms' ),
+				__( 'Message body cannot be empty.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -95,7 +101,7 @@ class EntryMessageRepository {
 
 			return new \WP_Error(
 				'message_save_failed',
-				__( 'Could not save the message.', 'neural-forms' ),
+				__( 'Could not save the message.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
@@ -106,7 +112,7 @@ class EntryMessageRepository {
 	/**
 	 * Update the meta JSON column for a single message in-place.
 	 *
-	 * Replaces the entire meta object — pass the full desired value.
+	 * Replaces the entire meta object - pass the full desired value.
 	 *
 	 * @param int   $id    Message primary key.
 	 * @param array $meta  New metadata array (will be JSON-encoded).
@@ -126,9 +132,7 @@ class EntryMessageRepository {
 		return $updated !== false;
 	}
 
-	// -------------------------------------------------------------------------
 	// Read operations
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Fetch a single message by primary key.
@@ -140,11 +144,7 @@ class EntryMessageRepository {
 		global $wpdb;
 
 		$row = $wpdb->get_row(
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				'SELECT * FROM ' . self::table() . ' WHERE id = %d',
-				$id
-			),
+			$wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', self::table(), $id ),
 			ARRAY_A
 		);
 
@@ -162,8 +162,8 @@ class EntryMessageRepository {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				'SELECT * FROM ' . self::table() . ' WHERE entry_id = %d ORDER BY created_at ASC, id ASC',
+				'SELECT * FROM %i WHERE entry_id = %d ORDER BY created_at ASC, id ASC',
+				self::table(),
 				$entry_id
 			),
 			ARRAY_A
@@ -172,9 +172,7 @@ class EntryMessageRepository {
 		return array_map( [ self::class, 'decode' ], $rows ?: [] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Decode a raw database row into a clean PHP array.

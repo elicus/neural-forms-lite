@@ -1,6 +1,7 @@
 <?php
 namespace NeuralForms\Rest\Endpoints;
 
+use NeuralForms\Core\Logger;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\FormValidator;
 use WP_REST_Request;
@@ -13,19 +14,19 @@ defined( 'ABSPATH' ) || exit;
  *
  * Base: /wp-json/neural-forms/v1/forms
  *
- * GET    /forms           → list all forms (paginated)
- * GET    /forms/{id}      → get single form
- * POST   /forms           → create form
- * PUT    /forms/{id}      → update form
- * DELETE /forms/{id}      → delete form
+ * GET    /forms           '->-> list all forms (paginated)
+ * GET    /forms/{id}      '->-> get single form
+ * POST   /forms           '->-> create form
+ * PUT    /forms/{id}      '->-> update form
+ * DELETE /forms/{id}      '->-> delete form
  *
  * All routes require the neural_forms_manage_forms capability.
  *
  * Error codes used in this endpoint:
- *   form_not_found      — requested form ID does not exist
- *   invalid_form_data   — schema failed structural validation
- *   form_create_failed  — DB insert returned false
- *   permission_denied   — capability check failed
+ *   form_not_found      - requested form ID does not exist
+ *   invalid_form_data   - schema failed structural validation
+ *   form_create_failed  - DB insert returned false
+ *   permission_denied   - capability check failed
  */
 class FormsEndpoint {
 
@@ -41,7 +42,7 @@ class FormsEndpoint {
                     'status'   => [
                         'default'           => 'any',
                         // Repository accepts 'any', a single status, a CSV
-                        // ('active,draft'), or an array — pass through; it
+                        // ('active,draft'), or an array - pass through; it
                         // normalizes and silently drops invalid values.
                         'sanitize_callback' => function ( $value ) {
                             if ( is_array( $value ) ) {
@@ -101,7 +102,7 @@ class FormsEndpoint {
                 'callback'            => [ $this, 'delete_form' ],
                 'permission_callback' => [ $this, 'check_permission' ],
                 'args'                => [
-                    // ?force=true → hard delete (drops the row + cascades).
+                    // ?force=true '->-> hard delete (drops the row + cascades).
                     // Default soft-delete flips status to 'archived' so the
                     // form and its entries stay recoverable.
                     'force' => [
@@ -113,9 +114,7 @@ class FormsEndpoint {
         ] );
     }
 
-    // -------------------------------------------------------------------------
     // Handlers
-    // -------------------------------------------------------------------------
 
     public function get_forms( WP_REST_Request $request ) {
         $result = FormRepository::list( [
@@ -151,7 +150,7 @@ class FormsEndpoint {
         if ( $name === '' ) {
             return new WP_Error(
                 'form_name_required',
-                __( 'Form name is required.', 'neural-forms' ),
+                __( 'Form name is required.', 'neural-forms-lite' ),
                 [ 'status' => 400, 'field' => 'name' ]
             );
         }
@@ -161,7 +160,7 @@ class FormsEndpoint {
         if ( $slug === '' ) {
             return new WP_Error(
                 'form_slug_required',
-                __( 'Form slug is required. Use letters, numbers, or hyphens.', 'neural-forms' ),
+                __( 'Form slug is required. Use letters, numbers, or hyphens.', 'neural-forms-lite' ),
                 [ 'status' => 400, 'field' => 'slug' ]
             );
         }
@@ -184,15 +183,17 @@ class FormsEndpoint {
 
         if ( ! $id ) {
             global $wpdb;
-            $reason = $wpdb->last_error ?: __( 'Database insert failed.', 'neural-forms' );
+            // Log the raw DB error for diagnosis but do not return it in the
+            // response - exposes table prefix + schema details even to admins.
+            Logger::file(
+                'storage',
+                'error',
+                sprintf( 'FormsEndpoint::create_form() insert failed: %s', $wpdb->last_error ?: '(no wpdb error)' )
+            );
 
             return new WP_Error(
                 'form_create_failed',
-                sprintf(
-                    /* translators: %s: database error detail */
-                    __( 'Could not create form: %s', 'neural-forms' ),
-                    $reason
-                ),
+                __( 'Could not create form. Please try again.', 'neural-forms-lite' ),
                 [ 'status' => 500 ]
             );
         }
@@ -216,12 +217,12 @@ class FormsEndpoint {
 
         $raw = $request->get_params();
 
-        // Reject explicit empty name/slug on update — an empty string here
+        // Reject explicit empty name/slug on update - an empty string here
         // would silently produce a broken record. Unsent keys are fine.
         if ( array_key_exists( 'name', $raw ) && trim( (string) $raw['name'] ) === '' ) {
             return new WP_Error(
                 'form_name_required',
-                __( 'Form name is required.', 'neural-forms' ),
+                __( 'Form name is required.', 'neural-forms-lite' ),
                 [ 'status' => 400, 'field' => 'name' ]
             );
         }
@@ -229,7 +230,7 @@ class FormsEndpoint {
         if ( array_key_exists( 'slug', $raw ) && sanitize_title( (string) $raw['slug'] ) === '' ) {
             return new WP_Error(
                 'form_slug_required',
-                __( 'Form slug is required. Use letters, numbers, or hyphens.', 'neural-forms' ),
+                __( 'Form slug is required. Use letters, numbers, or hyphens.', 'neural-forms-lite' ),
                 [ 'status' => 400, 'field' => 'slug' ]
             );
         }
@@ -279,7 +280,7 @@ class FormsEndpoint {
         if ( $form['status'] !== 'archived' ) {
             return new WP_Error(
                 'form_not_archived',
-                __( 'Only archived forms can be restored.', 'neural-forms' ),
+                __( 'Only archived forms can be restored.', 'neural-forms-lite' ),
                 [ 'status' => 409 ]
             );
         }
@@ -288,7 +289,7 @@ class FormsEndpoint {
         if ( $next === false ) {
             return new WP_Error(
                 'form_restore_failed',
-                __( 'Could not restore the form.', 'neural-forms' ),
+                __( 'Could not restore the form.', 'neural-forms-lite' ),
                 [ 'status' => 500 ]
             );
         }
@@ -323,9 +324,7 @@ class FormsEndpoint {
         return rest_ensure_response( FormRepository::find( $id ) );
     }
 
-    // -------------------------------------------------------------------------
     // Permission
-    // -------------------------------------------------------------------------
 
     /**
      * Returns true if the current user has the required capability,
@@ -346,14 +345,12 @@ class FormsEndpoint {
         );
     }
 
-    // -------------------------------------------------------------------------
     // Arg definitions
-    // -------------------------------------------------------------------------
 
     /**
      * Shared body args for POST and PUT.
      * form_schema shape validation is handled in the handler via FormValidator,
-     * not here — args only check that the value is an array.
+     * not here - args only check that the value is an array.
      *
      * @param bool $required True for POST (create), false for PUT (update).
      */

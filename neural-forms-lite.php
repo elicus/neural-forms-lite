@@ -4,12 +4,12 @@
  * Plugin URI:        https://neuralforms.io
  * Description:       A modern lead inbox for WordPress. Build forms, triage submissions, and let AI summarize and draft replies for you. Upgrade to Neural Forms Pro for Divi 5, spam detection, and advanced AI tools.
  * Version:           1.0.0
- * Requires at least: 6.3
+ * Requires at least: 6.8
  * Requires PHP:      7.4
  * Author:            Elicus
  * Author URI:        https://elicus.com
  * License:           GPL-2.0-or-later
- * Text Domain:       neural-forms
+ * Text Domain:       neural-forms-lite
  * Domain Path:       /languages
  */
 
@@ -19,8 +19,8 @@ defined( 'ABSPATH' ) || exit;
 //
 // NEURAL_FORMS_LITE_VERSION is the canonical Lite version for add-ons
 // (e.g. Neural Forms Pro) to check against. NEURAL_FORMS_VERSION is kept
-// as an alias so existing internal usages — enqueue versions, X-NeuralForms-Version
-// headers, etc. — continue to work without a sweeping rename.
+// as an alias so existing internal usages - enqueue versions, X-NeuralForms-Version
+// headers, etc. - continue to work without a sweeping rename.
 
 define( 'NEURAL_FORMS_LITE_VERSION',    '1.0.0' );
 define( 'NEURAL_FORMS_VERSION',         NEURAL_FORMS_LITE_VERSION );

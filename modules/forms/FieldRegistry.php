@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
  *                  Used by the builder to show/hide config panels.
  *
  * Adding a new field type in the future = one new entry in $types.
- * Nothing else needs to change — validation, the builder, and any
+ * Nothing else needs to change - validation, the builder, and any
  * future export/import all read from here.
  *
  * Usage:
@@ -31,73 +31,95 @@ class FieldRegistry {
     private static array $types = [
         'text'     => [
             'label'    => 'Text',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'min_length', 'max_length' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'min_length', 'max_length', 'width' ],
         ],
         'email'    => [
             'label'    => 'Email',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'width' ],
         ],
         'textarea' => [
             'label'    => 'Textarea',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'min_length', 'max_length', 'rows' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'min_length', 'max_length', 'rows', 'width' ],
         ],
         'select'   => [
             'label'    => 'Select',
-            'supports' => [ 'label', 'show_label', 'required', 'options', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'required', 'options', 'default_value', 'width' ],
         ],
         'checkbox' => [
             'label'    => 'Checkbox',
-            'supports' => [ 'label', 'required', 'default_value' ],
+            'supports' => [ 'label', 'required', 'default_value', 'width' ],
         ],
         'number'   => [
             'label'    => 'Number',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'min', 'max', 'step' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'min', 'max', 'step', 'width' ],
         ],
         'phone'    => [
             'label'    => 'Phone',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'width' ],
         ],
         'tel'      => [
             'label'    => 'Telephone',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'width' ],
         ],
         'url'      => [
             'label'    => 'URL',
-            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'placeholder', 'required', 'default_value', 'width' ],
         ],
         'date'     => [
             'label'    => 'Date',
-            'supports' => [ 'label', 'show_label', 'required', 'default_value', 'min', 'max' ],
+            'supports' => [ 'label', 'show_label', 'required', 'default_value', 'min', 'max', 'width' ],
         ],
         'acceptance' => [
             'label'    => 'Acceptance',
-            'supports' => [ 'label', 'required' ],
+            'supports' => [ 'label', 'required', 'width' ],
         ],
         'radio'    => [
             'label'    => 'Radio',
-            'supports' => [ 'label', 'show_label', 'required', 'options', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'required', 'options', 'default_value', 'width' ],
         ],
         'checkboxes' => [
             'label'    => 'Checkboxes',
-            'supports' => [ 'label', 'show_label', 'required', 'options', 'default_value' ],
+            'supports' => [ 'label', 'show_label', 'required', 'options', 'default_value', 'width' ],
         ],
+        // Hidden fields are not rendered, so width does not apply.
         'hidden'   => [
             'label'    => 'Hidden',
             'supports' => [ 'label', 'default_value' ],
         ],
         'range'    => [
             'label'    => 'Range',
-            'supports' => [ 'label', 'show_label', 'required', 'default_value', 'min', 'max', 'step' ],
+            'supports' => [ 'label', 'show_label', 'required', 'default_value', 'min', 'max', 'step', 'width' ],
         ],
         'file'     => [
             'label'    => 'File Upload',
-            'supports' => [ 'label', 'show_label', 'required', 'allowed_types', 'max_file_size' ],
+            'supports' => [ 'label', 'show_label', 'required', 'allowed_types', 'max_file_size', 'width' ],
         ],
     ];
 
-    // -------------------------------------------------------------------------
+    /**
+     * Allowed values for the optional `width` property.
+     *
+     * 'full' - full-row field (the only width prior to 1.1.0).
+     * 'half' - half-row field. Two consecutive half-width fields render
+     *          side-by-side on the frontend; a single trailing half renders
+     *          at half width with empty space to its right.
+     *
+     * Hidden + honeypot fields ignore this property entirely.
+     */
+    const WIDTH_FULL = 'full';
+    const WIDTH_HALF = 'half';
+    const VALID_WIDTHS = [ self::WIDTH_FULL, self::WIDTH_HALF ];
+
+    /**
+     * Coerce an arbitrary width value to one of VALID_WIDTHS.
+     * Used by FormRenderer to decide whether a field pairs into a row.
+     */
+    public static function normalize_width( $value ): string {
+        $value = is_string( $value ) ? strtolower( trim( $value ) ) : '';
+        return in_array( $value, self::VALID_WIDTHS, true ) ? $value : self::WIDTH_FULL;
+    }
+
     // Lookup
-    // -------------------------------------------------------------------------
 
     /**
      * True if the given type string is a registered field type.
@@ -126,7 +148,7 @@ class FieldRegistry {
     }
 
     /**
-     * All type definitions — used by the REST API to expose the type list
+     * All type definitions - used by the REST API to expose the type list
      * to the form builder UI (Step 7).
      *
      * @return array  Keyed by type slug.

@@ -1,0 +1,506 @@
+/*
+ * Neural Forms admin - minimal styles for the rebuilt scaffold.
+ *
+ * Per docs/UI_GUIDELINES.md, all selectors are scoped under
+ * #neural-forms-app and follow BEM. CSS variables prefixed --f-.
+ *
+ * This is intentionally small - only what the Forms screen + placeholders
+ * need. Entries / Settings / Stats screens will bring in the rest of the
+ * design system as they're ported back.
+ */
+
+:root {
+	--f-gray-50:  #f5f6f8;
+	--f-gray-100: #eef0f3;
+	--f-gray-200: #e2e5ea;
+	--f-gray-300: #cfd3da;
+	--f-gray-400: #a8aeb8;
+	--f-gray-500: #6c727d;
+	--f-gray-700: #353941;
+	--f-gray-900: #14161b;
+
+	--f-accent:        #1a2351;
+	--f-accent-strong: #0f1635;
+	--f-success:       #10b981;
+	--f-success-soft:  #d1fae5;
+	--f-warning:       #f59e0b;
+	--f-warning-soft:  #fef3c7;
+	--f-danger:        #dc2626;
+
+	--f-radius:    8px;
+	--f-radius-sm: 4px;
+	--f-shadow:    0 1px 2px rgba( 16, 24, 40, 0.06 );
+}
+
+#neural-forms-app {
+	color: var( --f-gray-900 );
+	font-size: 14px;
+}
+
+/* ' Screen wrapper ' */
+
+#neural-forms-app .neural-forms-screen {
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 24px 0;
+}
+
+#neural-forms-app .neural-forms-screen__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .neural-forms-screen__title {
+	font-size: 28px;
+	font-weight: 700;
+	margin: 0;
+}
+
+#neural-forms-app .neural-forms-screen--placeholder {
+	background: #fff;
+	border-radius: var( --f-radius );
+	padding: 32px;
+	box-shadow: var( --f-shadow );
+}
+
+/* ' Tabs ' */
+
+#neural-forms-app .neural-forms-tabs {
+	display: flex;
+	gap: 24px;
+	border-bottom: 1px solid var( --f-gray-200 );
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .neural-forms-tabs__tab {
+	background: none;
+	border: 0;
+	padding: 12px 0;
+	margin-bottom: -1px;
+	border-bottom: 2px solid transparent;
+	font-size: 14px;
+	color: var( --f-gray-500 );
+	cursor: pointer;
+}
+
+#neural-forms-app .neural-forms-tabs__tab--active {
+	color: var( --f-accent );
+	border-bottom-color: var( --f-accent );
+	font-weight: 600;
+}
+
+/* ' Card ' */
+
+#neural-forms-app .neural-forms-card {
+	background: #fff;
+	border-radius: var( --f-radius );
+	box-shadow: var( --f-shadow );
+	overflow: hidden;
+}
+
+/* ' Table ' */
+
+#neural-forms-app .neural-forms-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+#neural-forms-app .neural-forms-table th,
+#neural-forms-app .neural-forms-table td {
+	padding: 14px 16px;
+	text-align: left;
+	border-bottom: 1px solid var( --f-gray-100 );
+	vertical-align: middle;
+}
+
+#neural-forms-app .neural-forms-table tr:last-child td {
+	border-bottom: 0;
+}
+
+#neural-forms-app .neural-forms-table th {
+	background: var( --f-gray-50 );
+	font-weight: 600;
+	font-size: 12px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var( --f-gray-500 );
+}
+
+#neural-forms-app .neural-forms-table__form-name {
+	font-weight: 600;
+}
+
+#neural-forms-app .neural-forms-table__form-slug {
+	font-size: 12px;
+	color: var( --f-gray-400 );
+}
+
+#neural-forms-app .neural-forms-table__col-actions {
+	white-space: nowrap;
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+#neural-forms-app .neural-forms-table__col-shortcode {
+	width: 1%;
+	white-space: nowrap;
+}
+
+#neural-forms-app .neural-forms-table__empty {
+	color: var( --f-gray-400 );
+	text-align: center;
+	padding: 24px;
+}
+
+#neural-forms-app .neural-forms-table__empty--error {
+	color: var( --f-danger );
+}
+
+/* ' Buttons ' */
+
+#neural-forms-app .neural-forms-btn {
+	display: inline-block;
+	padding: 8px 14px;
+	border-radius: var( --f-radius-sm );
+	font-weight: 500;
+	font-size: 13px;
+	cursor: pointer;
+	border: 1px solid transparent;
+	text-decoration: none;
+}
+
+#neural-forms-app .neural-forms-btn--primary {
+	background: var( --f-accent );
+	color: #fff;
+}
+
+#neural-forms-app .neural-forms-btn--primary:hover {
+	background: var( --f-accent-strong );
+	color: #fff;
+}
+
+#neural-forms-app .neural-forms-btn--secondary {
+	background: #fff;
+	color: var( --f-gray-700 );
+	border-color: var( --f-gray-300 );
+}
+
+#neural-forms-app .neural-forms-btn--secondary:hover {
+	background: var( --f-gray-50 );
+}
+
+/* ' Status pill ' */
+
+#neural-forms-app .neural-forms-pill {
+	display: inline-block;
+	padding: 3px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 500;
+}
+
+#neural-forms-app .neural-forms-pill--active {
+	background: var( --f-success-soft );
+	color: var( --f-success );
+}
+
+#neural-forms-app .neural-forms-pill--draft {
+	background: var( --f-warning-soft );
+	color: var( --f-warning );
+}
+
+#neural-forms-app .neural-forms-pill--archived {
+	background: var( --f-gray-100 );
+	color: var( --f-gray-500 );
+}
+
+/* ' Shortcode cell ' */
+
+#neural-forms-app .neural-forms-shortcode {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px 4px 10px;
+	background: var( --f-gray-50 );
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-sm );
+}
+
+#neural-forms-app .neural-forms-shortcode__code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12px;
+	color: var( --f-gray-700 );
+	cursor: text;
+	user-select: all;
+}
+
+#neural-forms-app .neural-forms-shortcode__copy {
+	border: 0;
+	background: var( --f-accent );
+	color: #fff;
+	padding: 4px 10px;
+	border-radius: var( --f-radius-sm );
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 120ms ease;
+}
+
+#neural-forms-app .neural-forms-shortcode__copy:hover {
+	background: var( --f-accent-strong );
+}
+
+#neural-forms-app .neural-forms-shortcode__copy--done {
+	background: var( --f-success );
+}
+
+/* ' Form builder ' */
+
+#neural-forms-app .nf-builder__name-input {
+	font-size: 22px;
+	font-weight: 700;
+	border: 0;
+	background: transparent;
+	padding: 4px 0;
+	min-width: 280px;
+}
+
+#neural-forms-app .nf-builder__actions {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+#neural-forms-app .nf-builder__saved {
+	color: var( --f-success );
+	font-size: 13px;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-builder__section {
+	background: #fff;
+	border-radius: var( --f-radius );
+	box-shadow: var( --f-shadow );
+	padding: 20px;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-builder__section-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-builder__section-title {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var( --f-gray-500 );
+	margin: 0;
+}
+
+#neural-forms-app .nf-builder__section--placeholder {
+	color: var( --f-gray-500 );
+}
+
+#neural-forms-app .nf-builder__add {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+#neural-forms-app .nf-builder__add-type {
+	padding: 6px 10px;
+	border: 1px solid var( --f-gray-300 );
+	border-radius: var( --f-radius-sm );
+	background: #fff;
+}
+
+/* Field list ' */
+
+#neural-forms-app .nf-builder-field-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-builder-field {
+	background: var( --f-gray-50 );
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius );
+	padding: 12px;
+	display: grid;
+	grid-template-columns: auto 1fr;
+	column-gap: 12px;
+	row-gap: 8px;
+	align-items: center;
+}
+
+#neural-forms-app .nf-builder-field.is-dragging {
+	border-color: var( --f-accent );
+	box-shadow: 0 4px 12px rgba( 16, 24, 40, 0.12 );
+}
+
+#neural-forms-app .nf-builder-field__handle {
+	width: 24px;
+	height: 32px;
+	background: transparent;
+	border: 0;
+	color: var( --f-gray-400 );
+	cursor: grab;
+	font-size: 18px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	grid-row: 1 / span 2;
+}
+
+#neural-forms-app .nf-builder-field__handle:active {
+	cursor: grabbing;
+}
+
+#neural-forms-app .nf-builder-field__main {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-builder-field__label,
+#neural-forms-app .nf-builder-field__placeholder,
+#neural-forms-app .nf-builder-field__type {
+	padding: 6px 10px;
+	border: 1px solid var( --f-gray-300 );
+	border-radius: var( --f-radius-sm );
+	background: #fff;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-builder-field__label,
+#neural-forms-app .nf-builder-field__placeholder {
+	flex: 1 1 200px;
+	min-width: 140px;
+}
+
+#neural-forms-app .nf-builder-field__type {
+	flex: 0 0 130px;
+}
+
+#neural-forms-app .nf-builder-field__required {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	color: var( --f-gray-500 );
+}
+
+#neural-forms-app .nf-builder-field__icon-btn {
+	width: 28px;
+	height: 28px;
+	background: transparent;
+	border: 0;
+	color: var( --f-gray-500 );
+	cursor: pointer;
+	border-radius: var( --f-radius-sm );
+}
+
+#neural-forms-app .nf-builder-field__icon-btn:hover:not(:disabled) {
+	background: var( --f-gray-100 );
+	color: var( --f-gray-700 );
+}
+
+#neural-forms-app .nf-builder-field__icon-btn:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-builder-field__icon-btn--remove:hover {
+	background: #fee2e2;
+	color: var( --f-danger );
+}
+
+#neural-forms-app .nf-builder-field__footer {
+	grid-column: 2;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-builder-field__cl-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	color: var( --f-gray-500 );
+}
+
+/* Half-width fields render side-by-side in the builder preview too,
+   so what you see in the builder matches what the frontend will show. */
+#neural-forms-app .nf-builder-field--half {
+	max-width: calc( 50% - 6px );
+}
+
+/* Column toggle ' */
+
+#neural-forms-app .nf-builder-field__column-toggle {
+	display: inline-flex;
+	border: 1px solid var( --f-gray-300 );
+	border-radius: var( --f-radius-sm );
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-builder-field__column-btn {
+	width: 32px;
+	height: 24px;
+	background: #fff;
+	border: 0;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border-right: 1px solid var( --f-gray-300 );
+}
+
+#neural-forms-app .nf-builder-field__column-btn:last-child {
+	border-right: 0;
+}
+
+#neural-forms-app .nf-builder-field__column-btn.is-active {
+	background: var( --f-accent );
+}
+
+#neural-forms-app .nf-builder-field__column-btn.is-active .nf-builder-field__column-glyph,
+#neural-forms-app .nf-builder-field__column-btn.is-active .nf-builder-field__column-glyph-cell {
+	border-color: #fff;
+}
+
+#neural-forms-app .nf-builder-field__column-glyph {
+	display: block;
+	width: 18px;
+	height: 12px;
+	border: 1.5px solid var( --f-gray-500 );
+	border-radius: 2px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-builder-field__column-glyph--half {
+	display: inline-flex;
+	border: 0;
+	gap: 2px;
+}
+
+#neural-forms-app .nf-builder-field__column-glyph-cell {
+	display: block;
+	width: 8px;
+	height: 12px;
+	border: 1.5px solid var( --f-gray-500 );
+	border-radius: 2px;
+	box-sizing: border-box;
+}

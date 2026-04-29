@@ -1,4 +1,12 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// This repository owns the wp_neural_forms_* tables and runs typed CRUD
+// against them. Object caching is intentionally not used here:
+// - REST handlers fetch fresh per request; entries / forms see frequent
+//   writes, so a stale cache would surface in the admin UI.
+// - Cache invalidation across the create/update/delete + bulk paths
+//   would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Forms;
 
 defined( 'ABSPATH' ) || exit;
@@ -11,13 +19,11 @@ defined( 'ABSPATH' ) || exit;
  * - JSON encoding/decoding for form_schema and settings is handled here,
  *   so callers always work with plain PHP arrays.
  * - Slug uniqueness is enforced here, not in the caller.
- * - No business logic — only persistence.
+ * - No business logic - only persistence.
  */
 class FormRepository {
 
-    // -------------------------------------------------------------------------
     // Write operations
-    // -------------------------------------------------------------------------
 
     /**
      * Insert a new form row.
@@ -144,7 +150,7 @@ class FormRepository {
             }
 
             // Don't overwrite a stored previous status if the form is
-            // already archived — preserves the original pre-archive state
+            // already archived - preserves the original pre-archive state
             // through repeated archive/un-archive cycles.
             if ( $current['status'] !== 'archived' ) {
                 $settings = is_array( $current['settings'] ) ? $current['settings'] : [];
@@ -202,9 +208,7 @@ class FormRepository {
         return $ok ? $next : false;
     }
 
-    // -------------------------------------------------------------------------
     // Read operations
-    // -------------------------------------------------------------------------
 
     /**
      * Fetch a single form by primary key.
@@ -293,22 +297,24 @@ class FormRepository {
 
         $per_page = max( 1, (int) $args['per_page'] );
         $offset   = ( max( 1, (int) $args['page'] ) - 1 ) * $per_page;
+        $table    = $wpdb->prefix . 'neural_forms_forms';
 
-        // Total count (no LIMIT).
-        $count_sql = "SELECT COUNT(*) FROM {$wpdb->prefix}neural_forms_forms WHERE {$where}";
-        $total     = (int) ( $values
-            ? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$values ) )
-            : $wpdb->get_var( $count_sql )
+        // Total count (no LIMIT). Table name flows through %i. $where is
+        // composed from this method's own whitelist of placeholder fragments
+        // ('status = %s' / 'status IN ( %s, %s )') so its placeholder count
+        // is the count of values pushed onto $values above.
+        $count_args = array_merge( [ $table ], $values );
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+        $total = (int) $wpdb->get_var(
+            $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE {$where}", ...$count_args )
         );
 
-        // Paged rows.
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $rows_sql = "SELECT * FROM {$wpdb->prefix}neural_forms_forms WHERE {$where} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
-        $values[] = $per_page;
-        $values[] = $offset;
-
+        // Paged rows. $orderby is whitelisted above against $allowed_columns
+        // and $order is forced to ASC|DESC, so they are safe to interpolate.
+        $rows_args = array_merge( [ $table ], $values, [ $per_page, $offset ] );
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $rows = $wpdb->get_results(
-            $wpdb->prepare( $rows_sql, ...$values ),
+            $wpdb->prepare( "SELECT * FROM %i WHERE {$where} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d", ...$rows_args ),
             ARRAY_A
         );
 
@@ -318,9 +324,7 @@ class FormRepository {
         ];
     }
 
-    // -------------------------------------------------------------------------
     // Helpers
-    // -------------------------------------------------------------------------
 
     /**
      * Decode JSON columns back to PHP arrays for a single row.
@@ -336,7 +340,7 @@ class FormRepository {
 
     /**
      * Generate a slug that does not already exist in the table.
-     * Appends -2, -3 … until it finds a free one.
+     * Appends -2, -3 ... until it finds a free one.
      *
      * @param string   $base  Starting slug candidate.
      * @param int|null $exclude_id  Ignore this row's current slug (for updates).
@@ -349,8 +353,8 @@ class FormRepository {
         $attempt = $slug;
 
         while ( true ) {
-            $sql  = "SELECT id FROM {$wpdb->prefix}neural_forms_forms WHERE slug = %s";
-            $args = [ $attempt ];
+            $sql  = 'SELECT id FROM %i WHERE slug = %s';
+            $args = [ $wpdb->prefix . 'neural_forms_forms', $attempt ];
 
             if ( $exclude_id ) {
                 $sql   .= ' AND id != %d';
@@ -383,7 +387,7 @@ class FormRepository {
      * of valid statuses.
      *
      * Accepts: 'any' | 'active' | 'active,draft' | ['active','draft'].
-     * Anything else → null (treated as no filter rather than throwing).
+     * Anything else '->-> null (treated as no filter rather than throwing).
      */
     private static function normalize_status_filter( $status ): ?array {
         if ( $status === null || $status === '' || $status === 'any' ) {

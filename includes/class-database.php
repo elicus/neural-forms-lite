@@ -19,7 +19,7 @@ class Database {
 
     /**
      * Run from Activator::activate() and on upgrade checks.
-     * Safe to call multiple times — dbDelta only applies changes.
+     * Safe to call multiple times - dbDelta only applies changes.
      */
     public static function create_tables(): void {
         global $wpdb;
@@ -60,7 +60,7 @@ class Database {
      * Called on every plugins_loaded so column additions are applied
      * automatically on existing installs without a deactivate/reactivate.
      *
-     * dbDelta() is safe to call repeatedly — it only applies changes.
+     * dbDelta() is safe to call repeatedly - it only applies changes.
      */
     public static function maybe_upgrade(): void {
         if ( self::needs_upgrade() ) {
@@ -68,9 +68,7 @@ class Database {
         }
     }
 
-    // -------------------------------------------------------------------------
     // Table definitions
-    // -------------------------------------------------------------------------
 
     private static function sql_forms( string $charset ): string {
         global $wpdb;
@@ -134,7 +132,7 @@ class Database {
     }
 
     /**
-     * Draft history for AI responses on an entry — fuels the carousel UI
+     * Draft history for AI responses on an entry - fuels the carousel UI
      * (prev/next) so merchants can flip between reanalyze/regenerate/polish
      * outputs before picking one to use as the canonical reply.
      *

@@ -6,7 +6,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Runs once when the plugin is deactivated via the WP plugin screen.
  *
- * Deactivation â‰  uninstall. We do NOT drop tables or delete options here.
+ * Deactivation '‰  uninstall. We do NOT drop tables or delete options here.
  * Data removal belongs in uninstall.php only.
  */
 class Deactivator {

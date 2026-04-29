@@ -11,59 +11,53 @@ defined( 'ABSPATH' ) || exit;
  * No rendering logic lives here.
  *
  * Separation of concerns:
- * ─────────────────────────────────────────────────────────────────────────────
- *   PublicForms       → hook registration, asset registration
- *   ShortcodeHandler  → [neural-forms] shortcode
- *   BlockHandler      → Gutenberg block type (Step 6)
- *   FormRenderer      → HTML output
- * ─────────────────────────────────────────────────────────────────────────────
  *
+ *   PublicForms       '->-> hook registration, asset registration
+ *   ShortcodeHandler  '->-> [neural-forms] shortcode
+ *   BlockHandler      '->-> Gutenberg block type (Step 6)
+ *   FormRenderer      '->-> HTML output
+ * *
  * Asset strategy: register-then-enqueue-on-demand
- * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Handles are registered here (on wp_enqueue_scripts) but NOT globally
  * enqueued. FormRenderer::render() calls wp_enqueue_style/script() at render
  * time, so the assets only appear on pages that actually contain a form.
- * WordPress deduplicates enqueue calls — rendering three forms on one page
+ * WordPress deduplicates enqueue calls - rendering three forms on one page
  * produces a single <link> and <script> tag.
  *
  * The inline config object (window.neuralFormsPublic) is attached to the script
  * handle via wp_add_inline_script() at registration time. It is output only
  * when the handle is enqueued, so it never appears on pages without a form.
- * ─────────────────────────────────────────────────────────────────────────────
- */
+ * */
 class PublicForms {
 
-	// -------------------------------------------------------------------------
 	// Boot
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Register all public hooks.
 	 *
 	 * Called by Neural Forms::boot_frontend() unconditionally (not inside is_admin())
 	 * because:
-	 *   • Shortcode registration must run on the frontend.
-	 *   • Block type registration (Step 6) must run in both frontend and admin
+	 *   * Shortcode registration must run on the frontend.
+	 *   * Block type registration (Step 6) must run in both frontend and admin
 	 *     contexts so the block editor can discover the block.
-	 *   • wp_enqueue_scripts only fires on the frontend, so admin pages are
+	 *   * wp_enqueue_scripts only fires on the frontend, so admin pages are
 	 *     unaffected by the asset registration hook below.
 	 */
 	public static function boot(): void {
-		// Shortcode — must be registered on or before `init`.
+		// Shortcode - must be registered on or before `init`.
 		add_action( 'init', [ ShortcodeHandler::class, 'boot' ] );
 
-		// Block type — runs in both frontend and admin contexts so the block editor
+		// Block type - runs in both frontend and admin contexts so the block editor
 		// can discover the block, and so it renders correctly on the frontend.
 		BlockHandler::boot();
 
-		// Asset registration — wp_enqueue_scripts fires on the frontend only.
+		// Asset registration - wp_enqueue_scripts fires on the frontend only.
 		// Handles are registered here; enqueue happens inside FormRenderer::render().
 		add_action( 'wp_enqueue_scripts', [ static::class, 'register_assets' ] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Asset registration
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Register frontend style and script handles, and attach the JS config object.
@@ -78,7 +72,7 @@ class PublicForms {
 	 * @internal  Public only because it is used as a hook callback.
 	 */
 	public static function register_assets(): void {
-		// ── Style ─────────────────────────────────────────────────────────
+		// ' Style '
 		wp_register_style(
 			'neural-forms-form',
 			NEURAL_FORMS_URL . 'modules/frontend/assets/css/form.css',
@@ -86,8 +80,8 @@ class PublicForms {
 			NEURAL_FORMS_VERSION
 		);
 
-		// ── Script ────────────────────────────────────────────────────────
-		// No external dependencies — form-submit.js is vanilla JS.
+		// ' Script '
+		// No external dependencies - form-submit.js is vanilla JS.
 		// Loaded in the footer (true) so it does not block page rendering.
 		wp_register_script(
 			'neural-forms-form-submit',
@@ -97,7 +91,7 @@ class PublicForms {
 			true
 		);
 
-		// ── Inline config ─────────────────────────────────────────────────
+		// ' Inline config '
 		// Output as a <script> block immediately before form-submit.js so
 		// window.neuralFormsPublic is defined when the script executes.
 		//

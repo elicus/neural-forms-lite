@@ -7,7 +7,7 @@
     "category": "embed",
     "description": "Embed a Neural Forms form on any post or page.",
     "keywords": [ "form", "contact", "submission" ],
-    "textdomain": "neural-forms",
+    "textdomain": "neural-forms-lite",
 
     "attributes": {
         "formId":       { "type": "integer" },

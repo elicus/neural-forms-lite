@@ -2,7 +2,7 @@
  * form-submit.js
  *
  * Handles Ajax form submission for all [neural-forms] forms on the page.
- * Vanilla JS — no framework, no build step, no external dependencies.
+ * Vanilla JS - no framework, no build step, no external dependencies.
  *
  * Depends on:
  *   window.neuralFormsPublic.api.url   REST API base URL, injected by
@@ -14,22 +14,20 @@
  *   .neural-forms-form-wrap
  *     form.neural-forms-form[data-neural-forms-id][data-neural-forms-version][novalidate]
  *       .neural-forms-form__fields
- *         .neural-forms-form__field[data-neural-forms-field-id]   ← one per field
- *           input | textarea | select | …
+ *         .neural-forms-form__field[data-neural-forms-field-id]   '-><- one per field
+ *           input | textarea | select | ...
  *           p.neural-forms-form__field-error[role=alert][hidden]
- *         .neural-forms-form__field--honeypot[aria-hidden]   ← bot trap, never touched
+ *         .neural-forms-form__field--honeypot[aria-hidden]   '-><- bot trap, never touched
  *       p.neural-forms-form__global-error[role=alert][hidden]
- *       div.neural-forms-form__captcha[data-neural-forms-captcha] ← present only when enabled
+ *       div.neural-forms-form__captcha[data-neural-forms-captcha] '-><- present only when enabled
  *       div.neural-forms-form__submit-wrap
  *         button.neural-forms-form__submit[type=submit]
- *     .neural-forms-form__success[hidden]                    ← sibling of <form>
+ *     .neural-forms-form__success[hidden]                    '-><- sibling of <form>
  */
 ( function () {
 	'use strict';
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Initialization
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Attach a submit handler to every .neural-forms-form on the current page.
@@ -55,9 +53,7 @@
 		initConditional( form );
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Submit handler
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Intercept form submission, POST data as JSON, handle the response.
@@ -68,7 +64,7 @@
 	function handleSubmit( e, form ) {
 		e.preventDefault();
 
-		// Double-submit guard — neural-forms-form--submitting is applied by
+		// Double-submit guard - neural-forms-form--submitting is applied by
 		// setSubmitting(). If a fetch is already in-flight, do nothing.
 		// Covers button double-click, rapid Enter-key presses, and any other
 		// path that would fire a second submit event before the first resolves.
@@ -78,7 +74,7 @@
 
 		var formId = form.getAttribute( 'data-neural-forms-id' );
 		if ( ! formId ) {
-			// Misconfigured embed — no ID to submit to.
+			// Misconfigured embed - no ID to submit to.
 			return;
 		}
 
@@ -86,11 +82,11 @@
 		clearErrors( form );
 		setSubmitting( form, true );
 
-		// ── CAPTCHA pre-submit check ─────────────────────────────────────────
+		// ' CAPTCHA pre-submit check '
 		// getCaptchaToken() returns:
-		//   null  → no CAPTCHA widget on this form → skip entirely
-		//   ''    → widget present but the user hasn't completed it → block
-		//   str   → valid token, include in payload
+		//   null  '->-> no CAPTCHA widget on this form '->-> skip entirely
+		//   ''    '->-> widget present but the user hasn't completed it '->-> block
+		//   str   '->-> valid token, include in payload
 		var captchaToken = getCaptchaToken( form );
 		if ( captchaToken === '' ) {
 			showGlobalError( form, 'Please complete the CAPTCHA verification.' );
@@ -103,7 +99,7 @@
 		var baseUrl  = getApiUrl().replace( /\/+$/, '' );
 		var endpoint = baseUrl + '/forms/' + formId + '/submit';
 
-		// ── Dual-mode submission ─────────────────────────────────────────────
+		// ' Dual-mode submission '
 		// When the form contains file fields (data-neural-forms-has-files="1"),
 		// send as multipart/form-data so file binaries are included.
 		// All other forms use JSON for consistency with the existing server path.
@@ -123,7 +119,7 @@
 			fetchOptions = {
 				method: 'POST',
 				body:   fd,
-				// Do NOT set Content-Type — the browser sets it automatically with
+				// Do NOT set Content-Type - the browser sets it automatically with
 				// the correct multipart boundary when given a FormData body.
 			};
 		} else {
@@ -138,7 +134,7 @@
 			};
 		}
 
-		// ── Request timeout via AbortController ──────────────────────────────
+		// ' Request timeout via AbortController '
 		var controller = new AbortController();
 		fetchOptions.signal = controller.signal;
 		var timeoutId = setTimeout( function () { controller.abort(); }, 12000 );
@@ -162,7 +158,7 @@
 			.then( function ( result ) {
 				switch ( result.status ) {
 
-					// ── 201 Created ───────────────────────────────────────
+					// ' 201 Created '
 					// Entry stored. Either redirect or show the inline message
 					// based on the form's on_success setting.
 					case 201:
@@ -171,11 +167,11 @@
 						}
 						break;
 
-					// ── 422 Unprocessable Entity ──────────────────────────
+					// ' 422 Unprocessable Entity '
 					// SubmissionValidator found errors. data.fields is a keyed
-					// object: { fieldId: [{ code, message }, …], … }
+					// object: { fieldId: [{ code, message }, ...], ... }
 					// Per-field validation errors are NOT routed through the
-					// on_error redirect/message setting — the user needs to
+					// on_error redirect/message setting - the user needs to
 					// see which inputs are invalid.
 					case 422:
 						var fields = (
@@ -187,7 +183,7 @@
 						showFieldErrors( form, fields );
 						break;
 
-					// ── 429 Too Many Requests ─────────────────────────────
+					// ' 429 Too Many Requests '
 					// Rate-limit filter blocked the request.
 					case 429:
 						if ( ! redirectIfConfigured( form, 'error' ) ) {
@@ -198,7 +194,7 @@
 						}
 						break;
 
-					// ── 403 Forbidden ─────────────────────────────────────
+					// ' 403 Forbidden '
 					// Form is draft or archived.
 					case 403:
 						if ( ! redirectIfConfigured( form, 'error' ) ) {
@@ -209,14 +205,14 @@
 						}
 						break;
 
-					// ── Everything else (4xx / 5xx / unexpected) ──────────
+					// ' Everything else (4xx / 5xx / unexpected) '
 					default:
 						// Log the raw API response so the exact WP_Error code and
 						// message are visible in the browser console during debugging.
 						console.error(
 							'[Neural Forms] Submission rejected (' + result.status + '):',
 							( result.body && result.body.code    ) || 'unknown',
-							'—',
+							'-',
 							( result.body && result.body.message ) || '(no message)',
 							result.body
 						);
@@ -244,7 +240,7 @@
 						errorMessage( form, 'Request timed out. Please try again.' )
 					);
 				} else {
-					// fetch() itself rejected — network offline, DNS failure, CORS, etc.
+					// fetch() itself rejected - network offline, DNS failure, CORS, etc.
 					showGlobalError(
 						form,
 						errorMessage( form, 'Could not connect. Please check your connection and try again.' )
@@ -267,9 +263,7 @@
 			} );
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Conditional logic
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Set up conditional logic for a form.
@@ -286,7 +280,7 @@
 			return;
 		}
 
-		// Initial pass — hide fields whose condition is already false on load.
+		// Initial pass - hide fields whose condition is already false on load.
 		updateConditionalFields( form );
 
 		// Re-evaluate on every input interaction.
@@ -377,7 +371,7 @@
 	/**
 	 * Evaluate a single condition rule.
 	 *
-	 * Mirrors the PHP evaluate_conditional() logic in SubmitEndpoint — both
+	 * Mirrors the PHP evaluate_conditional() logic in SubmitEndpoint - both
 	 * sides must behave identically so hidden fields stay hidden on the server.
 	 *
 	 * @param  {string} operator      One of: equals, not_equals, contains, empty, not_empty.
@@ -395,7 +389,7 @@
 			case 'contains':   return v.indexOf( r ) !== -1;
 			case 'empty':      return v.trim() === '';
 			case 'not_empty':  return v.trim() !== '';
-			default:           return true;  // unknown operator — show by default
+			default:           return true;  // unknown operator - show by default
 		}
 	}
 
@@ -426,7 +420,7 @@
 	 * Return true if the element is inside a hidden conditional field wrapper.
 	 *
 	 * Used by serializeForm() and buildFormData() to skip fields that are
-	 * currently hidden — belt-and-suspenders in addition to clearFieldValues().
+	 * currently hidden - belt-and-suspenders in addition to clearFieldValues().
 	 *
 	 * @param  {Element}        el    A form control element.
 	 * @param  {HTMLFormElement} form  The parent form.
@@ -443,20 +437,18 @@
 		return false;
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Serialization
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Collect all named form controls into a plain { name: value } object.
 	 *
 	 * Type rules:
-	 *   checkbox  → integer 1 (checked) or 0 (unchecked). Matches what
+	 *   checkbox  '->-> integer 1 (checked) or 0 (unchecked). Matches what
 	 *               SubmissionValidator::CHECKED_CHECKBOX_VALUES expects.
-	 *   radio     → string value of the checked option only; absent if none
+	 *   radio     '->-> string value of the checked option only; absent if none
 	 *               checked, so the server's required check fires correctly.
-	 *   file      → skipped — files are not sent via the JSON path.
-	 *   all other → string .value property.
+	 *   file      '->-> skipped - files are not sent via the JSON path.
+	 *   all other '->-> string .value property.
 	 *
 	 * The honeypot field (name="neural_forms_website") is included deliberately.
 	 * Real users leave it empty; bots that fill it trigger spam_detected 400
@@ -493,12 +485,12 @@
 			} else if ( el.type === 'checkbox' ) {
 				data[ el.name ] = el.checked ? 1 : 0;
 			} else if ( el.type === 'radio' ) {
-				// Write only when checked — leave the key absent for unchecked radios.
+				// Write only when checked - leave the key absent for unchecked radios.
 				if ( el.checked ) {
 					data[ el.name ] = el.value;
 				}
 			} else {
-				// text, email, tel, number, textarea, select, hidden, …
+				// text, email, tel, number, textarea, select, hidden, ...
 				data[ el.name ] = el.value;
 			}
 		}
@@ -567,7 +559,7 @@
 	 * file input and compares it against the selected file size. Returns an
 	 * error message string on the first violation, or null when all files pass.
 	 *
-	 * This is a UX convenience only — the server re-validates sizes
+	 * This is a UX convenience only - the server re-validates sizes
 	 * independently and is the authoritative gate.
 	 *
 	 * @param  {HTMLFormElement} form
@@ -594,9 +586,7 @@
 		return null;
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// UI state
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Reset all field-level and global error state before a new attempt.
@@ -604,14 +594,14 @@
 	 * @param {HTMLFormElement} form
 	 */
 	function clearErrors( form ) {
-		// Field error paragraphs — empty text, restore [hidden].
+		// Field error paragraphs - empty text, restore [hidden].
 		var fieldErrors = form.querySelectorAll( '.neural-forms-form__field-error' );
 		for ( var i = 0; i < fieldErrors.length; i++ ) {
 			fieldErrors[ i ].textContent = '';
 			fieldErrors[ i ].hidden      = true;
 		}
 
-		// Field wrappers — remove BEM error modifier (drives red-border CSS)
+		// Field wrappers - remove BEM error modifier (drives red-border CSS)
 		// and clear aria-invalid on the contained input.
 		var errorWrappers = form.querySelectorAll( '.neural-forms-form__field--has-error' );
 		for ( var i = 0; i < errorWrappers.length; i++ ) {
@@ -622,7 +612,7 @@
 			}
 		}
 
-		// Global error paragraph — empty text, restore [hidden].
+		// Global error paragraph - empty text, restore [hidden].
 		var globalError = form.querySelector( '.neural-forms-form__global-error' );
 		if ( globalError ) {
 			globalError.textContent = '';
@@ -634,14 +624,14 @@
 	 * Toggle the in-flight state.
 	 *
 	 * neural-forms-form--submitting on <form>: CSS hook to reduce opacity (but
-	 * NOT block pointer-events — the button itself is disabled, and the class
+	 * NOT block pointer-events - the button itself is disabled, and the class
 	 * guard at the top of handleSubmit prevents double-submit).
 	 *
 	 * When entering the submitting state:
-	 *   • The original button text is stashed in a data attribute.
-	 *   • The button text is replaced with "Submitting…" and a CSS spinner.
+	 *   * The original button text is stashed in a data attribute.
+	 *   * The button text is replaced with "Submitting..." and a CSS spinner.
 	 * When leaving:
-	 *   • The original text is restored from the data attribute.
+	 *   * The original text is restored from the data attribute.
 	 *
 	 * @param {HTMLFormElement} form
 	 * @param {boolean}         isSubmitting
@@ -671,12 +661,10 @@
 		}
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Response handlers
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
-	 * Outcome routing — per-form on_success / on_error setting.
+	 * Outcome routing - per-form on_success / on_error setting.
 	 *
 	 * Reads data-on-{success|error}-mode + data-on-{success|error}-url from
 	 * the form. When mode === 'redirect' and a non-empty URL is present,
@@ -685,7 +673,7 @@
 	 *
 	 * @param  {HTMLFormElement} form
 	 * @param  {string} kind  'success' or 'error'
-	 * @return {boolean}      true → caller should not render inline UI
+	 * @return {boolean}      true '->-> caller should not render inline UI
 	 */
 	function redirectIfConfigured( form, kind ) {
 		var modeAttr = 'data-on-' + kind + '-mode';
@@ -695,7 +683,7 @@
 		if ( mode !== 'redirect' || ! url ) {
 			return false;
 		}
-		// Use assign() rather than href = … so the redirect appears in the
+		// Use assign() rather than href = ... so the redirect appears in the
 		// session history; lets the user back-navigate to the form page.
 		try {
 			window.location.assign( url );
@@ -706,7 +694,7 @@
 	}
 
 	/**
-	 * Resolve the visible error message — admin-supplied data-on-error-message
+	 * Resolve the visible error message - admin-supplied data-on-error-message
 	 * wins over the default the caller passed in. Empty string falls through
 	 * to the caller's default.
 	 *
@@ -720,7 +708,7 @@
 	}
 
 	/**
-	 * 201 — Hide the form, reveal the success message.
+	 * 201 - Hide the form, reveal the success message.
 	 *
 	 * .neural-forms-form__success is a sibling of <form> inside .neural-forms-form-wrap,
 	 * not a child, so setting form.hidden = true does not also hide it.
@@ -772,13 +760,13 @@
 	}
 
 	/**
-	 * 422 — Display per-field error messages and scroll to the first one.
+	 * 422 - Display per-field error messages and scroll to the first one.
 	 *
 	 * The error <p> elements are pre-rendered by FormRenderer with [hidden]
 	 * and empty text. This function sets their text and removes [hidden].
 	 * Field wrappers receive .neural-forms-form__field--has-error for CSS red-border styling.
 	 *
-	 * Only the first error per field is shown — displaying a stack of errors
+	 * Only the first error per field is shown - displaying a stack of errors
 	 * per field would overwhelm the user. The server still sends all of them;
 	 * the unused ones are silently discarded here.
 	 *
@@ -786,7 +774,7 @@
 	 * server returned them, so the user always sees the topmost visible error.
 	 *
 	 * @param {HTMLFormElement} form
-	 * @param {Object}          fields  { fieldId: [{ code, message }, …], … }
+	 * @param {Object}          fields  { fieldId: [{ code, message }, ...], ... }
 	 */
 	function showFieldErrors( form, fields ) {
 		for ( var fieldId in fields ) {
@@ -805,13 +793,13 @@
 			if ( ! wrapper ) {
 				// Field is in the server response but not in the DOM.
 				// Possible if the schema was updated after the page was rendered.
-				// Safe to skip — the global error below is not triggered here.
+				// Safe to skip - the global error below is not triggered here.
 				continue;
 			}
 
 			var errorEl = wrapper.querySelector( '.neural-forms-form__field-error' );
 			if ( errorEl ) {
-				// textContent (not innerHTML) — error messages are plain text;
+				// textContent (not innerHTML) - error messages are plain text;
 				// no HTML rendering needed or wanted.
 				errorEl.textContent = message;
 				errorEl.hidden      = false;
@@ -845,7 +833,7 @@
 	}
 
 	/**
-	 * Non-field errors (429, 403, 5xx, network) — populate the global error bar.
+	 * Non-field errors (429, 403, 5xx, network) - populate the global error bar.
 	 *
 	 * @param {HTMLFormElement} form
 	 * @param {string}          message  Plain text, displayed verbatim.
@@ -858,24 +846,22 @@
 		}
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Utilities
-	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Read the CAPTCHA token from the provider-injected hidden input.
 	 *
 	 * Returns:
-	 *   null  — no .neural-forms-form__captcha widget found on this form.
+	 *   null  - no .neural-forms-form__captcha widget found on this form.
 	 *           Caller should skip CAPTCHA entirely.
-	 *   ''    — widget found but the user has not yet completed the challenge.
+	 *   ''    - widget found but the user has not yet completed the challenge.
 	 *           Caller should block submission and show an error.
-	 *   str   — token string, ready to include in the submission payload.
+	 *   str   - token string, ready to include in the submission payload.
 	 *
 	 * Both Turnstile and reCAPTCHA v2 inject a hidden <input> or <textarea>
 	 * into the form when the user completes the challenge:
-	 *   Turnstile    → input[name="cf-turnstile-response"]
-	 *   reCAPTCHA v2 → textarea[name="g-recaptcha-response"]
+	 *   Turnstile    '->-> input[name="cf-turnstile-response"]
+	 *   reCAPTCHA v2 '->-> textarea[name="g-recaptcha-response"]
 	 *
 	 * data-neural-forms-captcha on the widget div stores the provider slug so we
 	 * know which name to look for without checking the global SDK objects.
@@ -904,7 +890,7 @@
 
 		var input = form.querySelector( '[name="' + inputName + '"]' );
 		if ( ! input ) {
-			// SDK hasn't injected the input yet — widget incomplete.
+			// SDK hasn't injected the input yet - widget incomplete.
 			return '';
 		}
 
@@ -921,7 +907,7 @@
 	 *               Multi-form pages with reCAPTCHA would need widget IDs,
 	 *               which is out of scope for MVP.
 	 *
-	 * Both calls are guarded — if the SDK has not loaded or the widget div
+	 * Both calls are guarded - if the SDK has not loaded or the widget div
 	 * is absent, the reset is silently skipped.
 	 *
 	 * @param {HTMLFormElement} form
@@ -956,11 +942,9 @@
 		) || '';
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Bootstrap
-	// ─────────────────────────────────────────────────────────────────────────
 
-	// wp_register_script( …, true ) loads this file in the footer, after the
+	// wp_register_script( ..., true ) loads this file in the footer, after the
 	// DOM is parsed, so readyState will almost always be 'complete' here.
 	// The DOMContentLoaded branch is a safe fallback for edge cases (e.g. the
 	// script somehow appearing in <head>).

@@ -1,4 +1,8 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// Direct $wpdb call against a wp_neural_forms_* table; admin-only path,
+// fresh-per-request semantics, no shared cache key worth invalidating.
 namespace NeuralForms\Migration;
 
 use NeuralForms\Forms\FormRepository;
@@ -9,8 +13,8 @@ defined( 'ABSPATH' ) || exit;
  * Orchestrates the migration of a CF7 form into Neural Forms.
  *
  * Two-step workflow:
- *   1. preview( $cf7_id ) — dry-run that shows what the import would produce.
- *   2. import( $cf7_id )  — creates the Neural Forms form row.
+ *   1. preview( $cf7_id ) - dry-run that shows what the import would produce.
+ *   2. import( $cf7_id )  - creates the Neural Forms form row.
  *
  * All methods are static. The actual form persistence is delegated to
  * FormRepository::create().
@@ -30,13 +34,14 @@ class CF7Migrator {
 
 		$table = $wpdb->prefix . 'neural_forms_forms';
 
-		// Use LIKE on the JSON settings column — simple, compatible with MySQL 5.7+.
+		// Use LIKE on the JSON settings column - simple, compatible with MySQL 5.7+.
 		// The pattern matches "cf7_form_id": 123 (with or without spaces after colon).
 		$pattern = '%"cf7_form_id":%' . $wpdb->esc_like( (string) $cf7_id ) . '%';
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT id, name, status, settings FROM {$table} WHERE settings LIKE %s ORDER BY id DESC",
+				'SELECT id, name, status, settings FROM %i WHERE settings LIKE %s ORDER BY id DESC',
+				$table,
 				$pattern
 			),
 			ARRAY_A
@@ -147,7 +152,7 @@ class CF7Migrator {
 				'skipped'     => $result['skipped'],
 				'warnings'    => array_merge(
 					$result['warnings'],
-					[ 'No mappable fields found — import aborted.' ]
+					[ 'No mappable fields found - import aborted.' ]
 				),
 			];
 		}

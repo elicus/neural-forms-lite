@@ -39,9 +39,9 @@ class Config {
         'autoresponder_body'        => "Hi,\n\nThank you for reaching out. We'll be in touch shortly.\n\n{site_name}",
 
         // AI spam detection
-        'ai_spam_enabled'              => false,   // master switch — off by default
+        'ai_spam_enabled'              => false,   // master switch - off by default
         'ai_spam_mode'                 => 'suggest', // 'suggest' | 'auto'
-        'ai_spam_threshold'            => 85,      // 60–100; auto-move only above this confidence
+        'ai_spam_threshold'            => 85,      // 60-100; auto-move only above this confidence
         'email_skip_spam_notifications' => false,  // skip email notifications for spam entries
 
         // CAPTCHA
@@ -49,19 +49,18 @@ class Config {
         'captcha_site_key'   => '',           // public key, rendered in HTML
         'captcha_secret_key' => '',           // private key, used only server-side
 
-        // Neural Forms Cloud AI
+        // Neural Forms Cloud AI. The cloud URL itself is no longer stored as
+        // an option - it is resolved by AiManager::resolve_base_url() from
+        // the NEURAL_FORMS_CLOUD_API_URL constant or the production default.
         'cloud_ai_enabled'      => false,       // use Cloud API instead of direct provider calls
         'cloud_api_key'         => '',          // Bearer token for api.neuralforms.ai
-        'cloud_api_base_url'    => 'https://api.neuralforms.ai', // override via NEURAL_FORMS_CLOUD_API_URL constant for dev
         'cloud_signup_complete' => false,      // sticky once a key has been saved; suppresses first-run signup overlay even after revoke
     ];
 
     /** In-memory cache so we only hit the DB once per request. */
     private static ?array $cache = null;
 
-    // -------------------------------------------------------------------------
     // Public API
-    // -------------------------------------------------------------------------
 
     /**
      * Get a single setting value.
@@ -85,7 +84,7 @@ class Config {
     }
 
     /**
-     * Persist multiple settings at once (partial update — unmentioned keys
+     * Persist multiple settings at once (partial update - unmentioned keys
      * keep their existing values).
      *
      * @param array $new_values Associative array of key => value pairs.
@@ -124,7 +123,7 @@ class Config {
     /**
      * Returns the current feature-flag state.
      *
-     * Flags that map to a stored setting are driven by that value — flipping
+     * Flags that map to a stored setting are driven by that value - flipping
      * the setting in the DB automatically toggles the flag everywhere,
      * including the JS boot data exposed to the React app.
      *

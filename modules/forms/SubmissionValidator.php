@@ -7,23 +7,23 @@ defined( 'ABSPATH' ) || exit;
  * Validates submitted form data against a stored form schema.
  *
  * Responsibility boundary
- * ──────────────────────
- * This class checks whether submitted values are *acceptable* — it does not
+ *
+ * This class checks whether submitted values are *acceptable* - it does not
  * sanitize, store, or make any network or database calls.
  *
  * Compare to FormValidator (schema validation):
- *   FormValidator::validate_schema()   — checks field definitions at save time.
- *   SubmissionValidator::validate()    — checks submitted values at request time.
+ *   FormValidator::validate_schema()   - checks field definitions at save time.
+ *   SubmissionValidator::validate()    - checks submitted values at request time.
  *
  * Error collection
- * ────────────────
+ *
  * Unlike FormValidator (which returns on the first schema error), this class
  * collects errors for every field before returning. That lets the client
  * highlight all invalid fields in one round-trip rather than correcting
  * one error only to discover the next.
  *
  * Error shape
- * ───────────
+ *
  * Each field error in data['fields'] is an associative array:
  *   [ 'code' => 'required', 'message' => 'Name is required.' ]
  *
@@ -31,7 +31,7 @@ defined( 'ABSPATH' ) || exit;
  * The 'message' is human-readable for display. Both are always present.
  *
  * Extension hook
- * ──────────────
+ *
  * apply_filters( 'neural_forms_validate_submission_field', null, $field, $value )
  *
  * Fires after all built-in checks pass for a field. Return a WP_Error to
@@ -48,13 +48,11 @@ defined( 'ABSPATH' ) || exit;
  */
 class SubmissionValidator {
 
-	// -------------------------------------------------------------------------
 	// Checkbox value constants
 	//
 	// Defined here as the single source of truth. The endpoint sanitization
 	// step and any future UI code must reference these rather than repeating
 	// the accepted set independently.
-	// -------------------------------------------------------------------------
 
 	/**
 	 * All raw values a checkbox field may legally submit.
@@ -78,25 +76,21 @@ class SubmissionValidator {
 	 */
 	public const CHECKED_CHECKBOX_VALUES = [ 1, '1', true ];
 
-	// -------------------------------------------------------------------------
 	// Types whose string values are trimmed before validation
 	//
 	// For these types, a value of "   " is treated as absent/empty during
-	// validation — same as how sanitize_text_field() etc. behave at store time.
+	// validation - same as how sanitize_text_field() etc. behave at store time.
 	// Trimming here is for validation only; the endpoint sanitizes independently.
-	// -------------------------------------------------------------------------
 
 	private const TRIMMABLE_TYPES = [ 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date' ];
 
-	// -------------------------------------------------------------------------
 	// Public API
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Validate submitted data against the form's schema fields.
 	 *
 	 * The submitted_data array is expected to have already been stripped of
-	 * unknown keys by the endpoint — this validator iterates schema fields
+	 * unknown keys by the endpoint - this validator iterates schema fields
 	 * only, so any extra keys in submitted_data are naturally ignored.
 	 *
 	 * @param array $schema_fields  The 'fields' array from the stored form_schema.
@@ -111,7 +105,7 @@ class SubmissionValidator {
 
 			$field_id = $field['id'] ?? '';
 
-			// Skip malformed entries — FormValidator enforces this at save time,
+			// Skip malformed entries - FormValidator enforces this at save time,
 			// but guard defensively in case the schema was written externally.
 			if ( $field_id === '' ) {
 				continue;
@@ -120,7 +114,7 @@ class SubmissionValidator {
 			$type = $field['type'] ?? 'text';
 
 			// Use array_key_exists rather than isset so an explicitly submitted
-			// null is treated the same as a missing key — both mean the client
+			// null is treated the same as a missing key - both mean the client
 			// sent no usable value for this field.
 			$value = array_key_exists( $field_id, $submitted_data )
 				? $submitted_data[ $field_id ]
@@ -129,43 +123,43 @@ class SubmissionValidator {
 			// For text-like types, trim whitespace before all validation checks.
 			// "   " is not a useful value for any of these types and would
 			// otherwise pass the required check or the is_absent() guard.
-			// This is purely for validation — the endpoint sanitizes separately.
+			// This is purely for validation - the endpoint sanitizes separately.
 			$check_value = self::maybe_trim( $value, $type );
 
-			// ── Required check ───────────────────────────────────────────────
+			// ' Required check '
 			$required_error = self::check_required( $field, $check_value );
 			if ( $required_error !== null ) {
-				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, …] }
+				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, ...] }
 				$errors[ $field_id ] = [ $required_error ];
-				// Do not run type checks — there is nothing meaningful to check.
+				// Do not run type checks - there is nothing meaningful to check.
 				continue;
 			}
 
-			// ── Skip type checks for absent optional values ──────────────────
+			// ' Skip type checks for absent optional values '
 			// If the field is not required and no value was submitted, it is
 			// valid as-is. Type checks only make sense for present values.
 			if ( self::is_absent( $check_value ) ) {
 				continue;
 			}
 
-			// ── Type-specific format checks ──────────────────────────────────
+			// ' Type-specific format checks '
 			$type_error = self::check_type( $field, $check_value );
 			if ( $type_error !== null ) {
-				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, …] }
+				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, ...] }
 				$errors[ $field_id ] = [ $type_error ];
-				// Skip the hook for fields that already failed — providing a
+				// Skip the hook for fields that already failed - providing a
 				// malformed value to extensions would produce misleading results.
 				continue;
 			}
 
-			// ── Extension hook ───────────────────────────────────────────────
+			// ' Extension hook '
 			// Fires only when all built-in checks have passed. Extensions
-			// receive the trimmed value — do not make security decisions based
+			// receive the trimmed value - do not make security decisions based
 			// on it; use it for format or business-rule checks only.
 			$hook_result = apply_filters( 'neural_forms_validate_submission_field', null, $field, $check_value );
 
 			if ( is_wp_error( $hook_result ) ) {
-				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, …] }
+				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, ...] }
 				$errors[ $field_id ] = [ [
 					'code'    => $hook_result->get_error_code(),
 					'message' => $hook_result->get_error_message(),
@@ -178,11 +172,11 @@ class SubmissionValidator {
 		}
 
 		// Return a single WP_Error containing all field errors.
-		// The top-level message is intentionally generic — callers should
+		// The top-level message is intentionally generic - callers should
 		// read data['fields'] to get the per-field codes and messages.
 		return new \WP_Error(
 			'invalid_submission',
-			__( 'The submission contains errors. Please check the fields below.', 'neural-forms' ),
+			__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
 			[
 				'status' => 422,
 				'fields' => $errors,
@@ -190,9 +184,7 @@ class SubmissionValidator {
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Private helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Check the required constraint for a single field.
@@ -222,7 +214,7 @@ class SubmissionValidator {
 				return [
 					'code'    => 'required',
 					/* translators: %s: field label */
-					'message' => sprintf( __( '%s must be checked.', 'neural-forms' ), $label ),
+					'message' => sprintf( __( '%s must be checked.', 'neural-forms-lite' ), $label ),
 				];
 			}
 			return null;
@@ -233,7 +225,7 @@ class SubmissionValidator {
 				return [
 					'code'    => 'required',
 					/* translators: %s: field label */
-					'message' => sprintf( __( 'Please select at least one option for %s.', 'neural-forms' ), $label ),
+					'message' => sprintf( __( 'Please select at least one option for %s.', 'neural-forms-lite' ), $label ),
 				];
 			}
 			return null;
@@ -243,7 +235,7 @@ class SubmissionValidator {
 			return [
 				'code'    => 'required',
 				/* translators: %s: field label */
-				'message' => sprintf( __( '%s is required.', 'neural-forms' ), $label ),
+				'message' => sprintf( __( '%s is required.', 'neural-forms-lite' ), $label ),
 			];
 		}
 
@@ -257,7 +249,7 @@ class SubmissionValidator {
 	 * failure, or null when the value is acceptable.
 	 *
 	 * Called only after is_absent() returns false, so $value is never null
-	 * or empty string here (checkbox is the only exception — it has its own
+	 * or empty string here (checkbox is the only exception - it has its own
 	 * handling via is_valid_checkbox_value()).
 	 *
 	 * @param array $field
@@ -275,7 +267,7 @@ class SubmissionValidator {
 					return [
 						'code'    => 'invalid_email',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s must be a valid email address.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s must be a valid email address.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				break;
@@ -285,7 +277,7 @@ class SubmissionValidator {
 					return [
 						'code'    => 'invalid_number',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s must be a number.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				break;
@@ -305,7 +297,7 @@ class SubmissionValidator {
 					return [
 						'code'    => 'invalid_option',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s contains an invalid selection.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s contains an invalid selection.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				break;
@@ -315,7 +307,7 @@ class SubmissionValidator {
 					return [
 						'code'    => 'invalid_url',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s must be a valid URL.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s must be a valid URL.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				break;
@@ -326,7 +318,7 @@ class SubmissionValidator {
 					return [
 						'code'    => 'invalid_date',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s must be a valid date.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s must be a valid date.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				break;
@@ -336,7 +328,7 @@ class SubmissionValidator {
 					return [
 						'code'    => 'invalid_range',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s must be a number.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				$num = (float) $value;
@@ -346,14 +338,14 @@ class SubmissionValidator {
 					return [
 						'code'    => 'range_below_min',
 						/* translators: 1: field label, 2: minimum value */
-						'message' => sprintf( __( '%1$s must be at least %2$s.', 'neural-forms' ), $label, $min ),
+						'message' => sprintf( __( '%1$s must be at least %2$s.', 'neural-forms-lite' ), $label, $min ),
 					];
 				}
 				if ( $max !== null && $num > $max ) {
 					return [
 						'code'    => 'range_above_max',
 						/* translators: 1: field label, 2: maximum value */
-						'message' => sprintf( __( '%1$s must be at most %2$s.', 'neural-forms' ), $label, $max ),
+						'message' => sprintf( __( '%1$s must be at most %2$s.', 'neural-forms-lite' ), $label, $max ),
 					];
 				}
 				break;
@@ -362,7 +354,8 @@ class SubmissionValidator {
 				if ( ! is_array( $value ) ) {
 					return [
 						'code'    => 'invalid_checkboxes',
-						'message' => sprintf( __( '%s must be an array of selections.', 'neural-forms' ), $label ),
+						/* translators: %s: field label */
+						'message' => sprintf( __( '%s must be an array of selections.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				$allowed = self::get_select_option_values( $field );
@@ -371,7 +364,8 @@ class SubmissionValidator {
 						if ( ! in_array( (string) $v, $allowed, true ) ) {
 							return [
 								'code'    => 'invalid_option',
-								'message' => sprintf( __( '%s contains an invalid selection.', 'neural-forms' ), $label ),
+								/* translators: %s: field label */
+								'message' => sprintf( __( '%s contains an invalid selection.', 'neural-forms-lite' ), $label ),
 							];
 						}
 					}
@@ -381,12 +375,12 @@ class SubmissionValidator {
 			case 'checkbox':
 			case 'acceptance':
 				// Value is present (not absent) but may still be outside the
-				// accepted set — e.g. a client sent "yes" or an arbitrary string.
+				// accepted set - e.g. a client sent "yes" or an arbitrary string.
 				if ( ! self::is_valid_checkbox_value( $value ) ) {
 					return [
 						'code'    => 'invalid_checkbox',
 						/* translators: %s: field label */
-						'message' => sprintf( __( '%s contains an invalid value.', 'neural-forms' ), $label ),
+						'message' => sprintf( __( '%s contains an invalid value.', 'neural-forms-lite' ), $label ),
 					];
 				}
 				break;
@@ -426,10 +420,10 @@ class SubmissionValidator {
 	}
 
 	/**
-	 * True when a value is absent — null or empty string.
+	 * True when a value is absent - null or empty string.
 	 *
 	 * Used to skip type checks for optional fields that were not submitted.
-	 * A checkbox with value 0 or '0' is NOT absent — the client explicitly
+	 * A checkbox with value 0 or '0' is NOT absent - the client explicitly
 	 * submitted "unchecked". Only null (key missing) and '' (empty payload
 	 * value) represent "nothing was sent".
 	 *
@@ -444,7 +438,7 @@ class SubmissionValidator {
 	 * True when a checkbox value represents "checked".
 	 *
 	 * References CHECKED_CHECKBOX_VALUES as the single source of truth.
-	 * Only the values in that constant — integer 1, string '1', boolean true —
+	 * Only the values in that constant - integer 1, string '1', boolean true -
 	 * are considered checked. All other ACCEPTED_CHECKBOX_VALUES mean unchecked.
 	 *
 	 * @param mixed $value
@@ -506,7 +500,7 @@ class SubmissionValidator {
 			$label   = (string) ( $opt['label']  ?? '' );
 			// Mirror FormRenderer: if value is empty, use label as the effective
 			// value. This ensures the allowed-values list matches what the renderer
-			// emits in the <option value="…"> attribute.
+			// emits in the <option value="..."> attribute.
 			$effective = $raw_val !== '' ? $raw_val : $label;
 			if ( $effective !== '' ) {
 				$values[] = $effective;

@@ -13,14 +13,14 @@ defined( 'ABSPATH' ) || exit;
 /**
  * REST routes for plugin settings (admin-only).
  *
- * GET  /neural-forms/v1/settings  — Returns safe settings (API key never exposed raw).
- * PATCH /neural-forms/v1/settings — Partial update; unmentioned keys are preserved.
+ * GET  /neural-forms/v1/settings  - Returns safe settings (API key never exposed raw).
+ * PATCH /neural-forms/v1/settings - Partial update; unmentioned keys are preserved.
  *
  * Both routes require manage_options capability.
  *
  * API keys (cloud_api_key, captcha_secret_key) are write-only from the UI perspective:
- *   • GET returns *_set: bool (true if a key is stored), never the raw value.
- *   • PATCH accepts a new key value to overwrite; omitting a key leaves it unchanged.
+ *   * GET returns *_set: bool (true if a key is stored), never the raw value.
+ *   * PATCH accepts a new key value to overwrite; omitting a key leaves it unchanged.
  * This prevents keys from appearing in browser dev tools / network logs.
  */
 class SettingsEndpoint {
@@ -76,16 +76,14 @@ class SettingsEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Handlers
-	// -------------------------------------------------------------------------
 
 	public function get_settings( WP_REST_Request $request ) {
 		$all = Config::all();
 
 		// Derived signup-complete: sticky once the user has saved a key OR has
 		// previously revoked one. The revoke snapshot acts as a backfill marker
-		// for installs that connected before `cloud_signup_complete` existed —
+		// for installs that connected before `cloud_signup_complete` existed -
 		// without it, those installs would re-see the first-run overlay on
 		// upgrade. Setting cloud_api_key implies signup happened on this site.
 		$signup_complete = ! empty( $all['cloud_signup_complete'] )
@@ -112,12 +110,12 @@ class SettingsEndpoint {
 			'ai_spam_threshold'            => (int) ( $all['ai_spam_threshold']             ?? 85 ),
 			'email_skip_spam_notifications' => (bool) ( $all['email_skip_spam_notifications'] ?? false ),
 
-			// CAPTCHA — secret key is write-only; only a boolean "is it set?" is returned.
+			// CAPTCHA - secret key is write-only; only a boolean "is it set?" is returned.
 			'captcha_provider'        => (string) ( $all['captcha_provider']   ?? 'none' ),
 			'captcha_site_key'        => (string) ( $all['captcha_site_key']   ?? '' ),
 			'captcha_secret_key_set'  => ! empty( $all['captcha_secret_key'] ),
 
-			// Neural Forms Cloud AI — cloud key is write-only.
+			// Neural Forms Cloud AI - cloud key is write-only.
 			'cloud_ai_enabled'       => (bool) ( $all['cloud_ai_enabled']    ?? false ),
 			'cloud_api_key_set'      => ! empty( $all['cloud_api_key'] ),
 			'cloud_signup_complete'  => $signup_complete,
@@ -177,7 +175,7 @@ class SettingsEndpoint {
 			$updates['email_skip_spam_notifications'] = (bool) $request->get_param( 'email_skip_spam_notifications' );
 		}
 
-		// Neural Forms Cloud AI settings ─────────────────────────────────────
+		// Neural Forms Cloud AI settings '
 		if ( null !== $request->get_param( 'cloud_ai_enabled' ) ) {
 			$updates['cloud_ai_enabled'] = (bool) $request->get_param( 'cloud_ai_enabled' );
 		}
@@ -186,7 +184,7 @@ class SettingsEndpoint {
 		if ( null !== $cloud_key && trim( (string) $cloud_key ) !== '' ) {
 			$updates['cloud_api_key'] = sanitize_text_field( (string) $cloud_key );
 		}
-		// CAPTCHA settings ────────────────────────────────────────────────────
+		// CAPTCHA settings '
 		if ( null !== $request->get_param( 'captcha_provider' ) ) {
 			$updates['captcha_provider'] = sanitize_text_field( (string) $request->get_param( 'captcha_provider' ) );
 		}
@@ -203,12 +201,12 @@ class SettingsEndpoint {
 		if ( empty( $updates ) ) {
 			return new WP_Error(
 				'no_settings',
-				__( 'No settings provided.', 'neural-forms' ),
+				__( 'No settings provided.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		// ── Config validation: prevent enabling features without prerequisites ──
+		// ' Config validation: prevent enabling features without prerequisites '
 
 		// CAPTCHA: reject enabling a provider when keys are missing.
 		$captcha_provider = $updates['captcha_provider'] ?? (string) Config::get( 'captcha_provider' );
@@ -221,7 +219,7 @@ class SettingsEndpoint {
 			if ( trim( (string) $site_key ) === '' || ! $secret_set ) {
 				return new WP_Error(
 					'captcha_keys_required',
-					__( 'CAPTCHA cannot be enabled without both a Site Key and a Secret Key.', 'neural-forms' ),
+					__( 'CAPTCHA cannot be enabled without both a Site Key and a Secret Key.', 'neural-forms-lite' ),
 					[ 'status' => 422 ]
 				);
 			}
@@ -237,7 +235,7 @@ class SettingsEndpoint {
 			if ( $cloud_key_value === '' ) {
 				return new WP_Error(
 					'cloud_api_key_required',
-					__( 'Cloud AI cannot be enabled without an API key. Add a key first.', 'neural-forms' ),
+					__( 'Cloud AI cannot be enabled without an API key. Add a key first.', 'neural-forms-lite' ),
 					[ 'status' => 422 ]
 				);
 			}
@@ -255,7 +253,7 @@ class SettingsEndpoint {
 						'cloud_api_key_invalid',
 						sprintf(
 							/* translators: %s: error detail from the Cloud API */
-							__( 'Cloud AI key validation failed: %s', 'neural-forms' ),
+							__( 'Cloud AI key validation failed: %s', 'neural-forms-lite' ),
 							$test_result->get_error_message()
 						),
 						[ 'status' => 422 ]
@@ -288,7 +286,7 @@ class SettingsEndpoint {
 		}
 
 		// Guard: spam detection requires the plugin-level capability.
-		// Reject with 422 if the caller tries to turn it on without Pro —
+		// Reject with 422 if the caller tries to turn it on without Pro -
 		// the UI should prevent this via the SpamPanel upsell, so hitting
 		// this branch usually means a direct REST call.
 		if (
@@ -298,7 +296,7 @@ class SettingsEndpoint {
 		) {
 			return new WP_Error(
 				'pro_feature_locked',
-				__( 'Spam detection requires Neural Forms Pro.', 'neural-forms' ),
+				__( 'Spam detection requires Neural Forms Pro.', 'neural-forms-lite' ),
 				[
 					'status'       => 422,
 					'feature'      => Capabilities::AI_SPAM_DETECT,
@@ -358,17 +356,14 @@ class SettingsEndpoint {
 		if ( $api_key === '' ) {
 			return new WP_Error(
 				'missing_key',
-				__( 'No API key provided and no saved key found.', 'neural-forms' ),
+				__( 'No API key provided and no saved key found.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		// Resolve the base URL using the same priority as AiManager.
-		$base_url = defined( 'NEURAL_FORMS_CLOUD_API_URL' )
-			? NEURAL_FORMS_CLOUD_API_URL
-			: (string) Config::get( 'cloud_api_base_url', 'https://api.neuralforms.ai' );
-
-		$base_url = rtrim( (string) apply_filters( 'neural_forms_cloud_api_url', $base_url ), '/' );
+		// Single source of truth for the cloud URL - same resolution path
+		// AiManager uses on every request.
+		$base_url = \NeuralForms\AI\AiManager::resolve_base_url();
 
 		$response = wp_remote_get( $base_url . '/v1/auth/me', [
 			'timeout' => 15,
@@ -438,7 +433,7 @@ class SettingsEndpoint {
 	 * can't leak into the disconnected UI.
 	 *
 	 * Before wiping, snapshot the AI toggles to a separate option so they
-	 * can be auto-restored the next time the admin pastes a valid key —
+	 * can be auto-restored the next time the admin pastes a valid key -
 	 * otherwise reconnecting forces them to reconfigure every flag.
 	 *
 	 * @param WP_REST_Request $request
@@ -484,8 +479,8 @@ class SettingsEndpoint {
 	public function send_test_email( WP_REST_Request $request ) {
 		$to = sanitize_email( (string) $request->get_param( 'email' ) );
 
-		$subject = __( 'Neural Forms Test Email', 'neural-forms' );
-		$message = __( 'This is a test email from Neural Forms. If you received this, email is working.', 'neural-forms' );
+		$subject = __( 'Neural Forms Test Email', 'neural-forms-lite' );
+		$message = __( 'This is a test email from Neural Forms. If you received this, email is working.', 'neural-forms-lite' );
 		$headers = [ 'Content-Type: text/plain; charset=UTF-8' ];
 
 		// Apply configured sender identity when available.
@@ -496,7 +491,7 @@ class SettingsEndpoint {
 			$from     = $sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email;
 			$headers[] = 'From: ' . $from;
 		} elseif ( $sender_name !== '' ) {
-			// Name set but no email — use the WordPress admin email with the custom name.
+			// Name set but no email - use the WordPress admin email with the custom name.
 			$headers[] = 'From: ' . $sender_name . ' <' . get_option( 'admin_email' ) . '>';
 		}
 
@@ -509,7 +504,7 @@ class SettingsEndpoint {
 				'success' => true,
 				'message' => sprintf(
 					/* translators: %s: email address */
-					__( 'Test email sent to %s.', 'neural-forms' ),
+					__( 'Test email sent to %s.', 'neural-forms-lite' ),
 					$to
 				),
 			] );
@@ -521,16 +516,14 @@ class SettingsEndpoint {
 			'test_email_failed',
 			sprintf(
 				/* translators: %s: email address */
-				__( 'wp_mail() returned false for %s. Check your server\'s mail configuration.', 'neural-forms' ),
+				__( 'wp_mail() returned false for %s. Check your server\'s mail configuration.', 'neural-forms-lite' ),
 				$to
 			),
 			[ 'status' => 500 ]
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Permission
-	// -------------------------------------------------------------------------
 
 	public function check_permission() {
 		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {
@@ -539,14 +532,12 @@ class SettingsEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to manage Neural Forms settings.', 'neural-forms' ),
+			__( 'You do not have permission to manage Neural Forms settings.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Arg definitions
-	// -------------------------------------------------------------------------
 
 	private function patch_args(): array {
 		return [

@@ -9,7 +9,7 @@ defined( 'ABSPATH' ) || exit;
  * Responsibility: confirm that a schema array is structurally sound before
  * it is stored. This is NOT submission validation (that comes in Step 9).
  *
- * Returns true on success, WP_Error on failure — so callers can pass
+ * Returns true on success, WP_Error on failure - so callers can pass
  * the result straight back through the REST response.
  *
  * Rules enforced:
@@ -36,7 +36,7 @@ class FormValidator {
      * @return true|\WP_Error
      */
     public static function validate_schema( array $schema ) {
-        // Rule 1 — fields key must exist and be a non-empty array.
+        // Rule 1 - fields key must exist and be a non-empty array.
         if ( ! isset( $schema['fields'] ) || ! is_array( $schema['fields'] ) ) {
             return new \WP_Error(
                 'invalid_form_data',
@@ -58,7 +58,7 @@ class FormValidator {
         foreach ( $schema['fields'] as $index => $field ) {
             $field = (array) $field;
 
-            // Rule 2 — each field must have a non-empty id.
+            // Rule 2 - each field must have a non-empty id.
             if ( empty( $field['id'] ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
@@ -69,7 +69,7 @@ class FormValidator {
 
             $id = (string) $field['id'];
 
-            // Rule 3 — id must match the allowed format: a-z, 0-9, _ only.
+            // Rule 3 - id must match the allowed format: a-z, 0-9, _ only.
             if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
@@ -81,7 +81,7 @@ class FormValidator {
                 );
             }
 
-            // Rule 4 — type must be registered in FieldRegistry.
+            // Rule 4 - type must be registered in FieldRegistry.
             if ( empty( $field['type'] ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
@@ -103,7 +103,7 @@ class FormValidator {
                 );
             }
 
-            // Rule 5 — IDs must be unique within the schema.
+            // Rule 5 - IDs must be unique within the schema.
             if ( in_array( $id, $seen_ids, true ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
@@ -114,7 +114,7 @@ class FormValidator {
 
             $seen_ids[] = $id;
 
-            // Rule 6 — Extension hook.
+            // Rule 6 - Extension hook.
             // Fires after all core rules pass for this field.
             // Extensions return null to pass, or a WP_Error to fail.
             //

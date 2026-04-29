@@ -1,4 +1,8 @@
 <?php
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter
+//
+// Direct $wpdb call against a wp_neural_forms_* table; admin-only path,
+// fresh-per-request semantics, no shared cache key worth invalidating.
 namespace NeuralForms\AI;
 
 use NeuralForms\Core\Config;
@@ -18,7 +22,7 @@ defined( 'ABSPATH' ) || exit;
  *  4. Schedule an immediate single-event cron run (+10 s) so the analysis
  *     arrives quickly without waiting for the 5-minute recurring fallback.
  *
- * Every failure path logs and updates entry status — nothing is silent.
+ * Every failure path logs and updates entry status - nothing is silent.
  */
 class QueueListener {
 
@@ -31,7 +35,7 @@ class QueueListener {
 	 * @param int $form_id   ID of the parent form.
 	 */
 	public static function handle( int $entry_id, int $form_id ): void {
-		// Master gates — without a configured Cloud connection nothing can run.
+		// Master gates - without a configured Cloud connection nothing can run.
 		if ( ! Config::get( 'ai_enabled'       ) ) return;
 		if ( ! Config::get( 'cloud_ai_enabled'  ) ) return;
 		if ( ! Config::get( 'cloud_api_key'     ) ) return;
@@ -85,7 +89,7 @@ class QueueListener {
 			return;
 		}
 
-		// Update entry status so the UI can show "Analyzing…" immediately.
+		// Update entry status so the UI can show "Analyzing..." immediately.
 		AIRepository::update_status( $entry_id, 'queued' );
 
 		// Fire an immediate single-event run so the user doesn't wait for

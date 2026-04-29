@@ -34,17 +34,14 @@ final class NeuralForms {
     }
 
     /**
-     * Boot sequence — each line here will grow as modules are added in
+     * Boot sequence - each line here will grow as modules are added in
      * later steps. For now it's intentionally empty: the plugin loads
      * cleanly without throwing errors.
      */
     private function boot(): void {
-        // Defer textdomain loading to `init` — WP 6.7+ emits a
-        // `_load_textdomain_just_in_time` notice if any `__()` for our domain
-        // fires during `plugins_loaded`. `init` runs before any frontend
-        // rendering or REST/admin handlers, so translations are still available
-        // by the time anything user-visible needs them.
-        add_action( 'init', [ $this, 'load_textdomain' ] );
+        // Translations: WordPress.org auto-loads them for this slug since
+        // WP 4.6 (and 6.7+ handles "just-in-time" loading for any domain),
+        // so an explicit load_plugin_textdomain() call would be redundant.
         Database::maybe_upgrade();
         $this->boot_rest();
         $this->boot_admin();
@@ -56,7 +53,7 @@ final class NeuralForms {
          * Fires once Lite has finished booting all built-in modules.
          *
          * Add-on plugins (Neural Forms Pro) hook here to register their own
-         * modules — e.g. the Divi integration, which lives entirely in Pro.
+         * modules - e.g. the Divi integration, which lives entirely in Pro.
          * Running at the end of boot guarantees every extension point
          * (filters, action hooks, REST routes, React slots) is already in
          * place before add-ons attach to them.
@@ -79,11 +76,11 @@ final class NeuralForms {
     /**
      * Boot all public-facing (non-admin) functionality.
      *
-     * Not wrapped in is_admin() — intentionally runs in every context:
-     *   • Shortcode registration must run on the frontend.
-     *   • Block type registration (PublicForms Step 6) must run in both
+     * Not wrapped in is_admin() - intentionally runs in every context:
+     *   * Shortcode registration must run on the frontend.
+     *   * Block type registration (PublicForms Step 6) must run in both
      *     frontend and admin contexts so the block editor can discover the block.
-     *   • wp_enqueue_scripts (where assets are registered) only fires on the
+     *   * wp_enqueue_scripts (where assets are registered) only fires on the
      *     frontend, so admin pages are unaffected.
      */
     private function boot_frontend(): void {
@@ -93,7 +90,7 @@ final class NeuralForms {
     /**
      * Boot the AI layer.
      *
-     * Hooks are always registered regardless of ai_enabled — the individual
+     * Hooks are always registered regardless of ai_enabled - the individual
      * handlers self-guard so toggling the setting in the UI takes effect
      * immediately without requiring a plugin deactivate/reactivate cycle.
      */
@@ -114,7 +111,7 @@ final class NeuralForms {
 
         // Draft retention: daily cron purges non-finalized carousel drafts
         // older than DRAFT_TTL_DAYS. Finalized drafts (user picked "Use this
-        // reply") are preserved — they're the canonical entry reply.
+        // reply") are preserved - they're the canonical entry reply.
         add_action( 'neural_forms_ai_draft_purge', static function () {
             \NeuralForms\Storage\AIResponseRepository::purge_older_than(
                 \NeuralForms\Storage\AIResponseRepository::DRAFT_TTL_DAYS
@@ -131,14 +128,6 @@ final class NeuralForms {
 
     private function boot_notifications(): void {
         \NeuralForms\Notifications\NotificationService::boot();
-    }
-
-    public function load_textdomain(): void {
-        load_plugin_textdomain(
-            'neural-forms',
-            false,
-            NEURAL_FORMS_BASENAME . '/languages'
-        );
     }
 
     // Prevent cloning and unserialization of the singleton.

@@ -9,10 +9,10 @@ defined( 'ABSPATH' ) || exit;
  * Registers the neural-forms/form Gutenberg block and its PHP render callback.
  *
  * Architecture
- * ────────────
+ *
  * This is a fully block-native dynamic block. The editor shows a live
  * server-side-rendered preview of the actual form via <ServerSideRender>.
- * The PHP render callback produces all frontend HTML — there is no save()
+ * The PHP render callback produces all frontend HTML - there is no save()
  * output (save: () => null).
  *
  * The block does NOT wrap or depend on the shortcode. Both the block and the
@@ -20,55 +20,51 @@ defined( 'ABSPATH' ) || exit;
  * into the same shared rendering engine.
  *
  * Rendering pipeline
- * ──────────────────
- *   block attributes → BlockHandler::render()
- *     → FormRenderer::render( formId )  → form HTML
- *     → build_scoped_css( attributes )  → <style> tag with CSS custom properties
- *     → build_wrap_style( attributes )  → inline layout styles on wrapper div
- *     → final output: <style>…</style><div class="wrap">…form…</div>
+ *
+ *   block attributes '->-> BlockHandler::render()
+ *     '->-> FormRenderer::render( formId )  '->-> form HTML
+ *     '->-> build_scoped_css( attributes )  '->-> <style> tag with CSS custom properties
+ *     '->-> build_wrap_style( attributes )  '->-> inline layout styles on wrapper div
+ *     '->-> final output: <style>...</style><div class="wrap">...form...</div>
  *
  * Editor preview
- * ──────────────
+ *
  * The block editor uses @wordpress/server-side-render to call this same render
  * callback via the REST API. When rendering in editor context (REST request
  * inside admin), the callback skips enqueuing form-submit.js to prevent the
  * submission handler from binding inside the editor iframe.
  *
  * Boot flow
- * ─────────
- *   plugins_loaded → Neural Forms::boot_frontend() → PublicForms::boot()
- *     → BlockHandler::boot()
- *       → add_action( 'init', BlockHandler::register )
- *         → wp_register_script( 'neural-forms-block', … )
- *         → wp_register_style( 'neural-forms-block-editor', form.css )
- *         → register_block_type( block.json, render_callback )
+ *
+ *   plugins_loaded '->-> Neural Forms::boot_frontend() '->-> PublicForms::boot()
+ *     '->-> BlockHandler::boot()
+ *       '->-> add_action( 'init', BlockHandler::register )
+ *         '->-> wp_register_script( 'neural-forms-block', ... )
+ *         '->-> wp_register_style( 'neural-forms-block-editor', form.css )
+ *         '->-> register_block_type( block.json, render_callback )
  */
 class BlockHandler {
 
-	// -------------------------------------------------------------------------
 	// Boot
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Called by PublicForms::boot(). Registers the init hook.
 	 *
 	 * Must run unconditionally (not inside is_admin()) because:
-	 *   • register_block_type() needs to fire on every request so the block
+	 *   * register_block_type() needs to fire on every request so the block
 	 *     renders correctly on the frontend and is discoverable in the editor.
 	 */
 	public static function boot(): void {
 		add_action( 'init', [ static::class, 'register' ] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Registration
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Register the editor script handle and block type.
 	 *
 	 * Script is registered before register_block_type() because block.json's
-	 * editorScript key references the handle by name — it must already exist
+	 * editorScript key references the handle by name - it must already exist
 	 * in the WP script registry when register_block_type() reads the JSON.
 	 *
 	 * @internal  Public because it is used as a hook callback.
@@ -83,7 +79,8 @@ class BlockHandler {
 			'neural-forms-block',
 			NEURAL_FORMS_URL . 'modules/admin/build/block.js',
 			$asset['dependencies'],
-			$asset['version']
+			$asset['version'],
+			true
 		);
 
 		// Register form.css as an editor style so the ServerSideRender preview
@@ -105,9 +102,7 @@ class BlockHandler {
 		);
 	}
 
-	// -------------------------------------------------------------------------
 	// Render callback
-	// -------------------------------------------------------------------------
 
 	/**
 	 * PHP render callback for the neural-forms/form block.
@@ -124,11 +119,11 @@ class BlockHandler {
 
 		if ( $form_id < 1 ) {
 			if ( $is_editor ) {
-				// Return nothing in editor — the JS empty state handles this.
+				// Return nothing in editor - the JS empty state handles this.
 				return '';
 			}
 			return static::admin_notice(
-				__( 'Neural Forms: no form selected. Edit the block and choose a form.', 'neural-forms' )
+				__( 'Neural Forms: no form selected. Edit the block and choose a form.', 'neural-forms-lite' )
 			);
 		}
 
@@ -145,7 +140,7 @@ class BlockHandler {
 		];
 
 		// In editor context, render the form without enqueuing the submission
-		// handler JS — the preview should be visual only, not interactive.
+		// handler JS - the preview should be visual only, not interactive.
 		$form_html = $is_editor
 			? FormRenderer::render_preview( $form_id, $render_options )
 			: FormRenderer::render( $form_id, $render_options );
@@ -154,7 +149,7 @@ class BlockHandler {
 			return $form_html;
 		}
 
-		// Frontend fast path: no formatting attributes — return the raw form
+		// Frontend fast path: no formatting attributes - return the raw form
 		// HTML unchanged so there is zero overhead for unstyled blocks.
 		// In the editor we always wrap (need pointer-events:none at minimum).
 		if ( ! $is_editor && ! static::has_style_attrs( $attributes ) ) {
@@ -189,9 +184,7 @@ class BlockHandler {
 			. '</div>';
 	}
 
-	// -------------------------------------------------------------------------
 	// Style helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Returns true when at least one formatting attribute has a non-default value,
@@ -265,7 +258,7 @@ class BlockHandler {
 			return true;
 		}
 
-		// Extra CSS class(es) — wrapper must render so the class lands on the DOM.
+		// Extra CSS class(es) - wrapper must render so the class lands on the DOM.
 		if ( ! empty( $attributes['extraClass'] ) ) {
 			return true;
 		}
@@ -349,11 +342,11 @@ class BlockHandler {
 	 * and container styles for this block instance only.
 	 *
 	 * Two selectors are used:
-	 *   .neural-forms-block-{uid}            → container box (bg, border, shadow, padding)
-	 *   .neural-forms-block-{uid} .neural-forms-form → CSS custom properties that cascade
+	 *   .neural-forms-block-{uid}            '->-> container box (bg, border, shadow, padding)
+	 *   .neural-forms-block-{uid} .neural-forms-form '->-> CSS custom properties that cascade
 	 *                                        down to all child elements
 	 *
-	 * CSS values come from block attributes — all values are sanitized before
+	 * CSS values come from block attributes - all values are sanitized before
 	 * being written into the style tag (text_field for lengths, hex/rgb for colors).
 	 *
 	 * @param string $uid         8-char hex uid for this attribute combination.
@@ -380,7 +373,7 @@ class BlockHandler {
 		$wrap_rules = [];
 		$var_rules  = [];
 
-		// ── Container box ────────────────────────────────────────────────────
+		// ' Container box '
 		$bg_color = (string) ( $attributes['bgColor'] ?? '' );
 		if ( $bg_color !== '' ) {
 			$wrap_rules[] = 'background-color:' . sanitize_hex_color( $bg_color );
@@ -394,7 +387,7 @@ class BlockHandler {
 		// .neural-forms-form element. Reason: bgColor is also mirrored to
 		// both (see above), so the inner form paints its own background on
 		// top of the wrap. Without mirroring image/gradient too, the form's
-		// solid color hides the wrap's image — the user sees the image only
+		// solid color hides the wrap's image - the user sees the image only
 		// in the strip above the form (where the title lives), not under the
 		// fields. Same rule for both, applied to both selectors.
 		$bg_image    = (string) ( $attributes['bgImage']    ?? '' );
@@ -491,7 +484,7 @@ class BlockHandler {
 			$wrap_rules[] = 'padding-left:' . sanitize_text_field( $padding_left );
 		}
 
-		// ── CSS custom properties (cascade to all form children) ─────────────
+		// ' CSS custom properties (cascade to all form children) '
 		$btn_text_color = (string) ( $attributes['btnTextColor'] ?? '' );
 		if ( $btn_text_color !== '' ) {
 			$var_rules[] = '--neural-forms-btn-color:' . sanitize_hex_color( $btn_text_color );
@@ -516,7 +509,7 @@ class BlockHandler {
 			$var_rules[] = '--neural-forms-btn-width:100%';
 		}
 
-		// ── Field styling ────────────────────────────────────────────────────
+		// ' Field styling '
 		$field_bg = (string) ( $attributes['fieldBg'] ?? '' );
 		if ( $field_bg !== '' ) {
 			$var_rules[] = '--neural-forms-field-bg:' . sanitize_hex_color( $field_bg );
@@ -557,7 +550,7 @@ class BlockHandler {
 			$var_rules[] = '--neural-forms-border-focus:' . sanitize_hex_color( $field_focus_border_color );
 		}
 
-		// Typography rules — applied directly to the field selectors so they
+		// Typography rules - applied directly to the field selectors so they
 		// affect all input types (text/email/textarea/select) without needing
 		// per-property CSS variables in form.css.
 		$field_typo_rules = [];
@@ -610,11 +603,11 @@ class BlockHandler {
 			$var_rules[] = '--neural-forms-field-gap:' . sanitize_text_field( $field_gap );
 		}
 
-		// ── Submit button: normal + hover state rules ────────────────────────
+		// ' Submit button: normal + hover state rules '
 		// CSS custom properties cover the basic bg/color/radius/align/width
 		// case (kept above for back-compat). The rules below cover the
 		// extended controls (border, font-size, padding) and the hover state
-		// — since custom properties can't conditionally swap on :hover,
+		// - since custom properties can't conditionally swap on :hover,
 		// hover styling has to be a real selector.
 		$btn_sel       = $wrap_sel . ' .neural-forms-form__submit';
 		$btn_hover_sel = $btn_sel . ':hover:not(:disabled)';
@@ -668,7 +661,7 @@ class BlockHandler {
 			$btn_rules[] = 'transition:background-color ' . $dur . ' ' . $ease . ',color ' . $dur . ' ' . $ease . ',border-color ' . $dur . ' ' . $ease . ',filter ' . $dur . ' ' . $ease;
 		}
 
-		// Full-width button — apply width:100% on the button itself, not via the
+		// Full-width button - apply width:100% on the button itself, not via the
 		// CSS variable, so it works even when --neural-forms-btn-width is unset.
 		if ( ! empty( $attributes['btnFullWidth'] ) ) {
 			$btn_rules[] = 'width:100%';
@@ -724,7 +717,7 @@ class BlockHandler {
 			$btn_hover_rules[] = 'filter:none';
 		}
 
-		// ── Assemble ─────────────────────────────────────────────────────────
+		// ' Assemble '
 		$css = '';
 
 		if ( $wrap_rules ) {
@@ -750,7 +743,7 @@ class BlockHandler {
 			$css .= $field_sel . '{' . implode( ';', $field_typo_rules ) . '}';
 		}
 
-		// ── Field padding (applies to inputs, textareas, selects) ───────────
+		// ' Field padding (applies to inputs, textareas, selects) '
 		$field_pad_rules = [];
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'fieldPadding' . $key ] ?? '' );
@@ -765,7 +758,7 @@ class BlockHandler {
 			$css .= $field_pad_sel . '{' . implode( ';', $field_pad_rules ) . '}';
 		}
 
-		// ── Title typography / color / alignment ─────────────────────────────
+		// ' Title typography / color / alignment '
 		$title_rules = [];
 		$title_color = (string) ( $attributes['titleColor'] ?? '' );
 		if ( $title_color !== '' ) {
@@ -824,7 +817,7 @@ class BlockHandler {
 			$css .= $wrap_sel . ' .neural-forms-form__title{' . implode( ';', $title_rules ) . '}';
 		}
 
-		// ── Label typography / color / alignment ─────────────────────────────
+		// ' Label typography / color / alignment '
 		// Targets visible <label> tags emitted when showLabels is true, plus
 		// the <legend> used by radio / checkboxes group fields.
 		$label_rules = [];
@@ -894,7 +887,7 @@ class BlockHandler {
 			$css .= $label_sel . '{' . implode( ';', $label_rules ) . '}';
 		}
 
-		// ── Per-corner field radius ──────────────────────────────────────────
+		// ' Per-corner field radius '
 		$field_corner_rules = [];
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'fieldBorderRadius' . $key ] ?? '' );
@@ -909,7 +902,7 @@ class BlockHandler {
 			$css .= $field_corner_sel . '{' . implode( ';', $field_corner_rules ) . '}';
 		}
 
-		// ── Field hover state (bg + border color) ────────────────────────────
+		// ' Field hover state (bg + border color) '
 		$field_hover_rules = [];
 		$field_hover_bg = (string) ( $attributes['fieldHoverBg'] ?? '' );
 		if ( $field_hover_bg !== '' ) {
@@ -926,7 +919,7 @@ class BlockHandler {
 			$css .= $field_hover_sel . '{' . implode( ';', $field_hover_rules ) . '}';
 		}
 
-		// ── Field error state (invalid input + per-field error message) ──────
+		// ' Field error state (invalid input + per-field error message) '
 		$field_error_rules = [];
 		$field_err_bg = (string) ( $attributes['fieldErrorBg'] ?? '' );
 		if ( $field_err_bg !== '' ) {
@@ -960,7 +953,7 @@ class BlockHandler {
 			$css .= $wrap_sel . ' .neural-forms-form__field-error{' . implode( ';', $field_err_msg_rules ) . '}';
 		}
 
-		// ── Success message ──────────────────────────────────────────────────
+		// ' Success message '
 		if ( isset( $attributes['successMsgEnabled'] ) && $attributes['successMsgEnabled'] === false ) {
 			$css .= $wrap_sel . ' .neural-forms-form__success{display:none !important}';
 		} else {
@@ -988,7 +981,7 @@ class BlockHandler {
 			}
 		}
 
-		// ── Global error message ─────────────────────────────────────────────
+		// ' Global error message '
 		if ( isset( $attributes['errorMsgEnabled'] ) && $attributes['errorMsgEnabled'] === false ) {
 			$css .= $wrap_sel . ' .neural-forms-form__global-error{display:none !important}';
 		} else {
@@ -1016,7 +1009,7 @@ class BlockHandler {
 			}
 		}
 
-		// ── Per-field-type controls (checkbox / radio / select / file) ───────
+		// ' Per-field-type controls (checkbox / radio / select / file) '
 		$cb_size = (string) ( $attributes['checkboxSize'] ?? '' );
 		if ( $cb_size !== '' ) {
 			$cb = sanitize_text_field( $cb_size );
@@ -1060,13 +1053,11 @@ class BlockHandler {
 		return $css;
 	}
 
-	// -------------------------------------------------------------------------
 	// Helpers
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Inline admin-only diagnostic notice.
-	 * Returns empty string for non-admins — safe to echo.
+	 * Returns empty string for non-admins - safe to echo.
 	 *
 	 * @param string $message  Plain text (will be escaped).
 	 * @return string

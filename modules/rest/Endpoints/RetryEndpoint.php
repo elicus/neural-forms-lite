@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
  * Retries sending a previously failed outgoing message.
  * Admin-only (manage_options capability).
  *
- * The stored recipient, subject, and body are reused — no request body needed.
+ * The stored recipient, subject, and body are reused - no request body needed.
  *
  * On success:
  *   - Calls wp_mail() with the stored data.
@@ -46,9 +46,7 @@ class RetryEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Handler
-	// -------------------------------------------------------------------------
 
 	public function retry_message( WP_REST_Request $request ) {
 		$entry_id   = (int) $request['entry_id'];
@@ -60,7 +58,7 @@ class RetryEndpoint {
 		if ( ! $entry ) {
 			return new WP_Error(
 				'entry_not_found',
-				__( 'Entry not found.', 'neural-forms' ),
+				__( 'Entry not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
@@ -68,16 +66,16 @@ class RetryEndpoint {
 		if ( ! $message ) {
 			return new WP_Error(
 				'message_not_found',
-				__( 'Message not found.', 'neural-forms' ),
+				__( 'Message not found.', 'neural-forms-lite' ),
 				[ 'status' => 404 ]
 			);
 		}
 
-		// Ownership check — prevents retrying messages from a different entry.
+		// Ownership check - prevents retrying messages from a different entry.
 		if ( $message['entry_id'] !== $entry_id ) {
 			return new WP_Error(
 				'message_mismatch',
-				__( 'Message does not belong to this entry.', 'neural-forms' ),
+				__( 'Message does not belong to this entry.', 'neural-forms-lite' ),
 				[ 'status' => 403 ]
 			);
 		}
@@ -89,7 +87,7 @@ class RetryEndpoint {
 		if ( $message['type'] !== 'outgoing' || $status !== 'failed' ) {
 			return new WP_Error(
 				'not_retryable',
-				__( 'Only failed outgoing messages can be retried.', 'neural-forms' ),
+				__( 'Only failed outgoing messages can be retried.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -101,13 +99,13 @@ class RetryEndpoint {
 		if ( ! is_email( $to ) ) {
 			return new WP_Error(
 				'invalid_recipient',
-				__( 'The stored recipient address is not valid.', 'neural-forms' ),
+				__( 'The stored recipient address is not valid.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
 		if ( $subject === '' ) {
-			$subject = __( 'Re: Your submission', 'neural-forms' );
+			$subject = __( 'Re: Your submission', 'neural-forms-lite' );
 		}
 
 		$sent = wp_mail( $to, $subject, $body );
@@ -116,30 +114,30 @@ class RetryEndpoint {
 			Logger::log(
 				'retry_send_failed',
 				'error',
-				'Retry: wp_mail() returned false — check WordPress email configuration.',
+				'Retry: wp_mail() returned false - check WordPress email configuration.',
 				[ 'message_id' => $message_id, 'to' => $to ],
 				$entry_id
 			);
 
 			return new WP_Error(
 				'retry_send_failed',
-				__( 'Could not send the reply. Please check your WordPress email configuration.', 'neural-forms' ),
+				__( 'Could not send the reply. Please check your WordPress email configuration.', 'neural-forms-lite' ),
 				[ 'status' => 500 ]
 			);
 		}
 
-		// Success — flip meta.status to 'sent' in-place.
+		// Success - flip meta.status to 'sent' in-place.
 		$new_meta = array_merge( $meta, [ 'status' => 'sent' ] );
 		EntryMessageRepository::update_meta( $message_id, $new_meta );
 
-		// A reply was (re)sent — the entry no longer needs a reply.
+		// A reply was (re)sent - the entry no longer needs a reply.
 		EntryRepository::update( $entry_id, [ 'needs_reply' => 0 ] );
 
 		Logger::log(
 			'retry_sent',
 			'info',
 			/* translators: %s: recipient email address */
-			sprintf( __( 'Retry sent to %s.', 'neural-forms' ), $to ),
+			sprintf( __( 'Retry sent to %s.', 'neural-forms-lite' ), $to ),
 			[ 'message_id' => $message_id, 'to' => $to ],
 			$entry_id
 		);
@@ -150,9 +148,7 @@ class RetryEndpoint {
 		] );
 	}
 
-	// -------------------------------------------------------------------------
 	// Permission
-	// -------------------------------------------------------------------------
 
 	public function check_permission() {
 		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {
@@ -161,7 +157,7 @@ class RetryEndpoint {
 
 		return new WP_Error(
 			'permission_denied',
-			__( 'You do not have permission to retry messages.', 'neural-forms' ),
+			__( 'You do not have permission to retry messages.', 'neural-forms-lite' ),
 			[ 'status' => 403 ]
 		);
 	}

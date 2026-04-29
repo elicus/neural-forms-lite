@@ -1,0 +1,13 @@
+# Changelog
+
+### 1.0.0 - 2026-04-29
+
+#### Added
+
+* Visual form builder with 16 field types, live preview, and validation.
+* Lead inbox with status management, search, filters, and CSV export.
+* AI auto-analysis via Neural Forms Cloud with summary, priority, and draft reply.
+* Email notifications and customer auto-responder.
+* Cloudflare Turnstile and Google reCAPTCHA v2 support.
+* Privacy mode toggle for GDPR-friendly submissions.
+* Contact Form 7 one-click import.

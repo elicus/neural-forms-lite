@@ -12,27 +12,27 @@ defined( 'ABSPATH' ) || exit;
  * `false`. Pro (or any add-on) may flip a capability to `true` by hooking
  * the corresponding filter:
  *
- *   neural_forms_can_ai_spam_detect   — spam detection & related settings
- *   neural_forms_can_ai_reanalyze     — re-run analysis / regenerate reply
- *   neural_forms_can_ai_refine_reply  — polish user-drafted replies
+ *   neural_forms_can_ai_spam_detect   - spam detection & related settings
+ *   neural_forms_can_ai_reanalyze     - re-run analysis / regenerate reply
+ *   neural_forms_can_ai_refine_reply  - polish user-drafted replies
  *
  * This is strictly the plugin-level (UX) unlock. It decides whether the
- * feature is exposed at all in this install — not whether the user's Cloud
+ * feature is exposed at all in this install - not whether the user's Cloud
  * plan permits it. Cloud-side enforcement (PlanManager + CloudPlanException)
  * remains the authoritative gate for anything that actually calls the API.
  *
  * Callers should therefore layer the two checks:
- *   1. Capabilities::can()        — plugin gate (Pro installed?)
- *   2. PlanManager::can()         — Cloud gate  (plan permits?)
+ *   1. Capabilities::can()        - plugin gate (Pro installed?)
+ *   2. PlanManager::can()         - Cloud gate  (plan permits?)
  *   3. Execute feature / provider call
  *
  * Keeping the two gates separate means the error responses can route to
- * the correct upgrade flow — a locked plugin cap means "install Pro",
+ * the correct upgrade flow - a locked plugin cap means "install Pro",
  * a locked Cloud cap means "upgrade your Cloud plan".
  */
 final class Capabilities {
 
-    /** Capability keys — stable public strings; renaming any of these is
+    /** Capability keys - stable public strings; renaming any of these is
      *  a breaking change for Pro and any third-party integration. */
     const AI_SPAM_DETECT  = 'ai_spam_detect';
     const AI_REANALYZE    = 'ai_reanalyze';
@@ -80,7 +80,7 @@ final class Capabilities {
     public static function locked_error( string $cap ): WP_Error {
         return new WP_Error(
             'pro_feature_locked',
-            __( 'This feature requires Neural Forms Pro.', 'neural-forms' ),
+            __( 'This feature requires Neural Forms Pro.', 'neural-forms-lite' ),
             [
                 'status'       => 403,
                 'feature'      => $cap,

@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
  *
  * Unlike AIProviderInterface (which is a raw prompt-in / text-out contract),
  * this interface works in terms of entry and form data. The implementation
- * decides how to turn that data into a provider call — AIQueueProcessor never
+ * decides how to turn that data into a provider call - AIQueueProcessor never
  * needs to know whether it is talking to the cloud or to a local model.
  *
  * All three methods must return a normalized array that passes directly into
@@ -58,7 +58,7 @@ interface AIAnalysisProviderInterface {
 	 * of the text without adding new information.
 	 *
 	 * @param string $draft       The user's current reply draft.
-	 * @param array  $entry       Decoded entry row (context only — not re-analysed).
+	 * @param array  $entry       Decoded entry row (context only - not re-analysed).
 	 * @param array  $form        Decoded form row (context only).
 	 * @return array {
 	 *   polished_reply string,
