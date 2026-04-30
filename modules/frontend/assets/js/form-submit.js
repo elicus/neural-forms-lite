@@ -961,11 +961,37 @@
 		var steps = form.querySelectorAll( ':scope .neural-forms-form__step' );
 		if ( steps.length < 2 ) return;
 
-		var prevBtn = form.querySelector( '[data-step-action="prev"]' );
-		var nextBtn = form.querySelector( '[data-step-action="next"]' );
-		var submit  = form.querySelector( '.neural-forms-form__submit' );
+		var prevBtn  = form.querySelector( '[data-step-action="prev"]' );
+		var nextBtn  = form.querySelector( '[data-step-action="next"]' );
+		var submit   = form.querySelector( '.neural-forms-form__submit' );
+		var progress = form.querySelector( '.neural-forms-form__progress' );
 
 		var current = 0;
+
+		function updateProgress( index ) {
+			if ( ! progress ) return;
+			var mode = progress.getAttribute( 'data-progress-mode' );
+
+			if ( mode === 'numbers' ) {
+				var items = progress.querySelectorAll( '.neural-forms-form__progress-item' );
+				for ( var i = 0; i < items.length; i++ ) {
+					items[ i ].classList.remove( 'is-active', 'is-complete' );
+					if ( i < index )      items[ i ].classList.add( 'is-complete' );
+					else if ( i === index ) items[ i ].classList.add( 'is-active' );
+				}
+				return;
+			}
+
+			if ( mode === 'bar' ) {
+				var fill = progress.querySelector( '.neural-forms-form__progress-bar-fill' );
+				var text = progress.querySelector( '.neural-forms-form__progress-text' );
+				var track = progress.querySelector( '.neural-forms-form__progress-bar-track' );
+				var pct  = steps.length > 0 ? Math.round( ( ( index + 1 ) / steps.length ) * 100 ) : 0;
+				if ( fill ) fill.style.width = pct + '%';
+				if ( text ) text.textContent = 'Step ' + ( index + 1 ) + ' of ' + steps.length;
+				if ( track ) track.setAttribute( 'aria-valuenow', String( index + 1 ) );
+			}
+		}
 
 		function show( index ) {
 			for ( var i = 0; i < steps.length; i++ ) {
@@ -984,6 +1010,8 @@
 			if ( prevBtn ) prevBtn.style.display = ( index === 0 ) ? 'none' : '';
 			if ( nextBtn ) nextBtn.style.display = ( index === steps.length - 1 ) ? 'none' : '';
 			if ( submit )  submit.style.display  = ( index === steps.length - 1 ) ? '' : 'none';
+
+			updateProgress( index );
 
 			// Conditional logic visibility may depend on values in
 			// previously visited steps - re-evaluate on every step

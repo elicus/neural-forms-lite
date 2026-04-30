@@ -235,6 +235,21 @@ class FormRenderer {
 		} ) );
 		$has_steps = count( $top_steps ) >= 2;
 
+		// Form-level multi-step settings live on form_schema.settings.
+		// (form.settings is reserved for submission/security/email
+		// settings; schema-level rendering options belong here so the
+		// shape of the form is self-contained.)
+		//
+		//   form_schema.settings.multistep.progress_indicator
+		//     "numbers" | "bar" | "none"   default: "numbers"
+		$schema_settings    = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : [];
+		$multistep_settings = is_array( $schema_settings['multistep'] ?? null ) ? $schema_settings['multistep'] : [];
+		$progress_indicator = (string) ( $multistep_settings['progress_indicator'] ?? 'numbers' );
+		if ( ! in_array( $progress_indicator, [ 'numbers', 'bar', 'none' ], true ) ) {
+			$progress_indicator = 'numbers';
+		}
+		$show_progress = $has_steps && $progress_indicator !== 'none';
+
 		// ' Honeypot '
 		// Name "neural_forms_website" sounds like a real field to bots but is
 		// intentionally generic - avoids "hp" or "honeypot" patterns that
@@ -313,7 +328,51 @@ class FormRenderer {
 
 		$html .= '<form' . $form_attrs . '>';
 
-		$html .= '<div class="neural-forms-form__fields">' . $fields_html . '</div>';
+		// Multi-step progress indicator. Rendered ABOVE the fields
+		// container so it sits at the top of the form. The active /
+		// completed state is purely JS-driven (form-submit.js mirrors
+		// `current` into the indicator); without JS the markup shows
+		// step 1 active by default and is otherwise inert.
+		$progress_html = '';
+		if ( $show_progress && $progress_indicator === 'numbers' ) {
+			$progress_html .= '<ol class="neural-forms-form__progress neural-forms-form__progress--numbers"'
+				. ' data-progress-mode="numbers"'
+				. ' aria-label="' . esc_attr__( 'Form progress', 'neural-forms-lite' ) . '">';
+			foreach ( $top_steps as $idx => $step ) {
+				$step_title = (string) ( $step['title'] ?? '' );
+				$item_class = 'neural-forms-form__progress-item' . ( $idx === 0 ? ' is-active' : '' );
+				$progress_html .= '<li class="' . esc_attr( $item_class ) . '"'
+					. ' data-step-index="' . (int) $idx . '">'
+					. '<span class="neural-forms-form__progress-num">' . ( (int) $idx + 1 ) . '</span>';
+				if ( $step_title !== '' ) {
+					$progress_html .= '<span class="neural-forms-form__progress-label">'
+						. esc_html( $step_title ) . '</span>';
+				}
+				$progress_html .= '</li>';
+			}
+			$progress_html .= '</ol>';
+		} elseif ( $show_progress && $progress_indicator === 'bar' ) {
+			$total = count( $top_steps );
+			$pct   = $total > 0 ? (int) floor( ( 1 / $total ) * 100 ) : 0;
+			$progress_html .= '<div class="neural-forms-form__progress neural-forms-form__progress--bar"'
+				. ' data-progress-mode="bar"'
+				. ' aria-label="' . esc_attr__( 'Form progress', 'neural-forms-lite' ) . '">'
+				. '<div class="neural-forms-form__progress-bar-track" role="progressbar"'
+				. ' aria-valuemin="0" aria-valuemax="' . (int) $total . '" aria-valuenow="1">'
+				. '<div class="neural-forms-form__progress-bar-fill" style="width:' . (int) $pct . '%"></div>'
+				. '</div>'
+				. '<p class="neural-forms-form__progress-text">'
+				. sprintf(
+					/* translators: 1: current step number  2: total steps */
+					esc_html__( 'Step %1$d of %2$d', 'neural-forms-lite' ),
+					1,
+					(int) $total
+				)
+				. '</p>'
+				. '</div>';
+		}
+
+		$html .= '<div class="neural-forms-form__fields">' . $progress_html . $fields_html . '</div>';
 
 		// Global (non-field) error container - populated by JS for 429, 5xx,
 		// and network failures. role="alert" implies aria-live="assertive" so

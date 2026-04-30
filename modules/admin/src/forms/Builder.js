@@ -164,6 +164,24 @@ export default function Builder( { formId, isNew } ) {
 		setSaved( false );
 	};
 
+	// Schema-level settings live on form_schema.settings (e.g.
+	// multi-step progress indicator). Distinct from form.settings
+	// which is reserved for submission/security/email.
+	const formSchemaSettings = ( form.form_schema && typeof form.form_schema.settings === 'object' && form.form_schema.settings !== null )
+		? form.form_schema.settings
+		: {};
+
+	const setFormSchemaSettings = ( patch ) => {
+		setForm( {
+			...form,
+			form_schema: {
+				...( form.form_schema || {} ),
+				settings: { ...formSchemaSettings, ...patch },
+			},
+		} );
+		setSaved( false );
+	};
+
 	// Locate a column by id. Returns one of:
 	//   { kind: 'top-row', rowIdx, colIdx }       (row at root)
 	//   { kind: 'step-row', stepIdx, rowChildIdx, colIdx }  (row inside step)
@@ -403,6 +421,8 @@ export default function Builder( { formId, isNew } ) {
 						selectedColumnId={ selectedColumnId }
 						selectedStepId={ selectedStepId }
 						onChange={ setFields }
+						formSchemaSettings={ formSchemaSettings }
+						onChangeFormSchemaSettings={ setFormSchemaSettings }
 					/>
 				</div>
 			) }

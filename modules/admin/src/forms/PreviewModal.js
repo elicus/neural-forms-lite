@@ -113,6 +113,24 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
   border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500;
 }
 .neural-forms-form__step-next { background: #080f5b; color: #fff; margin-left: auto; }
+.neural-forms-form__progress { margin: 0 0 16px; padding: 0; list-style: none; }
+.neural-forms-form__progress--numbers { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.neural-forms-form__progress-item {
+  display: inline-flex; align-items: center; gap: 6px; color: #6b7280; font-size: 13px;
+}
+.neural-forms-form__progress-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px;
+  background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
+}
+.neural-forms-form__progress-item.is-active .neural-forms-form__progress-num { background: #080f5b; color: #fff; }
+.neural-forms-form__progress-item.is-active { color: #080f5b; font-weight: 600; }
+.neural-forms-form__progress-bar-track {
+  width: 100%; height: 6px; background: rgba(8,15,91,0.10);
+  border-radius: 999px; overflow: hidden;
+}
+.neural-forms-form__progress-bar-fill { height: 100%; background: #080f5b; }
+.neural-forms-form__progress-text { margin: 6px 0 0; color: #4b5563; font-size: 12px; font-weight: 500; }
 @media (max-width: 768px) { .neural-forms-form__row { grid-template-columns: 1fr !important; } }
 </style></head><body>${ html }</body></html>`;
 

@@ -598,7 +598,7 @@ function ColumnInspector() {
 	);
 }
 
-function StepInspector( { nodes, stepId, onChange } ) {
+function StepInspector( { nodes, stepId, onChange, formSchemaSettings, onChangeFormSchemaSettings } ) {
 	const idx = nodes.findIndex( ( n ) => n && n.type === 'step' && n.id === stepId );
 	if ( idx === -1 ) return null;
 	const step  = nodes[ idx ];
@@ -670,11 +670,51 @@ function StepInspector( { nodes, stepId, onChange } ) {
 			<p className="nf-inspector__hint">
 				{ __( 'Steps are layout sections. Only fields inside steps are submitted.', 'neural-forms-lite' ) }
 			</p>
+
+			{ /* Form-level progress indicator. Lives on form_schema.settings
+			    so the visual setting is part of the schema, not the
+			    submission/security/email settings on form.settings. */ }
+			<div className="nf-inspector__form-progress">
+				<h4 className="nf-inspector__form-progress-title">
+					{ __( 'Form progress indicator', 'neural-forms-lite' ) }
+				</h4>
+				<p className="nf-inspector__form-progress-hint">
+					{ __( 'Applies to every step in this form.', 'neural-forms-lite' ) }
+				</p>
+				<label className="nf-inspector__field">
+					<select
+						value={ ( () => {
+							const ms = ( formSchemaSettings && formSchemaSettings.multistep ) || {};
+							const v  = ms.progress_indicator;
+							return ( v === 'numbers' || v === 'bar' || v === 'none' ) ? v : 'numbers';
+						} )() }
+						onChange={ ( e ) => {
+							if ( typeof onChangeFormSchemaSettings !== 'function' ) return;
+							const ms = ( formSchemaSettings && formSchemaSettings.multistep ) || {};
+							onChangeFormSchemaSettings( {
+								multistep: { ...ms, progress_indicator: e.target.value },
+							} );
+						} }
+					>
+						<option value="numbers">{ __( 'Step numbers', 'neural-forms-lite' ) }</option>
+						<option value="bar">{ __( 'Progress bar', 'neural-forms-lite' ) }</option>
+						<option value="none">{ __( 'None', 'neural-forms-lite' ) }</option>
+					</select>
+				</label>
+			</div>
 		</>
 	);
 }
 
-export default function BuilderInspector( { nodes, selectedId, selectedColumnId, selectedStepId, onChange } ) {
+export default function BuilderInspector( {
+	nodes,
+	selectedId,
+	selectedColumnId,
+	selectedStepId,
+	onChange,
+	formSchemaSettings,
+	onChangeFormSchemaSettings,
+} ) {
 	const hit = findNode( nodes, selectedId );
 
 	return (
@@ -682,7 +722,13 @@ export default function BuilderInspector( { nodes, selectedId, selectedColumnId,
 			{ ! hit && ! selectedColumnId && ! selectedStepId && <EmptyInspector /> }
 			{ ! hit && selectedColumnId && <ColumnInspector /> }
 			{ ! hit && ! selectedColumnId && selectedStepId && (
-				<StepInspector nodes={ nodes } stepId={ selectedStepId } onChange={ onChange } />
+				<StepInspector
+					nodes={ nodes }
+					stepId={ selectedStepId }
+					onChange={ onChange }
+					formSchemaSettings={ formSchemaSettings }
+					onChangeFormSchemaSettings={ onChangeFormSchemaSettings }
+				/>
 			) }
 			{ hit && hit.kind === 'row' && (
 				<RowInspector hit={ hit } nodes={ nodes } onChange={ onChange } />

@@ -63,6 +63,9 @@ if ( ! function_exists( 'esc_textarea' ) ) {
 if ( ! function_exists( 'esc_html__' ) ) {
 	function esc_html__( $s, $domain = null ) { return esc_html( $s ); }
 }
+if ( ! function_exists( 'esc_attr__' ) ) {
+	function esc_attr__( $s, $domain = null ) { return esc_attr( $s ); }
+}
 if ( ! function_exists( 'wp_json_encode' ) ) {
 	function wp_json_encode( $data, $options = 0, $depth = 512 ) { return json_encode( $data, $options, $depth ); }
 }
@@ -477,6 +480,121 @@ check( '14k row inside step emits row wrapper',        strpos( $html_step_row, '
 check( '14k row inside step emits column',             strpos( $html_step_row, 'neural-forms-form__row__column' ) !== false, true, $cases, $passed, $failed );
 check( '14k inner field of step row keeps name',       strpos( $html_step_row, 'name="email"' ) !== false, true, $cases, $passed, $failed );
 check( '14k step wrapper still emitted',               strpos( $html_step_row, 'class="neural-forms-form__step"' ) !== false, true, $cases, $passed, $failed );
+
+// ---------------------------------------------------------------------------
+// 15. Progress indicator (Phase 3 polish).
+//
+//     Form-level setting at form_schema.settings.multistep.progress_indicator
+//     accepted values: "numbers" | "bar" | "none". Default "numbers".
+// ---------------------------------------------------------------------------
+
+function nf_make_form_with_schema_settings( array $top_fields, array $schema_settings ): array {
+	return [
+		'id'          => 0,
+		'name'        => 'Progress',
+		'status'      => 'active',
+		'form_schema' => [ 'fields' => $top_fields, 'settings' => $schema_settings ],
+		'settings'    => [],
+	];
+}
+
+// 15a. Default (no schema settings configured) is "numbers".
+$default_form = nf_make_form( [ $step1, $step2 ] );
+$html_default = FormRenderer::render_preview_form( $default_form );
+check( '15a default progress indicator is numbers',
+	strpos( $html_default, 'data-progress-mode="numbers"' ) !== false, true, $cases, $passed, $failed );
+check( '15a default emits step number 1',
+	strpos( $html_default, '<span class="neural-forms-form__progress-num">1</span>' ) !== false, true, $cases, $passed, $failed );
+check( '15a default emits step number 2',
+	strpos( $html_default, '<span class="neural-forms-form__progress-num">2</span>' ) !== false, true, $cases, $passed, $failed );
+check( '15a default emits step title in label',
+	strpos( $html_default, '<span class="neural-forms-form__progress-label">Contact</span>' ) !== false, true, $cases, $passed, $failed );
+check( '15a first item is_active by default',
+	strpos( $html_default, 'class="neural-forms-form__progress-item is-active"' ) !== false, true, $cases, $passed, $failed );
+
+// 15b. Explicit "numbers" matches default.
+$numbers_form = nf_make_form_with_schema_settings(
+	[ $step1, $step2 ],
+	[ 'multistep' => [ 'progress_indicator' => 'numbers' ] ]
+);
+$html_numbers = FormRenderer::render_preview_form( $numbers_form );
+check( '15b explicit numbers indicator emits markup',
+	strpos( $html_numbers, 'neural-forms-form__progress--numbers' ) !== false, true, $cases, $passed, $failed );
+
+// 15c. "bar" mode emits track + fill + text.
+$bar_form = nf_make_form_with_schema_settings(
+	[ $step1, $step2 ],
+	[ 'multistep' => [ 'progress_indicator' => 'bar' ] ]
+);
+$html_bar = FormRenderer::render_preview_form( $bar_form );
+check( '15c bar mode emits progress--bar wrapper',
+	strpos( $html_bar, 'neural-forms-form__progress--bar' ) !== false, true, $cases, $passed, $failed );
+check( '15c bar mode emits track',
+	strpos( $html_bar, 'neural-forms-form__progress-bar-track' ) !== false, true, $cases, $passed, $failed );
+check( '15c bar mode emits fill with width',
+	strpos( $html_bar, 'neural-forms-form__progress-bar-fill" style="width:50%"' ) !== false, true, $cases, $passed, $failed );
+check( '15c bar mode emits "Step 1 of 2" text',
+	strpos( $html_bar, 'Step 1 of 2' ) !== false, true, $cases, $passed, $failed );
+check( '15c bar mode does NOT emit numbers list',
+	strpos( $html_bar, 'neural-forms-form__progress--numbers' ) === false, true, $cases, $passed, $failed );
+
+// 15d. "none" mode emits no progress markup.
+$none_form = nf_make_form_with_schema_settings(
+	[ $step1, $step2 ],
+	[ 'multistep' => [ 'progress_indicator' => 'none' ] ]
+);
+$html_none = FormRenderer::render_preview_form( $none_form );
+check( '15d none mode emits no progress wrapper',
+	strpos( $html_none, 'neural-forms-form__progress' ) === false, true, $cases, $passed, $failed );
+check( '15d none mode still emits step containers',
+	strpos( $html_none, 'class="neural-forms-form__step"' ) !== false, true, $cases, $passed, $failed );
+check( '15d none mode still emits steps-nav',
+	strpos( $html_none, 'data-neural-forms-steps-nav' ) !== false, true, $cases, $passed, $failed );
+
+// 15e. Old no-step forms unaffected by the schema setting (defensive).
+$flat_with_indicator = nf_make_form_with_schema_settings(
+	[ $f_name, $f_email ],
+	[ 'multistep' => [ 'progress_indicator' => 'numbers' ] ]
+);
+$html_flat_ind = FormRenderer::render_preview_form( $flat_with_indicator );
+check( '15e flat schema ignores the indicator setting',
+	strpos( $html_flat_ind, 'neural-forms-form__progress' ) === false, true, $cases, $passed, $failed );
+
+// 15f. Single-step form: indicator suppressed (only shows for 2+ steps).
+$single_with_indicator = nf_make_form_with_schema_settings(
+	[ $step1 ],
+	[ 'multistep' => [ 'progress_indicator' => 'numbers' ] ]
+);
+$html_single_ind = FormRenderer::render_preview_form( $single_with_indicator );
+check( '15f single-step suppresses indicator',
+	strpos( $html_single_ind, 'neural-forms-form__progress' ) === false, true, $cases, $passed, $failed );
+
+// 15g. Malformed setting (unknown string) coerces to "numbers" default.
+$bad_form = nf_make_form_with_schema_settings(
+	[ $step1, $step2 ],
+	[ 'multistep' => [ 'progress_indicator' => 'rocketship' ] ]
+);
+$html_bad = FormRenderer::render_preview_form( $bad_form );
+check( '15g unknown indicator falls back to numbers',
+	strpos( $html_bad, 'data-progress-mode="numbers"' ) !== false, true, $cases, $passed, $failed );
+
+// 15h. Missing form_schema.settings entirely does not fatal and uses default.
+$missing_form = nf_make_form_with_schema_settings(
+	[ $step1, $step2 ],
+	[] // empty schema settings
+);
+$html_missing = FormRenderer::render_preview_form( $missing_form );
+check( '15h missing schema settings uses numbers default',
+	strpos( $html_missing, 'neural-forms-form__progress--numbers' ) !== false, true, $cases, $passed, $failed );
+
+// 15i. form_schema.settings.multistep absent (only other schema setting) -> default.
+$mixed_settings_form = nf_make_form_with_schema_settings(
+	[ $step1, $step2 ],
+	[ 'something_else' => 1 ]
+);
+$html_mixed_settings = FormRenderer::render_preview_form( $mixed_settings_form );
+check( '15i mixed schema settings without multistep key uses default',
+	strpos( $html_mixed_settings, 'neural-forms-form__progress--numbers' ) !== false, true, $cases, $passed, $failed );
 
 // ---------------------------------------------------------------------------
 // Report.
