@@ -8,6 +8,12 @@
   "scripts": {
     "build": "wp-scripts build --webpack-src-dir=src --output-path=build",
     "start": "wp-scripts start --webpack-src-dir=src --output-path=build",
+    "build:builder": "wp-scripts build --config webpack.split.config.js --env screen=builder",
+    "build:forms": "wp-scripts build --config webpack.split.config.js --env screen=forms",
+    "build:entries": "wp-scripts build --config webpack.split.config.js --env screen=entries",
+    "build:settings": "wp-scripts build --config webpack.split.config.js --env screen=settings",
+    "build:stats": "wp-scripts build --config webpack.split.config.js --env screen=stats",
+    "build:admin-shell": "wp-scripts build --config webpack.split.config.js --env screen=admin-shell",
     "lint:js": "wp-scripts lint-js src",
     "lint:css": "wp-scripts lint-style \"src/**/*.css\"",
     "format": "wp-scripts format src"

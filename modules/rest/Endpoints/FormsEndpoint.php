@@ -155,8 +155,13 @@ class FormsEndpoint {
             );
         }
 
+        // Treat an empty-string slug the same as a missing slug: derive from
+        // the name. The new builder sends `slug: ""` for fresh forms because
+        // the user hasn't picked one yet; without this, every "Save" on a
+        // brand-new form would 400 with "slug required".
         $slug_param = $request->get_param( 'slug' );
-        $slug       = sanitize_title( $slug_param !== null ? (string) $slug_param : $name );
+        $slug_seed  = ( is_string( $slug_param ) && $slug_param !== '' ) ? $slug_param : $name;
+        $slug       = sanitize_title( (string) $slug_seed );
         if ( $slug === '' ) {
             return new WP_Error(
                 'form_slug_required',
@@ -362,7 +367,15 @@ class FormsEndpoint {
             ],
             'slug'        => [
                 'required'          => false,
-                'sanitize_callback' => 'sanitize_title',
+                // sanitize_title is a 3-arg function (title, fallback, context).
+                // Used as a bare sanitize_callback, WordPress invokes it as
+                // sanitize_title($value, $request, $param) — the WP_REST_Request
+                // leaks into $fallback_title, and an empty $value causes
+                // sanitize_title to RETURN the request object. Downstream
+                // callers that do `(string) $slug` then fatal with "Object of
+                // class WP_REST_Request could not be converted to string".
+                // Wrap it so only the value is forwarded.
+                'sanitize_callback' => static fn( $v ) => sanitize_title( (string) $v ),
             ],
             'description' => [
                 'required'          => false,

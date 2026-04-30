@@ -31,13 +31,15 @@ defined( 'ABSPATH' ) || exit;
  */
 class SchemaHelper {
 
-	const ROW_TYPE = 'row';
+	const ROW_TYPE    = 'row';
+	const COLUMN_TYPE = 'column';
 
 	const MIN_COLUMNS = 1;
 	const MAX_COLUMNS = 4;
 
 	/** Allowed gap presets on a row. */
-	const VALID_GAPS = [ 'none', 'small', 'medium', 'large' ];
+	const VALID_GAPS  = [ 'none', 'small', 'medium', 'large' ];
+	const DEFAULT_GAP = 'medium';
 
 	/**
 	 * True when a node is a layout row (not a renderable form field).
@@ -50,6 +52,36 @@ class SchemaHelper {
 			return false;
 		}
 		return ( $node['type'] ?? '' ) === self::ROW_TYPE;
+	}
+
+	/**
+	 * True when a node looks like a layout column. Columns historically
+	 * had no `type`, so we accept "shape matches column" too: an array
+	 * with a `fields` array and either no `type` or `type === "column"`.
+	 */
+	public static function is_column( $node ): bool {
+		if ( ! is_array( $node ) ) {
+			return false;
+		}
+		$type = $node['type'] ?? '';
+		if ( $type === self::COLUMN_TYPE ) return true;
+		if ( $type !== '' ) return false;
+		return is_array( $node['fields'] ?? null );
+	}
+
+	public static function is_layout_node( $node ): bool {
+		return self::is_row( $node ) || self::is_column( $node );
+	}
+
+	/**
+	 * True when a node represents a real input field. Rows and columns
+	 * are layout-only; anything else with a `type` is a real field.
+	 */
+	public static function is_real_field( $node ): bool {
+		if ( ! is_array( $node ) ) return false;
+		$type = $node['type'] ?? '';
+		if ( $type === '' ) return false;
+		return $type !== self::ROW_TYPE && $type !== self::COLUMN_TYPE;
 	}
 
 	/**
@@ -213,5 +245,108 @@ class SchemaHelper {
 
 	public static function generate_column_id(): string {
 		return 'col_' . strtolower( wp_generate_password( 10, false, false ) );
+	}
+
+	/**
+	 * Normalize a column to canonical shape.
+	 *
+	 *   - Generates a missing id.
+	 *   - Defaults `fields` to [].
+	 *   - Drops nested rows inside column.fields (validator also rejects
+	 *     them; this is the lenient read path so a partially malformed
+	 *     row never fatals the renderer).
+	 *   - Preserves `width` as a passthrough (not rendered today).
+	 *   - Strips `type` since columns are layout-only.
+	 */
+	public static function normalize_column( $col ): array {
+		if ( ! is_array( $col ) ) {
+			return [ 'id' => self::generate_column_id(), 'fields' => [] ];
+		}
+		$fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+		$fields = array_values( array_filter( $fields, static function ( $f ) {
+			return is_array( $f ) && ! self::is_row( $f );
+		} ) );
+		$out = [
+			'id'     => isset( $col['id'] ) && is_string( $col['id'] ) && $col['id'] !== ''
+				? $col['id']
+				: self::generate_column_id(),
+			'fields' => $fields,
+		];
+		if ( array_key_exists( 'width', $col ) ) {
+			$out['width'] = $col['width'];
+		}
+		return $out;
+	}
+
+	/**
+	 * Normalize the whole schema. Accepts the canonical shape AND
+	 * legacy / alt input variants (row.layout.*, row.gap, row.columns
+	 * as number, missing column ids/fields). Output always conforms
+	 * to canonical:
+	 *
+	 *   row.settings.{columns, gap [, alignment]}
+	 *   row.columns[] each normalized via normalize_column()
+	 *
+	 * Pure - returns a new array; the input is not mutated.
+	 */
+	public static function normalize_schema( array $schema ): array {
+		$fields_in = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : [];
+		$out       = [];
+		foreach ( $fields_in as $node ) {
+			if ( ! is_array( $node ) ) continue;
+			if ( self::is_row( $node ) ) {
+				$out[] = self::normalize_row_canonical( $node );
+				continue;
+			}
+			if ( self::is_real_field( $node ) ) {
+				$out[] = $node;
+				continue;
+			}
+			// Anything else (orphan column, junk) is dropped.
+		}
+		$schema['fields'] = $out;
+		return $schema;
+	}
+
+	/**
+	 * Internal: fold legacy row variants into canonical settings, then
+	 * delegate to normalize_row() for the column-count resize step.
+	 */
+	private static function normalize_row_canonical( array $row ): array {
+		$layout      = is_array( $row['layout']   ?? null ) ? $row['layout']   : [];
+		$settings_in = is_array( $row['settings'] ?? null ) ? $row['settings'] : [];
+
+		$desired_raw =
+			$settings_in['columns']
+			?? $layout['columns']
+			?? ( is_int( $row['columns'] ?? null ) ? $row['columns'] : null )
+			?? ( is_array( $row['columns'] ?? null ) ? count( $row['columns'] ) : 1 );
+
+		$desired = self::normalize_column_count( $desired_raw );
+
+		$gap_raw = $settings_in['gap'] ?? $layout['gap'] ?? $row['gap'] ?? self::DEFAULT_GAP;
+		$gap     = in_array( $gap_raw, self::VALID_GAPS, true ) ? $gap_raw : self::DEFAULT_GAP;
+
+		$settings = [ 'columns' => $desired, 'gap' => $gap ];
+		$alignment = $settings_in['alignment'] ?? $layout['alignment'] ?? null;
+		if ( $alignment !== null && $alignment !== '' ) {
+			$settings['alignment'] = $alignment;
+		}
+
+		$cols_in = is_array( $row['columns'] ?? null ) ? $row['columns'] : [];
+		// If row.columns was a number we normalize to an empty array;
+		// resize_row will spawn the right number of empty columns.
+		if ( ! is_array( $cols_in ) ) $cols_in = [];
+
+		$cols = array_map( [ self::class, 'normalize_column' ], array_values( $cols_in ) );
+
+		$next = array_merge( $row, [
+			'type'     => self::ROW_TYPE,
+			'settings' => $settings,
+			'columns'  => $cols,
+		] );
+		unset( $next['layout'], $next['gap'] );
+
+		return self::normalize_row( $next, $desired );
 	}
 }

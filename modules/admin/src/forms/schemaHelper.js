@@ -6,10 +6,12 @@
  * server. The builder UI handles them as draggable groups.
  */
 
-export const ROW_TYPE = 'row';
-export const MIN_COLUMNS = 1;
-export const MAX_COLUMNS = 4;
-export const VALID_GAPS = [ 'none', 'small', 'medium', 'large' ];
+export const ROW_TYPE     = 'row';
+export const COLUMN_TYPE  = 'column';
+export const MIN_COLUMNS  = 1;
+export const MAX_COLUMNS  = 4;
+export const VALID_GAPS   = [ 'none', 'small', 'medium', 'large' ];
+export const DEFAULT_GAP  = 'medium';
 
 let _idCounter = 0;
 function token( prefix ) {
@@ -23,6 +25,37 @@ export const newFieldId  = ( type ) => token( ( type || 'field' ).replace( /[^a-
 
 export function isRow( node ) {
 	return !! ( node && node.type === ROW_TYPE );
+}
+
+/**
+ * True when a node looks like a layout column (lives inside a row).
+ *
+ * Columns historically had no `type` field, so we accept "shape
+ * matches column" too: a plain object with an array `fields` and no
+ * `type` (or `type === "column"`). Exposing this lets callers reason
+ * about layout-vs-real-field without hard-coding the prefix check.
+ */
+export function isColumn( node ) {
+	if ( ! node || typeof node !== 'object' ) return false;
+	if ( node.type === COLUMN_TYPE ) return true;
+	if ( node.type ) return false;
+	return Array.isArray( node.fields );
+}
+
+export function isLayoutNode( node ) {
+	return isRow( node ) || isColumn( node );
+}
+
+/**
+ * True when a node represents a real input field that produces an
+ * entry value. Anything with `type` set and not equal to "row" or
+ * "column" qualifies. Used by validators / submission flatteners to
+ * know what counts as user data vs. structural scaffolding.
+ */
+export function isRealField( node ) {
+	if ( ! node || typeof node !== 'object' ) return false;
+	if ( ! node.type ) return false;
+	return node.type !== ROW_TYPE && node.type !== COLUMN_TYPE;
 }
 
 export function clampColumnCount( n ) {
@@ -132,3 +165,149 @@ export function duplicateRow( row ) {
 		} ) ),
 	};
 }
+
+/** Duplicate a single field with a fresh id. Layout nodes are returned as-is. */
+export function duplicateField( field ) {
+	if ( ! isRealField( field ) ) return field;
+	return { ...field, id: newFieldId( field.type ) };
+}
+
+/** Spawn a single empty column. Used by createRow + normalize. */
+export function createColumn() {
+	return { id: newColumnId(), fields: [] };
+}
+
+/** Public alias of makeRow for callers that prefer the createX naming. */
+export const createRow = makeRow;
+
+/**
+ * Normalize a column to canonical shape.
+ *
+ * - id: filled if missing
+ * - fields: defaulted to []
+ * - column.type === 'column' is OK, but stripped on output (columns
+ *   are layout-only; an explicit type is purely informational and
+ *   isn't part of the canonical shape)
+ * - width: passthrough (string or number; not rendered today, but
+ *   stored for future responsive width support)
+ * - nested rows inside column.fields are dropped on normalize
+ *   (validator also rejects them - this is the lenient read path)
+ */
+export function normalizeColumn( col ) {
+	if ( ! col || typeof col !== 'object' ) {
+		return createColumn();
+	}
+	const fields = Array.isArray( col.fields ) ? col.fields.filter( ( f ) => ! isRow( f ) ) : [];
+	const next = {
+		id: typeof col.id === 'string' && col.id ? col.id : newColumnId(),
+		fields,
+	};
+	if ( col.width !== undefined ) next.width = col.width;
+	return next;
+}
+
+/**
+ * Normalize a row to canonical shape, accepting legacy / alt input
+ * variants and folding them into row.settings:
+ *
+ *   row.layout.columns   -> row.settings.columns
+ *   row.layout.gap       -> row.settings.gap
+ *   row.layout.alignment -> row.settings.alignment   (passthrough)
+ *   row.gap              -> row.settings.gap
+ *   row.columns (number) -> spawns N empty columns
+ *
+ * After folding, settings.columns is clamped to MIN/MAX_COLUMNS and
+ * the columns array is grown/shrunk to match (using the existing
+ * resizeRow merge-into-last-column rule so no field is ever dropped).
+ */
+export function normalizeRow( row ) {
+	if ( ! row || typeof row !== 'object' || row.type !== ROW_TYPE ) return row;
+
+	const layout = ( row.layout && typeof row.layout === 'object' ) ? row.layout : {};
+	const settingsIn = ( row.settings && typeof row.settings === 'object' ) ? row.settings : {};
+
+	const desired = clampColumnCount(
+		settingsIn.columns
+		?? layout.columns
+		?? ( typeof row.columns === 'number' ? row.columns : null )
+		?? ( Array.isArray( row.columns ) ? row.columns.length : 1 )
+	);
+
+	const gapCandidate = settingsIn.gap ?? layout.gap ?? row.gap ?? DEFAULT_GAP;
+	const gap = VALID_GAPS.includes( gapCandidate ) ? gapCandidate : DEFAULT_GAP;
+
+	const settings = { columns: desired, gap };
+	const alignment = settingsIn.alignment ?? layout.alignment;
+	if ( alignment ) settings.alignment = alignment;
+
+	const rawColumns = Array.isArray( row.columns )
+		? row.columns.map( normalizeColumn )
+		: [];
+
+	const next = { ...row, type: ROW_TYPE, settings, columns: rawColumns };
+	// Drop the alternate keys so the canonical shape is the only one
+	// that hits storage/validation.
+	delete next.layout;
+	delete next.gap;
+
+	return resizeRow( next, desired );
+}
+
+/**
+ * Normalize the top-level form_schema. Flat fields pass through;
+ * row nodes get normalized; non-object junk is filtered out.
+ *
+ * Pure - returns a new object; the input is not mutated.
+ */
+export function normalizeFormSchema( schema ) {
+	const fieldsIn = ( schema && Array.isArray( schema.fields ) ) ? schema.fields : [];
+	const fields = [];
+	for ( const node of fieldsIn ) {
+		if ( ! node || typeof node !== 'object' ) continue;
+		if ( isRow( node ) ) {
+			fields.push( normalizeRow( node ) );
+			continue;
+		}
+		if ( isRealField( node ) ) {
+			fields.push( node );
+			continue;
+		}
+		// Anything else (orphan column, malformed garbage) is dropped.
+	}
+	return { ...( schema || {} ), fields };
+}
+
+/**
+ * Move a field across columns within a row (or top-level <-> column).
+ *
+ * `from` / `to` shape: { kind: 'top' | 'col', rowIndex?, colIndex?, index }
+ * Identical to the moveField helper inside FieldList.js - exported
+ * here so the operation is reusable from non-DnD callers (e.g. future
+ * keyboard shortcuts or a Pro reorganize action).
+ */
+export function moveFieldBetweenColumns( nodes, from, to ) {
+	const next = JSON.parse( JSON.stringify( nodes ) );
+	let pulled = null;
+	if ( from.kind === 'top' ) {
+		pulled = next.splice( from.index, 1 )[ 0 ];
+	} else {
+		const col = next[ from.rowIndex ]?.columns?.[ from.colIndex ];
+		if ( ! col ) return nodes;
+		pulled = col.fields.splice( from.index, 1 )[ 0 ];
+	}
+	if ( ! pulled ) return nodes;
+	if ( to.kind === 'top' ) {
+		next.splice( to.index, 0, pulled );
+	} else {
+		const col = next[ to.rowIndex ]?.columns?.[ to.colIndex ];
+		if ( ! col ) return nodes;
+		const dest = Math.max( 0, Math.min( to.index, col.fields.length ) );
+		col.fields.splice( dest, 0, pulled );
+	}
+	return next;
+}
+
+/** Public ID generators with the canonical names requested upstream. */
+export const generateRowId    = newRowId;
+export const generateColumnId = newColumnId;
+export const generateFieldId  = newFieldId;

@@ -437,10 +437,42 @@ DO NOT:
 ALWAYS:
 - Keep changes minimal
 - Follow existing patterns
-- Run `npm run build` in modules/admin after JS/CSS changes
+- After admin JS/CSS changes, run `npm run build:builder` (NOT
+  `npm run build` — see "Admin build warning" below).
 - When adding a new premium feature: implement in Lite behind a new
   `Capabilities::` constant + `neural_forms_can_*` filter, default false.
   Have Pro flip the filter in its `Unlocker`.
+
+------------------------------------------------------------------------
+
+## Admin build warning
+
+**Do not run `npm run build` for the admin bundle.**
+
+The rich 1.0.0 admin bundle in `modules/admin/build/index.js` contains
+screens whose full source is not currently present in
+`modules/admin/src`. Running the normal full build will replace the
+rich admin UI with incomplete source screens.
+
+Safe command:
+
+```
+npm run build:builder
+```
+
+Use split bundles only:
+
+- `builder.js` for the form builder
+- future screen bundles when their source is restored/rebuilt
+
+Do not modify or regenerate:
+
+- `modules/admin/build/index.js`
+- `modules/admin/build/index.css`
+- `modules/admin/build/index.asset.php`
+- `modules/admin/build/index-rtl.css`
+
+unless full admin source parity has been restored.
 
 ------------------------------------------------------------------------
 

@@ -1,36 +1,46 @@
 /**
- * Single-field row in the form builder.
+ * Field card on the canvas.
  *
- * Layout matches the screenshot:
- *   [drag handle] [label input] [placeholder input] [type select] [Required] ['->�] ['->(ok)] [�(x)]
- *   [conditional logic toggle ............................................] [column toggle]
+ * 1.1.0 redesign: this is now a READ-ONLY preview card. Editing
+ * controls (label, placeholder, type, required, default value, help
+ * text, width, css class, conditional logic) all live in the right-
+ * side BuilderInspector. The canvas should feel like a live form
+ * preview, not a mini settings table.
  *
- * Drag is wired through @dnd-kit/sortable. The drag handle is the only
- * activator so clicking inside an input doesn't accidentally start a drag.
+ * Layout of the card:
  *
- * Conditional-logic editor and options editor for select/radio/checkboxes
- * are stubbed for now - see TODO comments. The column-width toggle is the
- * 1.1.0 feature this scaffold focuses on.
+ *   [drag handle] [Label + required *] [type badge] [duplicate] [delete]
+ *   [field preview - readonly approximation of the frontend render]
+ *   [help text - if present]
+ *
+ * The whole card is selectable: clicking anywhere on the chrome
+ * (handle, header, preview wrapper, help line) selects the field.
+ * Clicks on the small icon buttons (duplicate, delete) take their
+ * native action and stopPropagation so they don't also select.
+ *
+ * The hidden-field type renders a compact "Hidden" badge card
+ * instead of an input preview - see FieldPreview.js.
  */
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { __ } from '@wordpress/i18n';
 import { FIELD_TYPES } from './FieldTypes';
-import ColumnToggle from './ColumnToggle';
+import FieldPreview from './FieldPreview';
+
+function typeLabel( typeSlug ) {
+	const hit = FIELD_TYPES.find( ( t ) => t.value === typeSlug );
+	return hit ? hit.label : typeSlug;
+}
 
 export default function FieldRow( {
 	field,
-	index,
-	total,
 	onChange,
 	onRemove,
-	onMove,
+	onDuplicate,
+	isSelected,
+	onSelect,
 } ) {
-	// Up/down move buttons only render when index/total/onMove are passed
-	// (i.e. when the parent is a flat sortable list). Inside a column the
-	// caller relies on drag-and-drop and hides those controls.
-	const showMoveButtons = typeof index === 'number' && typeof total === 'number' && typeof onMove === 'function';
 	const {
 		attributes,
 		listeners,
@@ -46,125 +56,103 @@ export default function FieldRow( {
 		opacity:    isDragging ? 0.5 : 1,
 	};
 
-	const set = ( patch ) => onChange( { ...field, ...patch } );
+	const isHidden  = field.type === 'hidden';
+	const required  = !! field.required;
+	const helpText  = typeof field.help_text === 'string' ? field.help_text : '';
+	const cssClass  = typeof field.css_class === 'string' ? field.css_class : '';
+	const hasLogic  = !! ( field.conditional_logic && field.conditional_logic.enabled );
 
-	const isHidden = field.type === 'hidden';
+	const selectClick = ( e ) => {
+		if ( typeof onSelect !== 'function' ) return;
+		// Native interactive elements keep their behaviour.
+		const tag = e.target?.tagName;
+		if ( tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'OPTION' ) {
+			return;
+		}
+		e.stopPropagation();
+		onSelect();
+	};
+
+	const handleDuplicate = ( e ) => {
+		e.stopPropagation();
+		if ( typeof onDuplicate === 'function' ) onDuplicate( field.id );
+	};
+
+	const handleDelete = ( e ) => {
+		e.stopPropagation();
+		if ( typeof onRemove === 'function' ) onRemove( field.id );
+	};
 
 	return (
 		<div
 			ref={ setNodeRef }
 			style={ style }
 			className={
-				'nf-builder-field' +
-				( field.width === 'half' ? ' nf-builder-field--half' : '' ) +
-				( isDragging ? ' is-dragging' : '' )
+				'nf-builder-field nf-card'
+				+ ( field.width === 'half' ? ' nf-builder-field--half' : '' )
+				+ ( isDragging ? ' is-dragging' : '' )
+				+ ( isSelected ? ' is-selected' : '' )
+				+ ( isHidden ? ' nf-card--hidden' : '' )
+				+ ( cssClass ? ' ' + cssClass : '' )
 			}
+			onClick={ selectClick }
 		>
-			{ /* Drag handle - only this element starts a drag. */ }
-			<button
-				type="button"
-				className="nf-builder-field__handle"
-				aria-label={ __( 'Drag to reorder', 'neural-forms-lite' ) }
-				{ ...attributes }
-				{ ...listeners }
-			>
-				<span aria-hidden="true">'��'��</span>
-			</button>
-
-			<div className="nf-builder-field__main">
-				<input
-					type="text"
-					className="nf-builder-field__label"
-					value={ field.label || '' }
-					onChange={ ( e ) => set( { label: e.target.value } ) }
-					placeholder={ __( 'Label', 'neural-forms-lite' ) }
-				/>
-
-				<input
-					type="text"
-					className="nf-builder-field__placeholder"
-					value={ field.placeholder || '' }
-					onChange={ ( e ) => set( { placeholder: e.target.value } ) }
-					placeholder={ __( 'Placeholder', 'neural-forms-lite' ) }
-					disabled={ isHidden }
-				/>
-
-				<select
-					className="nf-builder-field__type"
-					value={ field.type }
-					onChange={ ( e ) => set( { type: e.target.value } ) }
-				>
-					{ FIELD_TYPES.map( ( t ) => (
-						<option key={ t.value } value={ t.value }>{ t.label }</option>
-					) ) }
-				</select>
-
-				<label className="nf-builder-field__required">
-					<input
-						type="checkbox"
-						checked={ !! field.required }
-						onChange={ ( e ) => set( { required: e.target.checked } ) }
-						disabled={ isHidden }
-					/>
-					{ __( 'Required', 'neural-forms-lite' ) }
-				</label>
-
-				{ showMoveButtons && (
-					<>
-						<button
-							type="button"
-							className="nf-builder-field__icon-btn"
-							onClick={ () => onMove( index, index - 1 ) }
-							disabled={ index === 0 }
-							aria-label={ __( 'Move up', 'neural-forms-lite' ) }
-							title={ __( 'Move up', 'neural-forms-lite' ) }
-						>↑</button>
-						<button
-							type="button"
-							className="nf-builder-field__icon-btn"
-							onClick={ () => onMove( index, index + 1 ) }
-							disabled={ index === total - 1 }
-							aria-label={ __( 'Move down', 'neural-forms-lite' ) }
-							title={ __( 'Move down', 'neural-forms-lite' ) }
-						>↓</button>
-					</>
-				) }
-
+			<div className="nf-card__header">
 				<button
 					type="button"
-					className="nf-builder-field__icon-btn nf-builder-field__icon-btn--remove"
-					onClick={ () => onRemove( field.id ) }
-					aria-label={ __( 'Remove field', 'neural-forms-lite' ) }
-					title={ __( 'Remove field', 'neural-forms-lite' ) }
-				>×</button>
-			</div>
+					className="nf-card__handle"
+					aria-label={ __( 'Drag to reorder', 'neural-forms-lite' ) }
+					title={ __( 'Drag to reorder', 'neural-forms-lite' ) }
+					{ ...attributes }
+					{ ...listeners }
+				>
+					<span aria-hidden="true">⋮⋮</span>
+				</button>
 
-			<div className="nf-builder-field__footer">
-				{ /* TODO: conditional-logic editor goes here. Stubbed as a
-				    visible-but-non-functional toggle so the row layout
-				    matches the original 1.0.0 builder UI shown in the
-				    screenshots. */ }
-				<label className="nf-builder-field__cl-toggle">
-					<input
-						type="checkbox"
-						checked={ !! field.conditional_logic?.enabled }
-						onChange={ ( e ) => set( {
-							conditional_logic: {
-								...( field.conditional_logic || {} ),
-								enabled: e.target.checked,
-							},
-						} ) }
-					/>
-					{ __( 'Conditional logic', 'neural-forms-lite' ) }
-				</label>
+				<div className="nf-card__label">
+					<span className="nf-card__label-text">
+						{ field.label || __( '(untitled field)', 'neural-forms-lite' ) }
+					</span>
+					{ required && ! isHidden && (
+						<span className="nf-card__required" aria-label={ __( 'Required', 'neural-forms-lite' ) } title={ __( 'Required', 'neural-forms-lite' ) }>*</span>
+					) }
+				</div>
 
-				{ ! isHidden && (
-					<ColumnToggle
-						value={ field.width === 'half' ? 'half' : 'full' }
-						onChange={ ( w ) => set( { width: w } ) }
-					/>
+				<span className="nf-card__type-badge">{ typeLabel( field.type ) }</span>
+
+				{ hasLogic && (
+					<span
+						className="nf-card__logic-badge"
+						title={ __( 'Conditional logic enabled', 'neural-forms-lite' ) }
+						aria-label={ __( 'Conditional logic enabled', 'neural-forms-lite' ) }
+					>{ __( 'Logic', 'neural-forms-lite' ) }</span>
 				) }
+
+				<div className="nf-card__actions">
+					<button
+						type="button"
+						className="nf-card__icon-btn"
+						onClick={ handleDuplicate }
+						aria-label={ __( 'Duplicate field', 'neural-forms-lite' ) }
+						title={ __( 'Duplicate field', 'neural-forms-lite' ) }
+					>⎘</button>
+					<button
+						type="button"
+						className="nf-card__icon-btn nf-card__icon-btn--danger"
+						onClick={ handleDelete }
+						aria-label={ __( 'Delete field', 'neural-forms-lite' ) }
+						title={ __( 'Delete field', 'neural-forms-lite' ) }
+					>×</button>
+				</div>
 			</div>
+
+			<div className="nf-card__preview">
+				<FieldPreview field={ field } />
+			</div>
+
+			{ helpText && ! isHidden && (
+				<p className="nf-card__help">{ helpText }</p>
+			) }
 		</div>
 	);
 }

@@ -50,7 +50,13 @@ export default function Forms() {
 			} )
 			.catch( ( err ) => {
 				if ( cancelled ) return;
-				setError( err?.message || __( 'Could not load forms.', 'neural-forms-lite' ) );
+				// Surface a friendly message; keep the technical detail in
+				// the console so a developer can still debug REST issues.
+				if ( err ) {
+					// eslint-disable-next-line no-console
+					console.error( 'Neural Forms /forms request failed:', err );
+				}
+				setError( __( 'Could not load forms. Please check REST API availability.', 'neural-forms-lite' ) );
 				setLoading( false );
 			} );
 

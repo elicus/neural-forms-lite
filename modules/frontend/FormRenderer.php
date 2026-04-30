@@ -129,6 +129,36 @@ class FormRenderer {
 		return static::render_form( $form, $options );
 	}
 
+	/**
+	 * Render a synthetic, in-memory form (no DB lookup) to HTML.
+	 *
+	 * Used by the builder's Preview action: the React app POSTs the
+	 * unsaved schema + settings to /forms/preview, which constructs a
+	 * synthetic row and hands it to this method. Identical output to
+	 * render() / render_preview(), without enqueueing assets and without
+	 * an active-status check.
+	 *
+	 * The caller is expected to have validated the schema first
+	 * (PreviewEndpoint runs FormValidator::validate_schema()).
+	 *
+	 * @param array $form     Synthetic form row: id, name, status, form_schema, settings.
+	 * @param array $options  Render options (e.g. show_labels, show_placeholders).
+	 * @return string
+	 */
+	public static function render_preview_form( array $form, array $options = [] ): string {
+		// Defensive defaults so a caller passing a partial array doesn't
+		// reach render_form() with missing keys.
+		$form += [
+			'id'          => 0,
+			'name'        => '',
+			'status'      => 'active',
+			'form_schema' => [],
+			'settings'    => [],
+		];
+
+		return static::render_form( $form, $options );
+	}
+
 	// Form wrapper
 
 	/**

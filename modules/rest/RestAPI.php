@@ -19,6 +19,7 @@ class RestAPI {
 
     public static function register_routes(): void {
         ( new Endpoints\FormsEndpoint() )->register_routes();
+        ( new Endpoints\PreviewEndpoint() )->register_routes();
         ( new Endpoints\SubmitEndpoint() )->register_routes();
         ( new Endpoints\EntriesEndpoint() )->register_routes();
         ( new Endpoints\ExportEndpoint() )->register_routes();

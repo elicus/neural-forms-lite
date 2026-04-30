@@ -27,7 +27,7 @@ import {
 } from '@dnd-kit/sortable';
 import FieldRow from './FieldRow';
 import RowBlock from './RowBlock';
-import { isRow, resizeRow, duplicateRow } from './schemaHelper';
+import { isRow, resizeRow, duplicateRow, duplicateField } from './schemaHelper';
 
 function moveField( nodes, from, to ) {
 	const next = JSON.parse( JSON.stringify( nodes ) );
@@ -74,7 +74,19 @@ function findFieldPosition( nodes, fieldId ) {
 	return null;
 }
 
-export default function FieldList( { nodes, onChange } ) {
+export default function FieldList( {
+	nodes,
+	onChange,
+	selectedId,
+	onSelect,
+	selectedColumnId,
+	onSelectColumn,
+} ) {
+	// onSelect / selectedId are optional. When omitted the list behaves
+	// exactly like the pre-3-panel canvas: no click-to-select, no
+	// highlighted node. Falling back to a no-op keeps existing call sites
+	// (and the unit tests for them) working.
+	const select = typeof onSelect === 'function' ? onSelect : () => {};
 	const sensors = useSensors(
 		useSensor( PointerSensor, { activationConstraint: { distance: 4 } } ),
 		useSensor( KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates } )
@@ -159,6 +171,8 @@ export default function FieldList( { nodes, onChange } ) {
 		<FieldRow
 			key={ field.id }
 			field={ field }
+			isSelected={ field.id === selectedId }
+			onSelect={ () => select( field.id ) }
 			onChange={ ( next ) => {
 				if ( ctx?.rowId ) {
 					const rowIndex = nodes.findIndex( ( n ) => n.id === ctx.rowId );
@@ -193,6 +207,27 @@ export default function FieldList( { nodes, onChange } ) {
 				const idx = nodes.findIndex( ( n ) => n.id === field.id );
 				if ( idx !== -1 ) removeNode( idx );
 			} }
+			onDuplicate={ () => {
+				const dup = duplicateField( field );
+				if ( ctx?.rowId ) {
+					const rowIndex = nodes.findIndex( ( n ) => n.id === ctx.rowId );
+					if ( rowIndex === -1 ) return;
+					const row = nodes[ rowIndex ];
+					const cols = row.columns.slice();
+					const colFields = cols[ ctx.colIndex ].fields.slice();
+					const fIdx = colFields.findIndex( ( f ) => f.id === field.id );
+					if ( fIdx === -1 ) return;
+					colFields.splice( fIdx + 1, 0, dup );
+					cols[ ctx.colIndex ] = { ...cols[ ctx.colIndex ], fields: colFields };
+					setNode( rowIndex, { ...row, columns: cols } );
+					return;
+				}
+				const idx = nodes.findIndex( ( n ) => n.id === field.id );
+				if ( idx === -1 ) return;
+				const copy = nodes.slice();
+				copy.splice( idx + 1, 0, dup );
+				onChange( copy );
+			} }
 		/>
 	);
 
@@ -210,6 +245,10 @@ export default function FieldList( { nodes, onChange } ) {
 								<RowBlock
 									key={ node.id }
 									row={ node }
+									isSelected={ node.id === selectedId }
+									onSelect={ () => select( node.id ) }
+									selectedColumnId={ selectedColumnId }
+									onSelectColumn={ onSelectColumn }
 									canMoveUp={ idx > 0 }
 									canMoveDown={ idx < nodes.length - 1 }
 									onMoveUp={ () => moveTopLevel( idx, idx - 1 ) }

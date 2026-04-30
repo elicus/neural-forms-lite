@@ -64,6 +64,13 @@ class EntryRepository {
 			$context
 		);
 
+		// Defense-in-depth: SubmitEndpoint already flattens rows + columns
+		// before validation, but if a future caller skips that step we still
+		// must never store a layout container in entry data. Strip any value
+		// whose key looks like a row/column id ('row_*' / 'col_*') OR whose
+		// value is the special row marker.
+		$sanitized_data = self::strip_layout_keys( $sanitized_data );
+
 		// Encode the user-submitted field values to JSON.
 		// wp_json_encode falls back to false on failure (malformed UTF-8, etc.).
 		$json = wp_json_encode( $sanitized_data );
@@ -722,6 +729,30 @@ class EntryRepository {
 	 *
 	 * @return string
 	 */
+	/**
+	 * Strip layout-container keys from the submission data array.
+	 *
+	 * Rows and columns use the prefixes 'row_' and 'col_' (see
+	 * SchemaHelper::generate_row_id / generate_column_id). They are
+	 * layout-only - they must never appear in entry data. This is a
+	 * belt-and-suspenders sanitizer; SubmitEndpoint already flattens
+	 * the schema before sanitization runs.
+	 */
+	private static function strip_layout_keys( array $data ): array {
+		$out = [];
+		foreach ( $data as $key => $value ) {
+			$k = (string) $key;
+			if ( strpos( $k, 'row_' ) === 0 || strpos( $k, 'col_' ) === 0 ) {
+				continue;
+			}
+			if ( is_array( $value ) && ( $value['type'] ?? '' ) === 'row' ) {
+				continue;
+			}
+			$out[ $key ] = $value;
+		}
+		return $out;
+	}
+
 	private static function table(): string {
 		global $wpdb;
 		return $wpdb->prefix . 'neural_forms_entries';

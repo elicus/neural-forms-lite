@@ -653,3 +653,819 @@
 		grid-template-columns: 1fr;
 	}
 }
+
+/* ---------------------------------------------------------------------------
+ * 3-panel form builder shell (1.1.0 scaffold).
+ *
+ * Layout:
+ *   .nf-builder-shell
+ *     .nf-builder-header           top bar (name, tabs, actions)
+ *     .nf-builder-body             [sidebar | main | inspector] grid
+ *       .nf-builder-sidebar        left palette
+ *       .nf-builder-main           center canvas
+ *       .nf-inspector              right context panel
+ *
+ * Targeted under #neural-forms-app so we don't bleed into wp-admin.
+ * ------------------------------------------------------------------------- */
+
+#neural-forms-app .nf-builder-shell {
+	display: flex;
+	flex-direction: column;
+	min-height: calc( 100vh - 32px );
+	background: #f6f7f9;
+}
+
+#neural-forms-app .nf-builder-header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 12px 20px;
+	background: #fff;
+	border-bottom: 1px solid #e5e7eb;
+	box-shadow: 0 1px 0 rgba( 17, 24, 39, 0.02 );
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-builder-header__left {
+	flex: 1 1 240px;
+	min-width: 200px;
+}
+
+#neural-forms-app .nf-builder-header__name {
+	width: 100%;
+	font-size: 18px;
+	font-weight: 600;
+	padding: 8px 10px;
+	border: 1px solid transparent;
+	background: transparent;
+	border-radius: 6px;
+}
+
+#neural-forms-app .nf-builder-header__name:hover,
+#neural-forms-app .nf-builder-header__name:focus {
+	border-color: #d1d5db;
+	background: #fff;
+	outline: none;
+}
+
+#neural-forms-app .nf-builder-header__tabs {
+	display: inline-flex;
+	gap: 4px;
+	padding: 4px;
+	background: #f3f4f6;
+	border-radius: 8px;
+}
+
+#neural-forms-app .nf-builder-header__tab {
+	background: transparent;
+	border: 0;
+	padding: 6px 16px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #4b5563;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-builder-header__tab.is-active {
+	background: #fff;
+	color: #111827;
+	box-shadow: 0 1px 2px rgba( 17, 24, 39, 0.06 );
+}
+
+#neural-forms-app .nf-builder-header__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-builder-header__saved {
+	color: #16a34a;
+	font-size: 12px;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-builder-body {
+	display: grid;
+	grid-template-columns: 260px 1fr 320px;
+	gap: 16px;
+	padding: 16px;
+	flex: 1;
+	min-height: 0;
+}
+
+#neural-forms-app .nf-builder-body--settings {
+	display: block;
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 24px 16px 40px;
+}
+
+/* Sidebar (left palette) */
+
+#neural-forms-app .nf-builder-sidebar {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	overflow-y: auto;
+	max-height: calc( 100vh - 120px );
+}
+
+#neural-forms-app .nf-builder-sidebar__section + .nf-builder-sidebar__section {
+	margin-top: 20px;
+}
+
+#neural-forms-app .nf-builder-sidebar__title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+	margin: 0 0 10px;
+}
+
+#neural-forms-app .nf-builder-sidebar__grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px 8px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 500;
+	color: #374151;
+	transition: background-color 0.15s, border-color 0.15s, transform 0.05s;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip:hover {
+	background: #fff;
+	border-color: #2271b1;
+	color: #111827;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip:active {
+	transform: translateY( 1px );
+}
+
+#neural-forms-app .nf-builder-sidebar__chip--layout {
+	background: #eef2ff;
+	border-color: #c7d2fe;
+	color: #1e40af;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip--layout:hover {
+	background: #fff;
+	border-color: #4f46e5;
+}
+
+/* Canvas */
+
+#neural-forms-app .nf-builder-main {
+	min-width: 0;
+}
+
+#neural-forms-app .nf-builder-canvas-shell {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	min-height: 320px;
+}
+
+#neural-forms-app .nf-builder-canvas-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: 48px 16px;
+	border: 2px dashed #e5e7eb;
+	border-radius: 10px;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-builder-canvas-empty__title {
+	font-size: 15px;
+	font-weight: 600;
+	color: #374151;
+	margin: 0 0 4px;
+}
+
+#neural-forms-app .nf-builder-canvas-empty__hint {
+	margin: 0;
+	font-size: 13px;
+}
+
+/* Selected-state highlight on canvas nodes */
+
+#neural-forms-app .nf-builder-field.is-selected,
+#neural-forms-app .nf-row.is-selected {
+	box-shadow: 0 0 0 2px #2271b1;
+	border-radius: 8px;
+}
+
+/* Inspector (right) */
+
+#neural-forms-app .nf-inspector {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	max-height: calc( 100vh - 120px );
+	overflow-y: auto;
+}
+
+#neural-forms-app .nf-inspector__title {
+	font-size: 13px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #374151;
+	margin: 0 0 12px;
+}
+
+#neural-forms-app .nf-inspector__empty {
+	margin: 0;
+	color: #6b7280;
+	font-size: 13px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-inspector__field {
+	display: block;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-inspector__field--inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-inspector__label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-inspector__field input[type="text"],
+#neural-forms-app .nf-inspector__field input[type="email"],
+#neural-forms-app .nf-inspector__field input[type="url"],
+#neural-forms-app .nf-inspector__field select,
+#neural-forms-app .nf-inspector__field textarea {
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 13px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-inspector__hint {
+	margin-top: 16px;
+	color: #6b7280;
+	font-size: 12px;
+}
+
+/* Form Settings tab */
+
+#neural-forms-app .nf-form-settings__section {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px 20px;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-form-settings__title {
+	font-size: 14px;
+	font-weight: 700;
+	color: #111827;
+	margin: 0 0 12px;
+}
+
+#neural-forms-app .nf-form-settings__field {
+	display: block;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-form-settings__field--inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-form-settings__label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-form-settings__field input[type="email"],
+#neural-forms-app .nf-form-settings__field input[type="url"],
+#neural-forms-app .nf-form-settings__field input[type="text"],
+#neural-forms-app .nf-form-settings__field select,
+#neural-forms-app .nf-form-settings__field textarea {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 13px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-form-settings__hint {
+	margin: 4px 0 0;
+	color: #6b7280;
+	font-size: 12px;
+}
+
+/* Preview modal */
+
+#neural-forms-app .nf-preview-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-preview-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba( 17, 24, 39, 0.5 );
+}
+
+#neural-forms-app .nf-preview-modal__panel {
+	position: relative;
+	background: #fff;
+	border-radius: 12px;
+	width: min( 720px, 92vw );
+	height: min( 80vh, 720px );
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 20px 50px rgba( 0, 0, 0, 0.25 );
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-preview-modal__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+#neural-forms-app .nf-preview-modal__title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-preview-modal__close {
+	background: transparent;
+	border: 0;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-preview-modal__body {
+	flex: 1;
+	min-height: 0;
+}
+
+#neural-forms-app .nf-preview-modal__frame {
+	width: 100%;
+	height: 100%;
+	border: 0;
+	background: #fff;
+}
+
+#neural-forms-app .nf-preview-modal__status {
+	padding: 16px;
+	color: #6b7280;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-preview-modal__status--error {
+	color: #b91c1c;
+}
+
+@media ( max-width: 1100px ) {
+	#neural-forms-app .nf-builder-body {
+		grid-template-columns: 220px 1fr 280px;
+	}
+}
+
+@media ( max-width: 900px ) {
+	#neural-forms-app .nf-builder-body {
+		grid-template-columns: 1fr;
+	}
+	#neural-forms-app .nf-builder-sidebar,
+	#neural-forms-app .nf-inspector {
+		max-height: none;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+ * Simplified screens (1.1.0): Entries, Settings, Stats.
+ * Scoped to #neural-forms-app to avoid wp-admin bleed.
+ * ------------------------------------------------------------------------- */
+
+#neural-forms-app .nf-pill {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	background: #e5e7eb;
+	color: #374151;
+}
+
+#neural-forms-app .nf-pill--new   { background: #dbeafe; color: #1e40af; }
+#neural-forms-app .nf-pill--read  { background: #f3f4f6; color: #4b5563; }
+#neural-forms-app .nf-pill--spam  { background: #fee2e2; color: #991b1b; }
+#neural-forms-app .nf-pill--trash { background: #fef3c7; color: #92400e; }
+
+/* Entries screen */
+
+#neural-forms-app .nf-entries__body {
+	display: grid;
+	grid-template-columns: 240px 1fr;
+	gap: 16px;
+	padding: 16px;
+}
+
+#neural-forms-app .nf-entries__rail {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 12px;
+}
+
+#neural-forms-app .nf-entries__rail-title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+	margin: 4px 0 10px;
+}
+
+#neural-forms-app .nf-entries__rail-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	padding: 7px 10px;
+	font-size: 13px;
+	cursor: pointer;
+	color: #1f2937;
+}
+
+#neural-forms-app .nf-entries__rail-item:hover {
+	background: #f3f4f6;
+}
+
+#neural-forms-app .nf-entries__rail-item.is-active {
+	background: #2271b1;
+	color: #fff;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-entries__main {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	min-height: 240px;
+}
+
+#neural-forms-app .nf-entries__main-header h2 {
+	margin: 0 0 12px;
+	font-size: 16px;
+}
+
+#neural-forms-app .nf-entries__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-entries__table th,
+#neural-forms-app .nf-entries__table td {
+	text-align: left;
+	padding: 8px 10px;
+	border-bottom: 1px solid #f3f4f6;
+	vertical-align: top;
+}
+
+#neural-forms-app .nf-entries__table th {
+	font-size: 11px;
+	text-transform: uppercase;
+	color: #6b7280;
+	letter-spacing: 0.04em;
+}
+
+#neural-forms-app .nf-entries__row {
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-entries__row:hover {
+	background: #f9fafb;
+}
+
+#neural-forms-app .nf-entries__row.is-open {
+	background: #eef6ff;
+}
+
+#neural-forms-app .nf-entries__row-preview {
+	color: #4b5563;
+	max-width: 480px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-entries__detail {
+	margin-top: 16px;
+	padding: 16px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+}
+
+#neural-forms-app .nf-entries__detail-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-entries__detail-header h3 {
+	margin: 0;
+	font-size: 14px;
+}
+
+#neural-forms-app .nf-entries__detail-meta {
+	color: #6b7280;
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-entries__detail-grid {
+	margin: 0;
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-entries__detail-row {
+	display: grid;
+	grid-template-columns: 180px 1fr;
+	gap: 12px;
+	padding: 6px 0;
+	border-bottom: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-entries__detail-row dt {
+	color: #6b7280;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+#neural-forms-app .nf-entries__detail-row dd {
+	margin: 0;
+	color: #1f2937;
+	font-size: 13px;
+	word-break: break-word;
+}
+
+#neural-forms-app .nf-entries__empty {
+	margin: 12px 0;
+	color: #6b7280;
+	font-size: 13px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-entries__error {
+	margin: 12px 0;
+	color: #b91c1c;
+	font-size: 13px;
+}
+
+/* Settings screen */
+
+#neural-forms-app .nf-settings {
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 16px;
+}
+
+#neural-forms-app .nf-settings .neural-forms-screen__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-settings__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-settings__saved {
+	color: #16a34a;
+	font-size: 12px;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-settings__section {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px 20px;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-settings__section h2 {
+	margin: 0 0 12px;
+	font-size: 14px;
+	font-weight: 700;
+	color: #111827;
+}
+
+#neural-forms-app .nf-settings__field {
+	display: block;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-settings__field--inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-settings__field > span {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-settings__field input[type="text"],
+#neural-forms-app .nf-settings__field input[type="email"],
+#neural-forms-app .nf-settings__field input[type="password"],
+#neural-forms-app .nf-settings__field select,
+#neural-forms-app .nf-settings__field textarea {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 13px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-settings__hint {
+	font-style: italic;
+	color: #6b7280;
+	font-weight: normal;
+	font-size: 11px;
+}
+
+/* Stats screen */
+
+#neural-forms-app .nf-stats {
+	padding: 16px;
+}
+
+#neural-forms-app .nf-stats__grid {
+	display: grid;
+	grid-template-columns: repeat( auto-fill, minmax( 160px, 1fr ) );
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-stats__card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 14px 16px;
+}
+
+#neural-forms-app .nf-stats__card-value {
+	font-size: 24px;
+	font-weight: 700;
+	color: #111827;
+	line-height: 1.2;
+}
+
+#neural-forms-app .nf-stats__card-label {
+	font-size: 12px;
+	color: #6b7280;
+	margin-top: 4px;
+}
+
+#neural-forms-app .nf-stats__card-hint {
+	font-size: 11px;
+	color: #9ca3af;
+	margin-top: 2px;
+}
+
+#neural-forms-app .nf-stats__section {
+	margin-top: 24px;
+}
+
+#neural-forms-app .nf-stats__section h2 {
+	margin: 0 0 12px;
+	font-size: 13px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-stats__activity {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-stats__activity-item {
+	display: grid;
+	grid-template-columns: 220px 1fr 160px;
+	gap: 12px;
+	padding: 10px 14px;
+	border-bottom: 1px solid #f3f4f6;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-stats__activity-item:last-child {
+	border-bottom: 0;
+}
+
+#neural-forms-app .nf-stats__activity-type {
+	font-weight: 600;
+	color: #374151;
+}
+
+#neural-forms-app .nf-stats__activity-message {
+	color: #4b5563;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-stats__activity-time {
+	color: #9ca3af;
+	font-size: 12px;
+	text-align: right;
+}
+
+#neural-forms-app .nf-stats__activity-item--error .nf-stats__activity-type { color: #b91c1c; }
+#neural-forms-app .nf-stats__activity-item--success .nf-stats__activity-type { color: #047857; }
+
+#neural-forms-app .nf-stats__empty {
+	margin: 12px 0;
+	color: #6b7280;
+	font-size: 13px;
+	font-style: italic;
+}
+
+@media ( max-width: 900px ) {
+	#neural-forms-app .nf-entries__body {
+		grid-template-columns: 1fr;
+	}
+	#neural-forms-app .nf-stats__activity-item {
+		grid-template-columns: 1fr;
+	}
+}
