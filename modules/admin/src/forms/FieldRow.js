@@ -2,7 +2,7 @@
  * Single-field row in the form builder.
  *
  * Layout matches the screenshot:
- *   [drag handle] [label input] [placeholder input] [type select] [Required] ['->‘] ['->(ok)] [Ã(x)]
+ *   [drag handle] [label input] [placeholder input] [type select] [Required] ['->ï¿½] ['->(ok)] [ï¿½(x)]
  *   [conditional logic toggle ............................................] [column toggle]
  *
  * Drag is wired through @dnd-kit/sortable. The drag handle is the only
@@ -27,6 +27,10 @@ export default function FieldRow( {
 	onRemove,
 	onMove,
 } ) {
+	// Up/down move buttons only render when index/total/onMove are passed
+	// (i.e. when the parent is a flat sortable list). Inside a column the
+	// caller relies on drag-and-drop and hides those controls.
+	const showMoveButtons = typeof index === 'number' && typeof total === 'number' && typeof onMove === 'function';
 	const {
 		attributes,
 		listeners,
@@ -64,7 +68,7 @@ export default function FieldRow( {
 				{ ...attributes }
 				{ ...listeners }
 			>
-				<span aria-hidden="true">'‹®'‹®</span>
+				<span aria-hidden="true">'ï¿½ï¿½'ï¿½ï¿½</span>
 			</button>
 
 			<div className="nf-builder-field__main">
@@ -105,23 +109,26 @@ export default function FieldRow( {
 					{ __( 'Required', 'neural-forms-lite' ) }
 				</label>
 
-				<button
-					type="button"
-					className="nf-builder-field__icon-btn"
-					onClick={ () => onMove( index, index - 1 ) }
-					disabled={ index === 0 }
-					aria-label={ __( 'Move up', 'neural-forms-lite' ) }
-					title={ __( 'Move up', 'neural-forms-lite' ) }
-				>'->‘</button>
-
-				<button
-					type="button"
-					className="nf-builder-field__icon-btn"
-					onClick={ () => onMove( index, index + 1 ) }
-					disabled={ index === total - 1 }
-					aria-label={ __( 'Move down', 'neural-forms-lite' ) }
-					title={ __( 'Move down', 'neural-forms-lite' ) }
-				>'->(ok)</button>
+				{ showMoveButtons && (
+					<>
+						<button
+							type="button"
+							className="nf-builder-field__icon-btn"
+							onClick={ () => onMove( index, index - 1 ) }
+							disabled={ index === 0 }
+							aria-label={ __( 'Move up', 'neural-forms-lite' ) }
+							title={ __( 'Move up', 'neural-forms-lite' ) }
+						>â†‘</button>
+						<button
+							type="button"
+							className="nf-builder-field__icon-btn"
+							onClick={ () => onMove( index, index + 1 ) }
+							disabled={ index === total - 1 }
+							aria-label={ __( 'Move down', 'neural-forms-lite' ) }
+							title={ __( 'Move down', 'neural-forms-lite' ) }
+						>â†“</button>
+					</>
+				) }
 
 				<button
 					type="button"
@@ -129,7 +136,7 @@ export default function FieldRow( {
 					onClick={ () => onRemove( field.id ) }
 					aria-label={ __( 'Remove field', 'neural-forms-lite' ) }
 					title={ __( 'Remove field', 'neural-forms-lite' ) }
-				>Ã(x)</button>
+				>Ã—</button>
 			</div>
 
 			<div className="nf-builder-field__footer">

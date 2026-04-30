@@ -4,6 +4,7 @@ namespace NeuralForms\Frontend;
 use NeuralForms\Core\Config;
 use NeuralForms\Forms\FieldRegistry;
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\SchemaHelper;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -187,67 +188,13 @@ class FormRenderer {
 			$success_msg = __( 'Thank you! Your submission has been received.', 'neural-forms-lite' );
 		}
 
-		// ' Fields '
-		// Walk fields with index control so we can pair two consecutive
-		// half-width fields into a single .neural-forms-form__row container.
-		// Hidden fields and any other field with width != 'half' render
-		// directly into the column flow without a row wrapper.
-		$fields_html = '';
+		// Render the field tree. A node is either:
+		//   - a layout row (type=row) with explicit columns; or
+		//   - a flat field, optionally with width=half for pair-rendering.
+		// has_files is collected via a single recursive scan so file uploads
+		// inside a column still trigger the multipart enctype.
 		$has_files   = false;
-
-		// Normalize once up front so the pairing loop reads a stable shape.
-		$normalized = [];
-		foreach ( $fields as $field ) {
-			$field = (array) $field;
-
-			// Skip silently - malformed field definitions should never reach
-			// here (FormValidator catches them at save time), but defensive
-			// handling prevents a blank page from a corrupt schema.
-			if ( empty( $field['id'] ) || empty( $field['type'] ) ) {
-				continue;
-			}
-
-			if ( $field['type'] === 'file' ) {
-				$has_files = true;
-			}
-
-			// Hidden fields render outside the column grid (no visible wrapper),
-			// so they ignore width entirely and never participate in pairing.
-			$is_pairable = $field['type'] !== 'hidden';
-			$width       = $is_pairable
-				? FieldRegistry::normalize_width( $field['width'] ?? FieldRegistry::WIDTH_FULL )
-				: FieldRegistry::WIDTH_FULL;
-
-			$normalized[] = [ 'field' => $field, 'width' => $width ];
-		}
-
-		// Pair-only semantics: a half-width field needs a half-width
-		// partner. An isolated half (no half neighbor on either side)
-		// renders full - never half with empty space next to it.
-		$count = count( $normalized );
-		for ( $i = 0; $i < $count; $i++ ) {
-			$entry = $normalized[ $i ];
-			$next  = $normalized[ $i + 1 ] ?? null;
-
-			$pair = $entry['width'] === FieldRegistry::WIDTH_HALF
-				&& $next !== null
-				&& $next['width'] === FieldRegistry::WIDTH_HALF;
-
-			if ( $pair ) {
-				// Two consecutive halves '->-> render as a single row of two cells.
-				$fields_html .= '<div class="neural-forms-form__row neural-forms-form__row--cols-2">';
-				$fields_html .= static::render_field( $entry['field'], $form_id, $options );
-				$fields_html .= static::render_field( $next['field'],  $form_id, $options );
-				$fields_html .= '</div>';
-				$i++; // consumed two
-				continue;
-			}
-
-			// Default: full-width field, no row wrapper. This includes
-			// "isolated half" - a half without a half neighbor expands
-			// back to full width, matching the form-builder preview.
-			$fields_html .= static::render_field( $entry['field'], $form_id, $options );
-		}
+		$fields_html = static::render_nodes( $fields, $form_id, $options, $has_files );
 
 		// ' Honeypot '
 		// Name "neural_forms_website" sounds like a real field to bots but is
@@ -425,6 +372,141 @@ class FormRenderer {
 	 * @param array $options  Reserved for future per-field render options.
 	 * @return string
 	 */
+	/**
+	 * Walk a node array (flat fields, layout rows, or a mix), emit HTML.
+	 *
+	 * has_files is set to true (via reference) the first time a file
+	 * field is encountered anywhere in the tree, so render_form() can
+	 * decide whether to add the data-neural-forms-has-files attribute.
+	 *
+	 * @param array $nodes
+	 * @param int   $form_id
+	 * @param array $options
+	 * @param bool  $has_files  By-ref out flag.
+	 * @return string
+	 */
+	private static function render_nodes( array $nodes, int $form_id, array $options, bool &$has_files ): string {
+		$html  = '';
+		$count = count( $nodes );
+
+		// Pair-only half-width back-compat: when two consecutive flat
+		// fields both have width=half (no row wrapper around them), wrap
+		// them in a 2-up grid the same way 1.0.0 did. This only triggers
+		// for legacy schemas - new schemas use explicit row nodes.
+		for ( $i = 0; $i < $count; $i++ ) {
+			$node = (array) $nodes[ $i ];
+
+			if ( SchemaHelper::is_row( $node ) ) {
+				$html .= static::render_row( $node, $form_id, $options, $has_files );
+				continue;
+			}
+
+			if ( empty( $node['id'] ) || empty( $node['type'] ) ) {
+				continue;
+			}
+
+			if ( $node['type'] === 'file' ) {
+				$has_files = true;
+			}
+
+			// Legacy half-width pairing.
+			$next = isset( $nodes[ $i + 1 ] ) ? (array) $nodes[ $i + 1 ] : null;
+			$pair = $node['type'] !== 'hidden'
+				&& FieldRegistry::normalize_width( $node['width'] ?? '' ) === FieldRegistry::WIDTH_HALF
+				&& $next !== null
+				&& ! SchemaHelper::is_row( $next )
+				&& ( $next['type'] ?? '' ) !== 'hidden'
+				&& FieldRegistry::normalize_width( $next['width'] ?? '' ) === FieldRegistry::WIDTH_HALF;
+
+			if ( $pair ) {
+				if ( ( $next['type'] ?? '' ) === 'file' ) {
+					$has_files = true;
+				}
+				$html .= '<div class="neural-forms-form__row neural-forms-form__row--cols-2">';
+				$html .= '<div class="neural-forms-form__row__column">' . static::render_field( $node, $form_id, $options ) . '</div>';
+				$html .= '<div class="neural-forms-form__row__column">' . static::render_field( $next, $form_id, $options ) . '</div>';
+				$html .= '</div>';
+				$i++;
+				continue;
+			}
+
+			// Isolated half / full / hidden: render directly.
+			$html .= static::render_field( $node, $form_id, $options );
+		}
+
+		return $html;
+	}
+
+	/**
+	 * Render a layout row with N columns. Empty columns are still emitted
+	 * so the grid layout is preserved when an admin spawns a row but
+	 * hasn't dropped fields into every cell yet.
+	 */
+	private static function render_row( array $row, int $form_id, array $options, bool &$has_files ): string {
+		$col_count = SchemaHelper::normalize_column_count(
+			$row['settings']['columns'] ?? count( is_array( $row['columns'] ?? null ) ? $row['columns'] : [] )
+		);
+
+		$gap = (string) ( $row['settings']['gap'] ?? 'medium' );
+		if ( ! in_array( $gap, SchemaHelper::VALID_GAPS, true ) ) {
+			$gap = 'medium';
+		}
+
+		$row_id = (string) ( $row['id'] ?? '' );
+
+		$html  = '<div class="neural-forms-form__row'
+			. ' neural-forms-form__row--cols-' . $col_count
+			. ' neural-forms-form__row--gap-' . esc_attr( $gap ) . '"';
+		if ( $row_id !== '' ) {
+			$html .= ' data-neural-forms-row-id="' . esc_attr( $row_id ) . '"';
+		}
+		$html .= '>';
+
+		$columns = is_array( $row['columns'] ?? null ) ? array_values( $row['columns'] ) : [];
+
+		// Render only the declared count - excess columns in the schema
+		// (left over from a column-count-shrink that hasn't been saved
+		// yet) are folded into the last visible column so no field is
+		// ever silently dropped.
+		$visible = array_slice( $columns, 0, $col_count );
+		$tail    = array_slice( $columns, $col_count );
+
+		if ( ! empty( $tail ) && ! empty( $visible ) ) {
+			$last_idx = count( $visible ) - 1;
+			$visible[ $last_idx ]['fields'] = is_array( $visible[ $last_idx ]['fields'] ?? null )
+				? $visible[ $last_idx ]['fields']
+				: [];
+			foreach ( $tail as $tail_col ) {
+				$tail_fields = is_array( $tail_col['fields'] ?? null ) ? $tail_col['fields'] : [];
+				$visible[ $last_idx ]['fields'] = array_merge( $visible[ $last_idx ]['fields'], $tail_fields );
+			}
+		}
+
+		// Pad with empty columns when settings.columns > count(columns).
+		while ( count( $visible ) < $col_count ) {
+			$visible[] = [ 'id' => '', 'fields' => [] ];
+		}
+
+		foreach ( $visible as $col ) {
+			$col      = (array) $col;
+			$col_id   = (string) ( $col['id'] ?? '' );
+			$col_html = '<div class="neural-forms-form__row__column"';
+			if ( $col_id !== '' ) {
+				$col_html .= ' data-neural-forms-col-id="' . esc_attr( $col_id ) . '"';
+			}
+			$col_html .= '>';
+
+			$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+			$col_html  .= static::render_nodes( $col_fields, $form_id, $options, $has_files );
+			$col_html  .= '</div>';
+
+			$html .= $col_html;
+		}
+
+		$html .= '</div>';
+		return $html;
+	}
+
 	private static function render_field( array $field, int $form_id, array $options = [] ): string {
 		$type     = $field['type'];
 		$field_id = $field['id'];

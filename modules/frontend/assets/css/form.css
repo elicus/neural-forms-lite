@@ -132,14 +132,41 @@
     gap: var(--neural-forms-field-gap);
 }
 
+.neural-forms-form__row--cols-1 {
+    grid-template-columns: 1fr;
+}
 .neural-forms-form__row--cols-2 {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.neural-forms-form__row--cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.neural-forms-form__row--cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-/* Mobile collapse - drop pairing so each field gets full width. The
-   600px breakpoint matches what most WP block themes consider "small". */
-@media ( max-width: 600px ) {
-    .neural-forms-form__row--cols-2 {
+/* Gap presets - names + scale match SchemaHelper::VALID_GAPS. */
+.neural-forms-form__row--gap-none   { gap: 0; }
+.neural-forms-form__row--gap-small  { gap: 0.5rem; }
+.neural-forms-form__row--gap-medium { gap: var(--neural-forms-field-gap); }
+.neural-forms-form__row--gap-large  { gap: 2rem; }
+
+/* A column in a row holds its own field flow. min-width: 0 lets inputs
+   inside actually shrink to the column width instead of forcing the
+   grid track to grow. */
+.neural-forms-form__row__column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--neural-forms-field-gap);
+    min-width: 0;
+}
+
+/* Mobile stack - every multi-column row collapses to a single column
+   on tablet/phone widths. 768px is the standard WP tablet cutoff. */
+@media ( max-width: 768px ) {
+    .neural-forms-form__row--cols-2,
+    .neural-forms-form__row--cols-3,
+    .neural-forms-form__row--cols-4 {
         grid-template-columns: 1fr;
     }
 }

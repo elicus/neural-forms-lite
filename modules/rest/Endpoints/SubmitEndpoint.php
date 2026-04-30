@@ -5,6 +5,7 @@ use NeuralForms\Captcha\CaptchaManager;
 use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Forms\SubmissionValidator;
 use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
@@ -191,11 +192,17 @@ class SubmitEndpoint {
 		}
 		// ' end CAPTCHA '
 
-		// ' Step 4c: File field processing '
+		// Step 4c: File field processing.
 		// Must happen before array_intersect_key so uploaded files (from $_FILES)
 		// are processed and their metadata injected into $raw_body under the
 		// field ID key. Only runs when the request is multipart/form-data.
-		$schema_fields_pre = $form['form_schema']['fields'] ?? [];
+		//
+		// SchemaHelper::flatten_fields walks rows + columns and yields only
+		// the leaf fields. Rows and columns are layout containers - they
+		// never appear in the submission pipeline.
+		$schema_fields_pre = SchemaHelper::flatten_fields(
+			is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : []
+		);
 		// Public submission endpoint - auth is by design open (CAPTCHA + honeypot
 		// + rate limit gate above), so no nonce is sent. $_FILES is read here
 		// only to detect the multipart upload path; values pulled from it are
@@ -914,7 +921,7 @@ class SubmitEndpoint {
 	 * balancers). Takes only the first (leftmost) entry - it represents the
 	 * original client; subsequent IPs are proxies appended along the chain.
 	 *
-	 * 'ö†Ô∏è  SPOOFING RISK: X-Forwarded-For is a plain HTTP header. Any client
+	 * 'ÔøΩÔøΩÔ∏è  SPOOFING RISK: X-Forwarded-For is a plain HTTP header. Any client
 	 * can send an arbitrary value when no trusted proxy sits in front. This
 	 * means an attacker can trivially rotate the apparent IP and bypass any
 	 * rate-limit filter that relies solely on this method.

@@ -11,10 +11,11 @@
  */
 
 import { useEffect, useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import api from '../api';
 import FieldList from './FieldList';
 import { FIELD_TYPES, newField } from './FieldTypes';
+import { makeRow, MIN_COLUMNS, MAX_COLUMNS } from './schemaHelper';
 
 export default function Builder( { formId, isNew } ) {
 	const [ form,    setForm    ] = useState( null );
@@ -75,6 +76,10 @@ export default function Builder( { formId, isNew } ) {
 		setFields( [ ...fields, newField( addType, existingIds ) ] );
 	};
 
+	const addRow = ( colCount ) => {
+		setFields( [ ...fields, makeRow( colCount ) ] );
+	};
+
 	const save = () => {
 		setSaving( true );
 		setError( '' );
@@ -131,6 +136,7 @@ export default function Builder( { formId, isNew } ) {
 							value={ addType }
 							onChange={ ( e ) => setAddType( e.target.value ) }
 							className="nf-builder__add-type"
+							aria-label={ __( 'Field type', 'neural-forms-lite' ) }
 						>
 							{ FIELD_TYPES.map( ( t ) => (
 								<option key={ t.value } value={ t.value }>{ t.label }</option>
@@ -141,10 +147,35 @@ export default function Builder( { formId, isNew } ) {
 							className="neural-forms-btn neural-forms-btn--primary"
 							onClick={ addField }
 						>+ { __( 'Add Field', 'neural-forms-lite' ) }</button>
+
+						<select
+							className="nf-builder__add-layout"
+							aria-label={ __( 'Add layout', 'neural-forms-lite' ) }
+							defaultValue=""
+							onChange={ ( e ) => {
+								const v = parseInt( e.target.value, 10 );
+								if ( v >= MIN_COLUMNS && v <= MAX_COLUMNS ) {
+									addRow( v );
+								}
+								// Reset so the same option can be picked twice in a row.
+								e.target.value = '';
+							} }
+						>
+							<option value="">+ { __( 'Add Layout', 'neural-forms-lite' ) }</option>
+							{ Array.from( { length: MAX_COLUMNS - MIN_COLUMNS + 1 }, ( _, i ) => MIN_COLUMNS + i ).map( ( n ) => (
+								<option key={ n } value={ n }>
+									{ sprintf(
+										/* translators: %d: column count */
+										__( '%d Column Row', 'neural-forms-lite' ),
+										n
+									) }
+								</option>
+							) ) }
+						</select>
 					</div>
 				</header>
 
-				<FieldList fields={ fields } onChange={ setFields } />
+				<FieldList nodes={ fields } onChange={ setFields } />
 			</section>
 
 			{ /* TODO: form settings panel - on-success/on-error, notifications,

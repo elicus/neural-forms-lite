@@ -1,5 +1,15 @@
 # Changelog
 
+### Unreleased - 1.1.0
+
+#### Added
+
+* Row + column layout system. Drop fields into 1-4 column rows like Fluent Forms / Gravity Forms / Elementor. Rows and columns are layout-only - they never appear in submitted entry data.
+* "Add Layout" picker in the form builder (1 / 2 / 3 / 4 column options).
+* Per-row column-count change preserves every field. Shrinking a row from 4 columns to 2 moves the dropped columns' fields into the last kept column instead of deleting them.
+* Frontend renders rows with CSS grid; at 768px and below every multi-column row stacks to a single column.
+* Backwards-compatible: existing flat schemas render exactly as before.
+
 ### 1.0.0 - 2026-04-29
 
 #### Added

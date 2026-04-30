@@ -6,28 +6,35 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Validates form schemas.
  *
- * Responsibility: confirm that a schema array is structurally sound before
- * it is stored. This is NOT submission validation (that comes in Step 9).
- *
  * Returns true on success, WP_Error on failure - so callers can pass
  * the result straight back through the REST response.
  *
- * Rules enforced:
- *  1. 'fields' key exists and is a non-empty array.
- *  2. Each field has a non-empty 'id'.
- *  3. Each field has a 'type' that is registered in FieldRegistry.
- *  4. Field IDs are unique within the schema.
+ * Schema shape:
+ *   form_schema.fields = [
+ *     { id, type, ... },                             // flat field
+ *     {                                              // layout row
+ *       id, type: 'row',
+ *       settings: { columns: 1..4, gap },
+ *       columns: [ { id, fields: [ ... ] }, ... ],
+ *     },
+ *   ]
+ *
+ * Rules:
+ *   1. 'fields' key exists and is a non-empty array.
+ *   2. Every field id, row id, and column id matches FIELD_ID_PATTERN.
+ *   3. Every field has a type registered in FieldRegistry.
+ *   4. Every row has 1..4 columns and at least one column entry.
+ *   5. Rows cannot contain other rows.
+ *   6. Ids are unique across the whole tree (rows, columns, fields share
+ *      one namespace) so callers can use a single id to look anything up.
  */
 class FormValidator {
 
     /**
-     * Valid field ID pattern: lowercase letters, digits, and underscores only.
+     * Valid id pattern: lowercase letters, digits, and underscores only.
      *
-     * Enforced so IDs are safe to use as:
-     *   - DB column aliases
-     *   - JavaScript object keys
-     *   - Merge tags  e.g. {{first_name}}
-     *   - CSS selectors  e.g. #field_first_name
+     * Enforced so ids are safe to use as DB column aliases, JS object
+     * keys, merge tags, and CSS selectors.
      */
     const FIELD_ID_PATTERN = '/^[a-z0-9_]+$/';
 
@@ -36,7 +43,6 @@ class FormValidator {
      * @return true|\WP_Error
      */
     public static function validate_schema( array $schema ) {
-        // Rule 1 - fields key must exist and be a non-empty array.
         if ( ! isset( $schema['fields'] ) || ! is_array( $schema['fields'] ) ) {
             return new \WP_Error(
                 'invalid_form_data',
@@ -55,81 +61,219 @@ class FormValidator {
 
         $seen_ids = [];
 
-        foreach ( $schema['fields'] as $index => $field ) {
-            $field = (array) $field;
+        return self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
+    }
 
-            // Rule 2 - each field must have a non-empty id.
-            if ( empty( $field['id'] ) ) {
+    /**
+     * Recursive walker. $seen_ids is shared across the whole tree so a
+     * field id used inside one column cannot collide with a field id used
+     * inside another, or with a row id at the top level.
+     *
+     * @param array  $nodes
+     * @param array  $seen_ids  Shared id set, by reference.
+     * @param string $path      Human-readable path used in error messages.
+     * @return true|\WP_Error
+     */
+    private static function validate_nodes( array $nodes, array &$seen_ids, string $path ) {
+        foreach ( $nodes as $index => $node ) {
+            $node     = (array) $node;
+            $node_path = $path . '[' . $index . ']';
+
+            if ( SchemaHelper::is_row( $node ) ) {
+                $row_error = self::validate_row( $node, $seen_ids, $node_path );
+                if ( is_wp_error( $row_error ) ) {
+                    return $row_error;
+                }
+                continue;
+            }
+
+            $field_error = self::validate_field( $node, $seen_ids, $node_path );
+            if ( is_wp_error( $field_error ) ) {
+                return $field_error;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Validate a layout row: id, settings.columns (1..4), and recurse
+     * into every column's nested fields.
+     */
+    private static function validate_row( array $row, array &$seen_ids, string $path ) {
+        if ( empty( $row['id'] ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Row at %s is missing an id.', $path ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        $id = (string) $row['id'];
+
+        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf(
+                    'Row id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+                    $id
+                ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        if ( in_array( $id, $seen_ids, true ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Duplicate id "%s". Row, column, and field ids share one namespace.', $id ),
+                [ 'status' => 422 ]
+            );
+        }
+        $seen_ids[] = $id;
+
+        $columns = is_array( $row['columns'] ?? null ) ? $row['columns'] : [];
+        if ( empty( $columns ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Row "%s" has no columns.', $id ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        $declared = isset( $row['settings']['columns'] )
+            ? (int) $row['settings']['columns']
+            : count( $columns );
+        if ( $declared < SchemaHelper::MIN_COLUMNS || $declared > SchemaHelper::MAX_COLUMNS ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf(
+                    'Row "%s" declares %d columns. Allowed range is %d to %d.',
+                    $id,
+                    $declared,
+                    SchemaHelper::MIN_COLUMNS,
+                    SchemaHelper::MAX_COLUMNS
+                ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        foreach ( $columns as $col_idx => $col ) {
+            $col      = (array) $col;
+            $col_path = $path . '.columns[' . $col_idx . ']';
+
+            if ( empty( $col['id'] ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
-                    sprintf( 'Field at index %d is missing an id.', $index ),
+                    sprintf( 'Column at %s is missing an id.', $col_path ),
                     [ 'status' => 422 ]
                 );
             }
 
-            $id = (string) $field['id'];
-
-            // Rule 3 - id must match the allowed format: a-z, 0-9, _ only.
-            if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+            $col_id = (string) $col['id'];
+            if ( ! preg_match( self::FIELD_ID_PATTERN, $col_id ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
                     sprintf(
-                        'Field id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
-                        $id
+                        'Column id "%s" is invalid. Only lowercase letters, digits, and underscores are allowed.',
+                        $col_id
                     ),
                     [ 'status' => 422 ]
                 );
             }
 
-            // Rule 4 - type must be registered in FieldRegistry.
-            if ( empty( $field['type'] ) ) {
+            if ( in_array( $col_id, $seen_ids, true ) ) {
                 return new \WP_Error(
                     'invalid_form_data',
-                    sprintf( 'Field "%s" is missing a type.', $id ),
+                    sprintf( 'Duplicate id "%s". Row, column, and field ids share one namespace.', $col_id ),
                     [ 'status' => 422 ]
                 );
             }
+            $seen_ids[] = $col_id;
 
-            if ( ! FieldRegistry::is_registered( $field['type'] ) ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf(
-                        'Field "%s" has unregistered type "%s". Registered types: %s.',
-                        $id,
-                        $field['type'],
-                        implode( ', ', FieldRegistry::get_types() )
-                    ),
-                    [ 'status' => 422 ]
-                );
+            // Empty columns are allowed - the user may have just spawned
+            // the row and not dragged anything in yet. Validate any
+            // fields that are there. Nested rows are NOT supported -
+            // reject so this surface stays simple.
+            $col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+            foreach ( $col_fields as $f_idx => $nested ) {
+                $nested = (array) $nested;
+                if ( SchemaHelper::is_row( $nested ) ) {
+                    return new \WP_Error(
+                        'invalid_form_data',
+                        sprintf( 'Row at %s.fields[%d] is nested - rows cannot contain other rows.', $col_path, $f_idx ),
+                        [ 'status' => 422 ]
+                    );
+                }
+                $field_error = self::validate_field( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
+                if ( is_wp_error( $field_error ) ) {
+                    return $field_error;
+                }
             }
+        }
 
-            // Rule 5 - IDs must be unique within the schema.
-            if ( in_array( $id, $seen_ids, true ) ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Duplicate field id "%s". Each field must have a unique id.', $id ),
-                    [ 'status' => 422 ]
-                );
-            }
+        return true;
+    }
 
-            $seen_ids[] = $id;
+    /**
+     * Validate a single leaf field. Same rules as the original
+     * top-level loop, just factored out for the recursive walker.
+     */
+    private static function validate_field( array $field, array &$seen_ids, string $path ) {
+        if ( empty( $field['id'] ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Field at %s is missing an id.', $path ),
+                [ 'status' => 422 ]
+            );
+        }
 
-            // Rule 6 - Extension hook.
-            // Fires after all core rules pass for this field.
-            // Extensions return null to pass, or a WP_Error to fail.
-            //
-            // Usage:
-            //   add_filter( 'neural_forms_validate_field', function( $error, $field ) {
-            //       if ( $field['type'] === 'select' && empty( $field['options'] ) ) {
-            //           return new WP_Error( 'invalid_form_data', 'Select fields must have options.', ['status' => 422] );
-            //       }
-            //       return $error; // pass through
-            //   }, 10, 2 );
-            $extra = apply_filters( 'neural_forms_validate_field', null, $field );
+        $id = (string) $field['id'];
 
-            if ( is_wp_error( $extra ) ) {
-                return $extra;
-            }
+        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf(
+                    'Field id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+                    $id
+                ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        if ( empty( $field['type'] ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Field "%s" is missing a type.', $id ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        if ( ! FieldRegistry::is_registered( $field['type'] ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf(
+                    'Field "%s" has unregistered type "%s". Registered types: %s.',
+                    $id,
+                    $field['type'],
+                    implode( ', ', FieldRegistry::get_types() )
+                ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        if ( in_array( $id, $seen_ids, true ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Duplicate field id "%s". Each id must be unique across the form.', $id ),
+                [ 'status' => 422 ]
+            );
+        }
+        $seen_ids[] = $id;
+
+        // Extension hook. Fires after all core rules pass for this field.
+        // Return null to pass, or a WP_Error to fail.
+        $extra = apply_filters( 'neural_forms_validate_field', null, $field );
+        if ( is_wp_error( $extra ) ) {
+            return $extra;
         }
 
         return true;

@@ -3,6 +3,7 @@ namespace NeuralForms\Notifications;
 
 use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
+use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 
 defined( 'ABSPATH' ) || exit;
@@ -47,7 +48,12 @@ class NotificationService {
 			return;
 		}
 
-		$schema_fields = $form['form_schema']['fields'] ?? [];
+		// Flatten rows + columns. Notifications only care about leaf fields:
+		// the email summary and the autoresponder email lookup both walk the
+		// resulting flat list.
+		$schema_fields = SchemaHelper::flatten_fields(
+			is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : []
+		);
 		$data          = $entry['data'] ?? [];
 
 		if ( ! empty( $settings['enable_admin_notification'] ) ) {

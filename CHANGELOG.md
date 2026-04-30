@@ -7,6 +7,30 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — 1.1.0
+
+In development on the `1.1.0-dev` branch.
+
+### Added
+
+- **Row + column layout system.** The form schema now supports `type: "row"` containers that hold 1-4 columns of fields. Real fields live inside columns; rows and columns are layout-only — they never appear in submitted entry data, never get validated as fields, never carry a value. Old flat schemas continue to work unchanged.
+- New PHP `NeuralForms\Forms\SchemaHelper` with `flatten_fields()`, `is_row()`, `walk()`, `normalize_row()`, `normalize_column_count()`, `default_row_settings()`, `generate_row_id()`, `generate_column_id()`. The flattener walks rows + columns in source order and yields only leaf fields, so submission, validation, sanitization, exports, notifications, and AI processing all see the same flat field stream they always did.
+- Frontend rendering wraps each row in `.neural-forms-form__row.neural-forms-form__row--cols-N` with one `.neural-forms-form__row__column` per column. CSS uses `display: grid; grid-template-columns: repeat(N, minmax(0, 1fr))` for desktop; `@media (max-width: 768px)` collapses every multi-column row to a single column.
+- `FormValidator` recursively validates row nodes (id pattern, 1-4 columns, no nested rows) and enforces that row, column, and field ids share one namespace so any id can be used to look up its node uniquely.
+- React builder source extended with `RowBlock`, `Column`, and a `schemaHelper.js` mirror of the PHP helper. `Builder.js` exposes an "Add Layout" picker with 1/2/3/4 column options. `FieldList.js` now renders a tree of rows + flat fields, with dnd-kit nested droppables on every column. Compiled bundle in `modules/admin/build/` is unchanged at the 1.0.0 version — rebuild the bundle (Node 18+) to pick up the new builder UI.
+
+### Column-count change preservation
+
+Resizing a row never destroys fields. Shrinking 4 columns to 2 moves every field from the dropped columns into the last kept column, in order. The PHP `SchemaHelper::normalize_row()`, the JS `resizeRow()`, and the renderer all share this behaviour so a stale schema (saved with more columns than `settings.columns` declares) still renders cleanly.
+
+### Backwards compatibility
+
+- Existing flat schemas continue rendering identically; the legacy half-width pair-only path is preserved for fields with `width: "half"`.
+- Existing entries are unaffected — the storage shape only ever held leaf field values.
+- AI workflows, notifications, exports, and the REST contract are unchanged.
+
+---
+
 ## [1.0.0] — 2026-04-29
 
 Initial public release.

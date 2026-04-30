@@ -2,6 +2,7 @@
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
 use WP_Error;
@@ -242,9 +243,15 @@ class ExportEndpoint {
 		$dynamic_cols = [];
 
 		if ( $form_id > 0 ) {
-			// ' Single-form: use schema order '
+			// Single-form export: use schema order. Flatten the tree so
+			// rows + columns don't pollute the CSV header with layout ids -
+			// only real fields become columns.
 			$form          = FormRepository::find( $form_id );
-			$schema_fields = $form ? ( $form['form_schema']['fields'] ?? [] ) : [];
+			$schema_fields = $form
+				? SchemaHelper::flatten_fields(
+					is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : []
+				  )
+				: [];
 
 			foreach ( $schema_fields as $field ) {
 				$field    = (array) $field;
