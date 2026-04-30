@@ -27,7 +27,8 @@ import {
 } from '@dnd-kit/sortable';
 import FieldRow from './FieldRow';
 import RowBlock from './RowBlock';
-import { isRow, resizeRow, duplicateRow, duplicateField } from './schemaHelper';
+import StepBlock from './StepBlock';
+import { isRow, isStep, resizeRow, duplicateRow, duplicateField, duplicateStep } from './schemaHelper';
 
 function moveField( nodes, from, to ) {
 	const next = JSON.parse( JSON.stringify( nodes ) );
@@ -81,6 +82,8 @@ export default function FieldList( {
 	onSelect,
 	selectedColumnId,
 	onSelectColumn,
+	selectedStepId,
+	onSelectStep,
 } ) {
 	// onSelect / selectedId are optional. When omitted the list behaves
 	// exactly like the pre-3-panel canvas: no click-to-select, no
@@ -240,6 +243,41 @@ export default function FieldList( {
 			<SortableContext items={ topIds } strategy={ verticalListSortingStrategy }>
 				<div className="nf-builder-canvas">
 					{ nodes.map( ( node, idx ) => {
+						if ( isStep( node ) ) {
+							const stepCount = nodes.filter( isStep ).length;
+							const stepIndex = nodes.slice( 0, idx ).filter( isStep ).length;
+							return (
+								<StepBlock
+									key={ node.id }
+									step={ node }
+									stepIndex={ stepIndex }
+									stepCount={ stepCount }
+									isSelected={ node.id === selectedStepId }
+									onSelect={ typeof onSelectStep === 'function' ? () => onSelectStep( node.id ) : undefined }
+									canMoveUp={ idx > 0 }
+									canMoveDown={ idx < nodes.length - 1 }
+									onMoveUp={ () => moveTopLevel( idx, idx - 1 ) }
+									onMoveDown={ () => moveTopLevel( idx, idx + 1 ) }
+									onDelete={ () => removeNode( idx ) }
+									onDuplicate={ () => {
+										const copy = nodes.slice();
+										copy.splice( idx + 1, 0, duplicateStep( node ) );
+										onChange( copy );
+									} }
+								>
+									<StepChildren
+										step={ node }
+										stepIdx={ idx }
+										nodes={ nodes }
+										setNode={ setNode }
+										selectedId={ selectedId }
+										select={ select }
+										selectedColumnId={ selectedColumnId }
+										onSelectColumn={ onSelectColumn }
+									/>
+								</StepBlock>
+							);
+						}
 						if ( isRow( node ) ) {
 							return (
 								<RowBlock
@@ -275,5 +313,161 @@ export default function FieldList( {
 				</div>
 			</SortableContext>
 		</DndContext>
+	);
+}
+
+/**
+ * Renders a step's inner children (real fields + rows). Mutations
+ * are bound to the parent step's `fields[]` slot via setNode + the
+ * step's index in the top-level nodes array. Inner rows still own
+ * their column drop zones; columns inside a step row mutate
+ * row.columns the usual way (the columns themselves live inside the
+ * step.fields[] entry, so updating the row replaces step.fields[i]).
+ *
+ * dnd-kit cross-step drag is intentionally NOT wired in Phase 2 -
+ * only the outer DndContext binds, and reordering inside a step is
+ * out of scope. Add/edit/delete/duplicate inside a step all work.
+ */
+function StepChildren( {
+	step,
+	stepIdx,
+	nodes,
+	setNode,
+	selectedId,
+	select,
+	selectedColumnId,
+	onSelectColumn,
+} ) {
+	const children = Array.isArray( step.fields ) ? step.fields : [];
+
+	const setStepFields = ( nextChildren ) => {
+		setNode( stepIdx, { ...step, fields: nextChildren } );
+	};
+
+	const setChild = ( childIdx, nextChild ) => {
+		const copy = children.slice();
+		copy[ childIdx ] = nextChild;
+		setStepFields( copy );
+	};
+
+	const removeChild = ( childIdx ) => {
+		setStepFields( children.filter( ( _, i ) => i !== childIdx ) );
+	};
+
+	const insertAfter = ( childIdx, child ) => {
+		const copy = children.slice();
+		copy.splice( childIdx + 1, 0, child );
+		setStepFields( copy );
+	};
+
+	// Step-bound renderField for real fields directly inside the step,
+	// AND for fields inside a row that lives inside the step. ctx.rowId
+	// distinguishes the two cases.
+	const stepRenderField = ( field, ctx ) => (
+		<FieldRow
+			key={ field.id }
+			field={ field }
+			isSelected={ field.id === selectedId }
+			onSelect={ () => select( field.id ) }
+			onChange={ ( next ) => {
+				if ( ctx?.rowId ) {
+					const rowChildIdx = children.findIndex( ( c ) => c.id === ctx.rowId );
+					if ( rowChildIdx === -1 ) return;
+					const row = children[ rowChildIdx ];
+					const cols = row.columns.slice();
+					const fields = cols[ ctx.colIndex ].fields.slice();
+					const fIdx = fields.findIndex( ( f ) => f.id === field.id );
+					if ( fIdx === -1 ) return;
+					fields[ fIdx ] = next;
+					cols[ ctx.colIndex ] = { ...cols[ ctx.colIndex ], fields };
+					setChild( rowChildIdx, { ...row, columns: cols } );
+					return;
+				}
+				const idx = children.findIndex( ( c ) => c.id === field.id );
+				if ( idx === -1 ) return;
+				setChild( idx, next );
+			} }
+			onRemove={ () => {
+				if ( ctx?.rowId ) {
+					const rowChildIdx = children.findIndex( ( c ) => c.id === ctx.rowId );
+					if ( rowChildIdx === -1 ) return;
+					const row = children[ rowChildIdx ];
+					const cols = row.columns.slice();
+					cols[ ctx.colIndex ] = {
+						...cols[ ctx.colIndex ],
+						fields: cols[ ctx.colIndex ].fields.filter( ( f ) => f.id !== field.id ),
+					};
+					setChild( rowChildIdx, { ...row, columns: cols } );
+					return;
+				}
+				const idx = children.findIndex( ( c ) => c.id === field.id );
+				if ( idx !== -1 ) removeChild( idx );
+			} }
+			onDuplicate={ () => {
+				const dup = duplicateField( field );
+				if ( ctx?.rowId ) {
+					const rowChildIdx = children.findIndex( ( c ) => c.id === ctx.rowId );
+					if ( rowChildIdx === -1 ) return;
+					const row = children[ rowChildIdx ];
+					const cols = row.columns.slice();
+					const colFields = cols[ ctx.colIndex ].fields.slice();
+					const fIdx = colFields.findIndex( ( f ) => f.id === field.id );
+					if ( fIdx === -1 ) return;
+					colFields.splice( fIdx + 1, 0, dup );
+					cols[ ctx.colIndex ] = { ...cols[ ctx.colIndex ], fields: colFields };
+					setChild( rowChildIdx, { ...row, columns: cols } );
+					return;
+				}
+				const idx = children.findIndex( ( c ) => c.id === field.id );
+				if ( idx === -1 ) return;
+				insertAfter( idx, dup );
+			} }
+		/>
+	);
+
+	return (
+		<>
+			{ children.map( ( child, idx ) => {
+				if ( isRow( child ) ) {
+					return (
+						<RowBlock
+							key={ child.id }
+							row={ child }
+							isSelected={ child.id === selectedId }
+							onSelect={ () => select( child.id ) }
+							selectedColumnId={ selectedColumnId }
+							onSelectColumn={ onSelectColumn }
+							canMoveUp={ idx > 0 }
+							canMoveDown={ idx < children.length - 1 }
+							onMoveUp={ () => {
+								if ( idx <= 0 ) return;
+								const copy = children.slice();
+								const [ pulled ] = copy.splice( idx, 1 );
+								copy.splice( idx - 1, 0, pulled );
+								setStepFields( copy );
+							} }
+							onMoveDown={ () => {
+								if ( idx >= children.length - 1 ) return;
+								const copy = children.slice();
+								const [ pulled ] = copy.splice( idx, 1 );
+								copy.splice( idx + 1, 0, pulled );
+								setStepFields( copy );
+							} }
+							onDelete={ () => removeChild( idx ) }
+							onDuplicate={ () => insertAfter( idx, duplicateRow( child ) ) }
+							onChange={ ( cmd ) => {
+								if ( cmd.type === 'resize' ) {
+									setChild( idx, resizeRow( child, cmd.nextCount ) );
+								} else if ( cmd.type === 'patch' ) {
+									setChild( idx, { ...child, ...cmd.patch } );
+								}
+							} }
+							renderField={ stepRenderField }
+						/>
+					);
+				}
+				return stepRenderField( child, null );
+			} ) }
+		</>
 	);
 }

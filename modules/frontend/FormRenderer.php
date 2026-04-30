@@ -226,6 +226,15 @@ class FormRenderer {
 		$has_files   = false;
 		$fields_html = static::render_nodes( $fields, $form_id, $options, $has_files );
 
+		// Detect top-level step containers. Used both to flag the form
+		// (data-neural-forms-multistep="1") so form-submit.js can opt in
+		// cheaply, and to emit the steps-nav buttons just above the
+		// submit button further down.
+		$top_steps = array_values( array_filter( $fields, static function ( $n ) {
+			return is_array( $n ) && ( $n['type'] ?? '' ) === SchemaHelper::STEP_TYPE;
+		} ) );
+		$has_steps = count( $top_steps ) >= 2;
+
 		// ' Honeypot '
 		// Name "neural_forms_website" sounds like a real field to bots but is
 		// intentionally generic - avoids "hp" or "honeypot" patterns that
@@ -279,6 +288,10 @@ class FormRenderer {
 		$form_attrs .= ' data-neural-forms-version="' . esc_attr( $version ) . '"';
 		if ( $has_files ) {
 			$form_attrs .= ' data-neural-forms-has-files="1"';
+		}
+		if ( $has_steps ) {
+			$form_attrs .= ' data-neural-forms-multistep="1"';
+			$form_attrs .= ' data-neural-forms-step-count="' . count( $top_steps ) . '"';
 		}
 
 		// On-submit outcome - read by form-submit.js to decide between the
@@ -369,8 +382,37 @@ class FormRenderer {
 		}
 		// ' end CAPTCHA '
 
+		// Multi-step navigation: emitted only when 2+ top-level step
+		// nodes exist (computed near the top of render_form). Without
+		// JS, all steps render stacked and the nav buttons sit just
+		// above the submit doing nothing (type="button" so they
+		// cannot accidentally submit). form-submit.js wires their
+		// click handlers + per-step visibility.
+		if ( $has_steps ) {
+			$first_prev = (string) ( $top_steps[0]['settings']['button_previous'] ?? __( 'Back', 'neural-forms-lite' ) );
+			$first_next = (string) ( $top_steps[0]['settings']['button_next']     ?? __( 'Next', 'neural-forms-lite' ) );
+
+			$html .= '<div class="neural-forms-form__steps-nav" data-neural-forms-steps-nav>'
+					. '<button type="button" class="neural-forms-form__step-prev"'
+					. ' data-step-action="prev">'
+					. esc_html( $first_prev )
+					. '</button>'
+					. '<button type="button" class="neural-forms-form__step-next"'
+					. ' data-step-action="next">'
+					. esc_html( $first_next )
+					. '</button>'
+					. '</div>';
+		}
+
+		$submit_class = 'neural-forms-form__submit';
+		if ( $has_steps ) {
+			// JS hides the submit until the last step is reached.
+			// Without JS the submit stays visible (graceful fallback).
+			$submit_class .= ' neural-forms-form__submit--multistep';
+		}
+
 		$html .= '<div class="neural-forms-form__submit-wrap">'
-				. '<button type="submit" class="neural-forms-form__submit">'
+				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
 				. esc_html__( 'Submit', 'neural-forms-lite' )
 				. '</button>'
 				. '</div>';
@@ -415,9 +457,10 @@ class FormRenderer {
 	 * @param bool  $has_files  By-ref out flag.
 	 * @return string
 	 */
-	private static function render_nodes( array $nodes, int $form_id, array $options, bool &$has_files ): string {
-		$html  = '';
-		$count = count( $nodes );
+	private static function render_nodes( array $nodes, int $form_id, array $options, bool &$has_files, bool $is_top_level = true ): string {
+		$html       = '';
+		$count      = count( $nodes );
+		$step_index = 0; // Running counter of top-level step nodes.
 
 		// Pair-only half-width back-compat: when two consecutive flat
 		// fields both have width=half (no row wrapper around them), wrap
@@ -425,6 +468,12 @@ class FormRenderer {
 		// for legacy schemas - new schemas use explicit row nodes.
 		for ( $i = 0; $i < $count; $i++ ) {
 			$node = (array) $nodes[ $i ];
+
+			if ( $is_top_level && SchemaHelper::is_step( $node ) ) {
+				$html .= static::render_step( $node, $step_index, $form_id, $options, $has_files );
+				$step_index++;
+				continue;
+			}
 
 			if ( SchemaHelper::is_row( $node ) ) {
 				$html .= static::render_row( $node, $form_id, $options, $has_files );
@@ -464,6 +513,56 @@ class FormRenderer {
 			$html .= static::render_field( $node, $form_id, $options );
 		}
 
+		return $html;
+	}
+
+	/**
+	 * Render a layout step: title + description + body of fields/rows.
+	 *
+	 * Steps are top-level only. Their inner fields[] is recursed via
+	 * render_nodes() with $is_top_level=false so the recursive call
+	 * never re-enters the step branch.
+	 *
+	 * data-step-index is consumed by form-submit.js multi-step nav to
+	 * show one step at a time. Without JS, every step renders stacked
+	 * (the .is-active CSS toggle is JS-only) - the form remains
+	 * fully usable in graceful-degradation mode.
+	 */
+	private static function render_step( array $step, int $step_index, int $form_id, array $options, bool &$has_files ): string {
+		$step_id = (string) ( $step['id'] ?? '' );
+		$title   = (string) ( $step['title'] ?? '' );
+		$desc    = (string) ( $step['description'] ?? '' );
+		$btn_next = (string) ( $step['settings']['button_next']     ?? '' );
+		$btn_prev = (string) ( $step['settings']['button_previous'] ?? '' );
+
+		$html  = '<div class="neural-forms-form__step"';
+		$html .= ' data-step-index="' . (int) $step_index . '"';
+		if ( $step_id !== '' ) {
+			$html .= ' data-neural-forms-step-id="' . esc_attr( $step_id ) . '"';
+		}
+		if ( $btn_next !== '' ) {
+			$html .= ' data-step-button-next="' . esc_attr( $btn_next ) . '"';
+		}
+		if ( $btn_prev !== '' ) {
+			$html .= ' data-step-button-previous="' . esc_attr( $btn_prev ) . '"';
+		}
+		$html .= '>';
+
+		if ( $title !== '' ) {
+			$html .= '<h3 class="neural-forms-form__step-title">' . esc_html( $title ) . '</h3>';
+		}
+		if ( $desc !== '' ) {
+			$html .= '<p class="neural-forms-form__step-description">' . esc_html( $desc ) . '</p>';
+		}
+
+		$html .= '<div class="neural-forms-form__step-body">';
+		$inner_nodes = is_array( $step['fields'] ?? null ) ? $step['fields'] : [];
+		// is_top_level=false so a malformed nested step is rendered as
+		// a no-op (the validator already rejects them on save).
+		$html .= static::render_nodes( $inner_nodes, $form_id, $options, $has_files, false );
+		$html .= '</div>';
+
+		$html .= '</div>';
 		return $html;
 	}
 

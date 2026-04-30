@@ -28,13 +28,18 @@ import BuilderInspector from './BuilderInspector';
 import FormSettings from './FormSettings';
 import PreviewModal from './PreviewModal';
 import { newField } from './FieldTypes';
-import { makeRow } from './schemaHelper';
+import { makeRow, createStep, isStep } from './schemaHelper';
 
 function collectIds( nodes ) {
 	const ids = [];
 	const walk = ( arr ) => {
 		for ( const n of arr ) {
 			if ( ! n ) continue;
+			if ( n.type === 'step' ) {
+				ids.push( n.id );
+				walk( n.fields || [] );
+				continue;
+			}
 			if ( n.type === 'row' ) {
 				ids.push( n.id );
 				for ( const c of ( n.columns || [] ) ) {
@@ -56,21 +61,35 @@ export default function Builder( { formId, isNew } ) {
 	const [ error,        setError        ] = useState( '' );
 	const [ saving,       setSaving       ] = useState( false );
 	const [ saved,        setSaved        ] = useState( false );
-	const [ tab,             setTab             ] = useState( 'build' );
-	const [ selectedId,      setSelectedId      ] = useState( null );
+	const [ tab,              setTab              ] = useState( 'build' );
+	const [ selectedId,       setSelectedId       ] = useState( null );
 	const [ selectedColumnId, setSelectedColumnId ] = useState( null );
-	const [ previewOpen,     setPreviewOpen     ] = useState( false );
+	const [ selectedStepId,   setSelectedStepId   ] = useState( null );
+	const [ previewOpen,      setPreviewOpen      ] = useState( false );
 
-	// Selecting a column and selecting a node are mutually exclusive in
-	// the inspector: column-selected disables the node inspector, and
-	// vice versa. Wrap the setters so callers don't have to remember.
+	// Four-way mutually exclusive selection. Selecting any one clears
+	// the others. The inspector reads all four to decide which panel
+	// (field / row / column / step / empty) to render.
 	const selectNode = ( id ) => {
 		setSelectedId( id );
-		if ( id !== null ) setSelectedColumnId( null );
+		if ( id !== null ) {
+			setSelectedColumnId( null );
+			setSelectedStepId( null );
+		}
 	};
 	const selectColumn = ( id ) => {
 		setSelectedColumnId( id );
-		if ( id !== null ) setSelectedId( null );
+		if ( id !== null ) {
+			setSelectedId( null );
+			setSelectedStepId( null );
+		}
+	};
+	const selectStep = ( id ) => {
+		setSelectedStepId( id );
+		if ( id !== null ) {
+			setSelectedId( null );
+			setSelectedColumnId( null );
+		}
 	};
 
 	// Track the LIVE form id separately from the mount-time `formId`
@@ -145,40 +164,91 @@ export default function Builder( { formId, isNew } ) {
 		setSaved( false );
 	};
 
-	// Locate which row contains a given column id, returning [rowIdx, colIdx]
-	// or null if the column id is not in the current schema. Used to route
-	// "add field" clicks into the right column.
+	// Locate a column by id. Returns one of:
+	//   { kind: 'top-row', rowIdx, colIdx }       (row at root)
+	//   { kind: 'step-row', stepIdx, rowChildIdx, colIdx }  (row inside step)
+	//   null
 	const locateColumn = ( colId ) => {
 		if ( ! colId ) return null;
 		for ( let i = 0; i < fields.length; i += 1 ) {
 			const n = fields[ i ];
-			if ( ! n || n.type !== 'row' ) continue;
-			const cols = Array.isArray( n.columns ) ? n.columns : [];
-			for ( let c = 0; c < cols.length; c += 1 ) {
-				if ( cols[ c ]?.id === colId ) return [ i, c ];
+			if ( ! n ) continue;
+			if ( n.type === 'row' ) {
+				const cols = Array.isArray( n.columns ) ? n.columns : [];
+				for ( let c = 0; c < cols.length; c += 1 ) {
+					if ( cols[ c ]?.id === colId ) return { kind: 'top-row', rowIdx: i, colIdx: c };
+				}
+				continue;
+			}
+			if ( n.type === 'step' ) {
+				const children = Array.isArray( n.fields ) ? n.fields : [];
+				for ( let r = 0; r < children.length; r += 1 ) {
+					const child = children[ r ];
+					if ( ! child || child.type !== 'row' ) continue;
+					const cols = Array.isArray( child.columns ) ? child.columns : [];
+					for ( let c = 0; c < cols.length; c += 1 ) {
+						if ( cols[ c ]?.id === colId ) {
+							return { kind: 'step-row', stepIdx: i, rowChildIdx: r, colIdx: c };
+						}
+					}
+				}
 			}
 		}
 		return null;
 	};
 
+	const locateStep = ( stepId ) => {
+		if ( ! stepId ) return -1;
+		return fields.findIndex( ( n ) => n && n.type === 'step' && n.id === stepId );
+	};
+
 	const addField = ( type ) => {
-		// If a column is currently selected, drop the new field INTO that
-		// column rather than appending to the root. The id pool is the
-		// full schema so generated ids stay unique across roots + columns.
+		// Selection priority: column wins, then step, otherwise root.
+		// The id pool is the FULL schema so generated ids stay unique
+		// across roots, steps, rows, and columns.
 		const next = newField( type, collectIds( fields ) );
 
-		const target = locateColumn( selectedColumnId );
-		if ( target ) {
-			const [ rowIdx, colIdx ] = target;
+		const colTarget = locateColumn( selectedColumnId );
+		if ( colTarget && colTarget.kind === 'top-row' ) {
 			const nextFields = fields.slice();
-			const row = { ...nextFields[ rowIdx ] };
+			const row = { ...nextFields[ colTarget.rowIdx ] };
 			const cols = row.columns.slice();
-			cols[ colIdx ] = {
-				...cols[ colIdx ],
-				fields: [ ...( cols[ colIdx ].fields || [] ), next ],
+			cols[ colTarget.colIdx ] = {
+				...cols[ colTarget.colIdx ],
+				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
 			};
 			row.columns = cols;
-			nextFields[ rowIdx ] = row;
+			nextFields[ colTarget.rowIdx ] = row;
+			setFields( nextFields );
+			selectNode( next.id );
+			return;
+		}
+		if ( colTarget && colTarget.kind === 'step-row' ) {
+			const nextFields = fields.slice();
+			const step = { ...nextFields[ colTarget.stepIdx ] };
+			const children = step.fields.slice();
+			const row = { ...children[ colTarget.rowChildIdx ] };
+			const cols = row.columns.slice();
+			cols[ colTarget.colIdx ] = {
+				...cols[ colTarget.colIdx ],
+				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
+			};
+			row.columns = cols;
+			children[ colTarget.rowChildIdx ] = row;
+			step.fields = children;
+			nextFields[ colTarget.stepIdx ] = step;
+			setFields( nextFields );
+			selectNode( next.id );
+			return;
+		}
+
+		// Step selected, no column? Append into step.fields.
+		const stepIdx = locateStep( selectedStepId );
+		if ( stepIdx !== -1 ) {
+			const nextFields = fields.slice();
+			const step = { ...nextFields[ stepIdx ] };
+			step.fields = [ ...( step.fields || [] ), next ];
+			nextFields[ stepIdx ] = step;
 			setFields( nextFields );
 			selectNode( next.id );
 			return;
@@ -191,14 +261,48 @@ export default function Builder( { formId, isNew } ) {
 
 	const addRow = ( colCount ) => {
 		const row = makeRow( colCount );
+
+		// If a step is selected, append the row INTO that step.fields.
+		const stepIdx = locateStep( selectedStepId );
+		if ( stepIdx !== -1 ) {
+			const nextFields = fields.slice();
+			const step = { ...nextFields[ stepIdx ] };
+			step.fields = [ ...( step.fields || [] ), row ];
+			nextFields[ stepIdx ] = step;
+			setFields( nextFields );
+			selectNode( row.id );
+			return;
+		}
+
+		// Default: append to root.
 		setFields( [ ...fields, row ] );
 		selectNode( row.id );
+	};
+
+	const addStep = () => {
+		// Steps live only at the top level, regardless of current
+		// selection. The validator rejects nested steps - so even if a
+		// step is selected, we always append at root.
+		const count = fields.filter( isStep ).length + 1;
+		const step  = createStep( 'Step ' + count );
+		setFields( [ ...fields, step ] );
+		selectStep( step.id );
 	};
 
 	const addBlankStarter = () => {
 		// Empty-canvas "Blank form" tile spawns the default text field
 		// so the user always lands on something editable.
 		addField( 'text' );
+	};
+
+	const addMultistepStarter = () => {
+		// Empty-canvas "Multi-step" tile spawns two empty steps so the
+		// user has a tangible starting point. Title defaults match the
+		// spec; the user can rename via the inspector.
+		const step1 = createStep( 'Step 1' );
+		const step2 = createStep( 'Step 2' );
+		setFields( [ step1, step2 ] );
+		selectStep( step1.id );
 	};
 
 	const goBack = () => {
@@ -278,7 +382,7 @@ export default function Builder( { formId, isNew } ) {
 
 			{ safeTab === 'build' && (
 				<div className="nf-builder-body">
-					<BuilderSidebar onAddField={ addField } onAddRow={ addRow } />
+					<BuilderSidebar onAddField={ addField } onAddRow={ addRow } onAddStep={ addStep } />
 					<main className="nf-builder-main">
 						<BuilderCanvas
 							nodes={ fields }
@@ -287,13 +391,17 @@ export default function Builder( { formId, isNew } ) {
 							onSelect={ selectNode }
 							selectedColumnId={ selectedColumnId }
 							onSelectColumn={ selectColumn }
+							selectedStepId={ selectedStepId }
+							onSelectStep={ selectStep }
 							onAddBlankStarter={ addBlankStarter }
+							onAddMultistepStarter={ addMultistepStarter }
 						/>
 					</main>
 					<BuilderInspector
 						nodes={ fields }
 						selectedId={ selectedId }
 						selectedColumnId={ selectedColumnId }
+						selectedStepId={ selectedStepId }
 						onChange={ setFields }
 					/>
 				</div>

@@ -1679,3 +1679,144 @@
 	letter-spacing: 0.04em;
 	white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+ * Step block (1.1.0 multi-step).
+ *
+ * Top-level layout container. Reads as a tinted card so it visually
+ * separates from rows + flat fields. Inner body holds real fields and
+ * rows; rows nested inside steps render with their own toolbar exactly
+ * as they do at root.
+ * ------------------------------------------------------------------------- */
+
+#neural-forms-app .nf-step {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-left: 4px solid var( --nf-primary );
+	border-radius: 10px;
+	padding: 14px 16px 16px;
+	margin-bottom: 12px;
+	transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+#neural-forms-app .nf-step.is-dragging {
+	box-shadow: 0 8px 18px var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-step.is-selected {
+	box-shadow:
+		0 0 0 2px var( --nf-primary ),
+		0 8px 18px var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-step__header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 10px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-step__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-step__group--right {
+	margin-left: auto;
+}
+
+#neural-forms-app .nf-step__handle {
+	background: transparent;
+	border: 0;
+	cursor: grab;
+	color: #9ca3af;
+	padding: 0 4px;
+}
+
+#neural-forms-app .nf-step__pill {
+	background: var( --nf-primary );
+	color: #fff;
+	border-radius: 999px;
+	padding: 2px 10px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-step__title {
+	font-size: 14px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-step__description {
+	margin: 0 0 12px;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-step__actions {
+	display: inline-flex;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-step__icon-btn {
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+}
+
+#neural-forms-app .nf-step__icon-btn:hover:not(:disabled) {
+	background: #f3f4f6;
+	color: #111827;
+}
+
+#neural-forms-app .nf-step__icon-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-step__icon-btn--danger:hover:not(:disabled) {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-step__body {
+	background: #f9fafb;
+	border: 1px dashed #e5e7eb;
+	border-radius: 8px;
+	padding: 10px;
+	min-height: 64px;
+}
+
+#neural-forms-app .nf-step__empty {
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+	text-align: center;
+	padding: 16px 8px;
+}
+
+/* When a step is selected the inspector shows its position pill. */
+#neural-forms-app .nf-inspector__step-position {
+	margin: 0 0 12px;
+	display: inline-block;
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 2px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}

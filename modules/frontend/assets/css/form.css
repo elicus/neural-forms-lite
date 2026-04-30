@@ -722,3 +722,94 @@
 .neural-forms-form__reset-link:hover {
     opacity: 0.8;
 }
+
+/* ---------------------------------------------------------------------------
+ * Multi-step (1.1.0).
+ *
+ * Without JS: every .neural-forms-form__step renders stacked and the
+ * submit button stays visible. With JS: form-submit.js applies
+ * style.display="none" to inactive steps and toggles .is-active on
+ * the current one.
+ *
+ * Brand colors:
+ *   --nf-primary  #080f5b  (dominant interactive surface)
+ *   --nf-accent   #15db95  (live/success accent)
+ * Themes that need to override these can target the selectors below.
+ * ------------------------------------------------------------------------- */
+
+.neural-forms-form__step {
+    border-top: 2px solid #080f5b;
+    padding: 16px 0 4px;
+    margin-bottom: 8px;
+}
+
+.neural-forms-form__step:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.neural-forms-form__step-title {
+    margin: 0 0 4px;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #080f5b;
+}
+
+.neural-forms-form__step-description {
+    margin: 0 0 12px;
+    color: #4b5563;
+    font-size: 0.92em;
+}
+
+.neural-forms-form__step-body {
+    margin-bottom: 8px;
+}
+
+.neural-forms-form__steps-nav {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.neural-forms-form__step-prev,
+.neural-forms-form__step-next {
+    background: #fff;
+    color: #080f5b;
+    border: 1px solid #080f5b;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.neural-forms-form__step-prev:hover,
+.neural-forms-form__step-next:hover {
+    background: rgba( 8, 15, 91, 0.06 );
+}
+
+.neural-forms-form__step-next {
+    background: #080f5b;
+    color: #fff;
+    margin-left: auto;
+}
+
+.neural-forms-form__step-next:hover {
+    background: #050a45;
+    color: #fff;
+}
+
+/* Submit button on a multi-step form is JS-toggled; no CSS-only
+ * change here. Without JS it stays visible because nothing sets
+ * display:none on it. */
+
+@media ( max-width: 600px ) {
+    .neural-forms-form__steps-nav {
+        flex-direction: column;
+    }
+    .neural-forms-form__step-next {
+        margin-left: 0;
+    }
+}

@@ -17,10 +17,11 @@
  * preserved. Future passes can lift the heavier editors up here.
  */
 
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { FIELD_TYPES } from './FieldTypes';
 import {
 	isRow,
+	isStep,
 	clampColumnCount,
 	resizeRow,
 	VALID_GAPS,
@@ -29,19 +30,91 @@ import {
 	flattenFields,
 } from './schemaHelper';
 
+/**
+ * Locate a node by id. Returns a `hit` object that captures enough
+ * context for replaceField / replaceRow to write back into the right
+ * container without re-walking. Nesting cases handled:
+ *
+ *   { kind:'field', topIndex, rowIndex:-1 }                       // top-level real field
+ *   { kind:'row',   topIndex }                                     // top-level row
+ *   { kind:'field', topIndex, rowIndex, colIndex, fieldIndex }     // field in top-level row
+ *   { kind:'field', stepIndex, stepChildIndex }                    // field directly in step.fields
+ *   { kind:'row',   stepIndex, stepChildIndex }                    // row in step.fields
+ *   { kind:'field', stepIndex, stepChildIndex, colIndex, fieldIndex } // field in row in step
+ */
 function findNode( nodes, id ) {
 	if ( ! id || ! Array.isArray( nodes ) ) return null;
 	for ( let i = 0; i < nodes.length; i += 1 ) {
 		const n = nodes[ i ];
 		if ( ! n ) continue;
-		if ( n.id === id ) return { node: n, kind: isRow( n ) ? 'row' : 'field', topIndex: i, rowIndex: -1, colIndex: -1, fieldIndex: -1 };
+		if ( isStep( n ) ) {
+			const children = Array.isArray( n.fields ) ? n.fields : [];
+			for ( let k = 0; k < children.length; k += 1 ) {
+				const child = children[ k ];
+				if ( ! child ) continue;
+				if ( child.id === id ) {
+					return {
+						node: child,
+						kind: isRow( child ) ? 'row' : 'field',
+						stepIndex: i,
+						stepChildIndex: k,
+						topIndex: -1,
+						rowIndex: -1,
+						colIndex: -1,
+						fieldIndex: -1,
+					};
+				}
+				if ( isRow( child ) ) {
+					const cols = child.columns || [];
+					for ( let c = 0; c < cols.length; c += 1 ) {
+						const fields = cols[ c ]?.fields || [];
+						for ( let f = 0; f < fields.length; f += 1 ) {
+							if ( fields[ f ]?.id === id ) {
+								return {
+									node: fields[ f ],
+									kind: 'field',
+									stepIndex: i,
+									stepChildIndex: k,
+									topIndex: -1,
+									rowIndex: -1,
+									colIndex: c,
+									fieldIndex: f,
+								};
+							}
+						}
+					}
+				}
+			}
+			continue;
+		}
+		if ( n.id === id ) {
+			return {
+				node: n,
+				kind: isRow( n ) ? 'row' : 'field',
+				stepIndex: -1,
+				stepChildIndex: -1,
+				topIndex: i,
+				rowIndex: -1,
+				colIndex: -1,
+				fieldIndex: -1,
+			};
+		}
 		if ( isRow( n ) ) {
 			const cols = n.columns || [];
 			for ( let c = 0; c < cols.length; c += 1 ) {
 				const fields = cols[ c ]?.fields || [];
 				for ( let f = 0; f < fields.length; f += 1 ) {
 					if ( fields[ f ]?.id === id ) {
-						return { node: fields[ f ], kind: 'field', topIndex: i, rowIndex: i, colIndex: c, fieldIndex: f };
+						return {
+							node: fields[ f ],
+							kind: 'field',
+							stepIndex: -1,
+							stepChildIndex: -1,
+							topIndex: i,
+							rowIndex: i,
+							colIndex: c,
+							fieldIndex: f,
+						};
 					}
 				}
 			}
@@ -52,10 +125,35 @@ function findNode( nodes, id ) {
 
 function replaceField( nodes, hit, nextField ) {
 	const copy = nodes.slice();
+
+	// Field nested inside a step.
+	if ( hit.stepIndex !== -1 ) {
+		const step = { ...copy[ hit.stepIndex ] };
+		const children = step.fields.slice();
+		if ( hit.colIndex === -1 ) {
+			// Direct child of step.fields
+			children[ hit.stepChildIndex ] = nextField;
+		} else {
+			// Field in row in step.fields
+			const row = { ...children[ hit.stepChildIndex ] };
+			const cols = row.columns.slice();
+			const fields = cols[ hit.colIndex ].fields.slice();
+			fields[ hit.fieldIndex ] = nextField;
+			cols[ hit.colIndex ] = { ...cols[ hit.colIndex ], fields };
+			row.columns = cols;
+			children[ hit.stepChildIndex ] = row;
+		}
+		step.fields = children;
+		copy[ hit.stepIndex ] = step;
+		return copy;
+	}
+
+	// Top-level real field.
 	if ( hit.rowIndex === -1 ) {
 		copy[ hit.topIndex ] = nextField;
 		return copy;
 	}
+	// Field in top-level row.
 	const row = { ...copy[ hit.rowIndex ] };
 	const cols = row.columns.slice();
 	const fields = cols[ hit.colIndex ].fields.slice();
@@ -66,9 +164,17 @@ function replaceField( nodes, hit, nextField ) {
 	return copy;
 }
 
-function replaceRow( nodes, topIndex, nextRow ) {
+function replaceRow( nodes, hit, nextRow ) {
 	const copy = nodes.slice();
-	copy[ topIndex ] = nextRow;
+	if ( hit.stepIndex !== -1 ) {
+		const step = { ...copy[ hit.stepIndex ] };
+		const children = step.fields.slice();
+		children[ hit.stepChildIndex ] = nextRow;
+		step.fields = children;
+		copy[ hit.stepIndex ] = step;
+		return copy;
+	}
+	copy[ hit.topIndex ] = nextRow;
 	return copy;
 }
 
@@ -413,8 +519,8 @@ function RowInspector( { hit, nodes, onChange } ) {
 	const cols = clampColumnCount( row.settings?.columns ?? row.columns?.length ?? 1 );
 	const gap  = VALID_GAPS.includes( row.settings?.gap ) ? row.settings.gap : 'medium';
 
-	const setColumns = ( next ) => onChange( replaceRow( nodes, hit.topIndex, resizeRow( row, next ) ) );
-	const setGap = ( next ) => onChange( replaceRow( nodes, hit.topIndex, {
+	const setColumns = ( next ) => onChange( replaceRow( nodes, hit, resizeRow( row, next ) ) );
+	const setGap = ( next ) => onChange( replaceRow( nodes, hit, {
 		...row,
 		settings: { ...( row.settings || {} ), gap: next },
 	} ) );
@@ -492,13 +598,92 @@ function ColumnInspector() {
 	);
 }
 
-export default function BuilderInspector( { nodes, selectedId, selectedColumnId, onChange } ) {
+function StepInspector( { nodes, stepId, onChange } ) {
+	const idx = nodes.findIndex( ( n ) => n && n.type === 'step' && n.id === stepId );
+	if ( idx === -1 ) return null;
+	const step  = nodes[ idx ];
+	const steps = nodes.filter( ( n ) => n && n.type === 'step' );
+	const stepNumber = steps.findIndex( ( s ) => s.id === stepId ) + 1;
+
+	const settings = ( step.settings && typeof step.settings === 'object' ) ? step.settings : {};
+	const buttonNext = typeof settings.button_next === 'string' ? settings.button_next : 'Next';
+	const buttonPrev = typeof settings.button_previous === 'string' ? settings.button_previous : 'Back';
+
+	const setStep = ( patch ) => {
+		const copy = nodes.slice();
+		copy[ idx ] = { ...step, ...patch };
+		onChange( copy );
+	};
+	const setStepSettings = ( patch ) => setStep( { settings: { ...settings, ...patch } } );
+
+	return (
+		<>
+			<h3 className="nf-inspector__title">{ __( 'Step settings', 'neural-forms-lite' ) }</h3>
+
+			<p className="nf-inspector__step-position">
+				{ sprintf(
+					/* translators: 1: current step number  2: total steps */
+					__( 'Step %1$d of %2$d', 'neural-forms-lite' ),
+					stepNumber,
+					steps.length
+				) }
+			</p>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Title', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof step.title === 'string' ? step.title : '' }
+					onChange={ ( e ) => setStep( { title: e.target.value } ) }
+					placeholder={ __( 'e.g. Contact Details', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Description', 'neural-forms-lite' ) }</span>
+				<textarea
+					rows={ 2 }
+					value={ typeof step.description === 'string' ? step.description : '' }
+					onChange={ ( e ) => setStep( { description: e.target.value } ) }
+					placeholder={ __( 'Optional helper text shown above this step.', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Next button label', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ buttonNext }
+					onChange={ ( e ) => setStepSettings( { button_next: e.target.value } ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Previous button label', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ buttonPrev }
+					onChange={ ( e ) => setStepSettings( { button_previous: e.target.value } ) }
+				/>
+			</label>
+
+			<p className="nf-inspector__hint">
+				{ __( 'Steps are layout sections. Only fields inside steps are submitted.', 'neural-forms-lite' ) }
+			</p>
+		</>
+	);
+}
+
+export default function BuilderInspector( { nodes, selectedId, selectedColumnId, selectedStepId, onChange } ) {
 	const hit = findNode( nodes, selectedId );
 
 	return (
 		<aside className="nf-inspector" aria-label={ __( 'Selected element settings', 'neural-forms-lite' ) }>
-			{ ! hit && ! selectedColumnId && <EmptyInspector /> }
+			{ ! hit && ! selectedColumnId && ! selectedStepId && <EmptyInspector /> }
 			{ ! hit && selectedColumnId && <ColumnInspector /> }
+			{ ! hit && ! selectedColumnId && selectedStepId && (
+				<StepInspector nodes={ nodes } stepId={ selectedStepId } onChange={ onChange } />
+			) }
 			{ hit && hit.kind === 'row' && (
 				<RowInspector hit={ hit } nodes={ nodes } onChange={ onChange } />
 			) }

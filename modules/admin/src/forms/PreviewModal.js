@@ -92,6 +92,27 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
 .neural-forms-form__required { color: #b91c1c; }
 .neural-forms-form__radio-option, .neural-forms-form__checkbox-option { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 .neural-forms-form__file-hint { color: #6b7280; font-size: 12px; margin: 4px 0 0; }
+.neural-forms-form__step {
+  border-top: 2px solid #080f5b;
+  padding: 16px 0 4px;
+  margin-bottom: 8px;
+}
+.neural-forms-form__step:first-of-type { border-top: 0; padding-top: 0; }
+.neural-forms-form__step-title {
+  margin: 0 0 4px; font-size: 16px; font-weight: 600; color: #080f5b;
+}
+.neural-forms-form__step-description {
+  margin: 0 0 12px; color: #4b5563; font-size: 13px;
+}
+.neural-forms-form__step-body { margin-bottom: 8px; }
+.neural-forms-form__steps-nav {
+  display: flex; gap: 8px; margin: 12px 0 8px;
+}
+.neural-forms-form__step-prev, .neural-forms-form__step-next {
+  background: #fff; color: #080f5b; border: 1px solid #080f5b;
+  border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500;
+}
+.neural-forms-form__step-next { background: #080f5b; color: #fff; margin-left: auto; }
 @media (max-width: 768px) { .neural-forms-form__row { grid-template-columns: 1fr !important; } }
 </style></head><body>${ html }</body></html>`;
 

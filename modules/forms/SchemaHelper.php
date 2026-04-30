@@ -33,6 +33,7 @@ class SchemaHelper {
 
 	const ROW_TYPE    = 'row';
 	const COLUMN_TYPE = 'column';
+	const STEP_TYPE   = 'step';
 
 	const MIN_COLUMNS = 1;
 	const MAX_COLUMNS = 4;
@@ -40,6 +41,10 @@ class SchemaHelper {
 	/** Allowed gap presets on a row. */
 	const VALID_GAPS  = [ 'none', 'small', 'medium', 'large' ];
 	const DEFAULT_GAP = 'medium';
+
+	/** Defaults for a step's settings object. */
+	const DEFAULT_STEP_BUTTON_NEXT     = 'Next';
+	const DEFAULT_STEP_BUTTON_PREVIOUS = 'Back';
 
 	/**
 	 * True when a node is a layout row (not a renderable form field).
@@ -52,6 +57,19 @@ class SchemaHelper {
 			return false;
 		}
 		return ( $node['type'] ?? '' ) === self::ROW_TYPE;
+	}
+
+	/**
+	 * True when a node is a layout step. Steps are top-level layout
+	 * containers - they own a `fields[]` array of real fields and rows
+	 * (rows can in turn nest columns). Steps NEVER appear inside other
+	 * steps, columns, or rows; the validator rejects such nesting.
+	 */
+	public static function is_step( $node ): bool {
+		if ( ! is_array( $node ) ) {
+			return false;
+		}
+		return ( $node['type'] ?? '' ) === self::STEP_TYPE;
 	}
 
 	/**
@@ -70,25 +88,29 @@ class SchemaHelper {
 	}
 
 	public static function is_layout_node( $node ): bool {
-		return self::is_row( $node ) || self::is_column( $node );
+		return self::is_row( $node ) || self::is_column( $node ) || self::is_step( $node );
 	}
 
 	/**
-	 * True when a node represents a real input field. Rows and columns
-	 * are layout-only; anything else with a `type` is a real field.
+	 * True when a node represents a real input field. Rows, columns,
+	 * and steps are layout-only; anything else with a `type` is a real
+	 * field.
 	 */
 	public static function is_real_field( $node ): bool {
 		if ( ! is_array( $node ) ) return false;
 		$type = $node['type'] ?? '';
 		if ( $type === '' ) return false;
-		return $type !== self::ROW_TYPE && $type !== self::COLUMN_TYPE;
+		return $type !== self::ROW_TYPE
+			&& $type !== self::COLUMN_TYPE
+			&& $type !== self::STEP_TYPE;
 	}
 
 	/**
 	 * Flatten a schema tree to its leaf field nodes, in source order.
 	 *
-	 * Rows and columns are skipped; only the actual form fields are
-	 * returned, preserving their declaration order across rows.
+	 * Steps, rows, and columns are skipped; only the actual form
+	 * fields are returned, preserving their declaration order across
+	 * the layout tree (step1.field, step1.row.col.field, step2.field).
 	 *
 	 * @param array $nodes  Top-level form_schema.fields array.
 	 * @return array[]      Field arrays.
@@ -97,6 +119,13 @@ class SchemaHelper {
 		$out = [];
 		foreach ( $nodes as $node ) {
 			if ( ! is_array( $node ) ) {
+				continue;
+			}
+			if ( self::is_step( $node ) ) {
+				$step_fields = is_array( $node['fields'] ?? null ) ? $node['fields'] : [];
+				foreach ( self::flatten_fields( $step_fields ) as $f ) {
+					$out[] = $f;
+				}
 				continue;
 			}
 			if ( self::is_row( $node ) ) {
@@ -112,7 +141,7 @@ class SchemaHelper {
 				}
 				continue;
 			}
-			if ( ! empty( $node['type'] ) ) {
+			if ( self::is_real_field( $node ) ) {
 				$out[] = $node;
 			}
 		}
@@ -247,6 +276,82 @@ class SchemaHelper {
 		return 'col_' . strtolower( wp_generate_password( 10, false, false ) );
 	}
 
+	public static function generate_step_id(): string {
+		return 'step_' . strtolower( wp_generate_password( 10, false, false ) );
+	}
+
+	/** Default settings for a freshly-created step. */
+	public static function default_step_settings(): array {
+		return [
+			'button_next'     => self::DEFAULT_STEP_BUTTON_NEXT,
+			'button_previous' => self::DEFAULT_STEP_BUTTON_PREVIOUS,
+		];
+	}
+
+	/**
+	 * Normalize a step to canonical shape.
+	 *
+	 * - id: filled if missing
+	 * - title: defaulted to '' if missing
+	 * - description: defaulted to '' if missing
+	 * - settings.button_next / .button_previous: defaulted from constants
+	 * - fields[]: defaulted to []
+	 * - any nested step inside step.fields is dropped on lenient read
+	 *   (validator rejects them on save); rows + real fields pass through
+	 */
+	public static function normalize_step( $step ): array {
+		if ( ! is_array( $step ) ) {
+			return [
+				'id'          => self::generate_step_id(),
+				'type'        => self::STEP_TYPE,
+				'title'       => '',
+				'description' => '',
+				'settings'    => self::default_step_settings(),
+				'fields'      => [],
+			];
+		}
+
+		$settings_in = is_array( $step['settings'] ?? null ) ? $step['settings'] : [];
+		$settings    = [
+			'button_next'     => isset( $settings_in['button_next'] ) && is_string( $settings_in['button_next'] ) && $settings_in['button_next'] !== ''
+				? $settings_in['button_next']
+				: self::DEFAULT_STEP_BUTTON_NEXT,
+			'button_previous' => isset( $settings_in['button_previous'] ) && is_string( $settings_in['button_previous'] ) && $settings_in['button_previous'] !== ''
+				? $settings_in['button_previous']
+				: self::DEFAULT_STEP_BUTTON_PREVIOUS,
+		];
+
+		$children_in = is_array( $step['fields'] ?? null ) ? $step['fields'] : [];
+		// Drop nested steps on lenient normalize. Rows pass through,
+		// real fields pass through, columns at this level (orphan, no
+		// parent row) are dropped because they don't make sense outside
+		// a row.
+		$children = [];
+		foreach ( $children_in as $child ) {
+			if ( ! is_array( $child ) ) continue;
+			if ( self::is_step( $child ) ) continue;
+			if ( self::is_column( $child ) && ! self::is_real_field( $child ) ) continue;
+			if ( self::is_row( $child ) ) {
+				$children[] = $child;
+				continue;
+			}
+			if ( self::is_real_field( $child ) ) {
+				$children[] = $child;
+			}
+		}
+
+		return [
+			'id'          => isset( $step['id'] ) && is_string( $step['id'] ) && $step['id'] !== ''
+				? $step['id']
+				: self::generate_step_id(),
+			'type'        => self::STEP_TYPE,
+			'title'       => isset( $step['title'] ) && is_string( $step['title'] ) ? $step['title'] : '',
+			'description' => isset( $step['description'] ) && is_string( $step['description'] ) ? $step['description'] : '',
+			'settings'    => $settings,
+			'fields'      => $children,
+		];
+	}
+
 	/**
 	 * Normalize a column to canonical shape.
 	 *
@@ -294,6 +399,22 @@ class SchemaHelper {
 		$out       = [];
 		foreach ( $fields_in as $node ) {
 			if ( ! is_array( $node ) ) continue;
+			if ( self::is_step( $node ) ) {
+				// Steps live only at the top level. Their inner fields
+				// (rows + real fields) are normalized recursively.
+				$norm = self::normalize_step( $node );
+				$inner = [];
+				foreach ( $norm['fields'] as $child ) {
+					if ( self::is_row( $child ) ) {
+						$inner[] = self::normalize_row_canonical( $child );
+					} elseif ( self::is_real_field( $child ) ) {
+						$inner[] = $child;
+					}
+				}
+				$norm['fields'] = $inner;
+				$out[] = $norm;
+				continue;
+			}
 			if ( self::is_row( $node ) ) {
 				$out[] = self::normalize_row_canonical( $node );
 				continue;

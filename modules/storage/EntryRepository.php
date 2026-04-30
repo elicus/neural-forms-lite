@@ -732,21 +732,27 @@ class EntryRepository {
 	/**
 	 * Strip layout-container keys from the submission data array.
 	 *
-	 * Rows and columns use the prefixes 'row_' and 'col_' (see
-	 * SchemaHelper::generate_row_id / generate_column_id). They are
-	 * layout-only - they must never appear in entry data. This is a
-	 * belt-and-suspenders sanitizer; SubmitEndpoint already flattens
-	 * the schema before sanitization runs.
+	 * Rows, columns, and steps use the prefixes 'row_', 'col_', and
+	 * 'step_' (see SchemaHelper::generate_row_id /
+	 * generate_column_id / generate_step_id). They are layout-only -
+	 * they must never appear in entry data. This is a belt-and-
+	 * suspenders sanitizer; SubmitEndpoint already flattens the
+	 * schema before sanitization runs.
 	 */
 	private static function strip_layout_keys( array $data ): array {
 		$out = [];
 		foreach ( $data as $key => $value ) {
 			$k = (string) $key;
-			if ( strpos( $k, 'row_' ) === 0 || strpos( $k, 'col_' ) === 0 ) {
+			if ( strpos( $k, 'row_' ) === 0
+				|| strpos( $k, 'col_' ) === 0
+				|| strpos( $k, 'step_' ) === 0 ) {
 				continue;
 			}
-			if ( is_array( $value ) && ( $value['type'] ?? '' ) === 'row' ) {
-				continue;
+			if ( is_array( $value ) ) {
+				$type = $value['type'] ?? '';
+				if ( $type === 'row' || $type === 'step' || $type === 'column' ) {
+					continue;
+				}
 			}
 			$out[ $key ] = $value;
 		}

@@ -74,10 +74,25 @@ class FormValidator {
      * @param string $path      Human-readable path used in error messages.
      * @return true|\WP_Error
      */
-    private static function validate_nodes( array $nodes, array &$seen_ids, string $path ) {
+    private static function validate_nodes( array $nodes, array &$seen_ids, string $path, bool $is_top_level = true ) {
         foreach ( $nodes as $index => $node ) {
             $node     = (array) $node;
             $node_path = $path . '[' . $index . ']';
+
+            if ( SchemaHelper::is_step( $node ) ) {
+                if ( ! $is_top_level ) {
+                    return new \WP_Error(
+                        'invalid_form_data',
+                        sprintf( 'Step at %s cannot be nested. Steps live only at the top level of the form.', $node_path ),
+                        [ 'status' => 422 ]
+                    );
+                }
+                $step_error = self::validate_step( $node, $seen_ids, $node_path );
+                if ( is_wp_error( $step_error ) ) {
+                    return $step_error;
+                }
+                continue;
+            }
 
             if ( SchemaHelper::is_row( $node ) ) {
                 $row_error = self::validate_row( $node, $seen_ids, $node_path );
@@ -93,6 +108,50 @@ class FormValidator {
             }
         }
         return true;
+    }
+
+    /**
+     * Validate a layout step. Steps are top-level only and own a
+     * fields[] array of real fields and rows. Nested steps and orphan
+     * columns inside step.fields are rejected.
+     */
+    private static function validate_step( array $step, array &$seen_ids, string $path ) {
+        if ( empty( $step['id'] ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Step at %s is missing an id.', $path ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        $id = (string) $step['id'];
+
+        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf(
+                    'Step id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+                    $id
+                ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        if ( in_array( $id, $seen_ids, true ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Duplicate id "%s". Step, row, column, and field ids share one namespace.', $id ),
+                [ 'status' => 422 ]
+            );
+        }
+        $seen_ids[] = $id;
+
+        $children = is_array( $step['fields'] ?? null ) ? $step['fields'] : [];
+
+        // Recurse with $is_top_level = false so nested steps are
+        // rejected. Rows + real fields are allowed; orphan columns are
+        // not (they only appear inside rows).
+        return self::validate_nodes( $children, $seen_ids, $path . '.fields', false );
     }
 
     /**
@@ -200,6 +259,13 @@ class FormValidator {
                     return new \WP_Error(
                         'invalid_form_data',
                         sprintf( 'Row at %s.fields[%d] is nested - rows cannot contain other rows.', $col_path, $f_idx ),
+                        [ 'status' => 422 ]
+                    );
+                }
+                if ( SchemaHelper::is_step( $nested ) ) {
+                    return new \WP_Error(
+                        'invalid_form_data',
+                        sprintf( 'Step at %s.fields[%d] is nested - steps live only at the top level of the form.', $col_path, $f_idx ),
                         [ 'status' => 422 ]
                     );
                 }

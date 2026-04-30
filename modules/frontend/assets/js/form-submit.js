@@ -51,6 +51,7 @@
 			handleSubmit( e, form );
 		} );
 		initConditional( form );
+		initMultiStep( form );
 	}
 
 	// Submit handler
@@ -940,6 +941,130 @@
 			window.neuralFormsPublic.api &&
 			window.neuralFormsPublic.api.url
 		) || '';
+	}
+
+	// Multi-step navigation
+	//
+	// Forms with 2+ top-level step containers carry
+	// data-neural-forms-multistep="1". Without JS every step renders
+	// stacked and the submit button stays visible (graceful fallback).
+	// With JS we hide all but the active step and swap nav button
+	// visibility per index.
+
+	/**
+	 * Initialise multi-step navigation for a form, if applicable.
+	 * @param {HTMLFormElement} form
+	 */
+	function initMultiStep( form ) {
+		if ( form.getAttribute( 'data-neural-forms-multistep' ) !== '1' ) return;
+
+		var steps = form.querySelectorAll( ':scope .neural-forms-form__step' );
+		if ( steps.length < 2 ) return;
+
+		var prevBtn = form.querySelector( '[data-step-action="prev"]' );
+		var nextBtn = form.querySelector( '[data-step-action="next"]' );
+		var submit  = form.querySelector( '.neural-forms-form__submit' );
+
+		var current = 0;
+
+		function show( index ) {
+			for ( var i = 0; i < steps.length; i++ ) {
+				if ( i === index ) {
+					steps[ i ].classList.add( 'is-active' );
+					steps[ i ].style.display = '';
+				} else {
+					steps[ i ].classList.remove( 'is-active' );
+					steps[ i ].style.display = 'none';
+				}
+			}
+
+			// Update nav button labels for the now-active step.
+			updateNavLabels( steps[ index ] );
+
+			if ( prevBtn ) prevBtn.style.display = ( index === 0 ) ? 'none' : '';
+			if ( nextBtn ) nextBtn.style.display = ( index === steps.length - 1 ) ? 'none' : '';
+			if ( submit )  submit.style.display  = ( index === steps.length - 1 ) ? '' : 'none';
+
+			// Conditional logic visibility may depend on values in
+			// previously visited steps - re-evaluate on every step
+			// transition so newly visible fields are honoured.
+			if ( typeof updateConditionalFields === 'function' ) {
+				updateConditionalFields( form );
+			}
+
+			// Move focus to the active step's heading, or the step
+			// container itself, so screen readers and keyboard users
+			// don't lose context.
+			var heading = steps[ index ].querySelector( '.neural-forms-form__step-title' );
+			var target  = heading || steps[ index ];
+			if ( target && typeof target.scrollIntoView === 'function' ) {
+				try { target.scrollIntoView( { behavior: 'smooth', block: 'nearest' } ); } catch ( e ) { /* noop */ }
+			}
+		}
+
+		function updateNavLabels( step ) {
+			if ( ! step ) return;
+			var nextLabel = step.getAttribute( 'data-step-button-next' );
+			var prevLabel = step.getAttribute( 'data-step-button-previous' );
+			if ( nextBtn && nextLabel ) nextBtn.textContent = nextLabel;
+			if ( prevBtn && prevLabel ) prevBtn.textContent = prevLabel;
+		}
+
+		/**
+		 * Validate the visible required fields inside the current step
+		 * client-side. Returns true when the step can advance.
+		 * Server validation remains the source of truth; this is UX-only.
+		 */
+		function validateStep( step ) {
+			var inputs = step.querySelectorAll( 'input[required], select[required], textarea[required]' );
+			var firstInvalid = null;
+			for ( var i = 0; i < inputs.length; i++ ) {
+				var el = inputs[ i ];
+
+				// Skip fields whose wrapper is hidden by conditional logic.
+				var wrapper = el.closest( '.neural-forms-form__field' );
+				if ( wrapper && wrapper.hasAttribute( 'hidden' ) ) continue;
+				if ( wrapper && wrapper.style.display === 'none' ) continue;
+
+				var value = ( el.type === 'checkbox' || el.type === 'radio' ) ? el.checked : ( el.value || '' );
+				if ( el.type === 'checkbox' && el.required && ! el.checked ) {
+					if ( ! firstInvalid ) firstInvalid = el;
+					continue;
+				}
+				if ( typeof value === 'string' && value.trim() === '' ) {
+					if ( ! firstInvalid ) firstInvalid = el;
+				}
+			}
+			if ( firstInvalid ) {
+				try { firstInvalid.focus(); } catch ( e ) { /* noop */ }
+				return false;
+			}
+			return true;
+		}
+
+		if ( nextBtn ) {
+			nextBtn.addEventListener( 'click', function ( e ) {
+				e.preventDefault();
+				if ( ! validateStep( steps[ current ] ) ) return;
+				if ( current < steps.length - 1 ) {
+					current += 1;
+					show( current );
+				}
+			} );
+		}
+
+		if ( prevBtn ) {
+			prevBtn.addEventListener( 'click', function ( e ) {
+				e.preventDefault();
+				if ( current > 0 ) {
+					current -= 1;
+					show( current );
+				}
+			} );
+		}
+
+		// Initial render: only step 0 visible, submit hidden, prev hidden.
+		show( 0 );
 	}
 
 	// Bootstrap

@@ -8,10 +8,14 @@
 
 export const ROW_TYPE     = 'row';
 export const COLUMN_TYPE  = 'column';
+export const STEP_TYPE    = 'step';
 export const MIN_COLUMNS  = 1;
 export const MAX_COLUMNS  = 4;
 export const VALID_GAPS   = [ 'none', 'small', 'medium', 'large' ];
 export const DEFAULT_GAP  = 'medium';
+
+export const DEFAULT_STEP_BUTTON_NEXT     = 'Next';
+export const DEFAULT_STEP_BUTTON_PREVIOUS = 'Back';
 
 let _idCounter = 0;
 function token( prefix ) {
@@ -21,10 +25,20 @@ function token( prefix ) {
 
 export const newRowId    = () => token( 'row' );
 export const newColumnId = () => token( 'col' );
+export const newStepId   = () => token( 'step' );
 export const newFieldId  = ( type ) => token( ( type || 'field' ).replace( /[^a-z0-9]+/gi, '' ).toLowerCase() );
 
 export function isRow( node ) {
 	return !! ( node && node.type === ROW_TYPE );
+}
+
+/**
+ * True when a node is a layout step. Steps are top-level layout
+ * containers - they own a `fields[]` array of real fields and rows.
+ * Steps NEVER appear inside other steps, columns, or rows.
+ */
+export function isStep( node ) {
+	return !! ( node && node.type === STEP_TYPE );
 }
 
 /**
@@ -43,19 +57,22 @@ export function isColumn( node ) {
 }
 
 export function isLayoutNode( node ) {
-	return isRow( node ) || isColumn( node );
+	return isRow( node ) || isColumn( node ) || isStep( node );
 }
 
 /**
  * True when a node represents a real input field that produces an
- * entry value. Anything with `type` set and not equal to "row" or
- * "column" qualifies. Used by validators / submission flatteners to
- * know what counts as user data vs. structural scaffolding.
+ * entry value. Anything with `type` set and not equal to "row",
+ * "column", or "step" qualifies. Used by validators / submission
+ * flatteners to know what counts as user data vs. structural
+ * scaffolding.
  */
 export function isRealField( node ) {
 	if ( ! node || typeof node !== 'object' ) return false;
 	if ( ! node.type ) return false;
-	return node.type !== ROW_TYPE && node.type !== COLUMN_TYPE;
+	return node.type !== ROW_TYPE
+		&& node.type !== COLUMN_TYPE
+		&& node.type !== STEP_TYPE;
 }
 
 export function clampColumnCount( n ) {
@@ -63,19 +80,23 @@ export function clampColumnCount( n ) {
 	return Math.max( MIN_COLUMNS, Math.min( MAX_COLUMNS, v ) );
 }
 
-/** Walk every leaf field, in source order. Rows + columns are skipped. */
+/** Walk every leaf field, in source order. Steps + rows + columns are skipped. */
 export function flattenFields( nodes ) {
 	const out = [];
 	if ( ! Array.isArray( nodes ) ) return out;
 	for ( const node of nodes ) {
 		if ( ! node ) continue;
+		if ( isStep( node ) ) {
+			out.push( ...flattenFields( node.fields || [] ) );
+			continue;
+		}
 		if ( isRow( node ) ) {
 			for ( const col of ( node.columns || [] ) ) {
 				out.push( ...flattenFields( col?.fields || [] ) );
 			}
 			continue;
 		}
-		if ( node.type ) out.push( node );
+		if ( isRealField( node ) ) out.push( node );
 	}
 	return out;
 }
@@ -172,6 +193,39 @@ export function duplicateField( field ) {
 	return { ...field, id: newFieldId( field.type ) };
 }
 
+/** Build a brand-new step with default settings and an empty fields array. */
+export function createStep( title = '' ) {
+	return {
+		id: newStepId(),
+		type: STEP_TYPE,
+		title: typeof title === 'string' ? title : '',
+		description: '',
+		settings: {
+			button_next:     DEFAULT_STEP_BUTTON_NEXT,
+			button_previous: DEFAULT_STEP_BUTTON_PREVIOUS,
+		},
+		fields: [],
+	};
+}
+
+/**
+ * Duplicate a step with fresh ids on every node so id-uniqueness
+ * holds. Recursively re-ids any nested rows/columns/fields too.
+ */
+export function duplicateStep( step ) {
+	if ( ! isStep( step ) ) return step;
+	const children = ( step.fields || [] ).map( ( child ) => {
+		if ( isRow( child ) ) return duplicateRow( child );
+		if ( isRealField( child ) ) return { ...child, id: newFieldId( child.type ) };
+		return child;
+	} );
+	return {
+		...step,
+		id: newStepId(),
+		fields: children,
+	};
+}
+
 /** Spawn a single empty column. Used by createRow + normalize. */
 export function createColumn() {
 	return { id: newColumnId(), fields: [] };
@@ -264,6 +318,10 @@ export function normalizeFormSchema( schema ) {
 	const fields = [];
 	for ( const node of fieldsIn ) {
 		if ( ! node || typeof node !== 'object' ) continue;
+		if ( isStep( node ) ) {
+			fields.push( normalizeStep( node ) );
+			continue;
+		}
 		if ( isRow( node ) ) {
 			fields.push( normalizeRow( node ) );
 			continue;
@@ -275,6 +333,53 @@ export function normalizeFormSchema( schema ) {
 		// Anything else (orphan column, malformed garbage) is dropped.
 	}
 	return { ...( schema || {} ), fields };
+}
+
+/**
+ * Normalize a step to canonical shape.
+ *
+ * - id: filled if missing
+ * - title / description: defaulted to ''
+ * - settings.{button_next, button_previous}: defaulted from constants
+ * - fields[]: real fields and rows pass through (rows get
+ *   normalizeRow); nested steps and orphan columns are dropped on
+ *   lenient read (validator rejects them on save).
+ */
+export function normalizeStep( step ) {
+	if ( ! step || typeof step !== 'object' ) {
+		return createStep();
+	}
+	const settingsIn = ( step.settings && typeof step.settings === 'object' ) ? step.settings : {};
+	const settings = {
+		button_next:     ( typeof settingsIn.button_next === 'string' && settingsIn.button_next !== '' )
+			? settingsIn.button_next
+			: DEFAULT_STEP_BUTTON_NEXT,
+		button_previous: ( typeof settingsIn.button_previous === 'string' && settingsIn.button_previous !== '' )
+			? settingsIn.button_previous
+			: DEFAULT_STEP_BUTTON_PREVIOUS,
+	};
+	const childrenIn = Array.isArray( step.fields ) ? step.fields : [];
+	const children = [];
+	for ( const child of childrenIn ) {
+		if ( ! child || typeof child !== 'object' ) continue;
+		if ( isStep( child ) ) continue; // no nested steps
+		if ( isRow( child ) ) {
+			children.push( normalizeRow( child ) );
+			continue;
+		}
+		if ( isRealField( child ) ) {
+			children.push( child );
+			continue;
+		}
+	}
+	return {
+		id: ( typeof step.id === 'string' && step.id ) ? step.id : newStepId(),
+		type: STEP_TYPE,
+		title: typeof step.title === 'string' ? step.title : '',
+		description: typeof step.description === 'string' ? step.description : '',
+		settings,
+		fields: children,
+	};
 }
 
 /**
@@ -310,4 +415,5 @@ export function moveFieldBetweenColumns( nodes, from, to ) {
 /** Public ID generators with the canonical names requested upstream. */
 export const generateRowId    = newRowId;
 export const generateColumnId = newColumnId;
+export const generateStepId   = newStepId;
 export const generateFieldId  = newFieldId;

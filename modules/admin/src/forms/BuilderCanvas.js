@@ -24,13 +24,17 @@ export default function BuilderCanvas( {
 	onSelect,
 	selectedColumnId,
 	onSelectColumn,
+	selectedStepId,
+	onSelectStep,
 	onAddBlankStarter,
+	onAddMultistepStarter,
 } ) {
 	const isEmpty = ! Array.isArray( nodes ) || nodes.length === 0;
 
 	const clearSelection = () => {
 		onSelect( null );
 		if ( typeof onSelectColumn === 'function' ) onSelectColumn( null );
+		if ( typeof onSelectStep === 'function' )   onSelectStep( null );
 	};
 
 	return (
@@ -43,7 +47,10 @@ export default function BuilderCanvas( {
 					<p className="nf-builder-canvas-empty__hint">
 						{ __( 'Drop a basic field from the left sidebar, or pick a template below to get going.', 'neural-forms-lite' ) }
 					</p>
-					<FormTypeChooser onPickBlank={ onAddBlankStarter } />
+					<FormTypeChooser
+						onPickBlank={ onAddBlankStarter }
+						onPickMultistep={ onAddMultistepStarter }
+					/>
 				</div>
 			) : (
 				<div onClick={ ( e ) => e.stopPropagation() }>
@@ -54,6 +61,8 @@ export default function BuilderCanvas( {
 						onSelect={ onSelect }
 						selectedColumnId={ selectedColumnId }
 						onSelectColumn={ onSelectColumn }
+						selectedStepId={ selectedStepId }
+						onSelectStep={ onSelectStep }
 					/>
 				</div>
 			) }
