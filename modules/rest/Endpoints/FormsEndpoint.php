@@ -125,10 +125,56 @@ class FormsEndpoint {
             'order'    => $request->get_param( 'order' ),
         ] );
 
+        // 1.1.0: enrich the list response with poll metadata. Two new
+        // keys per form — has_polls (bool), poll_count (int) — drive
+        // the Results screen's form selector and (later) a Forms-list
+        // "Results" row action without forcing every list consumer to
+        // re-decode form_schema themselves. Backwards-compatible:
+        // existing keys are untouched; new keys are additive.
+        //
+        // FormRepository::list() returns { items, total } — NOT
+        // { forms, total }. An earlier draft of this enrichment used
+        // the wrong key and silently no-op'd (the Results dropdown
+        // was empty as a result). Walk both shapes defensively in
+        // case a future caller normalises to a different name.
+        $rows_key = null;
+        if ( isset( $result['items'] ) && is_array( $result['items'] ) ) {
+            $rows_key = 'items';
+        } elseif ( isset( $result['forms'] ) && is_array( $result['forms'] ) ) {
+            $rows_key = 'forms';
+        }
+        if ( $rows_key !== null ) {
+            foreach ( $result[ $rows_key ] as &$form_row ) {
+                $count = self::poll_count_for_schema( $form_row['form_schema'] ?? null );
+                $form_row['poll_count'] = $count;
+                $form_row['has_polls']  = $count > 0;
+            }
+            unset( $form_row );
+        }
+
         $response = rest_ensure_response( $result );
         $response->header( 'X-Total-Count', $result['total'] );
 
         return $response;
+    }
+
+    /**
+     * Count poll fields anywhere in a (possibly already-decoded) form
+     * schema. Reuses SchemaHelper::flatten_fields so polls inside
+     * rows / columns / steps / step.row.column are all counted.
+     *
+     * @param array|null $schema
+     * @return int
+     */
+    private static function poll_count_for_schema( $schema ): int {
+        if ( ! is_array( $schema ) ) return 0;
+        $fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : [];
+        if ( empty( $fields ) ) return 0;
+        $n = 0;
+        foreach ( \NeuralForms\Forms\SchemaHelper::flatten_fields( $fields ) as $f ) {
+            if ( ( $f['type'] ?? '' ) === 'poll' ) $n++;
+        }
+        return $n;
     }
 
     public function get_form( WP_REST_Request $request ) {

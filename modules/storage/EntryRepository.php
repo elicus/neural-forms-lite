@@ -745,12 +745,13 @@ class EntryRepository {
 			$k = (string) $key;
 			if ( strpos( $k, 'row_' ) === 0
 				|| strpos( $k, 'col_' ) === 0
-				|| strpos( $k, 'step_' ) === 0 ) {
+				|| strpos( $k, 'step_' ) === 0
+				|| strpos( $k, 'section_' ) === 0 ) {
 				continue;
 			}
 			if ( is_array( $value ) ) {
 				$type = $value['type'] ?? '';
-				if ( $type === 'row' || $type === 'step' || $type === 'column' ) {
+				if ( $type === 'row' || $type === 'step' || $type === 'column' || $type === 'section' ) {
 					continue;
 				}
 			}
@@ -762,5 +763,71 @@ class EntryRepository {
 	private static function table(): string {
 		global $wpdb;
 		return $wpdb->prefix . 'neural_forms_entries';
+	}
+
+	/**
+	 * Aggregate poll votes for a single field of a single form.
+	 *
+	 * Walks the entries table, decoding the JSON `data` column for
+	 * every non-trashed entry and tallying values keyed by $field_id.
+	 * No new index is required - `form_id` is already indexed and the
+	 * per-row JSON decode dominates the cost.
+	 *
+	 * Spam entries are intentionally NOT excluded here: spam state is a
+	 * Pro capability, and Lite installs have no spam classification, so
+	 * silently dropping `status = 'spam'` rows would diverge between
+	 * Lite and Pro for the same data. Phase 3 / future iterations may
+	 * add an opt-in filter.
+	 *
+	 * Malformed entries (invalid JSON, non-array decoded shape) are
+	 * skipped without fatal.
+	 *
+	 * Return shape:
+	 *   [ 'total'  => int,
+	 *     'counts' => [ option_value => count, ... ] ]
+	 *
+	 * Caller is responsible for splitting `counts` into known/unknown
+	 * (Other) buckets using the field's configured options[].
+	 */
+	public static function aggregate_poll_votes( int $form_id, string $field_id ): array {
+		global $wpdb;
+
+		$out = [ 'total' => 0, 'counts' => [] ];
+
+		if ( $form_id <= 0 || $field_id === '' ) {
+			return $out;
+		}
+
+		$rows = $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT data FROM %i WHERE form_id = %d AND status != %s',
+				self::table(),
+				$form_id,
+				'trash'
+			)
+		);
+
+		if ( empty( $rows ) || ! is_array( $rows ) ) {
+			return $out;
+		}
+
+		foreach ( $rows as $json ) {
+			if ( ! is_string( $json ) || $json === '' ) continue;
+			$decoded = json_decode( $json, true );
+			if ( ! is_array( $decoded ) ) continue;
+			if ( ! array_key_exists( $field_id, $decoded ) ) continue;
+
+			$value = $decoded[ $field_id ];
+			// Single-choice poll v1: ignore array (multi) values
+			// defensively. Phase 2 of allow_multiple will revisit.
+			if ( is_array( $value ) ) continue;
+			if ( $value === null || $value === '' ) continue;
+
+			$key = (string) $value;
+			$out['counts'][ $key ] = ( $out['counts'][ $key ] ?? 0 ) + 1;
+			$out['total']++;
+		}
+
+		return $out;
 	}
 }

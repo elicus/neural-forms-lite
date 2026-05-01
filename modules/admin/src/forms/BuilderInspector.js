@@ -19,12 +19,16 @@
 
 import { __, sprintf } from '@wordpress/i18n';
 import { FIELD_TYPES } from './FieldTypes';
+import PollResultsPanel from './PollResultsPanel';
 import {
 	isRow,
 	isStep,
+	isSection,
 	clampColumnCount,
 	resizeRow,
 	VALID_GAPS,
+	VALID_SECTION_STYLES,
+	DEFAULT_SECTION_STYLE,
 	MIN_COLUMNS,
 	MAX_COLUMNS,
 	flattenFields,
@@ -55,7 +59,7 @@ function findNode( nodes, id ) {
 				if ( child.id === id ) {
 					return {
 						node: child,
-						kind: isRow( child ) ? 'row' : 'field',
+						kind: isRow( child ) ? 'row' : ( isSection( child ) ? 'section' : 'field' ),
 						stepIndex: i,
 						stepChildIndex: k,
 						topIndex: -1,
@@ -90,7 +94,7 @@ function findNode( nodes, id ) {
 		if ( n.id === id ) {
 			return {
 				node: n,
-				kind: isRow( n ) ? 'row' : 'field',
+				kind: isRow( n ) ? 'row' : ( isSection( n ) ? 'section' : 'field' ),
 				stepIndex: -1,
 				stepChildIndex: -1,
 				topIndex: i,
@@ -107,7 +111,7 @@ function findNode( nodes, id ) {
 					if ( fields[ f ]?.id === id ) {
 						return {
 							node: fields[ f ],
-							kind: 'field',
+							kind: isSection( fields[ f ] ) ? 'section' : 'field',
 							stepIndex: -1,
 							stepChildIndex: -1,
 							topIndex: i,
@@ -178,7 +182,7 @@ function replaceRow( nodes, hit, nextRow ) {
 	return copy;
 }
 
-function FieldInspector( { hit, nodes, onChange } ) {
+function FieldInspector( { hit, nodes, onChange, formId } ) {
 	const f = hit.node;
 	const set = ( patch ) => onChange( replaceField( nodes, hit, { ...f, ...patch } ) );
 	const isHidden = f.type === 'hidden';
@@ -273,8 +277,35 @@ function FieldInspector( { hit, nodes, onChange } ) {
 				/>
 			</label>
 
-			{ [ 'select', 'radio', 'checkboxes' ].includes( f.type ) && (
+			{ [ 'select', 'radio', 'checkboxes', 'poll' ].includes( f.type ) && (
 				<OptionsEditor field={ f } onChange={ set } />
+			) }
+
+			{ f.type === 'poll' && (
+				<PollSettingsBlock field={ f } onChange={ set } />
+			) }
+
+			{ f.type === 'poll' && (
+				<PollResultsPanel formId={ formId } fieldId={ f.id } />
+			) }
+
+			{ f.type === 'rating' && (
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Number of stars', 'neural-forms-lite' ) }</span>
+					<select
+						value={ ( () => {
+							const n = Number( f.stars );
+							if ( ! Number.isFinite( n ) || n < 1 ) return 5;
+							if ( n > 10 ) return 10;
+							return Math.round( n );
+						} )() }
+						onChange={ ( e ) => set( { stars: Number( e.target.value ) } ) }
+					>
+						{ [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ].map( ( n ) => (
+							<option key={ n } value={ n }>{ n }</option>
+						) ) }
+					</select>
+				</label>
 			) }
 
 			<ConditionalLogicPanel field={ f } onChange={ set } nodes={ nodes } />
@@ -348,6 +379,78 @@ function OptionsEditor( { field, onChange } ) {
 				onClick={ addOption }
 			>+ { __( 'Add option', 'neural-forms-lite' ) }</button>
 		</div>
+	);
+}
+
+/**
+ * Poll-specific settings block.
+ *
+ * Edits the nested `field.settings` object:
+ *   - results_visibility: "after_vote" | "always" | "never"
+ *   - chart_type:         "bar" | "percentage"
+ *   - randomize_options:  boolean
+ *
+ * `allow_multiple` is intentionally hidden in v1 (single-choice only)
+ * but persisted in the schema so v2 doesn't need a migration.
+ */
+function PollSettingsBlock( { field, onChange } ) {
+	const s = ( field && typeof field.settings === 'object' && field.settings !== null )
+		? field.settings
+		: {};
+
+	const visibility = [ 'after_vote', 'always', 'never' ].includes( s.results_visibility )
+		? s.results_visibility
+		: 'after_vote';
+	const chartType  = [ 'bar', 'percentage' ].includes( s.chart_type ) ? s.chart_type : 'bar';
+	const randomize  = !! s.randomize_options;
+
+	const setSettings = ( patch ) => {
+		// Preserve allow_multiple silently (default false) so the
+		// schema never loses the key when written from this UI.
+		const next = {
+			results_visibility: visibility,
+			chart_type:         chartType,
+			allow_multiple:     !! s.allow_multiple,
+			randomize_options:  randomize,
+			...patch,
+		};
+		onChange( { settings: next } );
+	};
+
+	return (
+		<>
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Results visibility', 'neural-forms-lite' ) }</span>
+				<select
+					value={ visibility }
+					onChange={ ( e ) => setSettings( { results_visibility: e.target.value } ) }
+				>
+					<option value="after_vote">{ __( 'After vote', 'neural-forms-lite' ) }</option>
+					<option value="always">{ __( 'Always', 'neural-forms-lite' ) }</option>
+					<option value="never">{ __( 'Never', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Chart type', 'neural-forms-lite' ) }</span>
+				<select
+					value={ chartType }
+					onChange={ ( e ) => setSettings( { chart_type: e.target.value } ) }
+				>
+					<option value="bar">{ __( 'Bar', 'neural-forms-lite' ) }</option>
+					<option value="percentage">{ __( 'Percentage', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			<label className="nf-inspector__field nf-inspector__field--inline">
+				<input
+					type="checkbox"
+					checked={ randomize }
+					onChange={ ( e ) => setSettings( { randomize_options: e.target.checked } ) }
+				/>
+				<span>{ __( 'Randomize options', 'neural-forms-lite' ) }</span>
+			</label>
+		</>
 	);
 }
 
@@ -598,6 +701,55 @@ function ColumnInspector() {
 	);
 }
 
+function SectionInspector( { hit, nodes, onChange } ) {
+	const s = hit.node;
+	const settings = ( s.settings && typeof s.settings === 'object' ) ? s.settings : {};
+	const styleRaw = typeof settings.style === 'string' ? settings.style : DEFAULT_SECTION_STYLE;
+	const style = VALID_SECTION_STYLES.includes( styleRaw ) ? styleRaw : DEFAULT_SECTION_STYLE;
+
+	const set = ( patch ) => onChange( replaceField( nodes, hit, { ...s, ...patch } ) );
+	const setStyle = ( next ) => set( { settings: { ...settings, style: next } } );
+
+	return (
+		<>
+			<h3 className="nf-inspector__title">{ __( 'Section settings', 'neural-forms-lite' ) }</h3>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Title', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof s.title === 'string' ? s.title : '' }
+					onChange={ ( e ) => set( { title: e.target.value } ) }
+					placeholder={ __( 'e.g. Project Details', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Description', 'neural-forms-lite' ) }</span>
+				<textarea
+					rows={ 2 }
+					value={ typeof s.description === 'string' ? s.description : '' }
+					onChange={ ( e ) => set( { description: e.target.value } ) }
+					placeholder={ __( 'Optional helper text shown below the title.', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Style', 'neural-forms-lite' ) }</span>
+				<select value={ style } onChange={ ( e ) => setStyle( e.target.value ) }>
+					<option value="default">{ __( 'Default', 'neural-forms-lite' ) }</option>
+					<option value="minimal">{ __( 'Minimal', 'neural-forms-lite' ) }</option>
+					<option value="boxed">{ __( 'Boxed', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			<p className="nf-inspector__hint">
+				{ __( 'Sections are visual dividers. They never carry input values.', 'neural-forms-lite' ) }
+			</p>
+		</>
+	);
+}
+
 function StepInspector( { nodes, stepId, onChange, formSchemaSettings, onChangeFormSchemaSettings } ) {
 	const idx = nodes.findIndex( ( n ) => n && n.type === 'step' && n.id === stepId );
 	if ( idx === -1 ) return null;
@@ -714,6 +866,7 @@ export default function BuilderInspector( {
 	onChange,
 	formSchemaSettings,
 	onChangeFormSchemaSettings,
+	formId,
 } ) {
 	const hit = findNode( nodes, selectedId );
 
@@ -733,8 +886,11 @@ export default function BuilderInspector( {
 			{ hit && hit.kind === 'row' && (
 				<RowInspector hit={ hit } nodes={ nodes } onChange={ onChange } />
 			) }
+			{ hit && hit.kind === 'section' && (
+				<SectionInspector hit={ hit } nodes={ nodes } onChange={ onChange } />
+			) }
 			{ hit && hit.kind === 'field' && (
-				<FieldInspector hit={ hit } nodes={ nodes } onChange={ onChange } />
+				<FieldInspector hit={ hit } nodes={ nodes } onChange={ onChange } formId={ formId } />
 			) }
 		</aside>
 	);

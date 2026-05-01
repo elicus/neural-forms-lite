@@ -6,9 +6,11 @@
   "license": "GPL-2.0-or-later",
   "author": "Elicus",
   "scripts": {
-    "build": "wp-scripts build --webpack-src-dir=src --output-path=build",
+    "build": "node -e \"console.error('ERROR: Do not run npm run build for Neural Forms admin. Full admin source parity is not restored. Use npm run build:builder instead.'); process.exit(1);\"",
+    "build:full:unsafe": "wp-scripts build --webpack-src-dir=src --output-path=build",
     "start": "wp-scripts start --webpack-src-dir=src --output-path=build",
     "build:builder": "wp-scripts build --config webpack.split.config.js --env screen=builder",
+    "build:results": "wp-scripts build --config webpack.split.config.js --env screen=results",
     "build:forms": "wp-scripts build --config webpack.split.config.js --env screen=forms",
     "build:entries": "wp-scripts build --config webpack.split.config.js --env screen=entries",
     "build:settings": "wp-scripts build --config webpack.split.config.js --env screen=settings",

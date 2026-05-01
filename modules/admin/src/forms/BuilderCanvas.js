@@ -13,9 +13,9 @@
  * RowBlock -> Builder.
  */
 
-import { __ } from '@wordpress/i18n';
 import FieldList from './FieldList';
 import FormTypeChooser from './FormTypeChooser';
+import BuilderCanvasToolbar from './BuilderCanvasToolbar';
 
 export default function BuilderCanvas( {
 	nodes,
@@ -28,6 +28,10 @@ export default function BuilderCanvas( {
 	onSelectStep,
 	onAddBlankStarter,
 	onAddMultistepStarter,
+	onApplyTemplate,
+	templateId,
+	onRequestChangeTemplate,
+	onRequestClear,
 } ) {
 	const isEmpty = ! Array.isArray( nodes ) || nodes.length === 0;
 
@@ -41,19 +45,33 @@ export default function BuilderCanvas( {
 		<div className="nf-builder-canvas-shell" onClick={ clearSelection }>
 			{ isEmpty ? (
 				<div className="nf-builder-canvas-empty" onClick={ ( e ) => e.stopPropagation() }>
-					<p className="nf-builder-canvas-empty__title">
-						{ __( 'Start with a field, layout row, or template', 'neural-forms-lite' ) }
-					</p>
-					<p className="nf-builder-canvas-empty__hint">
-						{ __( 'Drop a basic field from the left sidebar, or pick a template below to get going.', 'neural-forms-lite' ) }
-					</p>
+					{ /* The starter screen owns its own heading + subtitle
+					    now, so we no longer render the legacy
+					    "Start with a field..." message above it - that
+					    duplicated copy and made the empty state feel
+					    crowded. The .nf-builder-canvas-empty wrapper
+					    keeps existing pointer-event semantics. */ }
 					<FormTypeChooser
-						onPickBlank={ onAddBlankStarter }
-						onPickMultistep={ onAddMultistepStarter }
+						onApplyTemplate={ ( id ) => {
+							// Prefer the unified handler when wired; fall
+							// back to the legacy starter callbacks so old
+							// consumers keep working until they migrate.
+							if ( typeof onApplyTemplate === 'function' ) {
+								onApplyTemplate( id );
+								return;
+							}
+							if ( id === 'blank' && typeof onAddBlankStarter === 'function' ) onAddBlankStarter();
+							if ( id === 'multistep-contact' && typeof onAddMultistepStarter === 'function' ) onAddMultistepStarter();
+						} }
 					/>
 				</div>
 			) : (
 				<div onClick={ ( e ) => e.stopPropagation() }>
+					<BuilderCanvasToolbar
+						templateId={ templateId }
+						onChangeTemplate={ onRequestChangeTemplate }
+						onClear={ onRequestClear }
+					/>
 					<FieldList
 						nodes={ nodes }
 						onChange={ onChange }

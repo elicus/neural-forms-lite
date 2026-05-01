@@ -10,7 +10,7 @@
 
 import { __ } from '@wordpress/i18n';
 
-export default function LayoutPalette( { onAddRow, onAddStep } ) {
+export default function LayoutPalette( { onAddRow, onAddStep, onAddSection } ) {
 	return (
 		<section className="nf-palette__section">
 			<h3 className="nf-palette__title">{ __( 'Layout', 'neural-forms-lite' ) }</h3>
@@ -33,12 +33,10 @@ export default function LayoutPalette( { onAddRow, onAddStep } ) {
 
 				<button
 					type="button"
-					className="nf-palette__chip nf-palette__chip--locked"
-					disabled
-					title={ __( 'Available in a future release', 'neural-forms-lite' ) }
+					className="nf-palette__chip nf-palette__chip--layout"
+					onClick={ () => onAddSection && onAddSection() }
 				>
 					<span className="nf-palette__chip-label">{ __( 'Section', 'neural-forms-lite' ) }</span>
-					<span className="nf-palette__chip-badge">{ __( 'Soon', 'neural-forms-lite' ) }</span>
 				</button>
 			</div>
 		</section>

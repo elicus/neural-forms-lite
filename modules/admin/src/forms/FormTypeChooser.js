@@ -1,65 +1,140 @@
 /**
- * Empty-canvas chooser tile.
+ * Empty-canvas starter screen.
  *
- * Renders inside the canvas when the schema is empty. The active
- * tiles (Blank form, Multi-step) spawn a starter shape so the user
- * is never stuck with an unhelpful empty canvas. Other types are
- * visual-only placeholders for the upcoming form-type router.
+ * Calm three-tier layout:
  *
- * Future direction:
- *   When "Create Form" lives ABOVE the builder (a separate chooser
- *   page), this component becomes redundant and gets removed. Until
- *   then it sets users' expectations and lets them ship a blank or
- *   multi-step form in one click.
+ *   1. Primary row: the four most-used starters as compact cards.
+ *      Blank / Contact / Appointment / Multi-step Contact.
+ *   2. Secondary row under "More templates": the remaining four real
+ *      templates, same compact card shape.
+ *   3. Footer line: a single muted sentence listing the locked
+ *      future templates. No large cards for upcoming features.
+ *
+ * The full TEMPLATE_CATALOG metadata is still consumed below so each
+ * tile reads its title / description / field-or-step summary from
+ * one source of truth.
+ *
+ * Builder.js owns the apply-template flow (confirm overwrite, set
+ * name, mutate form_schema). This component is pure presentation.
  */
 
-import { __ } from '@wordpress/i18n';
+import { __, sprintf, _n } from '@wordpress/i18n';
+import { TEMPLATE_CATALOG, templateSummary } from './formTemplates';
 
-const TYPES = [
-	{ id: 'blank',        label: 'Blank form',         locked: false, hint: 'Start from scratch.'                                  },
-	{ id: 'contact',      label: 'Contact form',       locked: true                                                                },
-	{ id: 'lead',         label: 'Lead generation',    locked: true                                                                },
-	{ id: 'feedback',     label: 'Feedback',           locked: true                                                                },
-	{ id: 'registration', label: 'Registration',       locked: true                                                                },
-	{ id: 'multistep',    label: 'Multi-step',         locked: false, hint: 'Spawn a 2-step starter you can edit.'                 },
-	{ id: 'quiz',         label: 'Quiz',               locked: true                                                                },
-	{ id: 'poll',         label: 'Poll',               locked: true                                                                },
-	{ id: 'testimonial',  label: 'Testimonial',        locked: true                                                                },
-	{ id: 'ai',           label: 'AI-generated',       locked: true,  pro: true                                                    },
-];
+// Tier groupings. The catalog itself stays catalog-shaped; the order
+// here decides which tiles surface where without changing the source.
+const PRIMARY_IDS   = [ 'blank', 'contact', 'appointment', 'multistep-contact' ];
+const SECONDARY_IDS = [ 'quote', 'feedback', 'testimonial', 'newsletter' ];
 
-export default function FormTypeChooser( { onPickBlank, onPickMultistep } ) {
+function meta( id ) {
+	const summary = templateSummary( id );
+	if ( ! summary ) return '';
+	if ( summary.steps ) {
+		return sprintf(
+			/* translators: %d: step count */
+			_n( '%d step', '%d steps', summary.steps, 'neural-forms-lite' ),
+			summary.steps
+		);
+	}
+	if ( summary.fields === 0 ) return '';
+	return sprintf(
+		/* translators: %d: field count */
+		_n( '%d field', '%d fields', summary.fields, 'neural-forms-lite' ),
+		summary.fields
+	);
+}
+
+function findTemplate( id ) {
+	return TEMPLATE_CATALOG.find( ( t ) => t.id === id );
+}
+
+function TemplateCard( { template, onClick } ) {
+	const summary = meta( template.id );
+	return (
+		<button
+			type="button"
+			className="nf-starter__card"
+			onClick={ () => onClick( template.id ) }
+			title={ template.description || '' }
+		>
+			<span className="nf-starter__card-title">{ template.label }</span>
+			{ template.description && (
+				<span className="nf-starter__card-desc">{ template.description }</span>
+			) }
+			{ summary && <span className="nf-starter__card-meta">{ summary }</span> }
+		</button>
+	);
+}
+
+/**
+ * @param {object} props
+ * @param {(id:string)=>void} props.onApplyTemplate  Called with the picked id.
+ * @param {'inline'|'modal'} [props.mode='inline']   Layout variant.
+ *   'inline' is the empty-canvas starter screen.
+ *   'modal'  swaps the heading copy + uses a dialog-friendly title.
+ * @param {string} [props.heading]                   Override the header title.
+ * @param {string} [props.subtitle]                  Override the subtitle.
+ */
+export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', heading, subtitle } ) {
 	const handlePick = ( id ) => {
-		if ( id === 'blank' )     return typeof onPickBlank     === 'function' && onPickBlank();
-		if ( id === 'multistep' ) return typeof onPickMultistep === 'function' && onPickMultistep();
+		if ( typeof onApplyTemplate === 'function' ) onApplyTemplate( id );
 	};
 
+	const primary   = PRIMARY_IDS.map( findTemplate ).filter( Boolean );
+	const secondary = SECONDARY_IDS.map( findTemplate ).filter( Boolean );
+
+	// Coming-soon line is built from whatever's locked in the catalog,
+	// so adding/removing locked templates updates the footer
+	// automatically.
+	const lockedNames = TEMPLATE_CATALOG
+		.filter( ( t ) => t.locked )
+		.map( ( t ) => t.label )
+		.join( ', ' );
+
+	const title = heading || (
+		mode === 'modal'
+			? __( 'Change template', 'neural-forms-lite' )
+			: __( 'Start building your form', 'neural-forms-lite' )
+	);
+	const sub = subtitle || (
+		mode === 'modal'
+			? __( 'Pick a new template. Your fields and layout will be replaced; form settings stay the same.', 'neural-forms-lite' )
+			: __( 'Choose a template or start from scratch.', 'neural-forms-lite' )
+	);
+
 	return (
-		<div className="nf-type-chooser">
-			<h3 className="nf-type-chooser__title">{ __( 'Start with a template', 'neural-forms-lite' ) }</h3>
-			<p className="nf-type-chooser__hint">
-				{ __( 'Pick a starting point or open a blank canvas. Templates and AI generation are coming soon.', 'neural-forms-lite' ) }
-			</p>
-			<div className="nf-type-chooser__grid">
-				{ TYPES.map( ( t ) => (
-					<button
-						key={ t.id }
-						type="button"
-						className={
-							'nf-type-chooser__tile'
-							+ ( t.locked ? ' is-locked' : '' )
-							+ ( t.pro ? ' is-pro' : '' )
-						}
-						onClick={ () => ! t.locked && handlePick( t.id ) }
-						disabled={ t.locked }
-						title={ t.locked ? __( 'Coming soon', 'neural-forms-lite' ) : t.hint || '' }
-					>
-						<span className="nf-type-chooser__tile-label">{ t.label }</span>
-						{ t.pro && <span className="nf-type-chooser__tile-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span> }
-						{ t.locked && ! t.pro && <span className="nf-type-chooser__tile-badge">{ __( 'Soon', 'neural-forms-lite' ) }</span> }
-					</button>
+		<div className={ 'nf-starter' + ( mode === 'modal' ? ' nf-starter--modal' : '' ) }>
+			<header className="nf-starter__header">
+				<h3 className="nf-starter__title">{ title }</h3>
+				<p className="nf-starter__subtitle">{ sub }</p>
+			</header>
+
+			<div className="nf-starter__row">
+				{ primary.map( ( t ) => (
+					<TemplateCard key={ t.id } template={ t } onClick={ handlePick } />
 				) ) }
 			</div>
+
+			{ secondary.length > 0 && (
+				<>
+					<h4 className="nf-starter__row-title">{ __( 'More templates', 'neural-forms-lite' ) }</h4>
+					<div className="nf-starter__row nf-starter__row--secondary">
+						{ secondary.map( ( t ) => (
+							<TemplateCard key={ t.id } template={ t } onClick={ handlePick } />
+						) ) }
+					</div>
+				</>
+			) }
+
+			{ lockedNames && (
+				<p className="nf-starter__footer">
+					{ sprintf(
+						/* translators: %s: comma-separated list of upcoming template names */
+						__( '%s forms are coming soon.', 'neural-forms-lite' ),
+						lockedNames
+					) }
+				</p>
+			) }
 		</div>
 	);
 }

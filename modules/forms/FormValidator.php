@@ -102,11 +102,59 @@ class FormValidator {
                 continue;
             }
 
+            if ( SchemaHelper::is_section( $node ) ) {
+                $section_error = self::validate_section( $node, $seen_ids, $node_path );
+                if ( is_wp_error( $section_error ) ) {
+                    return $section_error;
+                }
+                continue;
+            }
+
             $field_error = self::validate_field( $node, $seen_ids, $node_path );
             if ( is_wp_error( $field_error ) ) {
                 return $field_error;
             }
         }
+        return true;
+    }
+
+    /**
+     * Validate a layout section. Sections are leaf content nodes -
+     * id pattern + dup-id namespace check, that's it. They never
+     * contain fields in 1.1.0; any extras (fields[]/columns[]) on
+     * a section node are silently ignored by the renderer.
+     */
+    private static function validate_section( array $section, array &$seen_ids, string $path ) {
+        if ( empty( $section['id'] ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Section at %s is missing an id.', $path ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        $id = (string) $section['id'];
+
+        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf(
+                    'Section id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+                    $id
+                ),
+                [ 'status' => 422 ]
+            );
+        }
+
+        if ( in_array( $id, $seen_ids, true ) ) {
+            return new \WP_Error(
+                'invalid_form_data',
+                sprintf( 'Duplicate id "%s". Step, row, column, section, and field ids share one namespace.', $id ),
+                [ 'status' => 422 ]
+            );
+        }
+        $seen_ids[] = $id;
+
         return true;
     }
 
@@ -269,6 +317,13 @@ class FormValidator {
                         [ 'status' => 422 ]
                     );
                 }
+                if ( SchemaHelper::is_section( $nested ) ) {
+                    $section_error = self::validate_section( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
+                    if ( is_wp_error( $section_error ) ) {
+                        return $section_error;
+                    }
+                    continue;
+                }
                 $field_error = self::validate_field( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
                 if ( is_wp_error( $field_error ) ) {
                     return $field_error;
@@ -334,6 +389,27 @@ class FormValidator {
             );
         }
         $seen_ids[] = $id;
+
+        // Poll-specific: must have at least one configured option, and
+        // every option must have a label or a value (the renderer
+        // promotes label-as-value when value is empty, mirroring radio
+        // / select behaviour).
+        if ( $field['type'] === 'poll' ) {
+            $options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+            $valid_options = array_filter( $options, static function ( $opt ) {
+                if ( ! is_array( $opt ) ) return false;
+                $label = (string) ( $opt['label'] ?? '' );
+                $value = (string) ( $opt['value'] ?? '' );
+                return $label !== '' || $value !== '';
+            } );
+            if ( empty( $valid_options ) ) {
+                return new \WP_Error(
+                    'invalid_form_data',
+                    sprintf( 'Poll field "%s" must have at least one option.', $id ),
+                    [ 'status' => 422 ]
+                );
+            }
+        }
 
         // Extension hook. Fires after all core rules pass for this field.
         // Return null to pass, or a WP_Error to fail.

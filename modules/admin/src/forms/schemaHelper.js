@@ -9,6 +9,7 @@
 export const ROW_TYPE     = 'row';
 export const COLUMN_TYPE  = 'column';
 export const STEP_TYPE    = 'step';
+export const SECTION_TYPE = 'section';
 export const MIN_COLUMNS  = 1;
 export const MAX_COLUMNS  = 4;
 export const VALID_GAPS   = [ 'none', 'small', 'medium', 'large' ];
@@ -17,16 +18,20 @@ export const DEFAULT_GAP  = 'medium';
 export const DEFAULT_STEP_BUTTON_NEXT     = 'Next';
 export const DEFAULT_STEP_BUTTON_PREVIOUS = 'Back';
 
+export const VALID_SECTION_STYLES  = [ 'default', 'minimal', 'boxed' ];
+export const DEFAULT_SECTION_STYLE = 'default';
+
 let _idCounter = 0;
 function token( prefix ) {
 	_idCounter += 1;
 	return prefix + '_' + Date.now().toString( 36 ) + _idCounter.toString( 36 );
 }
 
-export const newRowId    = () => token( 'row' );
-export const newColumnId = () => token( 'col' );
-export const newStepId   = () => token( 'step' );
-export const newFieldId  = ( type ) => token( ( type || 'field' ).replace( /[^a-z0-9]+/gi, '' ).toLowerCase() );
+export const newRowId     = () => token( 'row' );
+export const newColumnId  = () => token( 'col' );
+export const newStepId    = () => token( 'step' );
+export const newSectionId = () => token( 'section' );
+export const newFieldId   = ( type ) => token( ( type || 'field' ).replace( /[^a-z0-9]+/gi, '' ).toLowerCase() );
 
 export function isRow( node ) {
 	return !! ( node && node.type === ROW_TYPE );
@@ -39,6 +44,15 @@ export function isRow( node ) {
  */
 export function isStep( node ) {
 	return !! ( node && node.type === STEP_TYPE );
+}
+
+/**
+ * True when a node is a layout section (visual divider / heading +
+ * optional description). Sections are leaves - they never contain
+ * fields in 1.1.0.
+ */
+export function isSection( node ) {
+	return !! ( node && node.type === SECTION_TYPE );
 }
 
 /**
@@ -57,22 +71,23 @@ export function isColumn( node ) {
 }
 
 export function isLayoutNode( node ) {
-	return isRow( node ) || isColumn( node ) || isStep( node );
+	return isRow( node ) || isColumn( node ) || isStep( node ) || isSection( node );
 }
 
 /**
  * True when a node represents a real input field that produces an
  * entry value. Anything with `type` set and not equal to "row",
- * "column", or "step" qualifies. Used by validators / submission
- * flatteners to know what counts as user data vs. structural
- * scaffolding.
+ * "column", "step", or "section" qualifies. Used by validators /
+ * submission flatteners to know what counts as user data vs.
+ * structural scaffolding.
  */
 export function isRealField( node ) {
 	if ( ! node || typeof node !== 'object' ) return false;
 	if ( ! node.type ) return false;
 	return node.type !== ROW_TYPE
 		&& node.type !== COLUMN_TYPE
-		&& node.type !== STEP_TYPE;
+		&& node.type !== STEP_TYPE
+		&& node.type !== SECTION_TYPE;
 }
 
 export function clampColumnCount( n ) {
@@ -191,6 +206,23 @@ export function duplicateRow( row ) {
 export function duplicateField( field ) {
 	if ( ! isRealField( field ) ) return field;
 	return { ...field, id: newFieldId( field.type ) };
+}
+
+/** Build a brand-new section. Sections are leaves - no children. */
+export function createSection( title = '' ) {
+	return {
+		id: newSectionId(),
+		type: SECTION_TYPE,
+		title: typeof title === 'string' ? title : '',
+		description: '',
+		settings: { style: DEFAULT_SECTION_STYLE },
+	};
+}
+
+/** Duplicate a section with a fresh id. */
+export function duplicateSection( section ) {
+	if ( ! isSection( section ) ) return section;
+	return { ...section, id: newSectionId() };
 }
 
 /** Build a brand-new step with default settings and an empty fields array. */
@@ -326,6 +358,10 @@ export function normalizeFormSchema( schema ) {
 			fields.push( normalizeRow( node ) );
 			continue;
 		}
+		if ( isSection( node ) ) {
+			fields.push( normalizeSection( node ) );
+			continue;
+		}
 		if ( isRealField( node ) ) {
 			fields.push( node );
 			continue;
@@ -333,6 +369,27 @@ export function normalizeFormSchema( schema ) {
 		// Anything else (orphan column, malformed garbage) is dropped.
 	}
 	return { ...( schema || {} ), fields };
+}
+
+/**
+ * Normalize a section to canonical shape. Drops any unexpected
+ * fields[]/columns[] (sections are leaves) and clamps style to a
+ * known value.
+ */
+export function normalizeSection( section ) {
+	if ( ! section || typeof section !== 'object' ) {
+		return createSection();
+	}
+	const settingsIn = ( section.settings && typeof section.settings === 'object' ) ? section.settings : {};
+	const styleRaw   = typeof settingsIn.style === 'string' ? settingsIn.style : DEFAULT_SECTION_STYLE;
+	const style      = VALID_SECTION_STYLES.includes( styleRaw ) ? styleRaw : DEFAULT_SECTION_STYLE;
+	return {
+		id: ( typeof section.id === 'string' && section.id ) ? section.id : newSectionId(),
+		type: SECTION_TYPE,
+		title: typeof section.title === 'string' ? section.title : '',
+		description: typeof section.description === 'string' ? section.description : '',
+		settings: { style },
+	};
 }
 
 /**
@@ -365,6 +422,10 @@ export function normalizeStep( step ) {
 		if ( isStep( child ) ) continue; // no nested steps
 		if ( isRow( child ) ) {
 			children.push( normalizeRow( child ) );
+			continue;
+		}
+		if ( isSection( child ) ) {
+			children.push( normalizeSection( child ) );
 			continue;
 		}
 		if ( isRealField( child ) ) {
@@ -413,7 +474,8 @@ export function moveFieldBetweenColumns( nodes, from, to ) {
 }
 
 /** Public ID generators with the canonical names requested upstream. */
-export const generateRowId    = newRowId;
-export const generateColumnId = newColumnId;
-export const generateStepId   = newStepId;
-export const generateFieldId  = newFieldId;
+export const generateRowId     = newRowId;
+export const generateColumnId  = newColumnId;
+export const generateStepId    = newStepId;
+export const generateSectionId = newSectionId;
+export const generateFieldId   = newFieldId;

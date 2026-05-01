@@ -52,6 +52,11 @@
 		} );
 		initConditional( form );
 		initMultiStep( form );
+		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
+		// step-driven mutations are captured. Must run before the first
+		// submit so the "always" restoration path has the original bars
+		// to fall back to.
+		snapshotPollResults( form );
 	}
 
 	// Submit handler
@@ -163,6 +168,13 @@
 					// Entry stored. Either redirect or show the inline message
 					// based on the form's on_success setting.
 					case 201:
+						// Poll Phase 3: render any poll results piggybacked
+						// on the success response BEFORE redirect/showSuccess
+						// so an after_vote poll on a non-redirecting form
+						// stays visible alongside the success message.
+						if ( result.body && result.body.polls && typeof result.body.polls === 'object' ) {
+							renderPollResults( form, result.body.polls );
+						}
 						if ( ! redirectIfConfigured( form, 'success' ) ) {
 							showSuccess( form );
 						}
@@ -622,6 +634,124 @@
 	}
 
 	/**
+	 * Capture the initial state of every poll-results container at form
+	 * init time so the reset path can restore "always" polls to a clean,
+	 * non-stale render and "after_vote" polls to empty/hidden.
+	 *
+	 * Called once per form during init(). The snapshot is the SSR markup
+	 * the server emitted on page load: for "always" polls this is the
+	 * pre-rendered bars; for "after_vote" polls it's the empty + hidden
+	 * placeholder. The snapshot is keyed against the element so it
+	 * survives further DOM mutations within the container.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function snapshotPollResults( form ) {
+		var containers = form.querySelectorAll( '[data-poll-results]' );
+		var snapshots  = [];
+		for ( var i = 0; i < containers.length; i++ ) {
+			var c = containers[ i ];
+			snapshots.push( {
+				el:         c,
+				html:       c.innerHTML,
+				hidden:     !! c.hidden,
+				visibility: c.getAttribute( 'data-poll-visibility' ) || 'after_vote'
+			} );
+		}
+		// Stash on the form via a non-enumerable expando. WeakMap would
+		// be cleaner but adds bytes for a single-call lookup we never
+		// need to GC (the form lifecycle owns the snapshot).
+		form._nfPollSnapshots = snapshots;
+	}
+
+	/**
+	 * Reset poll-results containers to their post-page-load state.
+	 *
+	 *   never      — no element exists; nothing to do.
+	 *   after_vote — clear innerHTML, hide. The next successful submit
+	 *                will repopulate via renderPollResults().
+	 *   always     — restore the snapshot HTML so we never display the
+	 *                stale totals from the previous POST and never
+	 *                accumulate duplicate "Total votes" / bar rows.
+	 *
+	 * renderPollResults already uses container.innerHTML = ... (replace,
+	 * not append), so single-submit behaviour is correct on its own.
+	 * This function exists for the "submit another response" path where
+	 * the previous POST's bars would otherwise linger in the DOM.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function resetPollResults( form ) {
+		var snapshots = form._nfPollSnapshots || [];
+		for ( var i = 0; i < snapshots.length; i++ ) {
+			var s = snapshots[ i ];
+			if ( ! s || ! s.el || ! s.el.isConnected ) continue;
+			if ( s.visibility === 'after_vote' ) {
+				s.el.innerHTML = '';
+				s.el.hidden    = true;
+			} else if ( s.visibility === 'always' ) {
+				s.el.innerHTML = s.html;
+				s.el.hidden    = s.hidden;
+			}
+			// "never" containers are not emitted by the renderer at all,
+			// so a snapshot for them never exists. No branch needed.
+		}
+	}
+
+	/**
+	 * Reset multi-step UI to step 0. Calls into the closure-bound reset
+	 * exposed by initMultiStep() via form._nfMultiStepReset (set during
+	 * init). No-op for single-step forms.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function resetMultiStep( form ) {
+		if ( typeof form._nfMultiStepReset === 'function' ) {
+			form._nfMultiStepReset();
+		}
+	}
+
+	/**
+	 * Centralised "Submit another response" reset. Single source of
+	 * truth so the success-link handler doesn't drift from any future
+	 * reset trigger (e.g. a redirect-back, a programmatic API).
+	 *
+	 *   - form values: cleared via the native HTMLFormElement.reset()
+	 *     so all input types (text/select/checkboxes/radio/file) follow
+	 *     their HTML defaults. The honeypot input is unaffected — its
+	 *     name + style="display:none" remain intact so bot detection is
+	 *     preserved across resets.
+	 *   - errors / global error: cleared via clearErrors().
+	 *   - poll results: per-visibility cleanup via resetPollResults().
+	 *   - multi-step: returned to step 0 via resetMultiStep().
+	 *   - submit button: re-enabled in case a transient state lingered.
+	 *   - CAPTCHA: reset via the existing widget reset path so a fresh
+	 *     challenge is required for the next submission.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function resetFormState( form ) {
+		form.reset();
+		clearErrors( form );
+		resetPollResults( form );
+		resetMultiStep( form );
+
+		var submit = form.querySelector( '.neural-forms-form__submit' );
+		if ( submit ) {
+			submit.disabled = false;
+			form.classList.remove( 'neural-forms-form--submitting' );
+			var original = submit.getAttribute( 'data-original-text' );
+			if ( original !== null ) {
+				submit.textContent = original;
+			}
+		}
+
+		if ( typeof resetCaptchaWidget === 'function' ) {
+			try { resetCaptchaWidget( form ); } catch ( e ) { /* noop */ }
+		}
+	}
+
+	/**
 	 * Toggle the in-flight state.
 	 *
 	 * neural-forms-form--submitting on <form>: CSS hook to reduce opacity (but
@@ -747,7 +877,11 @@
 					link.className = 'neural-forms-form__reset-link';
 					link.textContent = 'Submit another response';
 					link.addEventListener( 'click', function () {
-						form.reset();
+						// Centralised reset:
+						//   - clears values, errors, global error, captcha
+						//   - resets multi-step to step 0
+						//   - clears poll-results state per visibility
+						resetFormState( form );
 						form.hidden    = false;
 						success.hidden = true;
 						// Remove the link so it doesn't stack on repeated submissions.
@@ -846,6 +980,108 @@
 			globalError.hidden      = false;
 		}
 	}
+
+	/**
+	 * Poll Phase 3: render the poll-results bars for any poll fields
+	 * that came back attached to the submit response.
+	 *
+	 * Honours the contract emitted by SubmitEndpoint and FormRenderer:
+	 *
+	 *   polls = {
+	 *     "<field_id>": {
+	 *       total_votes: int,
+	 *       options: [ { label, value, votes, percentage }, ... ],
+	 *       chart_type: "bar" | "percentage",
+	 *       results_visibility: "after_vote" | "always"
+	 *     },
+	 *     ...
+	 *   }
+	 *
+	 * The placeholder div is `[data-poll-results="<field_id>"]`. Phase 1
+	 * emits it `hidden` for after_vote; Phase 3 unhides it after writing
+	 * the bars in. For "always" visibility the renderer pre-rendered the
+	 * markup at SSR time — this method overwrites it with the freshest
+	 * totals so a vote refreshes the public view immediately.
+	 *
+	 * No-op when polls is missing/empty or when no matching placeholder
+	 * exists in the DOM (e.g. the form was rendered before this feature
+	 * shipped, or all polls have visibility="never").
+	 *
+	 * @param {HTMLFormElement} form
+	 * @param {object}          polls
+	 */
+	function renderPollResults( form, polls ) {
+		Object.keys( polls ).forEach( function ( fieldId ) {
+			var poll = polls[ fieldId ];
+			if ( ! poll || typeof poll !== 'object' ) return;
+
+			var sel = '[data-poll-results="' + cssEscape( fieldId ) + '"]';
+			var container = form.querySelector( sel );
+			if ( ! container ) return;
+
+			var total   = ( typeof poll.total_votes === 'number' ) ? poll.total_votes : 0;
+			var options = Array.isArray( poll.options ) ? poll.options : [];
+			var chart   = ( poll.chart_type === 'percentage' ) ? 'percentage' : 'bar';
+
+			var html = ''
+				+ '<p class="neural-forms-form__poll-total">'
+				+ pollMessage( 'Total votes: ' ) + total
+				+ '</p>'
+				+ '<ul class="neural-forms-form__poll-bars" data-poll-chart="' + chart + '">';
+
+			options.forEach( function ( opt ) {
+				if ( ! opt || typeof opt !== 'object' ) return;
+				var label = String( opt.label != null ? opt.label : '' );
+				var votes = Number( opt.votes ) || 0;
+				var pct   = Number( opt.percentage );
+				if ( ! isFinite( pct ) || pct < 0 ) pct = 0;
+				if ( pct > 100 ) pct = 100;
+
+				html += '<li class="neural-forms-form__poll-bar">'
+					+ '<div class="neural-forms-form__poll-bar-head">'
+					+ '<span class="neural-forms-form__poll-bar-label">' + escapeHtml( label ) + '</span>'
+					+ '<span class="neural-forms-form__poll-bar-count">' + votes + ' (' + pct + '%)</span>'
+					+ '</div>';
+				if ( chart !== 'percentage' ) {
+					html += '<div class="neural-forms-form__poll-bar-track" aria-hidden="true">'
+						+ '<div class="neural-forms-form__poll-bar-fill" style="width:' + pct + '%"></div>'
+						+ '</div>';
+				}
+				html += '</li>';
+			} );
+
+			html += '</ul>';
+
+			container.innerHTML = html;
+			container.hidden    = false;
+		} );
+	}
+
+	function escapeHtml( s ) {
+		return String( s )
+			.replace( /&/g, '&amp;' )
+			.replace( /</g, '&lt;' )
+			.replace( />/g, '&gt;' )
+			.replace( /"/g, '&quot;' )
+			.replace( /'/g, '&#39;' );
+	}
+
+	// Minimal CSS.escape() polyfill for the [data-poll-results=…] selector.
+	// Field ids are validated server-side to /^[a-z0-9_]+$/ so this only
+	// has to handle plain ASCII without breaking on older browsers.
+	function cssEscape( s ) {
+		if ( window.CSS && typeof window.CSS.escape === 'function' ) {
+			return window.CSS.escape( s );
+		}
+		return String( s ).replace( /([^a-zA-Z0-9_-])/g, '\\$1' );
+	}
+
+	// Translation seam. The poll markup is intentionally tiny - one
+	// "Total votes: " label - so we don't pull in @wordpress/i18n on the
+	// frontend bundle. Sites that need a localised label can filter the
+	// SSR copy via the renderer; the JS path mirrors the English text
+	// to stay consistent with the post-vote refresh.
+	function pollMessage( s ) { return s; }
 
 	// Utilities
 
@@ -1093,6 +1329,15 @@
 
 		// Initial render: only step 0 visible, submit hidden, prev hidden.
 		show( 0 );
+
+		// Expose a reset hook so resetFormState() can return this form
+		// to step 0 after "Submit another response". Closure-bound so
+		// `current` is the same variable the click handlers mutate; no
+		// drift between visible state and internal index.
+		form._nfMultiStepReset = function () {
+			current = 0;
+			show( 0 );
+		};
 	}
 
 	// Bootstrap

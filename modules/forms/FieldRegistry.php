@@ -90,6 +90,19 @@ class FieldRegistry {
             'label'    => 'Range',
             'supports' => [ 'label', 'show_label', 'required', 'default_value', 'min', 'max', 'step', 'width' ],
         ],
+        'rating'   => [
+            'label'    => 'Rating',
+            'supports' => [ 'label', 'show_label', 'required', 'stars', 'width' ],
+        ],
+        // Poll: a real input field that submits like radio. Carries a
+        // nested `settings` object (results_visibility, chart_type,
+        // allow_multiple [reserved], randomize_options) — unique to
+        // poll for now; SchemaHelper::normalize_poll_settings() owns
+        // its shape.
+        'poll'     => [
+            'label'    => 'Poll',
+            'supports' => [ 'label', 'show_label', 'required', 'options', 'settings', 'width' ],
+        ],
         'file'     => [
             'label'    => 'File Upload',
             'supports' => [ 'label', 'show_label', 'required', 'allowed_types', 'max_file_size', 'width' ],

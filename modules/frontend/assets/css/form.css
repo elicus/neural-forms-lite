@@ -516,6 +516,161 @@
 
 
 /*
+   Star rating
+   Radio inputs hidden via .screen-reader-text on the label-wrapped input;
+   the visible glyph turns brand-mint when its sibling input is checked.
+ */
+
+.neural-forms-form__rating-group {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.neural-forms-form__rating {
+    display: inline-flex;
+    flex-direction: row-reverse;
+    gap: 0.125rem;
+    align-items: center;
+}
+
+.neural-forms-form__rating-star {
+    cursor: pointer;
+    line-height: 1;
+    color: #cbd5e0;
+    transition: color 80ms linear;
+}
+
+.neural-forms-form__rating-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.neural-forms-form__rating-glyph {
+    display: inline-block;
+    font-size: 1.5rem;
+    font-style: normal;
+    line-height: 1;
+}
+
+/* Hover/focus colors any star and every star to its right (because of
+   row-reverse, "to the right" in DOM order is "to the left" visually). */
+.neural-forms-form__rating-star:hover,
+.neural-forms-form__rating-star:hover ~ .neural-forms-form__rating-star,
+.neural-forms-form__rating-star:focus-within,
+.neural-forms-form__rating-star:focus-within ~ .neural-forms-form__rating-star {
+    color: #15db95;
+}
+
+/* Checked + every star after it (DOM-after = visually-left in row-reverse). */
+.neural-forms-form__rating-input:checked ~ .neural-forms-form__rating-glyph,
+.neural-forms-form__rating-star:has( .neural-forms-form__rating-input:checked ),
+.neural-forms-form__rating-star:has( .neural-forms-form__rating-input:checked ) ~ .neural-forms-form__rating-star {
+    color: #080f5b;
+}
+
+
+/*
+   Poll
+   Radio-style choice list. Phase 3 will populate the
+   .neural-forms-form__poll-results container.
+ */
+
+.neural-forms-form__poll {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.neural-forms-form__poll-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.neural-forms-form__poll-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.neural-forms-form__poll-input {
+    accent-color: #080f5b;
+    cursor: pointer;
+}
+
+.neural-forms-form__label--poll {
+    cursor: pointer;
+}
+
+.neural-forms-form__poll-results {
+    margin-top: 0.75rem;
+}
+
+.neural-forms-form__poll-total {
+    margin: 0 0 0.5rem;
+    font-size: 0.875rem;
+    color: var(--neural-forms-text);
+    font-weight: 500;
+}
+
+.neural-forms-form__poll-bars {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.neural-forms-form__poll-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.neural-forms-form__poll-bar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.neural-forms-form__poll-bar-label {
+    color: var(--neural-forms-text);
+    font-weight: 500;
+}
+
+.neural-forms-form__poll-bar-count {
+    color: var(--neural-forms-text);
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+}
+
+.neural-forms-form__poll-bar-track {
+    height: 8px;
+    background: rgba( 8, 15, 91, 0.08 );
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.neural-forms-form__poll-bar-fill {
+    height: 100%;
+    background: linear-gradient( 90deg, #080f5b 0%, #15db95 100% );
+    border-radius: 999px;
+    transition: width 200ms ease;
+}
+
+
+/*
    Field error message
    Populated and un-hidden by form-submit.js on 422.
  */
@@ -903,4 +1058,47 @@
     .neural-forms-form__progress-item .neural-forms-form__progress-label {
         display: none;
     }
+}
+
+/* Section (1.1.0 layout/content node). Visual divider + heading +
+ * optional description. Never an input; never carries a name attr. */
+
+.neural-forms-form__section {
+    margin: 18px 0 12px;
+    padding: 0;
+}
+
+.neural-forms-form__section-title {
+    margin: 0 0 4px;
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #080f5b;
+}
+
+.neural-forms-form__section-description {
+    margin: 0 0 8px;
+    color: #4b5563;
+    font-size: 0.92em;
+}
+
+.neural-forms-form__section--default .neural-forms-form__section-title {
+    border-bottom: 1px solid rgba( 8, 15, 91, 0.10 );
+    padding-bottom: 6px;
+}
+
+.neural-forms-form__section--minimal .neural-forms-form__section-title {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.neural-forms-form__section--boxed {
+    background: rgba( 8, 15, 91, 0.04 );
+    border: 1px solid rgba( 8, 15, 91, 0.10 );
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.neural-forms-form__section--boxed .neural-forms-form__section-title {
+    border-bottom: 0;
+    padding-bottom: 0;
 }

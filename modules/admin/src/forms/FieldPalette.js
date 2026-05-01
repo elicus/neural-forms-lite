@@ -40,6 +40,8 @@ const BASIC_TYPES = [
 	'date',
 	'acceptance',
 	'range',
+	'rating',
+	'poll',
 	'file',
 	'hidden',
 ];
@@ -51,10 +53,7 @@ const BASIC_TYPES = [
 // would be inaccurate and would block users from a feature they
 // already have.
 const LOCKED_FIELDS = [
-	{ id: 'rating',    label: 'Rating' },
-	{ id: 'multistep', label: 'Multi-step' },
 	{ id: 'quiz',      label: 'Quiz Question' },
-	{ id: 'poll',      label: 'Poll' },
 	{ id: 'signature', label: 'Signature' },
 ];
 

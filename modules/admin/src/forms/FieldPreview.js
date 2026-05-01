@@ -130,6 +130,22 @@ function readOnlyFile( { field } ) {
 	);
 }
 
+function readOnlyRating( { field } ) {
+	let stars = Number( field.stars );
+	if ( ! Number.isFinite( stars ) || stars < 1 ) stars = 5;
+	if ( stars > 10 ) stars = 10;
+	stars = Math.round( stars );
+	const items = [];
+	for ( let i = 0; i < stars; i++ ) {
+		items.push( <span key={ i } className="nf-preview__rating-star" aria-hidden="true">{ '★' }</span> );
+	}
+	return (
+		<div className="nf-preview__rating" data-stars={ stars }>
+			{ items }
+		</div>
+	);
+}
+
 function readOnlyHidden( { field } ) {
 	return (
 		<div className="nf-preview__hidden">
@@ -155,10 +171,12 @@ export default function FieldPreview( { field } ) {
 		case 'textarea':   return readOnlyTextarea( { field } );
 		case 'select':     return readOnlySelect( { field } );
 		case 'radio':      return readOnlyChoiceList( { field, inputType: 'radio' } );
+		case 'poll':       return readOnlyChoiceList( { field, inputType: 'radio' } );
 		case 'checkboxes': return readOnlyChoiceList( { field, inputType: 'checkbox' } );
 		case 'checkbox':   return readOnlyCheckbox( { field } );
 		case 'acceptance': return readOnlyAcceptance( { field } );
 		case 'range':      return readOnlyRange( { field } );
+		case 'rating':     return readOnlyRating( { field } );
 		case 'file':       return readOnlyFile( { field } );
 		case 'hidden':     return readOnlyHidden( { field } );
 		case 'text':

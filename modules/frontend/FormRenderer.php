@@ -539,6 +539,11 @@ class FormRenderer {
 				continue;
 			}
 
+			if ( SchemaHelper::is_section( $node ) ) {
+				$html .= static::render_section( $node );
+				continue;
+			}
+
 			if ( empty( $node['id'] ) || empty( $node['type'] ) ) {
 				continue;
 			}
@@ -587,6 +592,44 @@ class FormRenderer {
 	 * (the .is-active CSS toggle is JS-only) - the form remains
 	 * fully usable in graceful-degradation mode.
 	 */
+	/**
+	 * Render a layout section: a visual divider / heading + optional
+	 * description block. Sections are leaves - they never contain
+	 * fields. The output is purely presentational; no input ever
+	 * appears here, so section ids never become entry data.
+	 *
+	 * Title-less sections still emit the wrapper so styling that
+	 * relies on the section being a sibling of a field (e.g. a thin
+	 * divider line via ::before) still works. An empty section is a
+	 * deliberate visual break.
+	 */
+	private static function render_section( array $section ): string {
+		$style = (string) ( $section['settings']['style'] ?? SchemaHelper::DEFAULT_SECTION_STYLE );
+		if ( ! in_array( $style, SchemaHelper::VALID_SECTION_STYLES, true ) ) {
+			$style = SchemaHelper::DEFAULT_SECTION_STYLE;
+		}
+
+		$section_id  = (string) ( $section['id'] ?? '' );
+		$title       = (string) ( $section['title'] ?? '' );
+		$description = (string) ( $section['description'] ?? '' );
+
+		$class = 'neural-forms-form__section neural-forms-form__section--' . $style;
+
+		$html  = '<div class="' . esc_attr( $class ) . '"';
+		if ( $section_id !== '' ) {
+			$html .= ' data-neural-forms-section-id="' . esc_attr( $section_id ) . '"';
+		}
+		$html .= '>';
+		if ( $title !== '' ) {
+			$html .= '<h3 class="neural-forms-form__section-title">' . esc_html( $title ) . '</h3>';
+		}
+		if ( $description !== '' ) {
+			$html .= '<p class="neural-forms-form__section-description">' . esc_html( $description ) . '</p>';
+		}
+		$html .= '</div>';
+		return $html;
+	}
+
 	private static function render_step( array $step, int $step_index, int $form_id, array $options, bool &$has_files ): string {
 		$step_id = (string) ( $step['id'] ?? '' );
 		$title   = (string) ( $step['title'] ?? '' );
@@ -776,7 +819,7 @@ class FormRenderer {
 		if (
 			$show_label
 			&& $lbl !== ''
-			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes' ], true )
+			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll' ], true )
 		) {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
@@ -825,6 +868,12 @@ class FormRenderer {
 				break;
 			case 'range':
 				$input_html = static::render_range( $field, $input_id, $error_id );
+				break;
+			case 'rating':
+				$input_html = static::render_rating( $field, $input_id, $error_id );
+				break;
+			case 'poll':
+				$input_html = static::render_poll( $field, $input_id, $error_id, $form_id );
 				break;
 			case 'hidden':
 				$input_html = static::render_hidden( $field, $input_id );
@@ -1304,6 +1353,274 @@ class FormRenderer {
 			. ' oninput="this.setAttribute(\'aria-valuenow\',this.value);document.getElementById(\'' . esc_attr( $output_id ) . '\').textContent=this.value">'
 			. '<output id="' . esc_attr( $output_id ) . '" for="' . esc_attr( $input_id ) . '" class="neural-forms-form__range-output">' . esc_html( $default ) . '</output>'
 			. '</div>';
+	}
+
+	/**
+	 * Star rating input. Renders a fieldset of N radio inputs (1..stars)
+	 * with star-glyph labels. Same field name on every radio so the
+	 * submitted value is the chosen star count as a numeric string.
+	 *
+	 * Stars count is clamped to 1..10. Default 5 when missing/invalid.
+	 */
+	private static function render_rating( array $field, string $input_id, string $error_id ): string {
+		$stars = isset( $field['stars'] ) ? (int) $field['stars'] : 5;
+		if ( $stars < 1 ) { $stars = 1; }
+		if ( $stars > 10 ) { $stars = 10; }
+
+		$required = ! empty( $field['required'] );
+		$default  = isset( $field['default_value'] ) && $field['default_value'] !== '' ? (int) $field['default_value'] : 0;
+
+		$html = '<fieldset class="neural-forms-form__rating-group"'
+			. ' data-stars="' . (int) $stars . '"'
+			. ' aria-describedby="' . esc_attr( $error_id ) . '">';
+
+		$lbl        = (string) ( $field['label'] ?? '' );
+		$show_label = ! empty( $field['show_label'] );
+		if ( $lbl !== '' ) {
+			$legend_class  = $show_label
+				? 'neural-forms-form__label neural-forms-form__label--block'
+				: 'screen-reader-text';
+			$required_mark = ( $show_label && $required )
+				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+				: '';
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+				. esc_html( $lbl )
+				. $required_mark
+				. '</legend>';
+		}
+
+		$html .= '<div class="neural-forms-form__rating">';
+		for ( $i = 1; $i <= $stars; $i++ ) {
+			$opt_id  = $input_id . '-' . $i;
+			$checked = ( $default === $i ) ? ' checked' : '';
+			$req_attr = ( $required && $i === 1 ) ? ' required aria-required="true"' : '';
+
+			$html .= '<label class="neural-forms-form__rating-star" for="' . esc_attr( $opt_id ) . '">'
+				. '<input type="radio"'
+				. ' id="' . esc_attr( $opt_id ) . '"'
+				. ' name="' . esc_attr( $field['id'] ) . '"'
+				. ' value="' . (int) $i . '"'
+				. ' class="neural-forms-form__rating-input"'
+				. $checked
+				. $req_attr
+				. '>'
+				. '<span class="neural-forms-form__rating-glyph" aria-hidden="true">&#9733;</span>'
+				. '<span class="screen-reader-text">'
+				. sprintf(
+					/* translators: %d: star number */
+					esc_html__( '%d stars', 'neural-forms-lite' ),
+					(int) $i
+				)
+				. '</span>'
+				. '</label>';
+		}
+		$html .= '</div>';
+		$html .= '</fieldset>';
+
+		return $html;
+	}
+
+	/**
+	 * Poll field. Renders accessible radio inputs for each configured
+	 * option (single-choice in v1) plus an empty results placeholder
+	 * div when results_visibility !== 'never'. The placeholder is
+	 * populated by JS in Phase 3; Phase 1 emits it empty so the
+	 * markup contract is fixed.
+	 */
+	private static function render_poll( array $field, string $input_id, string $error_id, int $form_id = 0 ): string {
+		$default  = (string) ( $field['default_value'] ?? '' );
+		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+		$required = ! empty( $field['required'] );
+		$settings = SchemaHelper::normalize_poll_settings( $field['settings'] ?? null );
+
+		$html = '<fieldset class="neural-forms-form__poll" aria-describedby="' . esc_attr( $error_id ) . '">';
+
+		$lbl        = (string) ( $field['label'] ?? '' );
+		$show_label = ! empty( $field['show_label'] );
+		if ( $lbl !== '' ) {
+			$legend_class  = $show_label
+				? 'neural-forms-form__label neural-forms-form__label--block'
+				: 'screen-reader-text';
+			$required_mark = ( $show_label && $required )
+				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+				: '';
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+				. esc_html( $lbl )
+				. $required_mark
+				. '</legend>';
+		}
+
+		$html .= '<div class="neural-forms-form__poll-options">';
+
+		foreach ( $options as $i => $option ) {
+			$option = (array) $option;
+			$label   = (string) ( $option['label'] ?? '' );
+			$raw_val = (string) ( $option['value'] ?? '' );
+			$val     = $raw_val !== '' ? $raw_val : $label;
+
+			if ( $val === '' ) {
+				continue;
+			}
+
+			$opt_id  = $input_id . '-' . $i;
+			$checked = ( $val === $default ) ? ' checked' : '';
+			$req_attr = ( $required && $i === 0 ) ? ' required aria-required="true"' : '';
+
+			$html .= '<div class="neural-forms-form__poll-option">'
+				. '<input type="radio"'
+				. ' id="' . esc_attr( $opt_id ) . '"'
+				. ' name="' . esc_attr( $field['id'] ) . '"'
+				. ' value="' . esc_attr( $val ) . '"'
+				. ' class="neural-forms-form__poll-input"'
+				. $checked
+				. $req_attr
+				. '>'
+				. '<label class="neural-forms-form__label neural-forms-form__label--poll" for="' . esc_attr( $opt_id ) . '">'
+				. esc_html( $label )
+				. '</label>'
+				. '</div>';
+		}
+
+		$html .= '</div>';
+
+		// Results placeholder.
+		//   never      — omitted entirely.
+		//   after_vote — emitted empty + [hidden]; populated by JS on
+		//                a successful submit response.
+		//   always     — server-rendered with the current totals so the
+		//                form is functional without JS.
+		if ( $settings['results_visibility'] !== 'never' ) {
+			$attrs  = ' data-poll-results="' . esc_attr( $field['id'] ) . '"';
+			$attrs .= ' data-poll-visibility="' . esc_attr( $settings['results_visibility'] ) . '"';
+			$attrs .= ' data-poll-chart="' . esc_attr( $settings['chart_type'] ) . '"';
+
+			$inner = '';
+			$is_visible = false;
+
+			if ( $settings['results_visibility'] === 'always' && $form_id > 0 ) {
+				$inner = static::render_poll_results_html( $form_id, $field, $settings );
+				$is_visible = true;
+			}
+
+			$html .= '<div class="neural-forms-form__poll-results"'
+				. $attrs
+				. ( $is_visible ? '' : ' hidden' )
+				. '>'
+				. $inner
+				. '</div>';
+		}
+
+		$html .= '</fieldset>';
+
+		return $html;
+	}
+
+	/**
+	 * Server-render the inner HTML for a poll-results panel. Used for
+	 * results_visibility='always' at SSR time so the form is useful
+	 * without JS. The same markup contract is honoured by the JS path
+	 * in form-submit.js when populating after_vote results.
+	 *
+	 * Output shape:
+	 *
+	 *   <p class="neural-forms-form__poll-total">Total votes: N</p>
+	 *   <ul class="neural-forms-form__poll-bars">
+	 *     <li class="neural-forms-form__poll-bar">
+	 *       <div class="neural-forms-form__poll-bar-head">
+	 *         <span class="...__poll-bar-label">…</span>
+	 *         <span class="...__poll-bar-count">12 (60%)</span>
+	 *       </div>
+	 *       <div class="neural-forms-form__poll-bar-track">
+	 *         <div class="neural-forms-form__poll-bar-fill" style="width:60%"></div>
+	 *       </div>
+	 *     </li>
+	 *     …
+	 *   </ul>
+	 *
+	 * For chart_type='percentage', the bar track is omitted and only
+	 * the head row (label + count/percent) is rendered.
+	 */
+	private static function render_poll_results_html( int $form_id, array $field, array $settings ): string {
+		$field_id = (string) ( $field['id'] ?? '' );
+		if ( $form_id <= 0 || $field_id === '' ) {
+			return '';
+		}
+
+		$agg    = \NeuralForms\Storage\EntryRepository::aggregate_poll_votes( $form_id, $field_id );
+		$total  = (int) ( $agg['total']  ?? 0 );
+		$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : [];
+
+		$options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+		$known   = [];
+		$rows    = [];
+
+		foreach ( $options as $opt ) {
+			$opt   = (array) $opt;
+			$label = (string) ( $opt['label'] ?? '' );
+			$raw   = (string) ( $opt['value'] ?? '' );
+			$value = $raw !== '' ? $raw : $label;
+			if ( $value === '' ) continue;
+
+			$known[] = $value;
+			$votes   = (int) ( $counts[ $value ] ?? 0 );
+			$pct     = $total > 0 ? round( ( $votes / $total ) * 100, 2 ) : 0.0;
+
+			$rows[] = [
+				'label' => $label !== '' ? $label : $value,
+				'votes' => $votes,
+				'pct'   => $pct,
+			];
+		}
+
+		$other_votes = 0;
+		foreach ( $counts as $value => $votes ) {
+			if ( ! in_array( (string) $value, $known, true ) ) {
+				$other_votes += (int) $votes;
+			}
+		}
+		if ( $other_votes > 0 ) {
+			$rows[] = [
+				'label' => __( 'Other', 'neural-forms-lite' ),
+				'votes' => $other_votes,
+				'pct'   => $total > 0 ? round( ( $other_votes / $total ) * 100, 2 ) : 0.0,
+			];
+		}
+
+		$chart = $settings['chart_type'] ?? 'bar';
+
+		$html  = '<p class="neural-forms-form__poll-total">'
+			. sprintf(
+				/* translators: %d: total vote count */
+				esc_html__( 'Total votes: %d', 'neural-forms-lite' ),
+				$total
+			)
+			. '</p>';
+
+		$html .= '<ul class="neural-forms-form__poll-bars" data-poll-chart="' . esc_attr( $chart ) . '">';
+		foreach ( $rows as $r ) {
+			$pct_attr = max( 0, min( 100, (float) $r['pct'] ) );
+			$html .= '<li class="neural-forms-form__poll-bar">'
+				. '<div class="neural-forms-form__poll-bar-head">'
+				. '<span class="neural-forms-form__poll-bar-label">' . esc_html( $r['label'] ) . '</span>'
+				. '<span class="neural-forms-form__poll-bar-count">'
+				. sprintf(
+					/* translators: 1: vote count, 2: percentage */
+					esc_html__( '%1$d (%2$s%%)', 'neural-forms-lite' ),
+					(int) $r['votes'],
+					(string) $r['pct']
+				)
+				. '</span>'
+				. '</div>';
+			if ( $chart !== 'percentage' ) {
+				$html .= '<div class="neural-forms-form__poll-bar-track" aria-hidden="true">'
+					. '<div class="neural-forms-form__poll-bar-fill" style="width:' . $pct_attr . '%"></div>'
+					. '</div>';
+			}
+			$html .= '</li>';
+		}
+		$html .= '</ul>';
+
+		return $html;
 	}
 
 	/**

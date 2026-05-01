@@ -365,13 +365,120 @@ class SubmitEndpoint {
 		do_action( 'neural_forms_queue_ai_processing', $entry_id, $form_id );
 
 		// ' Step 11: Success response '
-		$response = rest_ensure_response( [
+		$body = [
 			'success'  => true,
 			'entry_id' => $entry_id,
-		] );
+		];
+
+		// Poll Phase 3: piggyback poll results on the submit response so
+		// after_vote / always polls can refresh visually without a second
+		// round-trip. visibility="never" polls are intentionally omitted.
+		// $sanitized_data is the just-saved row's values (entry already
+		// inserted, so the totals reflect THIS submission too).
+		$polls_payload = $this->build_poll_results_payload( $form_id, $form['form_schema'] ?? [] );
+		if ( ! empty( $polls_payload ) ) {
+			$body['polls'] = $polls_payload;
+		}
+
+		$response = rest_ensure_response( $body );
 		$response->set_status( 201 );
 
 		return $response;
+	}
+
+	/**
+	 * Build the poll-results payload attached to a successful submit.
+	 *
+	 * Walks every poll field on the form (root, row.column, step,
+	 * step->row->column — flatten_fields handles all of those) and
+	 * aggregates votes from EntryRepository. visibility="never" polls
+	 * are skipped — those exist purely as admin-side data.
+	 *
+	 * Return shape (or [] when no eligible polls exist):
+	 *
+	 *   [ field_id => [
+	 *       'total_votes'        => int,
+	 *       'options'            => [ { label, value, votes, percentage }, ... ],
+	 *       'chart_type'         => 'bar' | 'percentage',
+	 *       'results_visibility' => 'after_vote' | 'always',
+	 *   ] ]
+	 *
+	 * @param int   $form_id
+	 * @param array $form_schema  Decoded form_schema (already loaded by submit()).
+	 * @return array              Map keyed by poll field id, or empty array.
+	 */
+	private function build_poll_results_payload( int $form_id, $form_schema ): array {
+		if ( ! is_array( $form_schema ) ) {
+			return [];
+		}
+		$fields = is_array( $form_schema['fields'] ?? null ) ? $form_schema['fields'] : [];
+		if ( empty( $fields ) ) {
+			return [];
+		}
+
+		$out = [];
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $field ) {
+			if ( ( $field['type'] ?? '' ) !== 'poll' ) continue;
+
+			$field_id = (string) ( $field['id'] ?? '' );
+			if ( $field_id === '' ) continue;
+
+			$settings   = SchemaHelper::normalize_poll_settings( $field['settings'] ?? null );
+			$visibility = $settings['results_visibility'];
+			if ( $visibility === 'never' ) continue;
+
+			$agg    = EntryRepository::aggregate_poll_votes( $form_id, $field_id );
+			$total  = (int) ( $agg['total']  ?? 0 );
+			$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : [];
+
+			$schema_options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+			$known          = [];
+			$response_opts  = [];
+
+			foreach ( $schema_options as $opt ) {
+				$opt   = (array) $opt;
+				$label = (string) ( $opt['label'] ?? '' );
+				$raw   = (string) ( $opt['value'] ?? '' );
+				$value = $raw !== '' ? $raw : $label;
+				if ( $value === '' ) continue;
+
+				$known[] = $value;
+				$votes   = (int) ( $counts[ $value ] ?? 0 );
+				$pct     = $total > 0 ? round( ( $votes / $total ) * 100, 2 ) : 0.0;
+
+				$response_opts[] = [
+					'label'      => $label !== '' ? $label : $value,
+					'value'      => $value,
+					'votes'      => $votes,
+					'percentage' => $pct,
+				];
+			}
+
+			// Synthetic Other bucket: only emit when > 0.
+			$other = 0;
+			foreach ( $counts as $value => $votes ) {
+				if ( ! in_array( (string) $value, $known, true ) ) {
+					$other += (int) $votes;
+				}
+			}
+			if ( $other > 0 ) {
+				$response_opts[] = [
+					'label'      => __( 'Other', 'neural-forms-lite' ),
+					'value'      => '__other__',
+					'votes'      => $other,
+					'percentage' => $total > 0 ? round( ( $other / $total ) * 100, 2 ) : 0.0,
+				];
+			}
+
+			$out[ $field_id ] = [
+				'total_votes'        => $total,
+				'options'            => $response_opts,
+				'chart_type'         => $settings['chart_type'],
+				'results_visibility' => $visibility,
+			];
+		}
+
+		return $out;
 	}
 
 	// Sanitization

@@ -454,6 +454,13 @@ screens whose full source is not currently present in
 `modules/admin/src`. Running the normal full build will replace the
 rich admin UI with incomplete source screens.
 
+To make this mistake hard to make accidentally, `modules/admin/package.json`
+has a permanent safety guard: `npm run build` no longer runs webpack — it
+exits 1 with an error pointing you at `npm run build:builder`. The original
+full build still exists as `npm run build:full:unsafe`, but **do not run
+that script** unless full admin source parity has been restored. Running
+it will overwrite the rich 1.0.0 bundle with incomplete output.
+
 Safe command:
 
 ```
@@ -472,7 +479,9 @@ Do not modify or regenerate:
 - `modules/admin/build/index.asset.php`
 - `modules/admin/build/index-rtl.css`
 
-unless full admin source parity has been restored.
+unless full admin source parity has been restored. If parity is restored
+in the future, the safety guard in `package.json` should be lifted in the
+same change that restores it (so `npm run build` becomes safe again).
 
 ------------------------------------------------------------------------
 

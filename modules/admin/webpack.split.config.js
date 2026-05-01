@@ -31,6 +31,7 @@ const { CleanWebpackPlugin } = require( 'clean-webpack-plugin' );
 
 const SCREENS = {
 	builder: 'src/builder-entry.js',
+	results: 'src/results-entry.js',
 	// Future screens (do NOT enable until their source is restored):
 	//   forms:        'src/forms-entry.js',
 	//   entries:      'src/entries-entry.js',

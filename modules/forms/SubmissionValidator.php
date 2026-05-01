@@ -82,7 +82,7 @@ class SubmissionValidator {
 	// validation - same as how sanitize_text_field() etc. behave at store time.
 	// Trimming here is for validation only; the endpoint sanitizes independently.
 
-	private const TRIMMABLE_TYPES = [ 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date' ];
+	private const TRIMMABLE_TYPES = [ 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date', 'rating', 'poll' ];
 
 	// Public API
 
@@ -284,6 +284,7 @@ class SubmissionValidator {
 
 			case 'select':
 			case 'radio':
+			case 'poll':
 				$allowed = self::get_select_option_values( $field );
 
 				// Permissive when no options are defined: an active form reaching
@@ -346,6 +347,27 @@ class SubmissionValidator {
 						'code'    => 'range_above_max',
 						/* translators: 1: field label, 2: maximum value */
 						'message' => sprintf( __( '%1$s must be at most %2$s.', 'neural-forms-lite' ), $label, $max ),
+					];
+				}
+				break;
+
+			case 'rating':
+				if ( ! is_numeric( $value ) ) {
+					return [
+						'code'    => 'invalid_rating',
+						/* translators: %s: field label */
+						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
+					];
+				}
+				$num   = (int) $value;
+				$stars = isset( $field['stars'] ) ? (int) $field['stars'] : 5;
+				if ( $stars < 1 ) { $stars = 1; }
+				if ( $stars > 10 ) { $stars = 10; }
+				if ( $num < 1 || $num > $stars ) {
+					return [
+						'code'    => 'invalid_rating',
+						/* translators: 1: field label, 2: max stars */
+						'message' => sprintf( __( '%1$s must be between 1 and %2$d.', 'neural-forms-lite' ), $label, $stars ),
 					];
 				}
 				break;

@@ -31,9 +31,10 @@ defined( 'ABSPATH' ) || exit;
  */
 class SchemaHelper {
 
-	const ROW_TYPE    = 'row';
-	const COLUMN_TYPE = 'column';
-	const STEP_TYPE   = 'step';
+	const ROW_TYPE     = 'row';
+	const COLUMN_TYPE  = 'column';
+	const STEP_TYPE    = 'step';
+	const SECTION_TYPE = 'section';
 
 	const MIN_COLUMNS = 1;
 	const MAX_COLUMNS = 4;
@@ -45,6 +46,16 @@ class SchemaHelper {
 	/** Defaults for a step's settings object. */
 	const DEFAULT_STEP_BUTTON_NEXT     = 'Next';
 	const DEFAULT_STEP_BUTTON_PREVIOUS = 'Back';
+
+	/** Allowed visual styles on a section. */
+	const VALID_SECTION_STYLES  = [ 'default', 'minimal', 'boxed' ];
+	const DEFAULT_SECTION_STYLE = 'default';
+
+	/** Poll field's nested `settings` object. Real-field, not a layout. */
+	const POLL_VISIBILITIES        = [ 'after_vote', 'always', 'never' ];
+	const POLL_DEFAULT_VISIBILITY  = 'after_vote';
+	const POLL_CHART_TYPES         = [ 'bar', 'percentage' ];
+	const POLL_DEFAULT_CHART_TYPE  = 'bar';
 
 	/**
 	 * True when a node is a layout row (not a renderable form field).
@@ -73,6 +84,19 @@ class SchemaHelper {
 	}
 
 	/**
+	 * True when a node is a layout section (visual divider / heading +
+	 * description block). Sections are leaf layout nodes - they do
+	 * NOT contain fields in 1.1.0. They appear as siblings of real
+	 * fields at root, inside step.fields, or inside column.fields.
+	 */
+	public static function is_section( $node ): bool {
+		if ( ! is_array( $node ) ) {
+			return false;
+		}
+		return ( $node['type'] ?? '' ) === self::SECTION_TYPE;
+	}
+
+	/**
 	 * True when a node looks like a layout column. Columns historically
 	 * had no `type`, so we accept "shape matches column" too: an array
 	 * with a `fields` array and either no `type` or `type === "column"`.
@@ -88,13 +112,16 @@ class SchemaHelper {
 	}
 
 	public static function is_layout_node( $node ): bool {
-		return self::is_row( $node ) || self::is_column( $node ) || self::is_step( $node );
+		return self::is_row( $node )
+			|| self::is_column( $node )
+			|| self::is_step( $node )
+			|| self::is_section( $node );
 	}
 
 	/**
 	 * True when a node represents a real input field. Rows, columns,
-	 * and steps are layout-only; anything else with a `type` is a real
-	 * field.
+	 * steps, and sections are layout / content-only; anything else
+	 * with a `type` is a real field.
 	 */
 	public static function is_real_field( $node ): bool {
 		if ( ! is_array( $node ) ) return false;
@@ -102,7 +129,8 @@ class SchemaHelper {
 		if ( $type === '' ) return false;
 		return $type !== self::ROW_TYPE
 			&& $type !== self::COLUMN_TYPE
-			&& $type !== self::STEP_TYPE;
+			&& $type !== self::STEP_TYPE
+			&& $type !== self::SECTION_TYPE;
 	}
 
 	/**
@@ -280,6 +308,100 @@ class SchemaHelper {
 		return 'step_' . strtolower( wp_generate_password( 10, false, false ) );
 	}
 
+	public static function generate_section_id(): string {
+		return 'section_' . strtolower( wp_generate_password( 10, false, false ) );
+	}
+
+	/** Default settings for a freshly-created section. */
+	public static function default_section_settings(): array {
+		return [ 'style' => self::DEFAULT_SECTION_STYLE ];
+	}
+
+	/**
+	 * Default `field.settings` for a freshly-created poll field.
+	 *
+	 * `allow_multiple` is persisted-but-ignored in v1. Keeping the key
+	 * in the schema avoids a migration when v2 turns it on.
+	 */
+	public static function default_poll_settings(): array {
+		return [
+			'results_visibility' => self::POLL_DEFAULT_VISIBILITY,
+			'chart_type'         => self::POLL_DEFAULT_CHART_TYPE,
+			'allow_multiple'     => false,
+			'randomize_options'  => false,
+		];
+	}
+
+	/**
+	 * Coerce a poll field's nested `settings` object to canonical shape.
+	 *
+	 * Unknown keys are dropped; unknown enum values fall back to defaults.
+	 * Booleans are cast strictly so a JSON-encoded "false" string from
+	 * a misbehaving client doesn't read as truthy.
+	 */
+	public static function normalize_poll_settings( $settings ): array {
+		$in = is_array( $settings ) ? $settings : [];
+
+		$visibility = isset( $in['results_visibility'] ) && is_string( $in['results_visibility'] )
+			? $in['results_visibility']
+			: self::POLL_DEFAULT_VISIBILITY;
+		if ( ! in_array( $visibility, self::POLL_VISIBILITIES, true ) ) {
+			$visibility = self::POLL_DEFAULT_VISIBILITY;
+		}
+
+		$chart = isset( $in['chart_type'] ) && is_string( $in['chart_type'] )
+			? $in['chart_type']
+			: self::POLL_DEFAULT_CHART_TYPE;
+		if ( ! in_array( $chart, self::POLL_CHART_TYPES, true ) ) {
+			$chart = self::POLL_DEFAULT_CHART_TYPE;
+		}
+
+		return [
+			'results_visibility' => $visibility,
+			'chart_type'         => $chart,
+			'allow_multiple'     => ! empty( $in['allow_multiple'] ),
+			'randomize_options'  => ! empty( $in['randomize_options'] ),
+		];
+	}
+
+	/**
+	 * Normalize a section to canonical shape.
+	 *
+	 * - id: filled if missing
+	 * - title / description: defaulted to '' if missing
+	 * - settings.style: clamped to VALID_SECTION_STYLES
+	 * - extra fields[]/columns[] are dropped (sections are leaves)
+	 */
+	public static function normalize_section( $section ): array {
+		if ( ! is_array( $section ) ) {
+			return [
+				'id'          => self::generate_section_id(),
+				'type'        => self::SECTION_TYPE,
+				'title'       => '',
+				'description' => '',
+				'settings'    => self::default_section_settings(),
+			];
+		}
+
+		$settings_in = is_array( $section['settings'] ?? null ) ? $section['settings'] : [];
+		$style       = isset( $settings_in['style'] ) && is_string( $settings_in['style'] ) && $settings_in['style'] !== ''
+			? $settings_in['style']
+			: self::DEFAULT_SECTION_STYLE;
+		if ( ! in_array( $style, self::VALID_SECTION_STYLES, true ) ) {
+			$style = self::DEFAULT_SECTION_STYLE;
+		}
+
+		return [
+			'id'          => isset( $section['id'] ) && is_string( $section['id'] ) && $section['id'] !== ''
+				? $section['id']
+				: self::generate_section_id(),
+			'type'        => self::SECTION_TYPE,
+			'title'       => isset( $section['title'] )       && is_string( $section['title'] )       ? $section['title']       : '',
+			'description' => isset( $section['description'] ) && is_string( $section['description'] ) ? $section['description'] : '',
+			'settings'    => [ 'style' => $style ],
+		];
+	}
+
 	/** Default settings for a freshly-created step. */
 	public static function default_step_settings(): array {
 		return [
@@ -333,6 +455,10 @@ class SchemaHelper {
 			if ( self::is_column( $child ) && ! self::is_real_field( $child ) ) continue;
 			if ( self::is_row( $child ) ) {
 				$children[] = $child;
+				continue;
+			}
+			if ( self::is_section( $child ) ) {
+				$children[] = self::normalize_section( $child );
 				continue;
 			}
 			if ( self::is_real_field( $child ) ) {
@@ -401,12 +527,15 @@ class SchemaHelper {
 			if ( ! is_array( $node ) ) continue;
 			if ( self::is_step( $node ) ) {
 				// Steps live only at the top level. Their inner fields
-				// (rows + real fields) are normalized recursively.
+				// (rows + sections + real fields) are normalized
+				// recursively.
 				$norm = self::normalize_step( $node );
 				$inner = [];
 				foreach ( $norm['fields'] as $child ) {
 					if ( self::is_row( $child ) ) {
 						$inner[] = self::normalize_row_canonical( $child );
+					} elseif ( self::is_section( $child ) ) {
+						$inner[] = self::normalize_section( $child );
 					} elseif ( self::is_real_field( $child ) ) {
 						$inner[] = $child;
 					}
@@ -417,6 +546,10 @@ class SchemaHelper {
 			}
 			if ( self::is_row( $node ) ) {
 				$out[] = self::normalize_row_canonical( $node );
+				continue;
+			}
+			if ( self::is_section( $node ) ) {
+				$out[] = self::normalize_section( $node );
 				continue;
 			}
 			if ( self::is_real_field( $node ) ) {

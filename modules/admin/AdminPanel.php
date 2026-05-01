@@ -27,6 +27,7 @@ class AdminPanel {
         'neural-forms-stats'     => 'stats',
         'neural-forms-settings'  => 'settings',
         'neural-forms-migration' => 'migration',
+        'neural-forms-results'   => 'results',
     ];
 
     public static function boot(): void {
@@ -111,6 +112,20 @@ class AdminPanel {
             [ self::class, 'render_page' ]
         );
 
+        // Results screen (1.1.0). Independent split bundle — does NOT
+        // share build/index.js with Forms/Entries/Settings/Stats. The
+        // dedicated render_results_page() callback emits the
+        // #neural-forms-results-app root that the results bundle
+        // mounts into.
+        add_submenu_page(
+            'neural-forms',
+            __( 'Results - Neural Forms', 'neural-forms-lite' ),
+            __( 'Results', 'neural-forms-lite' ),
+            NEURAL_FORMS_CAP_MANAGE_FORMS,
+            'neural-forms-results',
+            [ self::class, 'render_results_page' ]
+        );
+
         add_submenu_page(
             'neural-forms',
             __( 'Settings - Neural Forms', 'neural-forms-lite' ),
@@ -165,6 +180,28 @@ class AdminPanel {
         <?php
     }
 
+    /**
+     * Dedicated render callback for the Results screen. Emits a
+     * separate root so the results bundle does not collide with
+     * the rich admin bundle's #neural-forms-app root.
+     */
+    public static function render_results_page(): void {
+        $bundle_missing = ! file_exists( NEURAL_FORMS_PATH . 'modules/admin/build/results.js' );
+        ?>
+        <div class="wrap">
+            <?php if ( $bundle_missing ) : ?>
+                <div class="notice notice-warning"><p>
+                    <strong><?php esc_html_e( 'Neural Forms: Results bundle not built.', 'neural-forms-lite' ); ?></strong>
+                    <?php esc_html_e( 'Run', 'neural-forms-lite' ); ?>
+                    <code>npm run build:results</code>
+                    <?php esc_html_e( 'inside modules/admin/ to enable this screen.', 'neural-forms-lite' ); ?>
+                </p></div>
+            <?php endif; ?>
+            <div id="neural-forms-results-app"></div>
+        </div>
+        <?php
+    }
+
     // Assets
 
     /**
@@ -184,6 +221,52 @@ class AdminPanel {
         $build_dir = NEURAL_FORMS_PATH . 'modules/admin/build/';
         $build_url = NEURAL_FORMS_URL  . 'modules/admin/build/';
 
+        // Results screen split: independent bundle, never overlaps
+        // with the rich admin bundle. Enqueue results.js on
+        // ?page=neural-forms-results, and ALWAYS short-circuit out of
+        // this function for that screen — even when the bundle is
+        // missing — because the rich index.js mounts at a different
+        // root (#neural-forms-app) and would render Forms-list chrome
+        // on the Results page. The render callback shows a graceful
+        // "missing bundle" notice instead.
+        if ( self::is_results_screen() ) {
+            if ( file_exists( $build_dir . 'results.js' ) ) {
+                $asset_file = $build_dir . 'results.asset.php';
+                $asset      = file_exists( $asset_file )
+                    ? require $asset_file
+                    : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+
+                // Defensive: results.asset.php should be an array with
+                // 'dependencies' and 'version' keys, but a malformed
+                // file should never fatal the admin page.
+                if ( ! is_array( $asset ) ) {
+                    $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+                }
+                $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
+                $version = isset( $asset['version'] ) && is_string( $asset['version'] ) ? $asset['version'] : NEURAL_FORMS_VERSION;
+
+                wp_enqueue_script(
+                    'neural-forms-results',
+                    $build_url . 'results.js',
+                    $deps,
+                    $version,
+                    true
+                );
+
+                wp_localize_script( 'neural-forms-results', 'neuralFormsAdmin', self::script_data() );
+
+                if ( file_exists( $build_dir . 'results.css' ) ) {
+                    wp_enqueue_style(
+                        'neural-forms-results',
+                        $build_url . 'results.css',
+                        [ 'wp-components' ],
+                        (string) filemtime( $build_dir . 'results.css' )
+                    );
+                }
+            }
+            return;
+        }
+
         // Builder screen split: when the URL is the form editor
         // (?page=neural-forms&edit=N or &new=1) AND a builder.js bundle
         // exists alongside the rich admin bundle, enqueue the builder
@@ -192,6 +275,7 @@ class AdminPanel {
         // continue to ship from build/index.js, while the new 3-panel
         // builder ships independently as build/builder.js. The two
         // bundles are never both alive on the same page.
+
         $is_builder_screen = self::is_builder_screen();
         $use_builder_split = $is_builder_screen && file_exists( $build_dir . 'builder.js' );
 
@@ -669,6 +753,17 @@ CSS;
     }
 
     /**
+     * True when ?page=neural-forms-results. The results screen ships
+     * as its own split bundle and must NEVER share enqueue with the
+     * rich admin bundle — different mount root, different routes.
+     */
+    private static function is_results_screen(): bool {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        return $page === 'neural-forms-results';
+    }
+
+    /**
      * Resolve the current screen identifier from the ?page= query parameter.
      *
      * Falls back to the first entry in SCREENS - no magic string.
@@ -681,7 +776,12 @@ CSS;
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
         $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
 
-        return self::SCREENS[ $page ] ?? reset( self::SCREENS );
+        // PHP 8.x: reset() requires a variable (pass-by-reference). A class
+        // constant cannot be referenced directly, so copy SCREENS into a
+        // local first. array_key_first() would also work but reset() keeps
+        // the "first declared entry is the default" invariant explicit.
+        $screens = self::SCREENS;
+        return $screens[ $page ] ?? reset( $screens );
     }
 
     /**

@@ -31,7 +31,17 @@ export default function BuilderHeader( {
 	onBack,
 	saving,
 	saved,
+	formId,
 } ) {
+	// Results button only renders when the form has been persisted
+	// (formId > 0) — the Results screen aggregates saved entries, so
+	// an unsaved form has no row to query. Same-tab navigation is
+	// intentional (no auto-save, no fetch). The builder mounts inside
+	// /wp-admin/, so a relative admin.php URL resolves correctly.
+	const showResults = Number( formId ) > 0;
+	const resultsHref = showResults
+		? 'admin.php?page=neural-forms-results&form_id=' + Number( formId )
+		: '';
 	const currentStatus = VALID_STATUSES.includes( status ) ? status : 'draft';
 	return (
 		<header className="nf-builder-header">
@@ -89,6 +99,15 @@ export default function BuilderHeader( {
 				>
 					{ __( 'Preview', 'neural-forms-lite' ) }
 				</button>
+				{ showResults && (
+					<a
+						className="neural-forms-btn nf-builder-header__results"
+						href={ resultsHref }
+						title={ __( 'View poll & analytics results for this form', 'neural-forms-lite' ) }
+					>
+						{ __( 'Results', 'neural-forms-lite' ) }
+					</a>
+				) }
 				<button
 					type="button"
 					className="neural-forms-btn neural-forms-btn--primary"

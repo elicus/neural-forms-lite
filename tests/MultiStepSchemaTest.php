@@ -597,6 +597,143 @@ check( '15i mixed schema settings without multistep key uses default',
 	strpos( $html_mixed_settings, 'neural-forms-form__progress--numbers' ) !== false, true, $cases, $passed, $failed );
 
 // ---------------------------------------------------------------------------
+// 16. Sections (1.1.0 layout/content node).
+//
+//   Section schema:
+//     id, type:'section', title, description, settings:{style}
+//
+//   Sections are leaf layout nodes - never carry entry data, never
+//   contain fields. Allowed at root, inside step.fields, and inside
+//   column.fields.
+// ---------------------------------------------------------------------------
+
+$section_a = [
+	'id'          => 'section_contact',
+	'type'        => 'section',
+	'title'       => 'Contact Details',
+	'description' => 'How can we reach you?',
+	'settings'    => [ 'style' => 'default' ],
+];
+$section_b = [
+	'id'          => 'section_about',
+	'type'        => 'section',
+	'title'       => 'About',
+	'description' => '',
+	'settings'    => [ 'style' => 'minimal' ],
+];
+
+// 16a. Predicates.
+check( '16a is_section truthy on section',                SchemaHelper::is_section( $section_a ),       true,  $cases, $passed, $failed );
+check( '16a is_section false on row',                     SchemaHelper::is_section( [ 'type' => 'row' ] ), false, $cases, $passed, $failed );
+check( '16a is_section false on field',                   SchemaHelper::is_section( $f_name ),          false, $cases, $passed, $failed );
+check( '16a is_layout_node true on section',              SchemaHelper::is_layout_node( $section_a ),   true,  $cases, $passed, $failed );
+check( '16a is_real_field rejects section',               SchemaHelper::is_real_field( $section_a ),    false, $cases, $passed, $failed );
+
+// 16b. flatten_fields ignores sections at every level.
+$with_sections_root = [ $section_a, $f_name, $f_email, $section_b ];
+$flat_root = SchemaHelper::flatten_fields( $with_sections_root );
+check( '16b flatten root drops section nodes',            count( $flat_root ),                          2,     $cases, $passed, $failed );
+check( '16b flatten root keeps real field ids',           array_column( $flat_root, 'id' ),
+	[ 'first_name', 'email' ], $cases, $passed, $failed );
+check( '16b flatten root excludes section_contact',       in_array( 'section_contact', array_column( $flat_root, 'id' ), true ), false, $cases, $passed, $failed );
+
+// Section inside step.fields.
+$step_with_section = [
+	'id' => 'step_a', 'type' => 'step', 'title' => 'A',
+	'settings' => [ 'button_next' => 'Next', 'button_previous' => 'Back' ],
+	'fields' => [ $section_a, $f_name, $f_email ],
+];
+$flat_step_section = SchemaHelper::flatten_fields( [ $step_with_section ] );
+check( '16b flatten step.section ignored',                count( $flat_step_section ),                  2, $cases, $passed, $failed );
+check( '16b flatten step keeps real fields',              array_column( $flat_step_section, 'id' ),
+	[ 'first_name', 'email' ], $cases, $passed, $failed );
+
+// Section inside column.fields.
+$row_with_section = [
+	'id' => 'row_x', 'type' => 'row',
+	'settings' => [ 'columns' => 1, 'gap' => 'medium' ],
+	'columns'  => [
+		[ 'id' => 'col_x1', 'fields' => [ $section_a, $f_msg ] ],
+	],
+];
+$flat_col_section = SchemaHelper::flatten_fields( [ $row_with_section ] );
+check( '16b flatten col.section ignored',                 count( $flat_col_section ),                   1, $cases, $passed, $failed );
+check( '16b flatten col keeps real field',                array_column( $flat_col_section, 'id' ),
+	[ 'message' ], $cases, $passed, $failed );
+
+// 16c. Validator accepts sections at root, in steps, in columns.
+$valid_root_section = FormValidator::validate_schema( [ 'fields' => [ $section_a, $f_name ] ] );
+check( '16c validator accepts root section',             $valid_root_section === true,                 true, $cases, $passed, $failed );
+
+$valid_step_section = FormValidator::validate_schema( [ 'fields' => [ $step_with_section ] ] );
+check( '16c validator accepts section in step',          $valid_step_section === true,                 true, $cases, $passed, $failed );
+
+$valid_col_section = FormValidator::validate_schema( [ 'fields' => [ $row_with_section ] ] );
+check( '16c validator accepts section in column',        $valid_col_section === true,                  true, $cases, $passed, $failed );
+
+// 16d. Renderer emits section markup with title + description but no
+//      input name carrying the section id.
+$section_form = nf_make_form( [ $section_a, $f_name ] );
+$html_section = FormRenderer::render_preview_form( $section_form );
+check( '16d render emits section wrapper',               strpos( $html_section, 'class="neural-forms-form__section neural-forms-form__section--default"' ) !== false, true, $cases, $passed, $failed );
+check( '16d render emits section title h3',              strpos( $html_section, '<h3 class="neural-forms-form__section-title">Contact Details</h3>' ) !== false, true, $cases, $passed, $failed );
+check( '16d render emits section description',          strpos( $html_section, '<p class="neural-forms-form__section-description">How can we reach you?</p>' ) !== false, true, $cases, $passed, $failed );
+check( '16d render no name="section_*"',                 strpos( $html_section, 'name="section_contact"' ) === false, true, $cases, $passed, $failed );
+
+// Empty title section: wrapper still emitted, no <h3>.
+$bare_section = [ 'id' => 'section_div', 'type' => 'section', 'title' => '', 'description' => '', 'settings' => [ 'style' => 'minimal' ] ];
+$bare_form    = nf_make_form( [ $bare_section, $f_name ] );
+$html_bare    = FormRenderer::render_preview_form( $bare_form );
+check( '16d empty title omits h3',                       strpos( $html_bare, 'neural-forms-form__section-title' ) === false, true, $cases, $passed, $failed );
+check( '16d empty section still emits wrapper',          strpos( $html_bare, 'neural-forms-form__section--minimal' ) !== false, true, $cases, $passed, $failed );
+
+// Style modifier classes.
+$boxed_form = nf_make_form( [ array_merge( $section_a, [ 'settings' => [ 'style' => 'boxed' ] ] ), $f_name ] );
+$html_boxed = FormRenderer::render_preview_form( $boxed_form );
+check( '16d boxed style emits modifier',                 strpos( $html_boxed, 'neural-forms-form__section--boxed' ) !== false, true, $cases, $passed, $failed );
+
+// 16e. EntryRepository::strip_layout_keys drops section_*.
+$contam_section = [
+	'first_name'      => 'Ada',
+	'section_contact' => [ 'type' => 'section' ],
+	'section_about'   => 'leak attempt',
+	'email'           => 'a@b.test',
+];
+$cleaned_section = $strip->invoke( null, $contam_section );
+check( '16e strip drops section_* with object',          array_key_exists( 'section_contact', $cleaned_section ), false, $cases, $passed, $failed );
+check( '16e strip drops section_* with string',          array_key_exists( 'section_about',   $cleaned_section ), false, $cases, $passed, $failed );
+check( '16e strip keeps real fields',                    $cleaned_section,
+	[ 'first_name' => 'Ada', 'email' => 'a@b.test' ], $cases, $passed, $failed );
+check( '16e strip drops array with type==="section"',
+	$strip->invoke( null, [ 'name' => 'A', 'weird' => [ 'type' => 'section' ] ] ),
+	[ 'name' => 'A' ], $cases, $passed, $failed );
+
+// 16f. Old forms unaffected: a flat schema validates, flattens, and
+//      renders identically to the pre-section world. Section markup
+//      must NOT appear when no section nodes exist.
+$flat_only_form = nf_make_form( [ $f_name, $f_email ] );
+$html_flat_only = FormRenderer::render_preview_form( $flat_only_form );
+check( '16f flat-only renders no section markup',       strpos( $html_flat_only, 'neural-forms-form__section' ) === false, true, $cases, $passed, $failed );
+check( '16f flat-only keeps real fields',                strpos( $html_flat_only, 'name="first_name"' ) !== false, true, $cases, $passed, $failed );
+
+// 16g. normalize_section roundtrip + style clamping.
+$norm_default = SchemaHelper::normalize_section( [ 'type' => 'section' ] );
+check( '16g normalize defaults id',                      is_string( $norm_default['id'] ) && $norm_default['id'] !== '', true, $cases, $passed, $failed );
+check( '16g normalize defaults title',                   $norm_default['title'],                       '', $cases, $passed, $failed );
+check( '16g normalize defaults description',             $norm_default['description'],                 '', $cases, $passed, $failed );
+check( '16g normalize defaults style',                   $norm_default['settings']['style'],           'default', $cases, $passed, $failed );
+
+$norm_unknown = SchemaHelper::normalize_section( [
+	'type' => 'section', 'id' => 'section_keep', 'title' => 'Keep', 'description' => 'd',
+	'settings' => [ 'style' => 'rocketship' ],
+] );
+check( '16g normalize clamps unknown style',             $norm_unknown['settings']['style'],           'default', $cases, $passed, $failed );
+check( '16g normalize preserves explicit id',            $norm_unknown['id'],                          'section_keep', $cases, $passed, $failed );
+check( '16g normalize preserves valid style',
+	SchemaHelper::normalize_section( [ 'type' => 'section', 'settings' => [ 'style' => 'boxed' ] ] )['settings']['style'],
+	'boxed', $cases, $passed, $failed );
+
+// ---------------------------------------------------------------------------
 // Report.
 // ---------------------------------------------------------------------------
 echo "\n";

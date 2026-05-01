@@ -27,8 +27,10 @@ import BuilderCanvas from './BuilderCanvas';
 import BuilderInspector from './BuilderInspector';
 import FormSettings from './FormSettings';
 import PreviewModal from './PreviewModal';
+import BuilderTemplateModal from './BuilderTemplateModal';
 import { newField } from './FieldTypes';
-import { makeRow, createStep, isStep } from './schemaHelper';
+import { makeRow, createStep, createSection, isStep } from './schemaHelper';
+import { buildTemplate } from './formTemplates';
 
 function collectIds( nodes ) {
 	const ids = [];
@@ -48,7 +50,8 @@ function collectIds( nodes ) {
 				}
 				continue;
 			}
-			ids.push( n.id );
+			// section, real field, or anything else with an id at this level.
+			if ( n.id ) ids.push( n.id );
 		}
 	};
 	walk( nodes );
@@ -66,6 +69,7 @@ export default function Builder( { formId, isNew } ) {
 	const [ selectedColumnId, setSelectedColumnId ] = useState( null );
 	const [ selectedStepId,   setSelectedStepId   ] = useState( null );
 	const [ previewOpen,      setPreviewOpen      ] = useState( false );
+	const [ templateModalOpen, setTemplateModalOpen ] = useState( false );
 
 	// Four-way mutually exclusive selection. Selecting any one clears
 	// the others. The inspector reads all four to decide which panel
@@ -297,6 +301,60 @@ export default function Builder( { formId, isNew } ) {
 		selectNode( row.id );
 	};
 
+	const addSection = () => {
+		// Routing matches addField: column > step > root. Sections
+		// are leaf layout nodes - they may live anywhere a field can.
+		const next = createSection();
+
+		const colTarget = locateColumn( selectedColumnId );
+		if ( colTarget && colTarget.kind === 'top-row' ) {
+			const nextFields = fields.slice();
+			const row  = { ...nextFields[ colTarget.rowIdx ] };
+			const cols = row.columns.slice();
+			cols[ colTarget.colIdx ] = {
+				...cols[ colTarget.colIdx ],
+				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
+			};
+			row.columns = cols;
+			nextFields[ colTarget.rowIdx ] = row;
+			setFields( nextFields );
+			selectNode( next.id );
+			return;
+		}
+		if ( colTarget && colTarget.kind === 'step-row' ) {
+			const nextFields = fields.slice();
+			const step  = { ...nextFields[ colTarget.stepIdx ] };
+			const innerChildren = step.fields.slice();
+			const row = { ...innerChildren[ colTarget.rowChildIdx ] };
+			const cols = row.columns.slice();
+			cols[ colTarget.colIdx ] = {
+				...cols[ colTarget.colIdx ],
+				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
+			};
+			row.columns = cols;
+			innerChildren[ colTarget.rowChildIdx ] = row;
+			step.fields = innerChildren;
+			nextFields[ colTarget.stepIdx ] = step;
+			setFields( nextFields );
+			selectNode( next.id );
+			return;
+		}
+
+		const stepIdx = locateStep( selectedStepId );
+		if ( stepIdx !== -1 ) {
+			const nextFields = fields.slice();
+			const step = { ...nextFields[ stepIdx ] };
+			step.fields = [ ...( step.fields || [] ), next ];
+			nextFields[ stepIdx ] = step;
+			setFields( nextFields );
+			selectNode( next.id );
+			return;
+		}
+
+		setFields( [ ...fields, next ] );
+		selectNode( next.id );
+	};
+
 	const addStep = () => {
 		// Steps live only at the top level, regardless of current
 		// selection. The validator rejects nested steps - so even if a
@@ -321,6 +379,112 @@ export default function Builder( { formId, isNew } ) {
 		const step2 = createStep( 'Step 2' );
 		setFields( [ step1, step2 ] );
 		selectStep( step1.id );
+	};
+
+	// Resolve the active template id from form_schema.meta.template,
+	// falling back to "" when nothing is recorded.
+	const currentTemplateId = ( form.form_schema && form.form_schema.meta && typeof form.form_schema.meta.template === 'string' )
+		? form.form_schema.meta.template
+		: '';
+
+	const applyTemplate = ( templateId ) => {
+		// "blank" is special-cased to a single-text starter so the
+		// builder always lands on something editable. Same replace
+		// flow as any other template: if the canvas has fields,
+		// confirm before clobbering.
+		if ( templateId === 'blank' ) {
+			if ( fields.length > 0 ) {
+				// eslint-disable-next-line no-alert
+				const ok = window.confirm( __( 'Changing template will replace the current fields and layout. Your form settings will stay unchanged. Continue?', 'neural-forms-lite' ) );
+				if ( ! ok ) return;
+			}
+			const starter = newField( 'text', [] );
+			const nextSchemaBlank = {
+				...( form.form_schema || {} ),
+				fields: [ starter ],
+				meta: {
+					...( ( form.form_schema && form.form_schema.meta ) || {} ),
+					template: 'blank',
+				},
+			};
+			setForm( { ...form, form_schema: nextSchemaBlank } );
+			setSelectedId( starter.id );
+			setSelectedColumnId( null );
+			setSelectedStepId( null );
+			setTemplateModalOpen( false );
+			setSaved( false );
+			return;
+		}
+
+		const tpl = buildTemplate( templateId );
+		if ( ! tpl ) return; // unknown / locked id - no-op
+
+		// Confirm before clobbering an in-progress canvas. The empty
+		// canvas (no fields) is a free pass.
+		if ( fields.length > 0 ) {
+			// eslint-disable-next-line no-alert
+			const ok = window.confirm( __( 'Changing template will replace the current fields and layout. Your form settings will stay unchanged. Continue?', 'neural-forms-lite' ) );
+			if ( ! ok ) return;
+		}
+
+		// Replace name only when the form name is empty or still the
+		// "Untitled form" default - never overwrite a name the user
+		// has actually typed.
+		const isDefaultName = ! form.name || form.name === __( 'Untitled form', 'neural-forms-lite' );
+		const nextName = ( isDefaultName && tpl.name ) ? tpl.name : form.name;
+
+		// form.settings (captcha / on_success / on_error / autoresponder)
+		// are LEFT UNTOUCHED. The template only writes form_schema.
+		const nextSchema = {
+			...( form.form_schema || {} ),
+			fields: Array.isArray( tpl.fields ) ? tpl.fields : [],
+			meta: {
+				...( ( form.form_schema && form.form_schema.meta ) || {} ),
+				template: templateId,
+			},
+		};
+		if ( tpl.settings && typeof tpl.settings === 'object' ) {
+			nextSchema.settings = {
+				...( ( form.form_schema && form.form_schema.settings ) || {} ),
+				...tpl.settings,
+			};
+		}
+
+		setForm( { ...form, name: nextName, form_schema: nextSchema } );
+		// Clear selection so the inspector lands on its empty state
+		// rather than a stale id from the previous schema.
+		setSelectedId( null );
+		setSelectedColumnId( null );
+		setSelectedStepId( null );
+		setTemplateModalOpen( false );
+		setSaved( false );
+	};
+
+	const clearForm = () => {
+		// Empty canvas = nothing to clear; opening the prompt would be
+		// pointless.
+		if ( fields.length === 0 ) return;
+		// eslint-disable-next-line no-alert
+		const ok = window.confirm( __( 'Clear all fields and layout from this form? Your form settings will stay unchanged.', 'neural-forms-lite' ) );
+		if ( ! ok ) return;
+
+		// Reset form_schema.fields and form_schema.meta.template, but
+		// preserve any other schema-level settings the user has
+		// configured. form.settings (submission/security/email) is
+		// untouched.
+		const nextSchema = {
+			...( form.form_schema || {} ),
+			fields: [],
+			meta: {
+				...( ( form.form_schema && form.form_schema.meta ) || {} ),
+				template: '',
+			},
+		};
+		setForm( { ...form, form_schema: nextSchema } );
+		setSelectedId( null );
+		setSelectedColumnId( null );
+		setSelectedStepId( null );
+		setSaved( false );
 	};
 
 	const goBack = () => {
@@ -396,11 +560,12 @@ export default function Builder( { formId, isNew } ) {
 				onBack={ goBack }
 				saving={ saving }
 				saved={ saved }
+				formId={ liveFormId }
 			/>
 
 			{ safeTab === 'build' && (
 				<div className="nf-builder-body">
-					<BuilderSidebar onAddField={ addField } onAddRow={ addRow } onAddStep={ addStep } />
+					<BuilderSidebar onAddField={ addField } onAddRow={ addRow } onAddStep={ addStep } onAddSection={ addSection } />
 					<main className="nf-builder-main">
 						<BuilderCanvas
 							nodes={ fields }
@@ -413,6 +578,10 @@ export default function Builder( { formId, isNew } ) {
 							onSelectStep={ selectStep }
 							onAddBlankStarter={ addBlankStarter }
 							onAddMultistepStarter={ addMultistepStarter }
+							onApplyTemplate={ applyTemplate }
+							templateId={ currentTemplateId }
+							onRequestChangeTemplate={ () => setTemplateModalOpen( true ) }
+							onRequestClear={ clearForm }
 						/>
 					</main>
 					<BuilderInspector
@@ -423,6 +592,7 @@ export default function Builder( { formId, isNew } ) {
 						onChange={ setFields }
 						formSchemaSettings={ formSchemaSettings }
 						onChangeFormSchemaSettings={ setFormSchemaSettings }
+						formId={ liveFormId }
 					/>
 				</div>
 			) }
@@ -440,6 +610,12 @@ export default function Builder( { formId, isNew } ) {
 				open={ previewOpen }
 				form={ form }
 				onClose={ () => setPreviewOpen( false ) }
+			/>
+
+			<BuilderTemplateModal
+				open={ templateModalOpen }
+				onApplyTemplate={ applyTemplate }
+				onCancel={ () => setTemplateModalOpen( false ) }
 			/>
 		</div>
 	);

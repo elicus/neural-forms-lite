@@ -62,6 +62,16 @@ export default function FieldRow( {
 	const cssClass  = typeof field.css_class === 'string' ? field.css_class : '';
 	const hasLogic  = !! ( field.conditional_logic && field.conditional_logic.enabled );
 
+	// Poll-specific: show a results-visibility badge so a quick scan
+	// of the canvas tells the admin what frontend visitors will see.
+	let pollResultsBadge = '';
+	if ( field.type === 'poll' ) {
+		const pv = ( field.settings && field.settings.results_visibility ) || 'after_vote';
+		if ( pv === 'after_vote' ) pollResultsBadge = __( 'Results after vote', 'neural-forms-lite' );
+		else if ( pv === 'always' ) pollResultsBadge = __( 'Public results', 'neural-forms-lite' );
+		// "never" -> no badge.
+	}
+
 	const selectClick = ( e ) => {
 		if ( typeof onSelect !== 'function' ) return;
 		// Native interactive elements keep their behaviour.
@@ -119,6 +129,14 @@ export default function FieldRow( {
 				</div>
 
 				<span className="nf-card__type-badge">{ typeLabel( field.type ) }</span>
+
+				{ pollResultsBadge && (
+					<span
+						className="nf-card__poll-badge"
+						title={ pollResultsBadge }
+						aria-label={ pollResultsBadge }
+					>{ pollResultsBadge }</span>
+				) }
 
 				{ hasLogic && (
 					<span

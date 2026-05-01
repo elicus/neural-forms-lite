@@ -19,6 +19,8 @@ export const FIELD_TYPES = [
 	{ value: 'radio',      label: 'Radio'       },
 	{ value: 'checkboxes', label: 'Checkboxes'  },
 	{ value: 'range',      label: 'Range'       },
+	{ value: 'rating',     label: 'Rating'      },
+	{ value: 'poll',       label: 'Poll'        },
 	{ value: 'file',       label: 'File Upload' },
 	{ value: 'hidden',     label: 'Hidden'      },
 ];
@@ -67,6 +69,25 @@ export function newField( type, existingIds = [] ) {
 
 	if ( type === 'textarea' ) {
 		base.rows = 3;
+	}
+
+	if ( type === 'rating' ) {
+		base.stars = 5;
+	}
+
+	if ( type === 'poll' ) {
+		base.label    = 'Poll';
+		base.required = false;
+		base.options  = [
+			{ value: 'option_1', label: 'Option 1' },
+			{ value: 'option_2', label: 'Option 2' },
+		];
+		base.settings = {
+			results_visibility: 'after_vote',
+			chart_type:         'bar',
+			allow_multiple:     false,
+			randomize_options:  false,
+		};
 	}
 
 	return base;
