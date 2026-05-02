@@ -19,10 +19,11 @@ export const FIELD_TYPES = [
 	{ value: 'radio',      label: 'Radio'       },
 	{ value: 'checkboxes', label: 'Checkboxes'  },
 	{ value: 'range',      label: 'Range'       },
-	{ value: 'rating',     label: 'Rating'      },
-	{ value: 'poll',       label: 'Poll'        },
-	{ value: 'file',       label: 'File Upload' },
-	{ value: 'hidden',     label: 'Hidden'      },
+	{ value: 'rating',        label: 'Rating'        },
+	{ value: 'poll',          label: 'Poll'          },
+	{ value: 'quiz_question', label: 'Quiz Question' },
+	{ value: 'file',          label: 'File Upload'   },
+	{ value: 'hidden',        label: 'Hidden'        },
 ];
 
 export const TYPES_THAT_PAIR = FIELD_TYPES
@@ -87,6 +88,21 @@ export function newField( type, existingIds = [] ) {
 			chart_type:         'bar',
 			allow_multiple:     false,
 			randomize_options:  false,
+		};
+	}
+
+	if ( type === 'quiz_question' ) {
+		base.label    = 'Quiz Question';
+		base.required = true;
+		base.options  = [
+			{ value: 'option_1', label: 'Option 1', is_correct: false },
+			{ value: 'option_2', label: 'Option 2', is_correct: true  },
+		];
+		base.settings = {
+			points:              1,
+			explanation:         '',
+			show_correct_answer: 'after_submit',
+			randomize_options:   false,
 		};
 	}
 

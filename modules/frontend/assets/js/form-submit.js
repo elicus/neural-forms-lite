@@ -57,6 +57,10 @@
 		// submit so the "always" restoration path has the original bars
 		// to fall back to.
 		snapshotPollResults( form );
+		// Quiz placeholders are always SSR-empty + hidden, but we
+		// snapshot them anyway so the reset path is symmetric with
+		// poll's restore semantics.
+		snapshotQuizResults( form );
 	}
 
 	// Submit handler
@@ -168,13 +172,31 @@
 					// Entry stored. Either redirect or show the inline message
 					// based on the form's on_success setting.
 					case 201:
-						// Poll Phase 3: render any poll results piggybacked
-						// on the success response BEFORE redirect/showSuccess
-						// so an after_vote poll on a non-redirecting form
-						// stays visible alongside the success message.
-						if ( result.body && result.body.polls && typeof result.body.polls === 'object' ) {
-							renderPollResults( form, result.body.polls );
-						}
+						// Some apiFetch wrappers expose the JSON body
+						// at result.body; raw fetch already does. Either
+						// shape is supported defensively.
+						var payload = ( result && result.body && typeof result.body === 'object' )
+							? result.body
+							: ( result && typeof result === 'object' ? result : {} );
+						var polls = ( payload && typeof payload.polls === 'object' ) ? payload.polls : null;
+						var quiz  = ( payload && typeof payload.quiz  === 'object' ) ? payload.quiz  : null;
+
+						// In-form placeholders (still useful for
+						// always-visible polls before/after submit, and
+						// as an aria-live target). Render BEFORE the
+						// success swap so any redirect path keeps the
+						// state correct for back-navigation.
+						if ( polls ) renderPollResults( form, polls );
+						if ( quiz )  renderQuizResults( form, quiz );
+
+						// Build a combined results card placed INSIDE
+						// the success block (a sibling of the form,
+						// outside the form.hidden=true region). This
+						// is what the user actually sees post-submit
+						// — the in-form placeholders are hidden the
+						// moment showSuccess() runs.
+						populateDynamicResults( form, polls, quiz );
+
 						if ( ! redirectIfConfigured( form, 'success' ) ) {
 							showSuccess( form );
 						}
@@ -699,6 +721,54 @@
 	}
 
 	/**
+	 * Snapshot quiz feedback placeholders + the form-level summary so
+	 * the reset path can return them to their post-page-load state.
+	 *
+	 * Both surfaces are SSR-empty + hidden, but capturing them means
+	 * we don't depend on those defaults staying empty (e.g. a future
+	 * always-visible mode could SSR last-attempt totals).
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function snapshotQuizResults( form ) {
+		var feedbacks = form.querySelectorAll( '[data-quiz-feedback]' );
+		var snapshots = [];
+		for ( var i = 0; i < feedbacks.length; i++ ) {
+			var c = feedbacks[ i ];
+			snapshots.push( { el: c, html: c.innerHTML, hidden: !! c.hidden } );
+		}
+		var summary = form.querySelector( '[data-quiz-summary]' );
+		var summarySnapshot = summary
+			? { el: summary, html: summary.innerHTML, hidden: !! summary.hidden }
+			: null;
+
+		form._nfQuizSnapshots       = snapshots;
+		form._nfQuizSummarySnapshot = summarySnapshot;
+	}
+
+	/**
+	 * Reset quiz feedback placeholders + summary card to SSR state.
+	 * Mirrors resetPollResults but the contract is simpler — every
+	 * quiz container resets to empty + hidden by default.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function resetQuizResults( form ) {
+		var snapshots = form._nfQuizSnapshots || [];
+		for ( var i = 0; i < snapshots.length; i++ ) {
+			var s = snapshots[ i ];
+			if ( ! s || ! s.el || ! s.el.isConnected ) continue;
+			s.el.innerHTML = s.html;
+			s.el.hidden    = s.hidden;
+		}
+		var sum = form._nfQuizSummarySnapshot;
+		if ( sum && sum.el && sum.el.isConnected ) {
+			sum.el.innerHTML = sum.html;
+			sum.el.hidden    = sum.hidden;
+		}
+	}
+
+	/**
 	 * Reset multi-step UI to step 0. Calls into the closure-bound reset
 	 * exposed by initMultiStep() via form._nfMultiStepReset (set during
 	 * init). No-op for single-step forms.
@@ -734,6 +804,8 @@
 		form.reset();
 		clearErrors( form );
 		resetPollResults( form );
+		resetQuizResults( form );
+		clearDynamicResults( form );
 		resetMultiStep( form );
 
 		var submit = form.querySelector( '.neural-forms-form__submit' );
@@ -1082,6 +1154,302 @@
 	// SSR copy via the renderer; the JS path mirrors the English text
 	// to stay consistent with the post-vote refresh.
 	function pollMessage( s ) { return s; }
+
+	/**
+	 * Quiz Phase 1: render the score summary + per-question feedback
+	 * from the submit response. The placeholder div per question is
+	 * `[data-quiz-feedback="<field_id>"]`; the form-level summary is
+	 * a single `[data-quiz-summary]` near the submit button.
+	 *
+	 * Privacy contract: the server omits correct_value/correct_label/
+	 * explanation when show_correct_answer === 'never'. We honour
+	 * that here too — never invent them, never read schema-side data.
+	 *
+	 * @param {HTMLFormElement} form
+	 * @param {object} quiz   { score, max_score, percentage, questions: [...] }
+	 */
+	function renderQuizResults( form, quiz ) {
+		if ( ! quiz || typeof quiz !== 'object' ) return;
+
+		var score    = Number( quiz.score )      || 0;
+		var maxScore = Number( quiz.max_score )  || 0;
+		var pct      = Number( quiz.percentage );
+		if ( ! isFinite( pct ) || pct < 0 ) pct = 0;
+		if ( pct > 100 ) pct = 100;
+
+		// Form-level summary card.
+		var summary = form.querySelector( '[data-quiz-summary]' );
+		if ( summary ) {
+			var summaryHtml = ''
+				+ '<p class="neural-forms-form__quiz-summary-line">'
+				+ escapeHtml( pollMessage( 'Your score: ' ) )
+				+ '<strong>' + score + ' / ' + maxScore + '</strong>'
+				+ ' (' + pct + '%)'
+				+ '</p>';
+
+			// Phase 3: pass/fail badge — only when show_pass_fail is on
+			// (server includes `passed` only in that case).
+			if ( typeof quiz.passed === 'boolean' ) {
+				var passClass = quiz.passed
+					? 'neural-forms-form__quiz-passfail neural-forms-form__quiz-passfail--passed'
+					: 'neural-forms-form__quiz-passfail neural-forms-form__quiz-passfail--failed';
+				var passLabel = quiz.passed ? pollMessage( 'Passed' ) : pollMessage( 'Failed' );
+				var passingScore = Number( quiz.passing_score ) || 0;
+				summaryHtml += '<p class="' + passClass + '">'
+					+ '<span class="neural-forms-form__quiz-passfail-badge">' + escapeHtml( passLabel ) + '</span>'
+					+ '<span class="neural-forms-form__quiz-passfail-meta">'
+					+ escapeHtml( pollMessage( 'Passing score: ' ) ) + passingScore + '%'
+					+ '</span>'
+					+ '</p>';
+			}
+
+			// Phase 3: result message — independent of show_pass_fail.
+			if ( quiz.result_message && typeof quiz.result_message === 'object' ) {
+				var rmTitle   = String( quiz.result_message.title   || '' );
+				var rmMessage = String( quiz.result_message.message || '' );
+				if ( rmTitle || rmMessage ) {
+					summaryHtml += '<div class="neural-forms-form__quiz-result-message">';
+					if ( rmTitle )   summaryHtml += '<p class="neural-forms-form__quiz-result-title">' + escapeHtml( rmTitle ) + '</p>';
+					if ( rmMessage ) summaryHtml += '<p class="neural-forms-form__quiz-result-body">'  + escapeHtml( rmMessage ) + '</p>';
+					summaryHtml += '</div>';
+				}
+			}
+
+			summary.innerHTML = summaryHtml;
+			summary.hidden    = false;
+		}
+
+		// Per-question feedback rows.
+		var questions = Array.isArray( quiz.questions ) ? quiz.questions : [];
+		questions.forEach( function ( q ) {
+			if ( ! q || typeof q !== 'object' ) return;
+			var fieldId = String( q.field_id || '' );
+			if ( ! fieldId ) return;
+
+			var sel = '[data-quiz-feedback="' + cssEscape( fieldId ) + '"]';
+			var container = form.querySelector( sel );
+			if ( ! container ) return;
+
+			var verdictClass = q.correct
+				? 'neural-forms-form__quiz-verdict neural-forms-form__quiz-verdict--correct'
+				: 'neural-forms-form__quiz-verdict neural-forms-form__quiz-verdict--incorrect';
+			var verdictText = q.correct
+				? pollMessage( 'Correct' )
+				: pollMessage( 'Incorrect' );
+
+			var html = '<div class="' + verdictClass + '">'
+				+ '<span class="neural-forms-form__quiz-verdict-icon" aria-hidden="true">'
+				+ ( q.correct ? '✓' : '✗' )
+				+ '</span>'
+				+ '<span class="neural-forms-form__quiz-verdict-text">' + escapeHtml( verdictText ) + '</span>'
+				+ '</div>';
+
+			// Correct-answer reveal + explanation are emitted ONLY when
+			// the server flagged show_correct_answer = true on this
+			// question. Guard against a malformed/old response by
+			// double-checking the field's existence too.
+			if ( q.show_correct_answer && q.correct_label ) {
+				html += '<p class="neural-forms-form__quiz-correct">'
+					+ escapeHtml( pollMessage( 'Correct answer: ' ) )
+					+ '<strong>' + escapeHtml( String( q.correct_label ) ) + '</strong>'
+					+ '</p>';
+			}
+			if ( q.show_correct_answer && q.explanation ) {
+				html += '<p class="neural-forms-form__quiz-explanation">'
+					+ escapeHtml( String( q.explanation ) )
+					+ '</p>';
+			}
+
+			container.innerHTML = html;
+			container.hidden    = false;
+		} );
+	}
+
+	/**
+	 * Populate the success-state results container.
+	 *
+	 * The .neural-forms-form-wrap > .neural-forms-form__success block
+	 * is the success surface the user actually SEES post-submit; the
+	 * <form> itself is hidden by showSuccess(). Per-field poll/quiz
+	 * placeholders live INSIDE the form so they vanish too. This
+	 * helper writes a self-contained results card into a sibling div
+	 * that lives inside the success block, so poll bars + quiz score
+	 * stay visible alongside the success message.
+	 *
+	 * Builds output from BOTH polls and quiz responses. Empty when
+	 * neither is present. No-op when a redirect is configured (the
+	 * caller short-circuits via redirectIfConfigured before showing
+	 * the success state, so this code never runs in the redirect
+	 * path).
+	 *
+	 * @param {HTMLFormElement} form
+	 * @param {object|null}     polls  Map keyed by field_id, or null.
+	 * @param {object|null}     quiz   { score, max_score, percentage, questions } or null.
+	 */
+	function populateDynamicResults( form, polls, quiz ) {
+		var wrap = form.parentElement;
+		if ( ! wrap ) return;
+		var container = wrap.querySelector( '[data-neural-forms-dynamic-results]' );
+		if ( ! container ) return;
+
+		var html = '';
+
+		// Quiz first — score is the most prominent post-submit info.
+		if ( quiz && typeof quiz === 'object' ) {
+			var score    = Number( quiz.score )      || 0;
+			var maxScore = Number( quiz.max_score )  || 0;
+			var pct      = Number( quiz.percentage );
+			if ( ! isFinite( pct ) || pct < 0 ) pct = 0;
+			if ( pct > 100 ) pct = 100;
+
+			html += '<div class="neural-forms-form__dynamic-quiz">'
+				+ '<div class="neural-forms-form__quiz-summary">'
+				+ '<p class="neural-forms-form__quiz-summary-line">'
+				+ escapeHtml( pollMessage( 'Your score: ' ) )
+				+ '<strong>' + score + ' / ' + maxScore + '</strong>'
+				+ ' (' + pct + '%)'
+				+ '</p>';
+
+			// Phase 3: pass/fail badge.
+			if ( typeof quiz.passed === 'boolean' ) {
+				var passClassD = quiz.passed
+					? 'neural-forms-form__quiz-passfail neural-forms-form__quiz-passfail--passed'
+					: 'neural-forms-form__quiz-passfail neural-forms-form__quiz-passfail--failed';
+				var passLabelD   = quiz.passed ? pollMessage( 'Passed' ) : pollMessage( 'Failed' );
+				var passingScoreD = Number( quiz.passing_score ) || 0;
+				html += '<p class="' + passClassD + '">'
+					+ '<span class="neural-forms-form__quiz-passfail-badge">' + escapeHtml( passLabelD ) + '</span>'
+					+ '<span class="neural-forms-form__quiz-passfail-meta">'
+					+ escapeHtml( pollMessage( 'Passing score: ' ) ) + passingScoreD + '%'
+					+ '</span>'
+					+ '</p>';
+			}
+
+			// Phase 3: result message.
+			if ( quiz.result_message && typeof quiz.result_message === 'object' ) {
+				var rmT = String( quiz.result_message.title   || '' );
+				var rmM = String( quiz.result_message.message || '' );
+				if ( rmT || rmM ) {
+					html += '<div class="neural-forms-form__quiz-result-message">';
+					if ( rmT ) html += '<p class="neural-forms-form__quiz-result-title">' + escapeHtml( rmT ) + '</p>';
+					if ( rmM ) html += '<p class="neural-forms-form__quiz-result-body">'  + escapeHtml( rmM ) + '</p>';
+					html += '</div>';
+				}
+			}
+
+			html += '</div>';
+
+			var qs = Array.isArray( quiz.questions ) ? quiz.questions : [];
+			if ( qs.length > 0 ) {
+				html += '<ul class="neural-forms-form__dynamic-quiz-questions">';
+				qs.forEach( function ( q ) {
+					if ( ! q || typeof q !== 'object' ) return;
+
+					var verdictClass = q.correct
+						? 'neural-forms-form__quiz-verdict neural-forms-form__quiz-verdict--correct'
+						: 'neural-forms-form__quiz-verdict neural-forms-form__quiz-verdict--incorrect';
+					var verdictText = q.correct ? pollMessage( 'Correct' ) : pollMessage( 'Incorrect' );
+					var label = String( q.label || q.field_id || '' );
+					var sel   = q.selected_label != null ? String( q.selected_label ) : '';
+
+					html += '<li class="neural-forms-form__dynamic-quiz-question">'
+						+ '<p class="neural-forms-form__dynamic-quiz-label">' + escapeHtml( label ) + '</p>'
+						+ '<div class="' + verdictClass + '">'
+						+ '<span class="neural-forms-form__quiz-verdict-icon" aria-hidden="true">'
+						+ ( q.correct ? '✓' : '✗' )
+						+ '</span>'
+						+ '<span class="neural-forms-form__quiz-verdict-text">' + escapeHtml( verdictText ) + '</span>'
+						+ '</div>';
+
+					if ( sel ) {
+						html += '<p class="neural-forms-form__quiz-selected">'
+							+ escapeHtml( pollMessage( 'Your answer: ' ) )
+							+ '<strong>' + escapeHtml( sel ) + '</strong>'
+							+ '</p>';
+					}
+					if ( q.show_correct_answer && q.correct_label ) {
+						html += '<p class="neural-forms-form__quiz-correct">'
+							+ escapeHtml( pollMessage( 'Correct answer: ' ) )
+							+ '<strong>' + escapeHtml( String( q.correct_label ) ) + '</strong>'
+							+ '</p>';
+					}
+					if ( q.show_correct_answer && q.explanation ) {
+						html += '<p class="neural-forms-form__quiz-explanation">'
+							+ escapeHtml( String( q.explanation ) )
+							+ '</p>';
+					}
+					html += '</li>';
+				} );
+				html += '</ul>';
+			}
+
+			html += '</div>';
+		}
+
+		// Then poll bars. Each visible/after_vote poll renders a card.
+		if ( polls && typeof polls === 'object' ) {
+			Object.keys( polls ).forEach( function ( fieldId ) {
+				var poll = polls[ fieldId ];
+				if ( ! poll || typeof poll !== 'object' ) return;
+				var total   = ( typeof poll.total_votes === 'number' ) ? poll.total_votes : 0;
+				var options = Array.isArray( poll.options ) ? poll.options : [];
+				var chart   = ( poll.chart_type === 'percentage' ) ? 'percentage' : 'bar';
+
+				html += '<div class="neural-forms-form__dynamic-poll" data-poll-results-dynamic="' + escapeHtml( String( fieldId ) ) + '">'
+					+ '<p class="neural-forms-form__poll-total">'
+					+ escapeHtml( pollMessage( 'Total votes: ' ) ) + total
+					+ '</p>'
+					+ '<ul class="neural-forms-form__poll-bars" data-poll-chart="' + chart + '">';
+
+				options.forEach( function ( opt ) {
+					if ( ! opt || typeof opt !== 'object' ) return;
+					var optLabel = String( opt.label != null ? opt.label : '' );
+					var votes    = Number( opt.votes ) || 0;
+					var optPct   = Number( opt.percentage );
+					if ( ! isFinite( optPct ) || optPct < 0 ) optPct = 0;
+					if ( optPct > 100 ) optPct = 100;
+
+					html += '<li class="neural-forms-form__poll-bar">'
+						+ '<div class="neural-forms-form__poll-bar-head">'
+						+ '<span class="neural-forms-form__poll-bar-label">' + escapeHtml( optLabel ) + '</span>'
+						+ '<span class="neural-forms-form__poll-bar-count">' + votes + ' (' + optPct + '%)</span>'
+						+ '</div>';
+					if ( chart !== 'percentage' ) {
+						html += '<div class="neural-forms-form__poll-bar-track" aria-hidden="true">'
+							+ '<div class="neural-forms-form__poll-bar-fill" style="width:' + optPct + '%"></div>'
+							+ '</div>';
+					}
+					html += '</li>';
+				} );
+
+				html += '</ul></div>';
+			} );
+		}
+
+		if ( html === '' ) {
+			container.innerHTML = '';
+			container.hidden    = true;
+			return;
+		}
+
+		container.innerHTML = html;
+		container.hidden    = false;
+	}
+
+	/**
+	 * Reset the dynamic-results container to its post-page-load state
+	 * on "Submit another response". Wipes innerHTML + re-hides.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function clearDynamicResults( form ) {
+		var wrap = form.parentElement;
+		if ( ! wrap ) return;
+		var container = wrap.querySelector( '[data-neural-forms-dynamic-results]' );
+		if ( ! container ) return;
+		container.innerHTML = '';
+		container.hidden    = true;
+	}
 
 	// Utilities
 

@@ -301,6 +301,195 @@
 	background: #9ca3af;
 }
 
+/* Quiz cards */
+
+#neural-forms-results-app .nf-results__quiz-grid {
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 360px, 1fr ) );
+	gap: 14px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card {
+	background: var( --nfr-card-bg );
+	border: 1px solid var( --nfr-border );
+	border-radius: var( --nfr-radius );
+	padding: 16px 18px;
+	box-shadow: var( --nfr-shadow );
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var( --nfr-text );
+	line-height: 1.4;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-meta {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-points {
+	background: var( --nfr-primary-soft );
+	color: var( --nfr-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-answers {
+	font-size: 12px;
+	color: var( --nfr-muted );
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-empty {
+	margin: 0;
+	font-size: 12px;
+	font-style: italic;
+	color: var( --nfr-muted );
+}
+
+/* Correct-rate bar */
+
+#neural-forms-results-app .nf-results__quiz-card-rate {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px 12px;
+	background: rgba( 8, 15, 91, 0.04 );
+	border-radius: 6px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-rate-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 12px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-rate-label {
+	color: var( --nfr-text );
+	font-weight: 500;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-rate-count {
+	color: var( --nfr-muted );
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-rate-bar {
+	height: 8px;
+	background: var( --nfr-primary-soft );
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-rate-fill {
+	height: 100%;
+	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
+	border-radius: 999px;
+	transition: width 250ms ease;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-rate-detail {
+	margin: 4px 0 0;
+	font-size: 11px;
+	color: var( --nfr-muted );
+}
+
+/* Per-option list inside the quiz card */
+
+#neural-forms-results-app .nf-results__quiz-card-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 13px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-label {
+	color: var( --nfr-text );
+	font-weight: 500;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-marker {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 999px;
+	background: var( --nfr-accent );
+	color: #ffffff;
+	font-size: 10px;
+	font-weight: 700;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-count {
+	color: var( --nfr-muted );
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-bar {
+	height: 6px;
+	background: #e5e7eb;
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-fill {
+	height: 100%;
+	background: #9ca3af;
+	border-radius: 999px;
+	transition: width 200ms ease;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row--correct .nf-results__quiz-card-row-fill {
+	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row--other .nf-results__quiz-card-row-fill {
+	background: #cbd5e0;
+}
+
 /* Empty / loading / error block */
 
 #neural-forms-results-app .nf-results__empty {

@@ -21,6 +21,7 @@
  */
 
 import { useSortable } from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { __, sprintf } from '@wordpress/i18n';
 
@@ -39,9 +40,16 @@ export default function StepBlock( {
 	onSelect,
 	children,
 } ) {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable( {
+	const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable( {
 		id: step.id,
-		data: { kind: 'step' },
+		data: { kind: 'step', type: 'step' },
+	} );
+
+	// Empty-step body droppable so fields/rows can be dropped into a
+	// step that has no children yet.
+	const bodyDrop = useDroppable( {
+		id: `step-body:${ step.id }`,
+		data: { kind: 'step-body', stepId: step.id },
 	} );
 
 	const style = {
@@ -88,15 +96,15 @@ export default function StepBlock( {
 				<div className="nf-step__group nf-step__group--left">
 					<button
 						type="button"
-						className="nf-step__handle"
+						ref={ setActivatorNodeRef }
+						className="nf-drag-zone nf-drag-zone--step"
 						aria-label={ __( 'Drag step', 'neural-forms-lite' ) }
-						title={ __( 'Drag step', 'neural-forms-lite' ) }
+						title={ __( 'Drag to move', 'neural-forms-lite' ) }
 						{ ...attributes }
 						{ ...listeners }
 					>
-						<span aria-hidden="true">⋮⋮</span>
+						<span className="nf-drag-zone__icon" aria-hidden="true">⋮⋮</span>
 					</button>
-
 					<span className="nf-step__pill">
 						{ sprintf(
 							/* translators: 1: current step number  2: total steps */
@@ -149,10 +157,17 @@ export default function StepBlock( {
 
 			{ desc && <p className="nf-step__description">{ desc }</p> }
 
-			<div className="nf-step__body">
+			<div
+				ref={ bodyDrop.setNodeRef }
+				className={
+					'nf-step__body'
+					+ ( bodyDrop.isOver ? ' is-over' : '' )
+					+ ( isEmpty ? ' nf-step__body--empty' : '' )
+				}
+			>
 				{ isEmpty && (
 					<div className="nf-step__empty">
-						{ __( 'Click to add fields or rows to this step', 'neural-forms-lite' ) }
+						{ __( 'Drop a field or row here, or click a chip in the sidebar.', 'neural-forms-lite' ) }
 					</div>
 				) }
 				{ children }

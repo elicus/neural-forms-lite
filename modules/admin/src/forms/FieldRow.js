@@ -45,15 +45,16 @@ export default function FieldRow( {
 		attributes,
 		listeners,
 		setNodeRef,
+		setActivatorNodeRef,
 		transform,
 		transition,
 		isDragging,
-	} = useSortable( { id: field.id } );
+	} = useSortable( { id: field.id, data: { kind: 'field', type: field.type } } );
 
 	const style = {
-		transform:  CSS.Transform.toString( transform ),
+		transform: CSS.Transform.toString( transform ),
 		transition,
-		opacity:    isDragging ? 0.5 : 1,
+		opacity: isDragging ? 0.4 : 1,
 	};
 
 	const isHidden  = field.type === 'hidden';
@@ -70,6 +71,17 @@ export default function FieldRow( {
 		if ( pv === 'after_vote' ) pollResultsBadge = __( 'Results after vote', 'neural-forms-lite' );
 		else if ( pv === 'always' ) pollResultsBadge = __( 'Public results', 'neural-forms-lite' );
 		// "never" -> no badge.
+	}
+
+	// Quiz-specific badges: points + "Explanation added" hint.
+	let quizPointsBadge = '';
+	let quizExplainBadge = false;
+	if ( field.type === 'quiz_question' ) {
+		const s = ( field.settings && typeof field.settings === 'object' ) ? field.settings : {};
+		const pts = Number.isFinite( Number( s.points ) ) ? Math.max( 0, Math.round( Number( s.points ) ) ) : 1;
+		quizPointsBadge = pts === 1 ? __( '1 point', 'neural-forms-lite' )
+			: ( pts + ' ' + __( 'points', 'neural-forms-lite' ) );
+		quizExplainBadge = typeof s.explanation === 'string' && s.explanation.trim() !== '';
 	}
 
 	const selectClick = ( e ) => {
@@ -110,13 +122,14 @@ export default function FieldRow( {
 			<div className="nf-card__header">
 				<button
 					type="button"
-					className="nf-card__handle"
-					aria-label={ __( 'Drag to reorder', 'neural-forms-lite' ) }
-					title={ __( 'Drag to reorder', 'neural-forms-lite' ) }
+					ref={ setActivatorNodeRef }
+					className="nf-drag-zone nf-drag-zone--field"
+					aria-label={ __( 'Drag field', 'neural-forms-lite' ) }
+					title={ __( 'Drag to move', 'neural-forms-lite' ) }
 					{ ...attributes }
 					{ ...listeners }
 				>
-					<span aria-hidden="true">⋮⋮</span>
+					<span className="nf-drag-zone__icon" aria-hidden="true">⋮⋮</span>
 				</button>
 
 				<div className="nf-card__label">
@@ -136,6 +149,22 @@ export default function FieldRow( {
 						title={ pollResultsBadge }
 						aria-label={ pollResultsBadge }
 					>{ pollResultsBadge }</span>
+				) }
+
+				{ quizPointsBadge && (
+					<span
+						className="nf-card__quiz-badge"
+						title={ quizPointsBadge }
+						aria-label={ quizPointsBadge }
+					>{ quizPointsBadge }</span>
+				) }
+
+				{ quizExplainBadge && (
+					<span
+						className="nf-card__quiz-badge nf-card__quiz-badge--explain"
+						title={ __( 'Explanation will be shown after submit', 'neural-forms-lite' ) }
+						aria-label={ __( 'Explanation added', 'neural-forms-lite' ) }
+					>{ __( 'Explanation', 'neural-forms-lite' ) }</span>
 				) }
 
 				{ hasLogic && (

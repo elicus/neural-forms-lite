@@ -24,6 +24,7 @@ import ResultsHeader from './ResultsHeader';
 import EmptyState from './EmptyState';
 import ResultsOverviewCards from './ResultsOverviewCards';
 import PollResultsSection from './PollResultsSection';
+import QuizResultsSection from './QuizResultsSection';
 
 function readFormIdFromUrl() {
 	try {
@@ -37,12 +38,13 @@ function readFormIdFromUrl() {
 }
 
 /**
- * Count poll fields in a form_schema, recursing into rows / columns /
- * steps / step.row.column. Mirrors SchemaHelper::flatten_fields on the
- * server. Used only as a fallback when GET /forms doesn't carry the
- * server-computed poll_count (older Lite/Pro mix, malformed enrichment).
+ * Count fields of a given `type` in a form_schema, recursing into
+ * rows / columns / steps / step.row.column. Mirrors
+ * SchemaHelper::flatten_fields on the server. Used only as a
+ * fallback when GET /forms doesn't carry the server-computed
+ * poll_count / quiz_count (older Lite/Pro mix, malformed enrichment).
  */
-function countPollsInSchema( schema ) {
+function countTypeInSchema( schema, type ) {
 	if ( ! schema || typeof schema !== 'object' ) return 0;
 	const fields = Array.isArray( schema.fields ) ? schema.fields : [];
 	let n = 0;
@@ -50,7 +52,7 @@ function countPollsInSchema( schema ) {
 		for ( let i = 0; i < nodes.length; i++ ) {
 			const node = nodes[ i ];
 			if ( ! node || typeof node !== 'object' ) continue;
-			if ( node.type === 'poll' ) { n++; continue; }
+			if ( node.type === type ) { n++; continue; }
 			if ( node.type === 'step'   && Array.isArray( node.fields ) )  walk( node.fields );
 			if ( node.type === 'row'    && Array.isArray( node.columns ) ) {
 				for ( let c = 0; c < node.columns.length; c++ ) {
@@ -95,12 +97,16 @@ export default function ResultsApp() {
 						? res.forms
 						: ( Array.isArray( res ) ? res : [] );
 				const list = raw.map( ( f ) => {
-					const haveCount = typeof f.poll_count === 'number';
-					const count = haveCount ? f.poll_count : countPollsInSchema( f.form_schema );
+					const havePoll = typeof f.poll_count === 'number';
+					const haveQuiz = typeof f.quiz_count === 'number';
+					const polls = havePoll ? f.poll_count : countTypeInSchema( f.form_schema, 'poll' );
+					const quiz  = haveQuiz ? f.quiz_count : countTypeInSchema( f.form_schema, 'quiz_question' );
 					return {
 						...f,
-						poll_count: count,
-						has_polls:  count > 0 || !! f.has_polls,
+						poll_count: polls,
+						has_polls:  polls > 0 || !! f.has_polls,
+						quiz_count: quiz,
+						has_quiz:   quiz > 0 || !! f.has_quiz,
 					};
 				} );
 				setForms( list );
@@ -113,21 +119,39 @@ export default function ResultsApp() {
 
 	useEffect( () => { fetchForms(); }, [ fetchForms ] );
 
-	// Whenever the user picks a form, fetch its results.
+	// Per-selection state for quiz results — fetched alongside polls
+	// when a form is picked. Either or both may be empty depending on
+	// the form's schema.
+	const [ quizData, setQuizData ] = useState( null );
+	const [ quizError, setQuizError ] = useState( '' );
+
+	// Whenever the user picks a form, fetch its results. Polls and
+	// quiz are fetched in parallel; the UI renders whichever is
+	// available without blocking the other.
 	const load = useCallback( () => {
 		if ( ! selectedId ) {
 			setData( null );
+			setQuizData( null );
 			return;
 		}
 		setLoading( true );
 		setError( '' );
-		api( `/forms/${ selectedId }/polls` )
+		setQuizError( '' );
+
+		const pollsP = api( `/forms/${ selectedId }/polls` )
 			.then( ( res ) => { setData( res ); } )
 			.catch( ( err ) => {
 				setError( ( err && err.message ) ? String( err.message ) : __( 'Failed to load results.', 'neural-forms-lite' ) );
 				setData( null );
-			} )
-			.finally( () => { setLoading( false ); } );
+			} );
+		const quizP = api( `/forms/${ selectedId }/quiz` )
+			.then( ( res ) => { setQuizData( res ); } )
+			.catch( ( err ) => {
+				setQuizError( ( err && err.message ) ? String( err.message ) : __( 'Failed to load quiz results.', 'neural-forms-lite' ) );
+				setQuizData( null );
+			} );
+
+		Promise.all( [ pollsP, quizP ] ).finally( () => { setLoading( false ); } );
 	}, [ selectedId ] );
 
 	useEffect( () => { load(); }, [ load ] );
@@ -152,33 +176,38 @@ export default function ResultsApp() {
 		[ forms, selectedId ]
 	);
 
-	// Forms that should appear in the dropdown: only those with polls.
-	// Sorted by name for stable presentation.
-	const pollForms = useMemo(
-		() => forms.filter( ( f ) => Number( f.poll_count ) > 0 || !! f.has_polls )
-			.sort( ( a, b ) => String( a.name || '' ).localeCompare( String( b.name || '' ) ) ),
+	// Forms that should appear in the dropdown: those with polls OR
+	// quiz questions. Sorted by name for stable presentation.
+	const resultsForms = useMemo(
+		() => forms.filter( ( f ) =>
+			Number( f.poll_count ) > 0 || !! f.has_polls
+			|| Number( f.quiz_count ) > 0 || !! f.has_quiz
+		).sort( ( a, b ) => String( a.name || '' ).localeCompare( String( b.name || '' ) ) ),
 		[ forms ]
 	);
 
 	// Combined refresh: re-fetches both forms list AND (if a form is
-	// selected) its poll results. Lets the user recover from a bad
-	// state without reloading the page.
+	// selected) its poll + quiz results. Lets the user recover from a
+	// bad state without reloading the page.
 	const refreshAll = useCallback( () => {
 		fetchForms().then( () => { if ( selectedId > 0 ) load(); } );
 	}, [ fetchForms, load, selectedId ] );
 
 	// Deep-link fallback: when ?form_id=N points at a form that's not
-	// in the filtered pollForms list (could be archived, or its
-	// poll_count detection failed), still attempt to load its
-	// /polls endpoint directly. The server will return a 404 if the
+	// in the filtered resultsForms list (could be archived, or its
+	// poll/quiz_count detection failed), still attempt to load
+	// the endpoints directly. The server will return a 404 if the
 	// form genuinely doesn't exist, which surfaces as the error
 	// EmptyState below.
-	const deepLinkOrphan = selectedId > 0 && ! formsLoading && ! pollForms.find( ( f ) => Number( f.id ) === Number( selectedId ) );
+	const deepLinkOrphan = selectedId > 0 && ! formsLoading && ! resultsForms.find( ( f ) => Number( f.id ) === Number( selectedId ) );
+
+	const hasPolls = !! ( data && Number( data.poll_count ) > 0 );
+	const hasQuiz  = !! ( quizData && Number( quizData.quiz_count ) > 0 );
 
 	return (
 		<div className="nf-results">
 			<ResultsHeader
-				forms={ pollForms }
+				forms={ resultsForms }
 				formsLoading={ formsLoading }
 				formsError={ formsError }
 				selectedId={ selectedId }
@@ -188,9 +217,7 @@ export default function ResultsApp() {
 				canRefresh={ true }
 			/>
 
-			{ /* Forms-list error: shown above any selection-specific
-			    state so the user knows the dropdown will be empty
-			    until the network recovers. */ }
+			{ /* Forms-list error. */ }
 			{ formsError && (
 				<EmptyState
 					title={ __( 'Could not load forms.', 'neural-forms-lite' ) }
@@ -199,18 +226,16 @@ export default function ResultsApp() {
 				/>
 			) }
 
-			{ /* No form selected, no error, dropdown empty -> tell the
-			    user there are no poll forms yet (rather than a vague
-			    "select a form" with nothing to select). */ }
-			{ ! formsError && selectedId === 0 && ! formsLoading && pollForms.length === 0 && (
+			{ /* No form selected, no error, dropdown empty. */ }
+			{ ! formsError && selectedId === 0 && ! formsLoading && resultsForms.length === 0 && (
 				<EmptyState
-					title={ __( 'No poll results yet', 'neural-forms-lite' ) }
-					subtitle={ __( 'Create a form with a Poll field to start collecting results.', 'neural-forms-lite' ) }
+					title={ __( 'No results yet', 'neural-forms-lite' ) }
+					subtitle={ __( 'Create a form with a Poll or Quiz Question field to start collecting results.', 'neural-forms-lite' ) }
 				/>
 			) }
 
-			{ /* No form selected but there ARE poll forms — prompt for selection. */ }
-			{ ! formsError && selectedId === 0 && ! formsLoading && pollForms.length > 0 && (
+			{ /* No form selected but there ARE poll/quiz forms. */ }
+			{ ! formsError && selectedId === 0 && ! formsLoading && resultsForms.length > 0 && (
 				<EmptyState
 					title={ __( 'Select a form to view results.', 'neural-forms-lite' ) }
 				/>
@@ -224,24 +249,38 @@ export default function ResultsApp() {
 				/>
 			) }
 
-			{ selectedId > 0 && ! error && loading && ! data && (
+			{ selectedId > 0 && ! error && loading && ! data && ! quizData && (
 				<EmptyState title={ __( 'Loading results…', 'neural-forms-lite' ) } />
 			) }
 
-			{ selectedId > 0 && ! error && data && (
+			{ selectedId > 0 && ! error && ( data || quizData ) && (
 				<>
 					<h2 className="nf-results__form-name">
-						{ ( data.form_name || ( selectedForm && selectedForm.name ) || '' ) }
+						{ ( ( data && data.form_name ) || ( quizData && quizData.form_name ) || ( selectedForm && selectedForm.name ) || '' ) }
 					</h2>
 
-					<ResultsOverviewCards data={ data } />
+					<ResultsOverviewCards data={ data } quiz={ quizData } />
 
-					{ ( data.poll_count > 0 ) ? (
-						<PollResultsSection polls={ data.polls || [] } />
-					) : (
+					{ hasPolls && (
+						<PollResultsSection polls={ ( data && data.polls ) || [] } />
+					) }
+
+					{ hasQuiz && (
+						<QuizResultsSection quiz={ quizData } />
+					) }
+
+					{ ! hasPolls && ! hasQuiz && (
 						<EmptyState
-							title={ __( 'This form has no poll fields.', 'neural-forms-lite' ) }
-							subtitle={ __( 'Add a Poll field in the form builder to see results here.', 'neural-forms-lite' ) }
+							title={ __( 'This form has no poll or quiz fields yet.', 'neural-forms-lite' ) }
+							subtitle={ __( 'Add a Poll or Quiz Question field in the form builder to see results here.', 'neural-forms-lite' ) }
+						/>
+					) }
+
+					{ quizError && (
+						<EmptyState
+							title={ __( 'Quiz analytics could not be loaded.', 'neural-forms-lite' ) }
+							subtitle={ quizError }
+							tone="error"
 						/>
 					) }
 

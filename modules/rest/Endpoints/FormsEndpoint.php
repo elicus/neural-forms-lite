@@ -145,9 +145,12 @@ class FormsEndpoint {
         }
         if ( $rows_key !== null ) {
             foreach ( $result[ $rows_key ] as &$form_row ) {
-                $count = self::poll_count_for_schema( $form_row['form_schema'] ?? null );
-                $form_row['poll_count'] = $count;
-                $form_row['has_polls']  = $count > 0;
+                $poll_count = self::poll_count_for_schema( $form_row['form_schema'] ?? null );
+                $quiz_count = self::quiz_count_for_schema( $form_row['form_schema'] ?? null );
+                $form_row['poll_count'] = $poll_count;
+                $form_row['has_polls']  = $poll_count > 0;
+                $form_row['quiz_count'] = $quiz_count;
+                $form_row['has_quiz']   = $quiz_count > 0;
             }
             unset( $form_row );
         }
@@ -173,6 +176,22 @@ class FormsEndpoint {
         $n = 0;
         foreach ( \NeuralForms\Forms\SchemaHelper::flatten_fields( $fields ) as $f ) {
             if ( ( $f['type'] ?? '' ) === 'poll' ) $n++;
+        }
+        return $n;
+    }
+
+    /**
+     * Count quiz_question fields anywhere in a (possibly already-decoded)
+     * form schema. Reuses SchemaHelper::flatten_fields for full coverage
+     * across rows / columns / steps / step.row.column.
+     */
+    private static function quiz_count_for_schema( $schema ): int {
+        if ( ! is_array( $schema ) ) return 0;
+        $fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : [];
+        if ( empty( $fields ) ) return 0;
+        $n = 0;
+        foreach ( \NeuralForms\Forms\SchemaHelper::flatten_fields( $fields ) as $f ) {
+            if ( ( $f['type'] ?? '' ) === 'quiz_question' ) $n++;
         }
         return $n;
     }

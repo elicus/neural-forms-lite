@@ -39,7 +39,11 @@ export default function ResultsHeader( {
 						</option>
 						{ forms.map( ( f ) => {
 							const polls = Number( f.poll_count ) || 0;
-							const suffix = polls > 0 ? ` (${ polls } poll${ polls === 1 ? '' : 's' })` : '';
+							const quiz  = Number( f.quiz_count ) || 0;
+							const parts = [];
+							if ( polls > 0 ) parts.push( `${ polls } poll${ polls === 1 ? '' : 's' }` );
+							if ( quiz  > 0 ) parts.push( `${ quiz } quiz question${ quiz === 1 ? '' : 's' }` );
+							const suffix = parts.length ? ` (${ parts.join( ', ' ) })` : '';
 							return (
 								<option key={ f.id } value={ f.id }>
 									{ f.name }{ suffix }

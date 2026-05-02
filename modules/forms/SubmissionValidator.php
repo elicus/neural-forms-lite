@@ -82,7 +82,7 @@ class SubmissionValidator {
 	// validation - same as how sanitize_text_field() etc. behave at store time.
 	// Trimming here is for validation only; the endpoint sanitizes independently.
 
-	private const TRIMMABLE_TYPES = [ 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date', 'rating', 'poll' ];
+	private const TRIMMABLE_TYPES = [ 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date', 'rating', 'poll', 'quiz_question' ];
 
 	// Public API
 
@@ -285,6 +285,7 @@ class SubmissionValidator {
 			case 'select':
 			case 'radio':
 			case 'poll':
+			case 'quiz_question':
 				$allowed = self::get_select_option_values( $field );
 
 				// Permissive when no options are defined: an active form reaching

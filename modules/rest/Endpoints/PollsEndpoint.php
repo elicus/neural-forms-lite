@@ -76,6 +76,22 @@ class PollsEndpoint {
 				],
 			],
 		] );
+
+		// All-quiz aggregator. Powers the Results screen Quiz section.
+		// Lives on this endpoint class because the data flow is
+		// parallel to polls: same form lookup, same trash exclusion,
+		// same admin-only gate. No registry split needed in v1.
+		register_rest_route( $ns, '/forms/(?P<id>\d+)/quiz', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'get_all_quiz_results' ],
+			'permission_callback' => [ $this, 'check_permission' ],
+			'args' => [
+				'id' => [
+					'validate_callback' => static function ( $v ) { return is_numeric( $v ) && (int) $v > 0; },
+					'sanitize_callback' => 'absint',
+				],
+			],
+		] );
 	}
 
 	public function check_permission(): bool {
@@ -179,6 +195,220 @@ class PollsEndpoint {
 			'poll_count'       => count( $polls ),
 			'total_poll_votes' => $total_poll_votes,
 			'polls'            => $polls,
+		] );
+	}
+
+	/**
+	 * GET /forms/{id}/quiz
+	 *
+	 * Aggregates every quiz_question on the form into one analytics
+	 * payload. Powers the Quiz Results section of the Results screen.
+	 *
+	 * Response shape (verified by QuizResultsEndpointTest):
+	 *
+	 *   {
+	 *     form_id, form_name,
+	 *     total_entries:      int,
+	 *     quiz_count:         int,
+	 *     total_attempts:     int,    // non-trash entries with >=1 quiz answer
+	 *     max_score:          int,
+	 *     average_score:      float,  // mean across non-trash entries
+	 *     average_percentage: float,  // 2dp; 0 when max_score === 0
+	 *     questions: [
+	 *       {
+	 *         field_id, label, points_possible,
+	 *         total_answers, correct_answers, incorrect_answers,
+	 *         correct_percentage,
+	 *         options: [
+	 *           { label, value, is_correct, answers, percentage },
+	 *           ...
+	 *           // synthetic Other only when count > 0:
+	 *           { label: "Other", value: "__other__", is_correct: false, answers, percentage }
+	 *         ]
+	 *       },
+	 *       ...
+	 *     ]
+	 *   }
+	 *
+	 * Empty `questions` is returned (200) when the form has no quiz
+	 * fields, mirroring the all-polls contract.
+	 */
+	public function get_all_quiz_results( WP_REST_Request $request ) {
+		$form_id = (int) $request['id'];
+
+		$form = FormRepository::find( $form_id );
+		if ( ! $form ) {
+			return new WP_Error(
+				'form_not_found',
+				__( 'Form not found.', 'neural-forms-lite' ),
+				[ 'status' => 404 ]
+			);
+		}
+
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
+		$fields = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
+
+		// Collect quiz fields in schema order.
+		$quiz_fields = [];
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
+			if ( ( $f['type'] ?? '' ) === 'quiz_question' ) {
+				$quiz_fields[] = $f;
+			}
+		}
+
+		$total_entries = self::count_form_entries( $form_id );
+
+		if ( empty( $quiz_fields ) ) {
+			return rest_ensure_response( [
+				'form_id'            => $form_id,
+				'form_name'          => (string) ( $form['name'] ?? '' ),
+				'total_entries'      => $total_entries,
+				'quiz_count'         => 0,
+				'total_attempts'     => 0,
+				'max_score'          => 0,
+				'average_score'      => 0.0,
+				'average_percentage' => 0.0,
+				'questions'          => [],
+			] );
+		}
+
+		$field_ids = array_map( static function ( $f ) { return (string) ( $f['id'] ?? '' ); }, $quiz_fields );
+		$field_ids = array_filter( $field_ids, static function ( $id ) { return $id !== ''; } );
+
+		$agg = \NeuralForms\Storage\EntryRepository::aggregate_quiz_answers( $form_id, array_values( $field_ids ) );
+
+		// Build per-question payload.
+		$max_score = 0;
+		$questions = [];
+
+		foreach ( $quiz_fields as $field ) {
+			$field_id = (string) ( $field['id'] ?? '' );
+			if ( $field_id === '' ) continue;
+
+			$settings = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
+			$points   = (int) $settings['points'];
+			$max_score += $points;
+
+			$schema_options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+			$counts         = is_array( $agg['counts'][ $field_id ] ?? null ) ? $agg['counts'][ $field_id ] : [];
+			$total_answers  = (int) ( $agg['totals'][ $field_id ] ?? 0 );
+
+			$correct_value = '';
+			$known_values  = [];
+			$response_opts = [];
+
+			foreach ( $schema_options as $opt ) {
+				$opt   = (array) $opt;
+				$label = (string) ( $opt['label'] ?? '' );
+				$raw   = (string) ( $opt['value'] ?? '' );
+				$value = $raw !== '' ? $raw : $label;
+				if ( $value === '' ) continue;
+
+				$known_values[] = $value;
+				$is_correct     = ! empty( $opt['is_correct'] );
+				if ( $is_correct ) {
+					$correct_value = $value;
+				}
+
+				$answers = (int) ( $counts[ $value ] ?? 0 );
+				$pct     = $total_answers > 0 ? round( ( $answers / $total_answers ) * 100, 2 ) : 0.0;
+
+				$response_opts[] = [
+					'label'      => $label !== '' ? $label : $value,
+					'value'      => $value,
+					'is_correct' => $is_correct,
+					'answers'    => $answers,
+					'percentage' => $pct,
+				];
+			}
+
+			// Other bucket for unknown vote values.
+			$other = 0;
+			foreach ( $counts as $value => $n ) {
+				if ( ! in_array( (string) $value, $known_values, true ) ) {
+					$other += (int) $n;
+				}
+			}
+			if ( $other > 0 ) {
+				$response_opts[] = [
+					'label'      => __( 'Other', 'neural-forms-lite' ),
+					'value'      => '__other__',
+					'is_correct' => false,
+					'answers'    => $other,
+					'percentage' => $total_answers > 0 ? round( ( $other / $total_answers ) * 100, 2 ) : 0.0,
+				];
+			}
+
+			$correct_answers   = (int) ( $correct_value !== '' && isset( $counts[ $correct_value ] ) ? $counts[ $correct_value ] : 0 );
+			$incorrect_answers = max( 0, $total_answers - $correct_answers );
+			$correct_pct       = $total_answers > 0 ? round( ( $correct_answers / $total_answers ) * 100, 2 ) : 0.0;
+
+			$questions[] = [
+				'field_id'           => $field_id,
+				'label'              => (string) ( $field['label'] ?? '' ),
+				'points_possible'    => $points,
+				'total_answers'      => $total_answers,
+				'correct_answers'    => $correct_answers,
+				'incorrect_answers'  => $incorrect_answers,
+				'correct_percentage' => $correct_pct,
+				'options'            => $response_opts,
+			];
+		}
+
+		// Compute per-entry score, mean across non-trash entries that
+		// contained at least one quiz answer. An entry that reached
+		// the form but skipped every quiz question is NOT an attempt;
+		// excluding it keeps the average meaningful (otherwise an
+		// unrelated submit would dilute the score for everyone).
+		$attempts = 0;
+		$score_sum = 0;
+		foreach ( ( $agg['rows'] ?? [] ) as $row ) {
+			$has_answer = false;
+			$entry_score = 0;
+			foreach ( $quiz_fields as $field ) {
+				$fid = (string) ( $field['id'] ?? '' );
+				if ( $fid === '' ) continue;
+				if ( ! array_key_exists( $fid, $row ) ) continue;
+				$val = $row[ $fid ];
+				if ( $val === null || $val === '' || is_array( $val ) ) continue;
+				$has_answer = true;
+
+				// Match against this question's correct option.
+				$question_options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+				$pts = (int) SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null )['points'];
+				foreach ( $question_options as $opt ) {
+					$opt = (array) $opt;
+					if ( empty( $opt['is_correct'] ) ) continue;
+					$opt_label = (string) ( $opt['label'] ?? '' );
+					$opt_raw   = (string) ( $opt['value'] ?? '' );
+					$correct   = $opt_raw !== '' ? $opt_raw : $opt_label;
+					if ( (string) $val === $correct ) {
+						$entry_score += $pts;
+					}
+					break;
+				}
+			}
+			if ( $has_answer ) {
+				$attempts++;
+				$score_sum += $entry_score;
+			}
+		}
+
+		$average_score      = $attempts > 0 ? round( $score_sum / $attempts, 2 ) : 0.0;
+		$average_percentage = ( $max_score > 0 && $attempts > 0 )
+			? round( ( $score_sum / ( $max_score * $attempts ) ) * 100, 2 )
+			: 0.0;
+
+		return rest_ensure_response( [
+			'form_id'            => $form_id,
+			'form_name'          => (string) ( $form['name'] ?? '' ),
+			'total_entries'      => $total_entries,
+			'quiz_count'         => count( $quiz_fields ),
+			'total_attempts'     => $attempts,
+			'max_score'          => $max_score,
+			'average_score'      => $average_score,
+			'average_percentage' => $average_percentage,
+			'questions'          => $questions,
 		] );
 	}
 

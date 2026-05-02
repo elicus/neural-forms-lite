@@ -18,16 +18,37 @@ function Card( { label, value, accent } ) {
 	);
 }
 
-export default function ResultsOverviewCards( { data } ) {
-	const totalEntries    = Number( data.total_entries )    || 0;
-	const totalPollVotes  = Number( data.total_poll_votes ) || 0;
-	const pollCount       = Number( data.poll_count )       || 0;
+export default function ResultsOverviewCards( { data, quiz } ) {
+	const totalEntries   = Number( ( data && data.total_entries ) ?? ( quiz && quiz.total_entries ) ?? 0 ) || 0;
+	const totalPollVotes = Number( data && data.total_poll_votes ) || 0;
+	const pollCount      = Number( data && data.poll_count )       || 0;
+
+	const hasPolls = pollCount > 0 || totalPollVotes > 0;
+	const hasQuiz  = !! ( quiz && Number( quiz.quiz_count ) > 0 );
+
+	const quizCount   = hasQuiz ? Number( quiz.quiz_count )       || 0  : 0;
+	const avgScore    = hasQuiz ? Number( quiz.average_score )    || 0  : 0;
+	const avgPctRaw   = hasQuiz ? Number( quiz.average_percentage ) : 0;
+	const avgPct      = isFinite( avgPctRaw ) ? Math.max( 0, Math.min( 100, avgPctRaw ) ) : 0;
 
 	return (
 		<div className="nf-results__cards">
-			<Card label={ __( 'Total entries',    'neural-forms-lite' ) } value={ totalEntries } />
-			<Card label={ __( 'Total poll votes', 'neural-forms-lite' ) } value={ totalPollVotes } accent />
-			<Card label={ __( 'Poll questions',   'neural-forms-lite' ) } value={ pollCount } />
+			<Card label={ __( 'Total entries', 'neural-forms-lite' ) } value={ totalEntries } />
+
+			{ hasPolls && (
+				<>
+					<Card label={ __( 'Total poll votes', 'neural-forms-lite' ) } value={ totalPollVotes } accent />
+					<Card label={ __( 'Poll questions',   'neural-forms-lite' ) } value={ pollCount } />
+				</>
+			) }
+
+			{ hasQuiz && (
+				<>
+					<Card label={ __( 'Average score',    'neural-forms-lite' ) } value={ avgScore } accent />
+					<Card label={ __( 'Average %',        'neural-forms-lite' ) } value={ avgPct + '%' } />
+					<Card label={ __( 'Quiz questions',   'neural-forms-lite' ) } value={ quizCount } />
+				</>
+			) }
 		</div>
 	);
 }

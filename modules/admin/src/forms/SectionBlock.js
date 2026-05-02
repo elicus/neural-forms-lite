@@ -25,9 +25,9 @@ export default function SectionBlock( {
 	isSelected,
 	onSelect,
 } ) {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable( {
+	const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable( {
 		id: section.id,
-		data: { kind: 'section' },
+		data: { kind: 'section', type: 'section' },
 	} );
 
 	const style = {
@@ -64,13 +64,14 @@ export default function SectionBlock( {
 			<header className="nf-section__header">
 				<button
 					type="button"
-					className="nf-section__handle"
+					ref={ setActivatorNodeRef }
+					className="nf-drag-zone nf-drag-zone--section"
 					aria-label={ __( 'Drag section', 'neural-forms-lite' ) }
-					title={ __( 'Drag section', 'neural-forms-lite' ) }
+					title={ __( 'Drag to move', 'neural-forms-lite' ) }
 					{ ...attributes }
 					{ ...listeners }
 				>
-					<span aria-hidden="true">⋮⋮</span>
+					<span className="nf-drag-zone__icon" aria-hidden="true">⋮⋮</span>
 				</button>
 
 				<span className="nf-section__pill">{ __( 'Section', 'neural-forms-lite' ) }</span>

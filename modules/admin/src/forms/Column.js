@@ -38,7 +38,7 @@ export default function Column( {
 	}
 
 	const fields = Array.isArray( column.fields ) ? column.fields : [];
-	const ids    = fields.map( ( f ) => f.id );
+	const ids = fields.map( ( f ) => f.id );
 
 	const selectClick = ( e ) => {
 		if ( typeof onSelect !== 'function' ) return;
@@ -75,7 +75,7 @@ export default function Column( {
 					<div className="nf-column__placeholder">
 						{ isSelected
 							? __( 'Selected — choose a field from the left', 'neural-forms-lite' )
-							: __( 'Click to add fields here', 'neural-forms-lite' ) }
+							: __( 'Drop a field here, or click to add', 'neural-forms-lite' ) }
 					</div>
 				) }
 				{ fields.map( ( field ) => renderField( field, { rowId, colIndex, columnId: column.id } ) ) }

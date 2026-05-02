@@ -50,9 +50,9 @@ export default function RowBlock( {
 	selectedColumnId,
 	onSelectColumn,
 } ) {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable( {
+	const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable( {
 		id: row.id,
-		data: { kind: 'row' },
+		data: { kind: 'row', type: 'row' },
 	} );
 
 	const style = {
@@ -116,15 +116,15 @@ export default function RowBlock( {
 				<div className="nf-row__group nf-row__group--left">
 					<button
 						type="button"
-						className="nf-row__handle"
+						ref={ setActivatorNodeRef }
+						className="nf-drag-zone nf-drag-zone--row"
 						aria-label={ __( 'Drag row', 'neural-forms-lite' ) }
-						title={ __( 'Drag row', 'neural-forms-lite' ) }
+						title={ __( 'Drag to move', 'neural-forms-lite' ) }
 						{ ...attributes }
 						{ ...listeners }
 					>
-						<span aria-hidden="true">⋮⋮</span>
+						<span className="nf-drag-zone__icon" aria-hidden="true">⋮⋮</span>
 					</button>
-
 					<span className="nf-row__title">{ __( 'Row', 'neural-forms-lite' ) }</span>
 					<span className="nf-row__pill">{ colCount === 1 ? colCountLabel : colCountLabelPlural }</span>
 				</div>

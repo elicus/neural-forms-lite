@@ -170,9 +170,10 @@ export default function FieldPreview( { field } ) {
 		case 'date':       return readOnlyText( { field, type: 'date' } );
 		case 'textarea':   return readOnlyTextarea( { field } );
 		case 'select':     return readOnlySelect( { field } );
-		case 'radio':      return readOnlyChoiceList( { field, inputType: 'radio' } );
-		case 'poll':       return readOnlyChoiceList( { field, inputType: 'radio' } );
-		case 'checkboxes': return readOnlyChoiceList( { field, inputType: 'checkbox' } );
+		case 'radio':         return readOnlyChoiceList( { field, inputType: 'radio' } );
+		case 'poll':          return readOnlyChoiceList( { field, inputType: 'radio' } );
+		case 'quiz_question': return readOnlyChoiceList( { field, inputType: 'radio' } );
+		case 'checkboxes':    return readOnlyChoiceList( { field, inputType: 'checkbox' } );
 		case 'checkbox':   return readOnlyCheckbox( { field } );
 		case 'acceptance': return readOnlyAcceptance( { field } );
 		case 'range':      return readOnlyRange( { field } );

@@ -830,4 +830,90 @@ class EntryRepository {
 
 		return $out;
 	}
+
+	/**
+	 * Aggregate quiz answers for one or more quiz_question fields on a form.
+	 *
+	 * Walks the entries table once per call. Returns:
+	 *
+	 *   [
+	 *     'rows' => array[]   // each non-trash entry's decoded data
+	 *                            (used by callers that need to compute
+	 *                            per-entry score for averages)
+	 *     'counts' => [
+	 *        field_id => [ option_value => answer_count, ... ],
+	 *        ...
+	 *     ],
+	 *     'totals' => [
+	 *        field_id => total_answers_for_that_field,
+	 *        ...
+	 *     ],
+	 *     'entry_count' => int    // non-trash entries
+	 *   ]
+	 *
+	 * Spam state is intentionally NOT excluded — same rationale as
+	 * aggregate_poll_votes(): spam classification is a Pro capability.
+	 *
+	 * Malformed JSON / non-array shapes are skipped without fatal.
+	 *
+	 * @param int      $form_id
+	 * @param string[] $field_ids  Quiz field ids to aggregate.
+	 * @return array
+	 */
+	public static function aggregate_quiz_answers( int $form_id, array $field_ids ): array {
+		global $wpdb;
+
+		$out = [
+			'rows'        => [],
+			'counts'      => [],
+			'totals'      => [],
+			'entry_count' => 0,
+		];
+
+		if ( $form_id <= 0 || empty( $field_ids ) ) {
+			return $out;
+		}
+
+		// Initialise zero counts so the caller doesn't have to default.
+		foreach ( $field_ids as $fid ) {
+			$out['counts'][ $fid ] = [];
+			$out['totals'][ $fid ] = 0;
+		}
+
+		$rows = $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT data FROM %i WHERE form_id = %d AND status != %s',
+				self::table(),
+				$form_id,
+				'trash'
+			)
+		);
+
+		if ( empty( $rows ) || ! is_array( $rows ) ) {
+			return $out;
+		}
+
+		foreach ( $rows as $json ) {
+			if ( ! is_string( $json ) || $json === '' ) continue;
+			$decoded = json_decode( $json, true );
+			if ( ! is_array( $decoded ) ) continue;
+
+			$out['rows'][] = $decoded;
+			$out['entry_count']++;
+
+			foreach ( $field_ids as $fid ) {
+				if ( ! array_key_exists( $fid, $decoded ) ) continue;
+				$value = $decoded[ $fid ];
+				// Single-choice quiz v1: arrays defensively ignored.
+				if ( is_array( $value ) ) continue;
+				if ( $value === null || $value === '' ) continue;
+
+				$key = (string) $value;
+				$out['counts'][ $fid ][ $key ] = ( $out['counts'][ $fid ][ $key ] ?? 0 ) + 1;
+				$out['totals'][ $fid ]++;
+			}
+		}
+
+		return $out;
+	}
 }

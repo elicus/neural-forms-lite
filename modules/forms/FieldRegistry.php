@@ -103,6 +103,15 @@ class FieldRegistry {
             'label'    => 'Poll',
             'supports' => [ 'label', 'show_label', 'required', 'options', 'settings', 'width' ],
         ],
+        // Quiz Question: knowledge-quiz field (single-choice). Each
+        // option carries an extra `is_correct` boolean. Nested
+        // `settings` object controls scoring + after-submit feedback.
+        // Score is computed server-side; the frontend NEVER sees the
+        // correct answer until submission completes.
+        'quiz_question' => [
+            'label'    => 'Quiz Question',
+            'supports' => [ 'label', 'show_label', 'required', 'options', 'settings', 'width' ],
+        ],
         'file'     => [
             'label'    => 'File Upload',
             'supports' => [ 'label', 'show_label', 'required', 'allowed_types', 'max_file_size', 'width' ],

@@ -11,6 +11,7 @@
  */
 
 import { __, sprintf } from '@wordpress/i18n';
+import { useDraggable } from '@dnd-kit/core';
 import { FIELD_TYPES } from './FieldTypes';
 
 // Full supported field catalog as exposed in the sidebar. Slugs come
@@ -42,6 +43,7 @@ const BASIC_TYPES = [
 	'range',
 	'rating',
 	'poll',
+	'quiz_question',
 	'file',
 	'hidden',
 ];
@@ -52,10 +54,40 @@ const BASIC_TYPES = [
 // and the new inspector exposes its real editor. Listing it here
 // would be inaccurate and would block users from a feature they
 // already have.
-const LOCKED_FIELDS = [
-	{ id: 'quiz',      label: 'Quiz Question' },
-	{ id: 'signature', label: 'Signature' },
-];
+const LOCKED_FIELDS = [];
+
+/**
+ * Single draggable chip. Click → adds the field. Drag → top-level
+ * BuilderDndProvider handles the drop and inserts at the target.
+ */
+function FieldChip( { type, label, onAddField } ) {
+	const { attributes, listeners, setNodeRef, isDragging } = useDraggable( {
+		id: 'palette:field:' + type,
+		data: {
+			source:      'palette',
+			paletteType: 'field',
+			fieldType:   type,
+			label,
+		},
+	} );
+	return (
+		<button
+			ref={ setNodeRef }
+			type="button"
+			className={ 'nf-palette__chip' + ( isDragging ? ' is-dragging' : '' ) }
+			onClick={ () => onAddField( type ) }
+			title={ sprintf(
+				/* translators: %s: field type label */
+				__( 'Click to add, or drag to place: %s', 'neural-forms-lite' ),
+				label
+			) }
+			{ ...listeners }
+			{ ...attributes }
+		>
+			<span className="nf-palette__chip-label">{ label }</span>
+		</button>
+	);
+}
 
 export default function FieldPalette( { onAddField } ) {
 	const basics = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
@@ -64,42 +96,40 @@ export default function FieldPalette( { onAddField } ) {
 		<>
 			<section className="nf-palette__section">
 				<h3 className="nf-palette__title">{ __( 'Basic Fields', 'neural-forms-lite' ) }</h3>
+				<p className="nf-palette__hint">
+					{ __( 'Click to add, drag to place.', 'neural-forms-lite' ) }
+				</p>
 				<div className="nf-palette__grid">
 					{ basics.map( ( t ) => (
-						<button
+						<FieldChip
 							key={ t.value }
-							type="button"
-							className="nf-palette__chip"
-							onClick={ () => onAddField( t.value ) }
-							title={ sprintf(
-								/* translators: %s: field type label */
-								__( 'Add %s field', 'neural-forms-lite' ),
-								t.label
-							) }
-						>
-							<span className="nf-palette__chip-label">{ t.label }</span>
-						</button>
+							type={ t.value }
+							label={ t.label }
+							onAddField={ onAddField }
+						/>
 					) ) }
 				</div>
 			</section>
 
-			<section className="nf-palette__section">
-				<h3 className="nf-palette__title">{ __( 'Coming soon', 'neural-forms-lite' ) }</h3>
-				<div className="nf-palette__grid">
-					{ LOCKED_FIELDS.map( ( f ) => (
-						<button
-							key={ f.id }
-							type="button"
-							className="nf-palette__chip nf-palette__chip--locked"
-							disabled
-							title={ __( 'Available in a future release', 'neural-forms-lite' ) }
-						>
-							<span className="nf-palette__chip-label">{ f.label }</span>
-							<span className="nf-palette__chip-badge">{ __( 'Soon', 'neural-forms-lite' ) }</span>
-						</button>
-					) ) }
-				</div>
-			</section>
+			{ LOCKED_FIELDS.length > 0 && (
+				<section className="nf-palette__section">
+					<h3 className="nf-palette__title">{ __( 'Coming soon', 'neural-forms-lite' ) }</h3>
+					<div className="nf-palette__grid">
+						{ LOCKED_FIELDS.map( ( f ) => (
+							<button
+								key={ f.id }
+								type="button"
+								className="nf-palette__chip nf-palette__chip--locked"
+								disabled
+								title={ __( 'Available in a future release', 'neural-forms-lite' ) }
+							>
+								<span className="nf-palette__chip-label">{ f.label }</span>
+								<span className="nf-palette__chip-badge">{ __( 'Soon', 'neural-forms-lite' ) }</span>
+							</button>
+						) ) }
+					</div>
+				</section>
+			) }
 		</>
 	);
 }

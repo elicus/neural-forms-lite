@@ -1770,6 +1770,241 @@
 	white-space: nowrap;
 }
 
+/* Quiz badges on canvas card: points pill + Explanation hint */
+
+#neural-forms-app .nf-card__quiz-badge {
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-card__quiz-badge--explain {
+	background: rgba( 21, 219, 149, 0.12 );
+	color: #0a7d56;
+}
+
+/* Drag handles + drag-state cues. Pointer drag uses @dnd-kit; the
+ * activator is a generous .nf-drag-zone button on the left of each
+ * draggable card. The legacy .nf-card__handle / .nf-row__handle /
+ * .nf-step__handle / .nf-section__handle classes have been replaced
+ * by .nf-drag-zone (see below) — the rules further down in this file
+ * for those legacy classes remain because they share base typography
+ * and were carefully matched to the surrounding card chrome; the
+ * activator markup no longer carries those class names so they
+ * apply to nothing in 1.1.0+. */
+
+#neural-forms-app .nf-drag-zone {
+	width: 34px;
+	min-width: 34px;
+	height: 34px;
+	border: 0;
+	border-radius: 8px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: grab;
+	color: #6b7280;
+	background: transparent;
+	padding: 0;
+	margin-right: 4px;
+	transition: background-color 120ms ease, color 120ms ease;
+}
+
+#neural-forms-app .nf-drag-zone:hover {
+	background: rgba( 21, 219, 149, 0.12 );
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-drag-zone:active,
+#neural-forms-app .nf-drag-zone:focus-visible {
+	cursor: grabbing;
+	background: rgba( 21, 219, 149, 0.18 );
+	color: var( --nf-primary );
+	outline: none;
+	box-shadow: 0 0 0 2px rgba( 8, 15, 91, 0.18 );
+}
+
+#neural-forms-app .is-dragging .nf-drag-zone,
+#neural-forms-app .nf-drag-zone[aria-pressed="true"] {
+	cursor: grabbing;
+	background: rgba( 21, 219, 149, 0.18 );
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-drag-zone__icon {
+	font-size: 14px;
+	letter-spacing: 1px;
+	line-height: 1;
+	user-select: none;
+	pointer-events: none;
+}
+
+/* Palette chips: cursor cue + dragging state. Click adds, drag places. */
+#neural-forms-app .nf-palette__chip {
+	cursor: grab;
+}
+
+#neural-forms-app .nf-palette__chip:active {
+	cursor: grabbing;
+}
+
+#neural-forms-app .nf-palette__chip.is-dragging {
+	opacity: 0.45;
+}
+
+#neural-forms-app .nf-palette__hint {
+	margin: 0 0 8px;
+	font-size: 11px;
+	color: #6b7280;
+	font-style: italic;
+}
+
+/* Subtle tip above the canvas so new users discover the drag handle. */
+#neural-forms-app .nf-builder-canvas__tip {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 12px;
+	padding: 6px 10px;
+	font-size: 11px;
+	color: #6b7280;
+	background: rgba( 8, 15, 91, 0.04 );
+	border: 1px dashed #e5e7eb;
+	border-radius: 6px;
+}
+
+#neural-forms-app .nf-builder-canvas__tip-icon {
+	display: inline-flex;
+	width: 18px;
+	height: 18px;
+	border-radius: 4px;
+	align-items: center;
+	justify-content: center;
+	background: rgba( 21, 219, 149, 0.18 );
+	color: var( --nf-primary );
+	font-size: 11px;
+	line-height: 1;
+	letter-spacing: 1px;
+	font-weight: 700;
+}
+
+#neural-forms-app .nf-builder-field.is-dragging,
+#neural-forms-app .nf-row.is-dragging,
+#neural-forms-app .nf-step.is-dragging,
+#neural-forms-app .nf-section.is-dragging {
+	box-shadow: 0 0 0 2px rgba( 21, 219, 149, 0.4 );
+}
+
+/* Step body: mint-accent highlight when an acceptable item is over it. */
+#neural-forms-app .nf-step__body.is-over {
+	background: rgba( 21, 219, 149, 0.08 );
+	border-color: #15db95;
+	border-style: solid;
+}
+
+/* Column drop zone highlight. */
+#neural-forms-app .nf-column.is-over {
+	background: rgba( 21, 219, 149, 0.08 );
+	outline: 2px solid #15db95;
+	outline-offset: -2px;
+}
+
+/* Lifted card preview that follows the cursor (DragOverlay). */
+#neural-forms-app .nf-drag-overlay {
+	display: inline-flex;
+	align-items: center;
+	padding: 8px 14px;
+	background: var( --nf-primary );
+	color: #fff;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.25 );
+	pointer-events: none;
+}
+
+/* Quiz form-settings: result messages repeater */
+
+#neural-forms-app .nf-form-settings__result-row {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	margin-top: 8px;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #fafbff;
+	position: relative;
+}
+
+#neural-forms-app .nf-form-settings__result-range {
+	display: flex;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-form-settings__result-range label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 11px;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-form-settings__result-range input {
+	width: 80px;
+}
+
+#neural-forms-app .nf-form-settings__result-title,
+#neural-forms-app .nf-form-settings__result-message {
+	width: 100%;
+}
+
+#neural-forms-app .nf-form-settings__result-remove {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 22px;
+	height: 22px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	border-radius: 4px;
+	cursor: pointer;
+	color: #6b7280;
+	font-size: 14px;
+	line-height: 1;
+}
+
+#neural-forms-app .nf-form-settings__result-remove:hover {
+	color: #b91c1c;
+	border-color: #fecaca;
+}
+
+/* Quiz options editor: extra "correct" radio column on each row */
+
+#neural-forms-app .nf-inspector__option-row--quiz {
+	display: grid;
+	grid-template-columns: auto 1fr 1fr auto;
+	gap: 6px;
+	align-items: center;
+}
+
+#neural-forms-app .nf-inspector__option-correct {
+	margin: 0;
+	cursor: pointer;
+	accent-color: #15db95;
+}
+
+#neural-forms-app .nf-inspector__warning {
+	margin: 6px 0 0;
+	font-size: 11px;
+	color: #b45309;
+}
+
 /* Poll results panel inside the inspector. */
 
 #neural-forms-app .nf-poll-results {
@@ -2000,6 +2235,20 @@
 	border-radius: 8px;
 	padding: 10px;
 	min-height: 64px;
+	transition: background 120ms ease, border-color 120ms ease;
+}
+
+/* Active drop target: any step body the user is dragging an
+ * acceptable item over. Mint accent matches the brand cue used
+ * elsewhere for "drop here" affordances. */
+#neural-forms-app .nf-step__body.is-over {
+	background: rgba( 21, 219, 149, 0.06 );
+	border-color: #15db95;
+	border-style: solid;
+}
+
+#neural-forms-app .nf-step__body--empty {
+	min-height: 80px;
 }
 
 #neural-forms-app .nf-step__empty {
@@ -2008,6 +2257,12 @@
 	font-style: italic;
 	text-align: center;
 	padding: 16px 8px;
+}
+
+#neural-forms-app .nf-step__body.is-over .nf-step__empty {
+	color: #0a7d56;
+	font-style: normal;
+	font-weight: 600;
 }
 
 /* When a step is selected the inspector shows its position pill. */

@@ -57,6 +57,19 @@ class SchemaHelper {
 	const POLL_CHART_TYPES         = [ 'bar', 'percentage' ];
 	const POLL_DEFAULT_CHART_TYPE  = 'bar';
 
+	/** Quiz Question field's nested `settings` object. */
+	const QUIZ_SHOW_CORRECT        = [ 'after_submit', 'never' ];
+	const QUIZ_DEFAULT_SHOW_CORRECT = 'after_submit';
+	const QUIZ_DEFAULT_POINTS      = 1;
+
+	/**
+	 * Quiz-form-level settings. Phase 3 adds advanced score-quiz config
+	 * at form_schema.settings.quiz (NOT form.settings — that namespace
+	 * is reserved for submission/security/email settings).
+	 */
+	const QUIZ_DEFAULT_PASSING_SCORE = 70;
+	const QUIZ_DEFAULT_SHOW_PASS_FAIL = false;
+
 	/**
 	 * True when a node is a layout row (not a renderable form field).
 	 *
@@ -329,6 +342,122 @@ class SchemaHelper {
 			'chart_type'         => self::POLL_DEFAULT_CHART_TYPE,
 			'allow_multiple'     => false,
 			'randomize_options'  => false,
+		];
+	}
+
+	/**
+	 * Default `field.settings` for a freshly-created quiz_question.
+	 *
+	 * `points` defaults to 1; the inspector clamps to int >= 0.
+	 * `show_correct_answer` defaults to "after_submit" so the user
+	 * sees feedback by default; "never" hides correct details on the
+	 * frontend AND in the submit response payload.
+	 */
+	public static function default_quiz_settings(): array {
+		return [
+			'points'              => self::QUIZ_DEFAULT_POINTS,
+			'explanation'         => '',
+			'show_correct_answer' => self::QUIZ_DEFAULT_SHOW_CORRECT,
+			'randomize_options'   => false,
+		];
+	}
+
+	/**
+	 * Coerce a quiz_question field's nested `settings` object to
+	 * canonical shape. Lenient: unknown keys dropped, unknown enum
+	 * values fall back to defaults, points coerced to non-negative int.
+	 */
+	public static function normalize_quiz_settings( $settings ): array {
+		$in = is_array( $settings ) ? $settings : [];
+
+		$points = isset( $in['points'] ) ? $in['points'] : self::QUIZ_DEFAULT_POINTS;
+		if ( ! is_numeric( $points ) || (int) $points < 0 ) {
+			$points = 0;
+		}
+
+		$show = isset( $in['show_correct_answer'] ) && is_string( $in['show_correct_answer'] )
+			? $in['show_correct_answer']
+			: self::QUIZ_DEFAULT_SHOW_CORRECT;
+		if ( ! in_array( $show, self::QUIZ_SHOW_CORRECT, true ) ) {
+			$show = self::QUIZ_DEFAULT_SHOW_CORRECT;
+		}
+
+		return [
+			'points'              => (int) $points,
+			'explanation'         => isset( $in['explanation'] ) && is_string( $in['explanation'] ) ? $in['explanation'] : '',
+			'show_correct_answer' => $show,
+			'randomize_options'   => ! empty( $in['randomize_options'] ),
+		];
+	}
+
+	/**
+	 * Default form_schema.settings.quiz — advanced score-quiz config
+	 * applied at the form level (pass/fail, result messages).
+	 *
+	 * Defaults are conservative: show_pass_fail=false leaves the
+	 * existing Phase 1/2 submit response shape unchanged for forms
+	 * that haven't opted in to advanced scoring.
+	 */
+	public static function default_quiz_form_settings(): array {
+		return [
+			'show_pass_fail'  => self::QUIZ_DEFAULT_SHOW_PASS_FAIL,
+			'passing_score'   => self::QUIZ_DEFAULT_PASSING_SCORE,
+			'result_messages' => [],
+		];
+	}
+
+	/**
+	 * Coerce form_schema.settings.quiz to canonical shape.
+	 *
+	 *   - show_pass_fail: strict bool cast
+	 *   - passing_score:  numeric, clamped to 0..100, defaults to 70
+	 *   - result_messages: array of {min, max, title, message}, each
+	 *     with min/max clamped 0..100. Rows missing BOTH title and
+	 *     message are dropped silently — they wouldn't render anyway.
+	 *     A row with min > max is skipped (would never match).
+	 *
+	 * Lenient: unknown keys dropped, no fatals on malformed input.
+	 */
+	public static function normalize_quiz_form_settings( $settings ): array {
+		$in = is_array( $settings ) ? $settings : [];
+
+		$score = isset( $in['passing_score'] ) ? $in['passing_score'] : self::QUIZ_DEFAULT_PASSING_SCORE;
+		if ( ! is_numeric( $score ) ) {
+			$score = self::QUIZ_DEFAULT_PASSING_SCORE;
+		}
+		$score = (int) round( (float) $score );
+		if ( $score < 0 )   $score = 0;
+		if ( $score > 100 ) $score = 100;
+
+		$msgs_in = is_array( $in['result_messages'] ?? null ) ? $in['result_messages'] : [];
+		$msgs    = [];
+		foreach ( $msgs_in as $m ) {
+			if ( ! is_array( $m ) ) continue;
+
+			$min = isset( $m['min'] ) && is_numeric( $m['min'] ) ? (int) round( (float) $m['min'] ) : 0;
+			$max = isset( $m['max'] ) && is_numeric( $m['max'] ) ? (int) round( (float) $m['max'] ) : 100;
+			if ( $min < 0 )   $min = 0;
+			if ( $min > 100 ) $min = 100;
+			if ( $max < 0 )   $max = 0;
+			if ( $max > 100 ) $max = 100;
+			if ( $min > $max ) continue; // Unmatchable range — skip.
+
+			$title   = isset( $m['title'] )   && is_string( $m['title'] )   ? trim( $m['title'] )   : '';
+			$message = isset( $m['message'] ) && is_string( $m['message'] ) ? trim( $m['message'] ) : '';
+			if ( $title === '' && $message === '' ) continue;
+
+			$msgs[] = [
+				'min'     => $min,
+				'max'     => $max,
+				'title'   => $title,
+				'message' => $message,
+			];
+		}
+
+		return [
+			'show_pass_fail'  => ! empty( $in['show_pass_fail'] ),
+			'passing_score'   => $score,
+			'result_messages' => $msgs,
 		];
 	}
 

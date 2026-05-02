@@ -470,6 +470,21 @@ class FormRenderer {
 			$submit_class .= ' neural-forms-form__submit--multistep';
 		}
 
+		// Quiz summary placeholder: one per form, emitted only when the
+		// form contains at least one quiz_question. Populated post-
+		// submit by form-submit.js with the score / max / percentage.
+		// Empty + hidden at SSR so a no-JS render stays clean.
+		$has_quiz = false;
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
+			if ( ( $f['type'] ?? '' ) === 'quiz_question' ) { $has_quiz = true; break; }
+		}
+		if ( $has_quiz ) {
+			$html .= '<div class="neural-forms-form__quiz-summary"'
+				. ' data-quiz-summary'
+				. ' role="status" aria-live="polite"'
+				. ' hidden></div>';
+		}
+
 		$html .= '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
 				. esc_html__( 'Submit', 'neural-forms-lite' )
@@ -480,8 +495,16 @@ class FormRenderer {
 
 		// Success state sits outside <form> as a sibling so JS can hide the form
 		// (display:none) and show this div independently on a 201 response.
+		//
+		// The .neural-forms-form__dynamic-results child is populated by
+		// form-submit.js with poll bars / quiz score on a successful
+		// submission. It lives INSIDE the success block (not inside the
+		// form) so it stays visible after the form is hidden — the
+		// in-form per-field placeholders are still emitted but become
+		// invisible the moment showSuccess() flips form.hidden = true.
 		$html .= '<div class="neural-forms-form__success" role="status" aria-live="polite" hidden>'
-				. '<p>' . esc_html( $success_msg ) . '</p>'
+				. '<p class="neural-forms-form__success-message">' . esc_html( $success_msg ) . '</p>'
+				. '<div class="neural-forms-form__dynamic-results" data-neural-forms-dynamic-results hidden></div>'
 				. '</div>';
 
 		$html .= '</div>'; // .neural-forms-form-wrap
@@ -819,7 +842,7 @@ class FormRenderer {
 		if (
 			$show_label
 			&& $lbl !== ''
-			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll' ], true )
+			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question' ], true )
 		) {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
@@ -874,6 +897,9 @@ class FormRenderer {
 				break;
 			case 'poll':
 				$input_html = static::render_poll( $field, $input_id, $error_id, $form_id );
+				break;
+			case 'quiz_question':
+				$input_html = static::render_quiz_question( $field, $input_id, $error_id );
 				break;
 			case 'hidden':
 				$input_html = static::render_hidden( $field, $input_id );
@@ -1619,6 +1645,91 @@ class FormRenderer {
 			$html .= '</li>';
 		}
 		$html .= '</ul>';
+
+		return $html;
+	}
+
+	/**
+	 * Quiz Question. Renders accessible radio inputs (single-choice)
+	 * + an empty hidden feedback placeholder populated by
+	 * form-submit.js after a successful submit.
+	 *
+	 * Privacy contract: this method MUST NEVER emit `is_correct` or
+	 * any value that would let a client-side inspector identify the
+	 * correct option before submitting. Score computation is server-
+	 * side only; the response carries the verdict back to the JS,
+	 * never the schema.
+	 */
+	private static function render_quiz_question( array $field, string $input_id, string $error_id ): string {
+		$default  = (string) ( $field['default_value'] ?? '' );
+		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+		$required = ! empty( $field['required'] );
+		$settings = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
+
+		$randomize_attr = $settings['randomize_options'] ? ' data-quiz-randomize="1"' : '';
+
+		$html = '<fieldset class="neural-forms-form__quiz"'
+			. $randomize_attr
+			. ' aria-describedby="' . esc_attr( $error_id ) . '">';
+
+		$lbl        = (string) ( $field['label'] ?? '' );
+		$show_label = ! empty( $field['show_label'] );
+		if ( $lbl !== '' ) {
+			$legend_class  = $show_label
+				? 'neural-forms-form__label neural-forms-form__label--block'
+				: 'screen-reader-text';
+			$required_mark = ( $show_label && $required )
+				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+				: '';
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+				. esc_html( $lbl )
+				. $required_mark
+				. '</legend>';
+		}
+
+		$html .= '<div class="neural-forms-form__quiz-options">';
+
+		foreach ( $options as $i => $option ) {
+			$option = (array) $option;
+			$label   = (string) ( $option['label'] ?? '' );
+			$raw_val = (string) ( $option['value'] ?? '' );
+			$val     = $raw_val !== '' ? $raw_val : $label;
+
+			if ( $val === '' ) {
+				continue;
+			}
+
+			$opt_id  = $input_id . '-' . $i;
+			$checked = ( $val === $default ) ? ' checked' : '';
+			$req_attr = ( $required && $i === 0 ) ? ' required aria-required="true"' : '';
+
+			// is_correct INTENTIONALLY NOT EMITTED: it would leak the
+			// answer to anyone with browser devtools. Score is computed
+			// server-side; the submit response carries the verdict.
+			$html .= '<div class="neural-forms-form__quiz-option">'
+				. '<input type="radio"'
+				. ' id="' . esc_attr( $opt_id ) . '"'
+				. ' name="' . esc_attr( $field['id'] ) . '"'
+				. ' value="' . esc_attr( $val ) . '"'
+				. ' class="neural-forms-form__quiz-input"'
+				. $checked
+				. $req_attr
+				. '>'
+				. '<label class="neural-forms-form__label neural-forms-form__label--quiz" for="' . esc_attr( $opt_id ) . '">'
+				. esc_html( $label )
+				. '</label>'
+				. '</div>';
+		}
+
+		$html .= '</div>';
+
+		// Feedback placeholder. Populated post-submit; empty + hidden
+		// at SSR so a JS-disabled visitor sees a clean form.
+		$html .= '<div class="neural-forms-form__quiz-feedback"'
+			. ' data-quiz-feedback="' . esc_attr( $field['id'] ) . '"'
+			. ' hidden></div>';
+
+		$html .= '</fieldset>';
 
 		return $html;
 	}

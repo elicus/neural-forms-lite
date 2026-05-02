@@ -380,6 +380,17 @@ class SubmitEndpoint {
 			$body['polls'] = $polls_payload;
 		}
 
+		// Quiz Phase 1: piggyback quiz score on the submit response.
+		// Computed purely from the schema + the row we just sanitised
+		// — no extra DB round-trip. Privacy: when a question's
+		// show_correct_answer === 'never', correct_value/correct_label/
+		// explanation are stripped before the response leaves the
+		// server (the user still sees their pass/fail verdict).
+		$quiz_payload = $this->build_quiz_result_payload( $form['form_schema'] ?? [], $sanitized_data );
+		if ( $quiz_payload !== null ) {
+			$body['quiz'] = $quiz_payload;
+		}
+
 		$response = rest_ensure_response( $body );
 		$response->set_status( 201 );
 
@@ -479,6 +490,188 @@ class SubmitEndpoint {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Build the quiz-result payload attached to a successful submit.
+	 *
+	 * Returns null when the form contains no quiz_question fields so
+	 * the response simply omits the `quiz` key (backwards-compatible).
+	 *
+	 * Score is computed by matching $sanitized_data values against
+	 * each quiz_question's options[*].is_correct === true. Each
+	 * question contributes points_awarded = (selected is correct)
+	 * ? settings.points : 0. percentage is 2dp; max_score === 0
+	 * yields percentage = 0 (no /0).
+	 *
+	 * Privacy: per-question correct_value, correct_label, explanation
+	 * are emitted ONLY when settings.show_correct_answer ===
+	 * 'after_submit'. With 'never' the question entry still carries
+	 * the user-facing verdict (correct: bool, points_awarded) so the
+	 * aggregate score stays meaningful, but no cheating-relevant
+	 * details leak.
+	 *
+	 * @param array $form_schema
+	 * @param array $sanitized_data field_id => value (from sanitize_fields())
+	 * @return array|null
+	 */
+	private function build_quiz_result_payload( $form_schema, array $sanitized_data ): ?array {
+		if ( ! is_array( $form_schema ) ) {
+			return null;
+		}
+		$fields = is_array( $form_schema['fields'] ?? null ) ? $form_schema['fields'] : [];
+		if ( empty( $fields ) ) {
+			return null;
+		}
+
+		$questions = [];
+		$score     = 0;
+		$max_score = 0;
+
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $field ) {
+			if ( ( $field['type'] ?? '' ) !== 'quiz_question' ) continue;
+
+			$field_id = (string) ( $field['id'] ?? '' );
+			if ( $field_id === '' ) continue;
+
+			$settings    = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
+			$default_pts = (int) $settings['points'];
+			$show_correct = $settings['show_correct_answer'] === 'after_submit';
+
+			$options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+
+			// Detect whether this question uses weighted scoring (any
+			// option with numeric `points` >= 0). When weighted, the
+			// max possible is the highest option.points value, and
+			// the awarded score is the selected option's points.
+			// When NOT weighted, fall back to Phase 1 semantics:
+			// correct -> default_pts, anything else -> 0.
+			$has_weighted = false;
+			$option_max   = 0;
+			foreach ( $options as $opt ) {
+				$opt = (array) $opt;
+				if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
+					$pts = (int) round( (float) $opt['points'] );
+					if ( $pts < 0 ) $pts = 0;
+					$has_weighted = true;
+					if ( $pts > $option_max ) $option_max = $pts;
+				}
+			}
+			$points_max = $has_weighted ? $option_max : $default_pts;
+			$max_score += $points_max;
+
+			// Locate correct option (the validator guarantees exactly
+			// one at save time; defensive check here so a hand-edited
+			// schema doesn't fatal the response).
+			$correct_value = '';
+			$correct_label = '';
+			foreach ( $options as $opt ) {
+				$opt = (array) $opt;
+				if ( empty( $opt['is_correct'] ) ) continue;
+				$opt_label = (string) ( $opt['label'] ?? '' );
+				$opt_raw   = (string) ( $opt['value'] ?? '' );
+				$correct_value = $opt_raw !== '' ? $opt_raw : $opt_label;
+				$correct_label = $opt_label !== '' ? $opt_label : $correct_value;
+				break;
+			}
+
+			// Selected value (may be missing for optional/unanswered).
+			$selected_raw = $sanitized_data[ $field_id ] ?? null;
+			$selected_value = ( $selected_raw === null || $selected_raw === '' ) ? null : (string) $selected_raw;
+
+			// Selected label: look up the option whose effective
+			// value matches the submission.
+			$selected_label  = null;
+			$selected_points = null; // for weighted scoring
+			if ( $selected_value !== null ) {
+				foreach ( $options as $opt ) {
+					$opt = (array) $opt;
+					$opt_label = (string) ( $opt['label'] ?? '' );
+					$opt_raw   = (string) ( $opt['value'] ?? '' );
+					$effective = $opt_raw !== '' ? $opt_raw : $opt_label;
+					if ( $effective === $selected_value ) {
+						$selected_label = $opt_label !== '' ? $opt_label : $effective;
+						if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
+							$pts = (int) round( (float) $opt['points'] );
+							$selected_points = $pts < 0 ? 0 : $pts;
+						}
+						break;
+					}
+				}
+			}
+
+			$is_correct = ( $selected_value !== null && $correct_value !== '' && $selected_value === $correct_value );
+
+			if ( $has_weighted ) {
+				// Weighted: award the selected option's points (default 0
+				// if the chosen option had no `points` key — partial
+				// credit only counts where the schema declared it).
+				$points_awarded = $selected_points !== null ? $selected_points : 0;
+			} else {
+				$points_awarded = $is_correct ? $default_pts : 0;
+			}
+			$score += $points_awarded;
+
+			$entry = [
+				'field_id'            => $field_id,
+				'label'               => (string) ( $field['label'] ?? '' ),
+				'selected_value'      => $selected_value,
+				'selected_label'      => $selected_label,
+				'correct'             => $is_correct,
+				'points_awarded'      => $points_awarded,
+				'points_possible'     => $points_max,
+				'show_correct_answer' => $show_correct,
+			];
+
+			if ( $show_correct ) {
+				$entry['correct_value'] = $correct_value;
+				$entry['correct_label'] = $correct_label;
+				$entry['explanation']   = (string) $settings['explanation'];
+			}
+
+			$questions[] = $entry;
+		}
+
+		if ( empty( $questions ) ) {
+			return null;
+		}
+
+		$percentage = $max_score > 0 ? round( ( $score / $max_score ) * 100, 2 ) : 0.0;
+
+		$payload = [
+			'score'      => $score,
+			'max_score'  => $max_score,
+			'percentage' => $percentage,
+			'questions'  => $questions,
+		];
+
+		// Form-level quiz settings (Phase 3): pass/fail + result
+		// message. Lives at form_schema.settings.quiz so it never
+		// collides with form.settings (submission/security namespace).
+		// Defaults are no-op: show_pass_fail=false leaves the payload
+		// shape identical to Phase 1/2.
+		$schema_settings = is_array( $form_schema['settings'] ?? null ) ? $form_schema['settings'] : [];
+		$quiz_form       = SchemaHelper::normalize_quiz_form_settings( $schema_settings['quiz'] ?? null );
+
+		if ( ! empty( $quiz_form['show_pass_fail'] ) ) {
+			$payload['passing_score'] = (int) $quiz_form['passing_score'];
+			$payload['passed']        = $percentage >= (float) $quiz_form['passing_score'];
+		}
+
+		// Result message: first range whose [min, max] contains the
+		// percentage wins. Independent of show_pass_fail — admins may
+		// want feedback messages without a hard pass/fail badge.
+		foreach ( $quiz_form['result_messages'] as $msg ) {
+			if ( $percentage >= (float) $msg['min'] && $percentage <= (float) $msg['max'] ) {
+				$payload['result_message'] = [
+					'title'   => (string) $msg['title'],
+					'message' => (string) $msg['message'],
+				];
+				break;
+			}
+		}
+
+		return $payload;
 	}
 
 	// Sanitization

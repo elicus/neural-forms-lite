@@ -390,6 +390,40 @@ class FormValidator {
         }
         $seen_ids[] = $id;
 
+        // Quiz-specific: at least 2 usable options, exactly one must
+        // be marked is_correct === true. Points + show_correct_answer
+        // are normalized leniently elsewhere; this gate only rejects
+        // quiz schemas that would render an unscorable form.
+        if ( $field['type'] === 'quiz_question' ) {
+            $options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+            $usable = array_filter( $options, static function ( $opt ) {
+                if ( ! is_array( $opt ) ) return false;
+                $label = (string) ( $opt['label'] ?? '' );
+                $value = (string) ( $opt['value'] ?? '' );
+                return $label !== '' || $value !== '';
+            } );
+            if ( count( $usable ) < 2 ) {
+                return new \WP_Error(
+                    'invalid_form_data',
+                    sprintf( 'Quiz question "%s" must have at least two options.', $id ),
+                    [ 'status' => 422 ]
+                );
+            }
+            $correct_count = 0;
+            foreach ( $usable as $opt ) {
+                if ( ! empty( $opt['is_correct'] ) ) {
+                    $correct_count++;
+                }
+            }
+            if ( $correct_count !== 1 ) {
+                return new \WP_Error(
+                    'invalid_form_data',
+                    sprintf( 'Quiz question "%s" must have exactly one correct option (found %d).', $id, $correct_count ),
+                    [ 'status' => 422 ]
+                );
+            }
+        }
+
         // Poll-specific: must have at least one configured option, and
         // every option must have a label or a value (the renderer
         // promotes label-as-value when value is empty, mirroring radio

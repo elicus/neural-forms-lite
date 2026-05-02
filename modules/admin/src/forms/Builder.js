@@ -26,6 +26,7 @@ import BuilderSidebar from './BuilderSidebar';
 import BuilderCanvas from './BuilderCanvas';
 import BuilderInspector from './BuilderInspector';
 import FormSettings from './FormSettings';
+import BuilderDndProvider from './BuilderDnd';
 import PreviewModal from './PreviewModal';
 import BuilderTemplateModal from './BuilderTemplateModal';
 import { newField } from './FieldTypes';
@@ -564,37 +565,44 @@ export default function Builder( { formId, isNew } ) {
 			/>
 
 			{ safeTab === 'build' && (
-				<div className="nf-builder-body">
-					<BuilderSidebar onAddField={ addField } onAddRow={ addRow } onAddStep={ addStep } onAddSection={ addSection } />
-					<main className="nf-builder-main">
-						<BuilderCanvas
+				<BuilderDndProvider
+					nodes={ fields }
+					onChange={ setFields }
+					onSelectField={ selectNode }
+					onSelectStep={ selectStep }
+				>
+					<div className="nf-builder-body">
+						<BuilderSidebar onAddField={ addField } onAddRow={ addRow } onAddStep={ addStep } onAddSection={ addSection } />
+						<main className="nf-builder-main">
+							<BuilderCanvas
+								nodes={ fields }
+								onChange={ setFields }
+								selectedId={ selectedId }
+								onSelect={ selectNode }
+								selectedColumnId={ selectedColumnId }
+								onSelectColumn={ selectColumn }
+								selectedStepId={ selectedStepId }
+								onSelectStep={ selectStep }
+								onAddBlankStarter={ addBlankStarter }
+								onAddMultistepStarter={ addMultistepStarter }
+								onApplyTemplate={ applyTemplate }
+								templateId={ currentTemplateId }
+								onRequestChangeTemplate={ () => setTemplateModalOpen( true ) }
+								onRequestClear={ clearForm }
+							/>
+						</main>
+						<BuilderInspector
 							nodes={ fields }
-							onChange={ setFields }
 							selectedId={ selectedId }
-							onSelect={ selectNode }
 							selectedColumnId={ selectedColumnId }
-							onSelectColumn={ selectColumn }
 							selectedStepId={ selectedStepId }
-							onSelectStep={ selectStep }
-							onAddBlankStarter={ addBlankStarter }
-							onAddMultistepStarter={ addMultistepStarter }
-							onApplyTemplate={ applyTemplate }
-							templateId={ currentTemplateId }
-							onRequestChangeTemplate={ () => setTemplateModalOpen( true ) }
-							onRequestClear={ clearForm }
+							onChange={ setFields }
+							formSchemaSettings={ formSchemaSettings }
+							onChangeFormSchemaSettings={ setFormSchemaSettings }
+							formId={ liveFormId }
 						/>
-					</main>
-					<BuilderInspector
-						nodes={ fields }
-						selectedId={ selectedId }
-						selectedColumnId={ selectedColumnId }
-						selectedStepId={ selectedStepId }
-						onChange={ setFields }
-						formSchemaSettings={ formSchemaSettings }
-						onChangeFormSchemaSettings={ setFormSchemaSettings }
-						formId={ liveFormId }
-					/>
-				</div>
+					</div>
+				</BuilderDndProvider>
 			) }
 
 			{ safeTab === 'settings' && (
@@ -602,6 +610,28 @@ export default function Builder( { formId, isNew } ) {
 					<FormSettings
 						settings={ form.settings || {} }
 						onChange={ setSettings }
+						formSchemaSettings={ formSchemaSettings }
+						onChangeFormSchemaSettings={ setFormSchemaSettings }
+						hasQuiz={ ( () => {
+							// Walk top-level fields + step.fields + row.column.fields
+							// to detect any quiz_question. Mirror SchemaHelper.flatten_fields.
+							const walk = ( nodes ) => {
+								for ( let i = 0; i < nodes.length; i++ ) {
+									const n = nodes[ i ];
+									if ( ! n || typeof n !== 'object' ) continue;
+									if ( n.type === 'quiz_question' ) return true;
+									if ( n.type === 'step'   && Array.isArray( n.fields ) )  { if ( walk( n.fields ) ) return true; }
+									if ( n.type === 'row'    && Array.isArray( n.columns ) ) {
+										for ( let c = 0; c < n.columns.length; c++ ) {
+											const col = n.columns[ c ];
+											if ( col && Array.isArray( col.fields ) && walk( col.fields ) ) return true;
+										}
+									}
+								}
+								return false;
+							};
+							return walk( fields );
+						} )() }
 					/>
 				</div>
 			) }

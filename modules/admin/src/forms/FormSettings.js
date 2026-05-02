@@ -37,14 +37,30 @@
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
-const SECTIONS = [
+const BASE_SECTIONS = [
 	{ id: 'security',     label: 'Security',     hint: 'Protect this form from automated submissions.' },
 	{ id: 'notifications', label: 'Notifications', hint: 'Choose who hears about new submissions.' },
 	{ id: 'on_success',   label: 'On success',   hint: 'What submitters see after a successful submit.' },
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
 ];
 
-export default function FormSettings( { settings, onChange } ) {
+const QUIZ_SECTION = { id: 'quiz', label: 'Quiz', hint: 'Pass/fail and result messages for score quizzes.' };
+
+const STARTER_RESULT_MESSAGES = [
+	{ min: 0,  max: 49, title: 'Keep practicing', message: 'You can try again and improve your score.' },
+	{ min: 50, max: 79, title: 'Good attempt',    message: 'Nice work. Review the explanations and try again.' },
+	{ min: 80, max: 100, title: 'Excellent',      message: 'Great job! You passed with a strong score.' },
+];
+
+export default function FormSettings( {
+	settings,
+	onChange,
+	formSchemaSettings,
+	onChangeFormSchemaSettings,
+	hasQuiz,
+} ) {
+	const SECTIONS = hasQuiz ? [ ...BASE_SECTIONS, QUIZ_SECTION ] : BASE_SECTIONS;
+
 	const [ section, setSection ] = useState( SECTIONS[ 0 ].id );
 
 	const s = settings || {};
@@ -54,6 +70,22 @@ export default function FormSettings( { settings, onChange } ) {
 	const set = ( patch ) => onChange( { ...s, ...patch } );
 	const setOnSuccess = ( patch ) => set( { on_success: { ...onSuccess, ...patch } } );
 	const setOnError   = ( patch ) => set( { on_error:   { ...onError,   ...patch } } );
+
+	// Quiz settings live on form_schema.settings.quiz, NOT form.settings.
+	// They apply to the whole quiz so they belong with the schema, not
+	// with submission/security/email config.
+	const schemaSettings = ( formSchemaSettings && typeof formSchemaSettings === 'object' ) ? formSchemaSettings : {};
+	const quizSettings = {
+		show_pass_fail:  false,
+		passing_score:   70,
+		result_messages: [],
+		...( ( schemaSettings.quiz && typeof schemaSettings.quiz === 'object' ) ? schemaSettings.quiz : {} ),
+	};
+	const setQuiz = ( patch ) => {
+		if ( typeof onChangeFormSchemaSettings !== 'function' ) return;
+		const next = { ...schemaSettings, quiz: { ...quizSettings, ...patch } };
+		onChangeFormSchemaSettings( next );
+	};
 
 	const activeSection = SECTIONS.find( ( x ) => x.id === section ) || SECTIONS[ 0 ];
 
@@ -200,6 +232,140 @@ export default function FormSettings( { settings, onChange } ) {
 									/>
 								</label>
 							) }
+						</div>
+					) }
+
+					{ section === 'quiz' && hasQuiz && (
+						<div className="nf-form-settings__body">
+							<label className="nf-form-settings__field nf-form-settings__field--inline">
+								<input
+									type="checkbox"
+									checked={ !! quizSettings.show_pass_fail }
+									onChange={ ( e ) => setQuiz( { show_pass_fail: e.target.checked } ) }
+								/>
+								<span>{ __( 'Show pass/fail result', 'neural-forms-lite' ) }</span>
+							</label>
+
+							<label className="nf-form-settings__field">
+								<span className="nf-form-settings__label">{ __( 'Passing score (%)', 'neural-forms-lite' ) }</span>
+								<input
+									type="number"
+									min="0"
+									max="100"
+									step="1"
+									value={ Number( quizSettings.passing_score ) || 0 }
+									onChange={ ( e ) => {
+										const v = Number( e.target.value );
+										const clamped = Number.isFinite( v ) ? Math.max( 0, Math.min( 100, Math.round( v ) ) ) : 70;
+										setQuiz( { passing_score: clamped } );
+									} }
+									disabled={ ! quizSettings.show_pass_fail }
+								/>
+								<span className="nf-form-settings__field-hint">
+									{ __( 'Submissions at or above this percentage are marked passed.', 'neural-forms-lite' ) }
+								</span>
+							</label>
+
+							<div className="nf-form-settings__field">
+								<span className="nf-form-settings__label">{ __( 'Result messages', 'neural-forms-lite' ) }</span>
+								<p className="nf-form-settings__field-hint">
+									{ __( 'Show a custom title + message based on the submitter’s percentage. The first matching range wins.', 'neural-forms-lite' ) }
+								</p>
+
+								{ ( ! quizSettings.result_messages || quizSettings.result_messages.length === 0 ) && (
+									<button
+										type="button"
+										className="neural-forms-btn"
+										onClick={ () => setQuiz( { result_messages: STARTER_RESULT_MESSAGES.slice() } ) }
+									>
+										{ __( '+ Add starter messages', 'neural-forms-lite' ) }
+									</button>
+								) }
+
+								{ ( quizSettings.result_messages || [] ).map( ( m, i ) => (
+									<div className="nf-form-settings__result-row" key={ i }>
+										<div className="nf-form-settings__result-range">
+											<label>
+												<span>{ __( 'Min %', 'neural-forms-lite' ) }</span>
+												<input
+													type="number"
+													min="0"
+													max="100"
+													value={ Number( m.min ) || 0 }
+													onChange={ ( e ) => {
+														const v = Number( e.target.value );
+														const clamped = Number.isFinite( v ) ? Math.max( 0, Math.min( 100, Math.round( v ) ) ) : 0;
+														const next = quizSettings.result_messages.slice();
+														next[ i ] = { ...next[ i ], min: clamped };
+														setQuiz( { result_messages: next } );
+													} }
+												/>
+											</label>
+											<label>
+												<span>{ __( 'Max %', 'neural-forms-lite' ) }</span>
+												<input
+													type="number"
+													min="0"
+													max="100"
+													value={ Number( m.max ) || 0 }
+													onChange={ ( e ) => {
+														const v = Number( e.target.value );
+														const clamped = Number.isFinite( v ) ? Math.max( 0, Math.min( 100, Math.round( v ) ) ) : 100;
+														const next = quizSettings.result_messages.slice();
+														next[ i ] = { ...next[ i ], max: clamped };
+														setQuiz( { result_messages: next } );
+													} }
+												/>
+											</label>
+										</div>
+										<input
+											type="text"
+											className="nf-form-settings__result-title"
+											value={ m.title || '' }
+											placeholder={ __( 'Title', 'neural-forms-lite' ) }
+											onChange={ ( e ) => {
+												const next = quizSettings.result_messages.slice();
+												next[ i ] = { ...next[ i ], title: e.target.value };
+												setQuiz( { result_messages: next } );
+											} }
+										/>
+										<textarea
+											className="nf-form-settings__result-message"
+											rows={ 2 }
+											value={ m.message || '' }
+											placeholder={ __( 'Message shown to the submitter', 'neural-forms-lite' ) }
+											onChange={ ( e ) => {
+												const next = quizSettings.result_messages.slice();
+												next[ i ] = { ...next[ i ], message: e.target.value };
+												setQuiz( { result_messages: next } );
+											} }
+										/>
+										<button
+											type="button"
+											className="nf-form-settings__result-remove"
+											onClick={ () => {
+												const next = quizSettings.result_messages.slice();
+												next.splice( i, 1 );
+												setQuiz( { result_messages: next } );
+											} }
+											aria-label={ __( 'Remove message', 'neural-forms-lite' ) }
+											title={ __( 'Remove message', 'neural-forms-lite' ) }
+										>×</button>
+									</div>
+								) ) }
+
+								<button
+									type="button"
+									className="neural-forms-btn"
+									onClick={ () => {
+										const next = ( quizSettings.result_messages || [] ).slice();
+										next.push( { min: 0, max: 100, title: '', message: '' } );
+										setQuiz( { result_messages: next } );
+									} }
+								>
+									{ __( '+ Add message', 'neural-forms-lite' ) }
+								</button>
+							</div>
 						</div>
 					) }
 				</section>

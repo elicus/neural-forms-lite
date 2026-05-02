@@ -281,8 +281,16 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				<OptionsEditor field={ f } onChange={ set } />
 			) }
 
+			{ f.type === 'quiz_question' && (
+				<QuizOptionsEditor field={ f } onChange={ set } />
+			) }
+
 			{ f.type === 'poll' && (
 				<PollSettingsBlock field={ f } onChange={ set } />
+			) }
+
+			{ f.type === 'quiz_question' && (
+				<QuizSettingsBlock field={ f } onChange={ set } />
 			) }
 
 			{ f.type === 'poll' && (
@@ -439,6 +447,196 @@ function PollSettingsBlock( { field, onChange } ) {
 				>
 					<option value="bar">{ __( 'Bar', 'neural-forms-lite' ) }</option>
 					<option value="percentage">{ __( 'Percentage', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			<label className="nf-inspector__field nf-inspector__field--inline">
+				<input
+					type="checkbox"
+					checked={ randomize }
+					onChange={ ( e ) => setSettings( { randomize_options: e.target.checked } ) }
+				/>
+				<span>{ __( 'Randomize options', 'neural-forms-lite' ) }</span>
+			</label>
+		</>
+	);
+}
+
+/**
+ * Quiz Question option editor. Same shape as OptionsEditor but
+ * adds a "correct" radio column. Exactly one option may be marked
+ * correct at a time — the radio's mutual-exclusion enforces this in
+ * the UI; the validator enforces it on save.
+ *
+ * Schema-save validation rejects quiz schemas without exactly one
+ * correct option, so this editor seeds a freshly-added option as
+ * NOT correct and lets the user pick.
+ */
+function QuizOptionsEditor( { field, onChange } ) {
+	const options = Array.isArray( field.options ) ? field.options : [];
+
+	const setOptions = ( next ) => onChange( { options: next } );
+
+	const updateAt = ( idx, patch ) => {
+		const next = options.slice();
+		next[ idx ] = { ...( next[ idx ] || {} ), ...patch };
+		setOptions( next );
+	};
+
+	const setCorrect = ( idx ) => {
+		const next = options.map( ( opt, i ) => ( {
+			...( opt || {} ),
+			is_correct: i === idx,
+		} ) );
+		setOptions( next );
+	};
+
+	const addOption = () => {
+		const n = options.length + 1;
+		setOptions( [
+			...options,
+			{ value: 'option_' + n, label: 'Option ' + n, is_correct: false },
+		] );
+	};
+
+	const removeAt = ( idx ) => {
+		const next = options.slice();
+		next.splice( idx, 1 );
+		setOptions( next );
+	};
+
+	const correctCount = options.filter( ( o ) => o && o.is_correct ).length;
+	const correctIndex = options.findIndex( ( o ) => o && o.is_correct );
+
+	return (
+		<div className="nf-inspector__options nf-inspector__quiz-options">
+			<span className="nf-inspector__label">{ __( 'Options (mark the correct one)', 'neural-forms-lite' ) }</span>
+			{ options.length === 0 && (
+				<p className="nf-inspector__empty">{ __( 'No options yet.', 'neural-forms-lite' ) }</p>
+			) }
+			{ options.map( ( opt, i ) => (
+				<div className="nf-inspector__option-row nf-inspector__option-row--quiz" key={ i }>
+					<input
+						type="radio"
+						className="nf-inspector__option-correct"
+						name={ 'nf-quiz-correct-' + ( field.id || 'q' ) }
+						checked={ correctIndex === i }
+						onChange={ () => setCorrect( i ) }
+						aria-label={ __( 'Mark as correct answer', 'neural-forms-lite' ) }
+						title={ __( 'Mark as correct answer', 'neural-forms-lite' ) }
+					/>
+					<input
+						type="text"
+						className="nf-inspector__option-label"
+						value={ ( opt && opt.label ) || '' }
+						onChange={ ( e ) => updateAt( i, { label: e.target.value } ) }
+						placeholder={ __( 'Label', 'neural-forms-lite' ) }
+					/>
+					<input
+						type="text"
+						className="nf-inspector__option-value"
+						value={ ( opt && opt.value ) || '' }
+						onChange={ ( e ) => updateAt( i, { value: e.target.value } ) }
+						placeholder={ __( 'value', 'neural-forms-lite' ) }
+					/>
+					<button
+						type="button"
+						className="nf-inspector__option-remove"
+						onClick={ () => removeAt( i ) }
+						aria-label={ __( 'Remove option', 'neural-forms-lite' ) }
+						title={ __( 'Remove option', 'neural-forms-lite' ) }
+					>×</button>
+				</div>
+			) ) }
+			<button
+				type="button"
+				className="neural-forms-btn"
+				onClick={ addOption }
+			>+ { __( 'Add option', 'neural-forms-lite' ) }</button>
+
+			{ ( options.length < 2 || correctCount !== 1 ) && (
+				<p className="nf-inspector__warning" role="alert">
+					{ options.length < 2
+						? __( 'Add at least two options.', 'neural-forms-lite' )
+						: ( correctCount === 0
+							? __( 'Mark one option as correct.', 'neural-forms-lite' )
+							: __( 'Only one option can be marked correct.', 'neural-forms-lite' ) ) }
+				</p>
+			) }
+		</div>
+	);
+}
+
+/**
+ * Quiz-specific settings block.
+ *
+ * Edits the nested `field.settings` object:
+ *   - points: int >= 0 (default 1)
+ *   - explanation: textarea
+ *   - show_correct_answer: "after_submit" | "never"
+ *   - randomize_options: boolean
+ */
+function QuizSettingsBlock( { field, onChange } ) {
+	const s = ( field && typeof field.settings === 'object' && field.settings !== null )
+		? field.settings
+		: {};
+
+	const points = ( () => {
+		const n = Number( s.points );
+		if ( ! Number.isFinite( n ) || n < 0 ) return 1;
+		return Math.round( n );
+	} )();
+	const showCorrect = [ 'after_submit', 'never' ].includes( s.show_correct_answer )
+		? s.show_correct_answer
+		: 'after_submit';
+	const explanation = typeof s.explanation === 'string' ? s.explanation : '';
+	const randomize   = !! s.randomize_options;
+
+	const setSettings = ( patch ) => {
+		const next = {
+			points,
+			explanation,
+			show_correct_answer: showCorrect,
+			randomize_options:   randomize,
+			...patch,
+		};
+		onChange( { settings: next } );
+	};
+
+	return (
+		<>
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Points', 'neural-forms-lite' ) }</span>
+				<input
+					type="number"
+					min="0"
+					step="1"
+					value={ points }
+					onChange={ ( e ) => {
+						const v = Number( e.target.value );
+						setSettings( { points: ( Number.isFinite( v ) && v >= 0 ) ? Math.round( v ) : 0 } );
+					} }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Explanation', 'neural-forms-lite' ) }</span>
+				<textarea
+					rows={ 3 }
+					value={ explanation }
+					onChange={ ( e ) => setSettings( { explanation: e.target.value } ) }
+					placeholder={ __( 'Optional. Shown after submit when "Show correct answer" is enabled.', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Show correct answer', 'neural-forms-lite' ) }</span>
+				<select
+					value={ showCorrect }
+					onChange={ ( e ) => setSettings( { show_correct_answer: e.target.value } ) }
+				>
+					<option value="after_submit">{ __( 'After submit', 'neural-forms-lite' ) }</option>
+					<option value="never">{ __( 'Never', 'neural-forms-lite' ) }</option>
 				</select>
 			</label>
 
