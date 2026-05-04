@@ -1,11 +1,21 @@
 /**
  * Top header bar for the form builder.
  *
- * Holds: Back link, editable form name + status pill, Build/Preview/
- * Settings tab switcher (BuilderModeTabs), and the right-side action
- * cluster (Preview button, Save button + saved-indicator).
+ * Holds: Back button, editable form name + status pill, Build/Settings
+ * tab switcher (BuilderModeTabs), and the right-side action cluster
+ * (Preview, Analytics if saved, Save/Saved/Saving/Retry button).
  *
- * Stateless - all state lives in Builder.js.
+ * Stateless — all state lives in Builder.js.
+ *
+ * Save button state machine (driven by props isDirty/saving/saveError):
+ *
+ *   isDirty=false, saving=false, saveError=''  → "Saved"     disabled  (success-tinted)
+ *   isDirty=true,  saving=false, saveError=''  → "Save"      enabled   (primary)
+ *   isDirty=*,     saving=true,  saveError=*   → "Saving…"   disabled  (primary)
+ *   isDirty=true,  saving=false, saveError!='' → "Retry save" enabled  (primary, alert below)
+ *
+ * The previous standalone "Saved" label that lived between Analytics
+ * and Save is removed in 0.2.0 — Save IS the saved-status indicator.
  */
 
 import { __ } from '@wordpress/i18n';
@@ -30,7 +40,8 @@ export default function BuilderHeader( {
 	onSave,
 	onBack,
 	saving,
-	saved,
+	isDirty,
+	saveError,
 	formId,
 } ) {
 	// Results button only renders when the form has been persisted
@@ -43,6 +54,41 @@ export default function BuilderHeader( {
 		? 'admin.php?page=neural-forms-results&form_id=' + Number( formId )
 		: '';
 	const currentStatus = VALID_STATUSES.includes( status ) ? status : 'draft';
+
+	// Resolve the four save-button states. Order matters — saving wins
+	// over error (don't flash "Retry" while a fresh attempt is in
+	// flight), and error wins over plain dirty (so the user sees what
+	// went wrong first). Clean state is the fall-through.
+	let saveLabel;
+	let saveDisabled;
+	let saveModifier;
+	if ( saving ) {
+		saveLabel    = __( 'Saving…',    'neural-forms-lite' );
+		saveDisabled = true;
+		saveModifier = '';
+	} else if ( saveError && isDirty ) {
+		saveLabel    = __( 'Retry save', 'neural-forms-lite' );
+		saveDisabled = false;
+		saveModifier = ' nf-builder-header__save--retry';
+	} else if ( isDirty ) {
+		saveLabel    = __( 'Save',       'neural-forms-lite' );
+		saveDisabled = false;
+		saveModifier = '';
+	} else {
+		saveLabel    = __( 'Saved',      'neural-forms-lite' );
+		saveDisabled = true;
+		saveModifier = ' nf-builder-header__save--clean';
+	}
+
+	const handleSaveClick = () => {
+		// Defensive — the disabled attribute already blocks clicks
+		// from mouse and keyboard, but a programmatic .click() or
+		// stale event would still reach onClick. Mirror the
+		// state-machine guard so a no-op click stays a no-op.
+		if ( saveDisabled ) return;
+		onSave && onSave();
+	};
+
 	return (
 		<header className="nf-builder-header">
 			<div className="nf-builder-header__left">
@@ -87,11 +133,6 @@ export default function BuilderHeader( {
 			<BuilderModeTabs active={ activeTab } onChange={ onTabChange } />
 
 			<div className="nf-builder-header__actions">
-				{ saved && (
-					<span className="nf-builder-header__saved" aria-live="polite">
-						{ __( 'Saved', 'neural-forms-lite' ) }
-					</span>
-				) }
 				<button
 					type="button"
 					className="neural-forms-btn"
@@ -111,13 +152,26 @@ export default function BuilderHeader( {
 				) }
 				<button
 					type="button"
-					className="neural-forms-btn neural-forms-btn--primary"
-					onClick={ onSave }
-					disabled={ saving }
+					className={ 'neural-forms-btn neural-forms-btn--primary nf-builder-header__save' + saveModifier }
+					onClick={ handleSaveClick }
+					disabled={ saveDisabled }
+					aria-disabled={ saveDisabled }
+					data-state={ saving ? 'saving' : ( isDirty ? ( saveError ? 'error' : 'dirty' ) : 'clean' ) }
 				>
-					{ saving ? __( 'Saving...', 'neural-forms-lite' ) : __( 'Save', 'neural-forms-lite' ) }
+					{ saveLabel }
 				</button>
 			</div>
+			{ /* Inline error sits beneath the action row so it never
+			    pushes the button cluster. role="alert" so screen
+			    readers announce save failures immediately. */ }
+			{ !! saveError && isDirty && ! saving && (
+				<p
+					className="nf-builder-header__save-error"
+					role="alert"
+				>
+					{ saveError }
+				</p>
+			) }
 		</header>
 	);
 }

@@ -25,6 +25,8 @@
 import { useState, useEffect, useMemo } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import api from '../api';
+import AiUsageNotice from '../ai/AiUsageNotice';
+import extractUsage  from '../ai/extractUsage';
 
 // Diagnostic logger gated on localStorage flag. Off by default — every
 // log path also carries an `nf_debug_ai` toggle hint in the message.
@@ -128,7 +130,7 @@ function PreviewList( { fields, depth = 0 } ) {
 	);
 }
 
-function PreviewModal( { generated, currentFieldCount, onApply, onClose } ) {
+function PreviewModal( { generated, usage, currentFieldCount, onApply, onClose } ) {
 	if ( ! generated ) return null;
 	const fields = ( generated.form_schema && generated.form_schema.fields ) || [];
 	const fieldCount = fields.length;
@@ -158,6 +160,12 @@ function PreviewModal( { generated, currentFieldCount, onApply, onClose } ) {
 				</div>
 
 				<footer className="nf-ai-modal__foot">
+					{ /* Credit-usage line at the LEFT of the footer so the
+					    user can see what was billed before approving an
+					    insert/replace. Renders nothing when usage is null. */ }
+					<div className="nf-ai-modal__foot-meta">
+						<AiUsageNotice usage={ usage } />
+					</div>
 					<button type="button" className="neural-forms-btn" onClick={ onClose }>
 						{ __( 'Cancel', 'neural-forms-lite' ) }
 					</button>
@@ -201,6 +209,14 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	const [ loading,   setLoading   ] = useState( false );
 	const [ error,     setError     ] = useState( '' );
 	const [ errorCta,  setErrorCta  ] = useState( null );   // { label, href } | null
+	// Canonical user-facing usage block from the cloud — see
+	// modules/admin/src/ai/extractUsage.js + AiUsageNotice.js. Cleared
+	// on every Generate click so a previous success doesn't bleed into
+	// a new (in-flight or failed) request. Set to either:
+	//   - the cloud's success usage block (credits_deducted=true), or
+	//   - the failure-with-no-charge block (credits_deducted=false), or
+	//   - null when the failure didn't return any usage info.
+	const [ lastUsage, setLastUsage ] = useState( null );
 	const [ warnings,  setWarnings  ] = useState( [] );
 	const [ generated, setGenerated ] = useState( null );
 
@@ -356,6 +372,10 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 		setErrorCta( null );
 		setWarnings( [] );
 		setGenerated( null );
+		// Brief rule: clear stale usage at request start so the user
+		// never sees credits attributed to a prior call while waiting
+		// for the new one.
+		setLastUsage( null );
 
 		nfDebug( 'calling WP generate endpoint', {
 			path: '/neural-forms-pro/v1/ai/generate-form',
@@ -403,6 +423,9 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 
 				setGenerated( res.form );
 				setWarnings( Array.isArray( res.warnings ) ? res.warnings : [] );
+				// Cloud's canonical usage block — accept either top-level
+				// or wrapped-in-body shape (extractUsage handles both).
+				setLastUsage( extractUsage( raw ) );
 			} )
 			.catch( ( err ) => {
 				nfDebug( 'WP generate error', {
@@ -421,6 +444,15 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 				// Attach a contextual CTA if the server's structured
 				// `code` matches one of our known recoverable cases.
 				setErrorCta( ctaForCode( code ) );
+				// If the failure response carried an explicit "no
+				// credits deducted" block, surface it so the user sees
+				// "No credits were deducted." reassurance. Failures
+				// with no usage block leave lastUsage null and the
+				// notice stays hidden.
+				const failureUsage = extractUsage( err );
+				if ( failureUsage && failureUsage.credits_deducted === false ) {
+					setLastUsage( failureUsage );
+				}
 			} )
 			.finally( () => {
 				nfDebug( 'finally — loading=false' );
@@ -644,6 +676,18 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 						) }
 					</p>
 				) }
+				{ /* Credit-usage line — appears under the Generate button
+				    after a request settles. Stays visible after the
+				    preview modal closes so the user can see what was
+				    just charged when they look back at the panel.
+				    Cleared when a new Generate click starts. */ }
+				{ ! loading && lastUsage && (
+					<AiUsageNotice
+						usage={ lastUsage }
+						className="nf-ai-prompt__usage"
+						style={ { marginTop: 8 } }
+					/>
+				) }
 				{ ! prompt && (
 					<details className="nf-ai-prompt__examples">
 						<summary>{ __( 'Need ideas?', 'neural-forms-lite' ) }</summary>
@@ -676,6 +720,7 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 
 			<PreviewModal
 				generated={ generated }
+				usage={ lastUsage }
 				currentFieldCount={ currentFieldCount }
 				onApply={ handleApply }
 				onClose={ () => setGenerated( null ) }

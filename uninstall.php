@@ -3,7 +3,20 @@
  * Runs when the plugin is deleted via WP Admin -> Plugins -> Delete.
  * NOT called on deactivation.
  *
- * Removes all plugin data: capabilities, options, and DB tables.
+ * Data-retention contract (added in 0.2.0):
+ *
+ *   The destructive cleanup (drop tables, delete options, remove the
+ *   admin capability, wipe the log directory) is GATED behind a
+ *   user-controlled toggle stored on `neural_forms_settings.delete_data_on_uninstall`
+ *   — default FALSE. Users who delete the plugin without enabling
+ *   that toggle KEEP all their forms, entries, AI context, and
+ *   settings. This matches the deactivation-options page UX: data
+ *   removal is opt-in, never automatic.
+ *
+ *   The harmless cleanup (clearing scheduled cron hooks + a couple
+ *   of transients) runs unconditionally so reinstalls don't pick up
+ *   stale handlers and so we don't leave behind cache rows that
+ *   would also be re-populated on reinstall.
  *
  * The cleanup runs inside a function so its locals don't leak into the
  * global namespace - keeps the WordPress.org plugin-check happy about
@@ -14,6 +27,45 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 	function neural_forms_lite_uninstall(): void {
 		global $wpdb;
+
+		// ── Always-run, harmless cleanup ─────────────────────────────
+		// Cron hooks. WordPress does NOT auto-clear hooks on uninstall, so
+		// without this a reinstall picks up the old schedule and fires actions
+		// whose handlers no longer exist. Safe to run regardless of the
+		// data-retention preference — these are runtime artefacts, not user data.
+		$hooks = [
+			'neural_forms_log_cleanup',
+			'neural_forms_ai_draft_purge',
+			'neural_forms_process_ai_queue',
+			'neural_forms_process_queue',
+		];
+		foreach ( $hooks as $hook ) {
+			wp_clear_scheduled_hook( $hook );
+		}
+
+		// Pro-owned cache transients. Cleared even when keeping data because
+		// they're caches keyed off home_url — no value is lost; reinstall
+		// repopulates them on first use.
+		delete_transient( 'neural_forms_site_profile_cache' );
+		delete_transient( 'neural_forms_site_profile_cache_' . md5( (string) home_url( '/' ) ) );
+
+		// ── Data-retention gate ──────────────────────────────────────
+		// Read the raw option value here. uninstall.php runs in isolation
+		// without our plugin code loaded, so we cannot use Config::get().
+		// Default is FALSE — existing installs upgrading to 0.2.0 keep
+		// data on delete unless they explicitly opt in via the
+		// deactivation-options page or the 'delete plugin data on
+		// uninstall' setting.
+		$settings = get_option( 'neural_forms_settings', [] );
+		$delete   = is_array( $settings ) && ! empty( $settings['delete_data_on_uninstall'] );
+
+		if ( ! $delete ) {
+			// User chose to keep data (or never opted in). Stop here.
+			// Forms, entries, settings, AI context, log directory — all preserved.
+			return;
+		}
+
+		// ── Destructive cleanup (only when user opted in) ────────────
 
 		// Capabilities.
 		$roles = [ 'administrator' ];
@@ -31,25 +83,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 
 		// Pro-owned options. Lite doesn't create these, but cleans them up on
 		// uninstall so a user removing both plugins doesn't leave orphan data.
-		// Site-profile cache is keyed per-site as
-		// `neural_forms_site_profile_cache_{md5(home_url)}` - also clear the
-		// legacy unkeyed name from older Pro versions.
 		delete_option( 'neural_forms_site_profile_last_run' );
-		delete_transient( 'neural_forms_site_profile_cache' );
-		delete_transient( 'neural_forms_site_profile_cache_' . md5( (string) home_url( '/' ) ) );
-
-		// Cron hooks. WordPress does NOT auto-clear hooks on uninstall, so
-		// without this a reinstall picks up the old schedule and fires actions
-		// whose handlers no longer exist.
-		$hooks = [
-			'neural_forms_log_cleanup',
-			'neural_forms_ai_draft_purge',
-			'neural_forms_process_ai_queue',
-			'neural_forms_process_queue',
-		];
-		foreach ( $hooks as $hook ) {
-			wp_clear_scheduled_hook( $hook );
-		}
 
 		// Tables. Keep this list in sync with Database::create_tables() -
 		// leftover AI tables collide with dbDelta on reinstall because their

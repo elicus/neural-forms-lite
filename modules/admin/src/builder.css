@@ -186,6 +186,12 @@
 	border-radius: 8px;
 	padding: 12px;
 	margin-bottom: 8px;
+	/* The row sits inside the canvas (.nf-builder-canvas-shell). Bound
+	 * it to the parent so a wide nested column or controls cluster
+	 * can't push it past the canvas edge. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 #neural-forms-app .nf-row__header {
@@ -333,12 +339,24 @@
 #neural-forms-app .nf-row__grid {
 	display: grid;
 	gap: 12px;
+	/* Bounding the row grid to its parent prevents a wide column or a
+	 * long inline preview from pushing the row past the canvas. */
+	min-width: 0;
+	max-width: 100%;
 }
 
-#neural-forms-app .nf-row__grid--cols-1 { grid-template-columns: 1fr; }
-#neural-forms-app .nf-row__grid--cols-2 { grid-template-columns: 1fr 1fr; }
-#neural-forms-app .nf-row__grid--cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-#neural-forms-app .nf-row__grid--cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+/* CRITICAL — every track is minmax(0, 1fr), NOT plain 1fr.
+ *
+ * Plain 1fr resolves to `minmax(auto, 1fr)`. The `auto` minimum is
+ * the track's intrinsic content size, so a column with a long input
+ * label or a wide preview blows past the row's container, which then
+ * pushes the canvas past the inspector. minmax(0, 1fr) lets each
+ * track shrink to 0 if needed, so the row always fits its parent.
+ * This was THE primary cause of the 3-/4-column overflow. */
+#neural-forms-app .nf-row__grid--cols-1 { grid-template-columns: minmax(0, 1fr); }
+#neural-forms-app .nf-row__grid--cols-2 { grid-template-columns: repeat( 2, minmax(0, 1fr) ); }
+#neural-forms-app .nf-row__grid--cols-3 { grid-template-columns: repeat( 3, minmax(0, 1fr) ); }
+#neural-forms-app .nf-row__grid--cols-4 { grid-template-columns: repeat( 4, minmax(0, 1fr) ); }
 
 #neural-forms-app .nf-row__grid--gap-none   { gap: 0; }
 #neural-forms-app .nf-row__grid--gap-small  { gap: 6px; }
@@ -351,6 +369,13 @@
 	border-radius: 8px;
 	padding: 8px;
 	min-height: 64px;
+	/* Same reasoning as the row tracks: a column track is
+	 * minmax(0, 1fr), but the column's OWN content (a card with a
+	 * long label) would still expand past the track without these.
+	 * box-sizing keeps the 8px padding inside the track. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 #neural-forms-app .nf-column.is-empty {
@@ -395,11 +420,21 @@
 	font-style: normal;
 }
 
+/* Below ~1024px the canvas track is around 600-700px (page minus
+ * 220px palette + 280px inspector + gaps + padding). 4-up rows
+ * become unreadable there, so collapse them to 2-up first; 3-up
+ * stays. A few hundred px later (≤900) all multi-column rows stack. */
+@media ( max-width: 1024px ) {
+	#neural-forms-app .nf-row__grid--cols-4 {
+		grid-template-columns: repeat( 2, minmax(0, 1fr) );
+	}
+}
+
 @media ( max-width: 900px ) {
 	#neural-forms-app .nf-row__grid--cols-2,
 	#neural-forms-app .nf-row__grid--cols-3,
 	#neural-forms-app .nf-row__grid--cols-4 {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax( 0, 1fr );
 	}
 }
 
@@ -419,6 +454,7 @@
 	padding: 12px 20px;
 	background: #fff;
 	border-bottom: 1px solid #e5e7eb;
+	flex-wrap: wrap;
 	box-shadow: 0 1px 0 rgba( 17, 24, 39, 0.02 );
 	flex-wrap: wrap;
 }
@@ -476,15 +512,52 @@
 	gap: 8px;
 }
 
-#neural-forms-app .nf-builder-header__saved {
-	color: #16a34a;
+/* Save button — single source of truth for save status (replaces the
+   old standalone .nf-builder-header__saved label). Stable min-width so
+   the cluster doesn't reflow when the label flips between
+   Save / Saving… / Saved / Retry save. */
+#neural-forms-app .nf-builder-header__save {
+	min-width: 96px;
+	justify-content: center;
+}
+
+/* Clean state ("Saved", disabled). Soft mint tint so the button still
+   looks intentional rather than greyed-out. We override the base
+   primary navy: a disabled primary button looks broken; a deliberate
+   success-tinted disabled button looks confirming. */
+#neural-forms-app .nf-builder-header__save--clean[disabled],
+#neural-forms-app .nf-builder-header__save--clean[aria-disabled="true"] {
+	background: #ecfdf5;
+	color: #047857;
+	border-color: #a7f3d0;
+	cursor: default;
+	opacity: 1;
+}
+
+/* Retry state — keep primary chrome but tint the border red so the
+   user sees it's a recoverable action, not a fresh save. */
+#neural-forms-app .nf-builder-header__save--retry {
+	border-color: #ef4444;
+}
+
+/* Inline save error — sits BELOW the action row so the button cluster
+   never reflows. Right-aligned to align with the Save button column. */
+#neural-forms-app .nf-builder-header__save-error {
+	flex-basis: 100%;
+	margin: 6px 0 0;
 	font-size: 12px;
-	font-weight: 500;
+	color: #b91c1c;
+	text-align: right;
 }
 
 #neural-forms-app .nf-builder-body {
 	display: grid;
-	grid-template-columns: 260px 1fr 320px;
+	/* minmax(0, 1fr) on the center track is what makes the canvas
+	 * shrink to fit when the inspector is open and a row is wide.
+	 * Without it, intrinsic content size of nested cards / row grids
+	 * forces the center track wider than the page, which pushes the
+	 * inspector off-screen and produces a horizontal scrollbar. */
+	grid-template-columns: 260px minmax( 0, 1fr ) 320px;
 	gap: 16px;
 	padding: 16px;
 	flex: 1;
@@ -772,6 +845,11 @@
 	border-radius: 10px;
 	padding: 16px;
 	min-height: 320px;
+	/* The canvas wraps everything inside the center track. Bound it
+	 * to its grid track so a long row / wide preview stays contained. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 #neural-forms-app .nf-builder-canvas-empty {
@@ -813,6 +891,14 @@
 	padding: 16px;
 	max-height: calc( 100vh - 120px );
 	overflow-y: auto;
+	/* Hard-stop horizontal overflow at the inspector boundary so a long
+	   option value, a quiz card with a wide input, or a bumpy CSS-grid
+	   row can never spawn a horizontal scrollbar. min-width:0 prevents
+	   the inspector's grid cell (320px in nf-builder-body) from being
+	   forced wider by intrinsic content sizing of nested inputs. */
+	overflow-x: hidden;
+	min-width: 0;
+	box-sizing: border-box;
 }
 
 #neural-forms-app .nf-inspector__title {
@@ -1001,15 +1087,26 @@
 	color: #b91c1c;
 }
 
+/* Trim side panels at common laptop widths so the canvas keeps
+ * enough room for a 3-/4-column row without a horizontal scrollbar.
+ * minmax(0, 1fr) on the center track is preserved — that's what
+ * actually fixes the overflow; this just gives it more space. */
+@media ( max-width: 1280px ) {
+	#neural-forms-app .nf-builder-body {
+		grid-template-columns: 240px minmax( 0, 1fr ) 300px;
+		gap: 12px;
+	}
+}
+
 @media ( max-width: 1100px ) {
 	#neural-forms-app .nf-builder-body {
-		grid-template-columns: 220px 1fr 280px;
+		grid-template-columns: 220px minmax( 0, 1fr ) 280px;
 	}
 }
 
 @media ( max-width: 900px ) {
 	#neural-forms-app .nf-builder-body {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax( 0, 1fr );
 	}
 	#neural-forms-app .nf-builder-sidebar,
 	#neural-forms-app .nf-inspector {
@@ -1660,6 +1757,32 @@
 	gap: 8px;
 	cursor: pointer;
 	transition: border-color 0.15s, box-shadow 0.15s;
+	/* The card sits inside a column track that is minmax(0, 1fr).
+	 * Without min-width:0 here the card's intrinsic content (a long
+	 * label, a wide preview) would still expand the column track. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+/* Card content that can be wide (preview inputs, help paragraphs)
+ * must stay inside the card. */
+#neural-forms-app .nf-card > * {
+	max-width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-card__preview {
+	max-width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-card__preview input,
+#neural-forms-app .nf-card__preview select,
+#neural-forms-app .nf-card__preview textarea {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
 }
 
 #neural-forms-app .nf-card:hover {
@@ -1674,7 +1797,82 @@
 #neural-forms-app .nf-card__header {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	flex-wrap: wrap;
+	gap: 6px 8px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* Badge cluster — wraps in place when the header runs out of room,
+ * keeps the duplicate/delete actions docked at the right via the
+ * actions block's margin-left:auto. Without this wrapper, four
+ * loose <span>s in the flex row pushed actions out of the card
+ * in 3-/4-column rows. */
+#neural-forms-app .nf-card__badges {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* Actions stay tucked at the right edge regardless of badge count.
+ * margin-left:auto handles the case where badges wrap to a new line
+ * inside the flex header — actions stay glued to the right of the
+ * top line, badges fill the second line. */
+#neural-forms-app .nf-card__actions {
+	margin-left: auto;
+	flex: 0 0 auto;
+}
+
+/* Badges shrink-safe — long type labels (e.g. "QUIZ QUESTION") wrap
+ * inside their own pill instead of pushing past the column width.
+ * line-height tightened so a 2-line wrap still fits the header band. */
+#neural-forms-app .nf-card__type-badge,
+#neural-forms-app .nf-card__poll-badge,
+#neural-forms-app .nf-card__quiz-badge,
+#neural-forms-app .nf-card__logic-badge {
+	max-width: 100%;
+	min-width: 0;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	line-height: 1.2;
+}
+
+/* Column-compact mode: when a card lives inside a row column (i.e.
+ * inside a multi-column row) the column track is often 200-300px,
+ * not enough for handle + title + 1-3 badges + 2 actions on one
+ * line. Switch to a 2-row grid: handle/title/actions on row 1,
+ * badges on row 2 (left-aligned, indented past the handle). The
+ * grid-areas pattern guarantees actions never get pushed out. */
+#neural-forms-app .nf-column .nf-card__header {
+	display: grid;
+	grid-template-columns: auto minmax( 0, 1fr ) auto;
+	grid-template-areas:
+		"handle title  actions"
+		".      badges badges";
+	column-gap: 8px;
+	row-gap: 6px;
+}
+
+#neural-forms-app .nf-column .nf-card__header > .nf-drag-zone {
+	grid-area: handle;
+}
+
+#neural-forms-app .nf-column .nf-card__label {
+	grid-area: title;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-column .nf-card__badges {
+	grid-area: badges;
+	justify-content: flex-start;
+}
+
+#neural-forms-app .nf-column .nf-card__actions {
+	grid-area: actions;
+	margin-left: 0; /* grid placement already handles the right docking */
 }
 
 #neural-forms-app .nf-card__handle {
@@ -1884,6 +2082,14 @@
 	grid-template-columns: 1fr 90px auto;
 	gap: 6px;
 	margin-bottom: 6px;
+	/* min-width:0 lets each grid cell shrink below the intrinsic
+	   content width of its <input>, preventing the row from
+	   pushing the inspector wider than its 320px column. */
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__option-row > * {
+	min-width: 0;
 }
 
 #neural-forms-app .nf-inspector__option-row input[type="text"] {
@@ -1893,6 +2099,11 @@
 	border-radius: 6px;
 	background: #fff;
 	box-sizing: border-box;
+	/* Without these two, an input's default content-based min-width
+	   wins over the grid track size — which is exactly what created
+	   the horizontal-scrollbar regression on the quiz inspector. */
+	width: 100%;
+	min-width: 0;
 }
 
 #neural-forms-app .nf-inspector__option-remove {
@@ -2190,15 +2401,116 @@
 	border-color: #fecaca;
 }
 
-/* Quiz options editor: extra "correct" radio column on each row */
+/* Quiz options editor — stacked card per option.
+ *
+ * The previous 4-column row (radio | label | value | ×) overflowed
+ * the 320px inspector. Each option is now a small card whose label
+ * and value inputs stack vertically so they always fit. The Correct-
+ * answer radio + remove × live on a top row; the card border tints
+ * mint when this option is the selected correct answer.
+ */
 
-#neural-forms-app .nf-inspector__option-row--quiz {
-	display: grid;
-	grid-template-columns: auto 1fr 1fr auto;
-	gap: 6px;
-	align-items: center;
+#neural-forms-app .nf-quiz-options__hint {
+	margin: 0 0 10px;
+	font-size: 11px;
+	color: #6b7280;
 }
 
+#neural-forms-app .nf-quiz-option-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	margin-bottom: 8px;
+	background: #ffffff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card--correct {
+	background: #f0fdf4;
+	border-color: #86efac;
+}
+
+#neural-forms-app .nf-quiz-option-card__top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card__correct {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: #1f2937;
+	cursor: pointer;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card__correct input[type="radio"] {
+	margin: 0;
+	accent-color: #15db95;
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+
+#neural-forms-app .nf-quiz-option-card__remove {
+	flex: 0 0 auto;
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	font-size: 18px;
+	line-height: 1;
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-quiz-option-card__remove:hover {
+	color: #b91c1c;
+	background: #fef2f2;
+}
+
+#neural-forms-app .nf-quiz-option-card__field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card__field-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: #374151;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+#neural-forms-app .nf-quiz-option-card__field input[type="text"] {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	font-size: 12px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+}
+
+/* Kept: the `nf-inspector__option-correct` class is still used inside
+   the radio so existing accent-color styling persists if anyone reads
+   it from the card via that selector. */
 #neural-forms-app .nf-inspector__option-correct {
 	margin: 0;
 	cursor: pointer;
@@ -2442,6 +2754,12 @@
 	padding: 10px;
 	min-height: 64px;
 	transition: background 120ms ease, border-color 120ms ease;
+	/* Step body holds rows / fields, so the same overflow guards as
+	 * the canvas-shell apply. Without these a 4-column row inside a
+	 * step pushed the step (and the canvas) past the inspector. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 /* Active drop target: any step body the user is dragging an
@@ -2716,3 +3034,109 @@
 	background: #fee2e2;
 	color: #b91c1c;
 }
+
+/* ── Unsaved-changes confirmation modal ─────────────────────────────
+ * Standalone class tree (NOT shared with .nf-ai-modal) so changes to
+ * the AI generator's modal can never accidentally restyle this one
+ * and vice-versa. Dim background + centred card. Overlay catches a
+ * background click to mean "Stay here". */
+
+#neural-forms-app .nf-unsaved-modal__overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100001; /* above PreviewModal / TemplateModal */
+	background: rgba( 17, 24, 39, 0.45 );
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+}
+
+#neural-forms-app .nf-unsaved-modal {
+	background: #ffffff;
+	border-radius: 14px;
+	box-shadow: 0 12px 40px rgba( 0, 0, 0, 0.18 );
+	width: min( 480px, 92vw );
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-unsaved-modal__head {
+	padding: 18px 22px 10px;
+	border-bottom: 1px solid #f1f5f9;
+}
+
+#neural-forms-app .nf-unsaved-modal__title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-unsaved-modal__body {
+	padding: 16px 22px 4px;
+}
+
+#neural-forms-app .nf-unsaved-modal__msg {
+	margin: 0 0 8px;
+	font-size: 14px;
+	color: #1f2937;
+	line-height: 1.5;
+}
+
+#neural-forms-app .nf-unsaved-modal__note {
+	margin: 0;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+/* Inline error block — only renders when save-as-draft fails. Mirrors
+   the success/error palette used by the header save error so users
+   recognise the same "this didn't work" colour signal. */
+#neural-forms-app .nf-unsaved-modal__error {
+	margin: 12px 0 0;
+	padding: 8px 10px;
+	border-radius: 6px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	font-size: 12px;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-unsaved-modal__actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	padding: 16px 22px 18px;
+	border-top: 1px solid #f1f5f9;
+	margin-top: 16px;
+}
+
+#neural-forms-app .nf-unsaved-modal__btn {
+	min-width: 108px;
+	justify-content: center;
+}
+
+/* Stay = secondary muted */
+#neural-forms-app .nf-unsaved-modal__btn--stay {
+	background: #f3f4f6;
+	color: #1f2937;
+	border-color: #e5e7eb;
+}
+
+/* Discard = danger outline. Outline rather than filled red so it
+   looks intentional but doesn't compete with the primary action. */
+#neural-forms-app .nf-unsaved-modal__btn--discard {
+	background: #ffffff;
+	color: #b91c1c;
+	border: 1px solid #fecaca;
+}
+
+#neural-forms-app .nf-unsaved-modal__btn--discard:hover:not(:disabled) {
+	background: #fef2f2;
+}
+
+/* Save as Draft — primary navy via .neural-forms-btn--primary base. */

@@ -70,6 +70,9 @@ final class NeuralForms {
     private function boot_admin(): void {
         if ( is_admin() ) {
             \NeuralForms\Admin\AdminPanel::boot();
+            // Pre-deactivation data-retention page (0.2.0). Hidden
+            // submenu + plugin row action; never auto-redirects.
+            \NeuralForms\Admin\DeactivationPage::boot();
         }
     }
 

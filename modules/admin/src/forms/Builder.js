@@ -18,7 +18,7 @@
  *     EntryRepository::strip_layout_keys defense-in-depth).
  */
 
-import { useEffect, useState } from '@wordpress/element';
+import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import api from '../api';
 import BuilderHeader from './BuilderHeader';
@@ -32,6 +32,9 @@ import BuilderTemplateModal from './BuilderTemplateModal';
 import { newField } from './FieldTypes';
 import { makeRow, createStep, createSection, isStep } from './schemaHelper';
 import { buildTemplate } from './formTemplates';
+import createComparableSnapshot from './createComparableSnapshot';
+import useUnsavedChangesGuard  from './useUnsavedChangesGuard';
+import UnsavedChangesModal     from './UnsavedChangesModal';
 
 function collectIds( nodes ) {
 	const ids = [];
@@ -64,7 +67,17 @@ export default function Builder( { formId, isNew } ) {
 	const [ loading,      setLoading      ] = useState( ! isNew );
 	const [ error,        setError        ] = useState( '' );
 	const [ saving,       setSaving       ] = useState( false );
-	const [ saved,        setSaved        ] = useState( false );
+	// Save error is distinct from the load-time `error` above. It only
+	// fires when the REST PUT/POST itself fails AFTER the user clicks
+	// Save. Header renders it inline near the action cluster with a
+	// role="alert" so screen readers announce it.
+	const [ saveError,    setSaveError    ] = useState( '' );
+	// Stable, sorted-key JSON of the saved-payload subset of the form.
+	// Replaces the old transient `saved` flag. After load this matches
+	// the fetched form; after a successful save it matches the just-
+	// saved form. `isDirty = lastSavedSnapshot !== currentSnapshot`.
+	// Null until the first form payload is in memory.
+	const [ lastSavedSnapshot, setLastSavedSnapshot ] = useState( null );
 	const [ tab,              setTab              ] = useState( 'build' );
 	const [ selectedId,       setSelectedId       ] = useState( null );
 	const [ selectedColumnId, setSelectedColumnId ] = useState( null );
@@ -107,7 +120,7 @@ export default function Builder( { formId, isNew } ) {
 
 	useEffect( () => {
 		if ( isNew ) {
-			setForm( {
+			const blank = {
 				name: __( 'Untitled form', 'neural-forms-lite' ),
 				slug: '',
 				// New builder forms default to active. The user can
@@ -122,7 +135,13 @@ export default function Builder( { formId, isNew } ) {
 					fields: [],
 				},
 				settings: {},
-			} );
+			};
+			setForm( blank );
+			// Seed the baseline so the empty new form starts CLEAN.
+			// Save stays disabled until the user actually changes
+			// something (adds a field, edits the name, picks a
+			// template, applies AI output, etc.).
+			setLastSavedSnapshot( createComparableSnapshot( blank ) );
 			return;
 		}
 
@@ -134,6 +153,9 @@ export default function Builder( { formId, isNew } ) {
 				// here would mutate a v1.0.0 flat schema on open, which
 				// CompatibilityTest 1d forbids.
 				setForm( res );
+				// Baseline is the loaded payload — opening a form
+				// without changes must NOT show "unsaved changes".
+				setLastSavedSnapshot( createComparableSnapshot( res ) );
 				setLoading( false );
 			} )
 			.catch( ( err ) => {
@@ -143,6 +165,28 @@ export default function Builder( { formId, isNew } ) {
 			} );
 		return () => { cancelled = true; };
 	}, [ formId, isNew ] );
+
+	// Derive the dirty flag from the canonical saved-payload subset of
+	// the form, NOT from a hand-toggled flag. The old `saved` flag
+	// drifted whenever a code path forgot to setSaved(false) on a
+	// mutation; with derivation, every state update that actually
+	// changes the saved payload flips dirty automatically.
+	const currentSnapshot = useMemo(
+		() => ( form ? createComparableSnapshot( form ) : null ),
+		[ form ]
+	);
+	const isDirty =
+		form !== null &&
+		lastSavedSnapshot !== null &&
+		currentSnapshot !== lastSavedSnapshot;
+
+	// Two-layer leave protection (beforeunload + same-document
+	// anchor click capture). The hook stores any intercepted internal
+	// navigation in `pendingHref`; we render the custom modal off
+	// that, then resolve via guard.confirmNavigate / cancelNavigate.
+	// beforeunload (browser-owned) handles tab close / reload; that
+	// path keeps the native dialog because no JS UI can run there.
+	const guard = useUnsavedChangesGuard( { isDirty } );
 
 	if ( loading ) {
 		return <div className="neural-forms-screen">{ __( 'Loading...', 'neural-forms-lite' ) }</div>;
@@ -158,7 +202,6 @@ export default function Builder( { formId, isNew } ) {
 
 	const setFields = ( next ) => {
 		setForm( { ...form, form_schema: { ...form.form_schema, fields: next } } );
-		setSaved( false );
 	};
 
 	const setSettings = ( nextSettings ) => {
@@ -166,7 +209,6 @@ export default function Builder( { formId, isNew } ) {
 		// (autoresponder, sender_email, _previous_status, ...) round-
 		// trip untouched. Locked by CompatibilityTest 6a-6i.
 		setForm( { ...form, settings: { ...( form.settings || {} ), ...nextSettings } } );
-		setSaved( false );
 	};
 
 	// Schema-level settings live on form_schema.settings (e.g.
@@ -184,7 +226,6 @@ export default function Builder( { formId, isNew } ) {
 				settings: { ...formSchemaSettings, ...patch },
 			},
 		} );
-		setSaved( false );
 	};
 
 	// Locate a column by id. Returns one of:
@@ -413,8 +454,7 @@ export default function Builder( { formId, isNew } ) {
 			setSelectedColumnId( null );
 			setSelectedStepId( null );
 			setTemplateModalOpen( false );
-			setSaved( false );
-			return;
+				return;
 		}
 
 		const tpl = buildTemplate( templateId );
@@ -458,7 +498,6 @@ export default function Builder( { formId, isNew } ) {
 		setSelectedColumnId( null );
 		setSelectedStepId( null );
 		setTemplateModalOpen( false );
-		setSaved( false );
 	};
 
 	const clearForm = () => {
@@ -485,19 +524,45 @@ export default function Builder( { formId, isNew } ) {
 		setSelectedId( null );
 		setSelectedColumnId( null );
 		setSelectedStepId( null );
-		setSaved( false );
 	};
 
 	const goBack = () => {
 		const url = new URL( window.location.href );
 		url.searchParams.delete( 'edit' );
 		url.searchParams.delete( 'new' );
-		window.location.href = url.toString();
+		const target = url.toString();
+		// The header's back button is a real <button>, not an <a>, so
+		// the document-level click capture never fires for it. Route
+		// through the guard so the user gets the custom modal — same
+		// path as a sidebar / Analytics link click.
+		if ( isDirty ) {
+			guard.requestNavigation( target );
+			return;
+		}
+		window.location.href = target;
 	};
 
-	const save = () => {
+	/**
+	 * Save the current form. Returns a Promise that resolves on
+	 * success and rejects on failure so callers (notably the
+	 * unsaved-changes modal's Save-as-Draft path) can chain a
+	 * navigation onto the result.
+	 *
+	 * `statusOverride` (optional, e.g. `'draft'`) replaces the
+	 * payload's status WITHOUT mutating in-memory form state until
+	 * the server confirms. On success, the server response is the
+	 * authoritative shape and gets written back via setForm — at
+	 * that point the UI flips to the saved status. On failure, the
+	 * UI stays on whatever status the user was looking at.
+	 */
+	const save = ( opts = {} ) => {
+		const { statusOverride = null } = opts;
+
+		if ( saving )    return Promise.resolve( false );
+		if ( ! isDirty ) return Promise.resolve( false );
+
 		setSaving( true );
-		setError( '' );
+		setSaveError( '' );
 
 		// liveFormId > 0 means the form has a server-side row already
 		// (either loaded with ?edit=N, or just created and we captured
@@ -507,16 +572,23 @@ export default function Builder( { formId, isNew } ) {
 		const path     = isCreate ? '/forms' : `/forms/${ liveFormId }`;
 		const method   = isCreate ? 'POST'   : 'PUT';
 
-		api( path, { method, data: form } )
+		// Build the request body. statusOverride wins when supplied;
+		// otherwise we send whatever the user has selected in the
+		// header status dropdown.
+		const payload = statusOverride
+			? { ...form, status: statusOverride }
+			: form;
+
+		return api( path, { method, data: payload } )
 			.then( ( res ) => {
 				setSaving( false );
-				setSaved( true );
 				// Sync the in-memory form with the server's response
 				// so any normalisation (slug uniqueness, status
 				// coercion) is reflected immediately. The response
 				// shape is the same as GET /forms/{id}.
 				if ( res && typeof res === 'object' ) {
 					setForm( res );
+					setLastSavedSnapshot( createComparableSnapshot( res ) );
 					if ( isCreate && res.id ) {
 						setLiveFormId( Number( res.id ) );
 						const url = new URL( window.location.href );
@@ -524,14 +596,28 @@ export default function Builder( { formId, isNew } ) {
 						url.searchParams.set( 'edit', String( res.id ) );
 						window.history.replaceState( {}, '', url.toString() );
 					}
+				} else {
+					// No response body — snapshot the SUBMITTED
+					// payload (with override applied) so the
+					// button at least flips to "Saved".
+					setLastSavedSnapshot( createComparableSnapshot( payload ) );
 				}
-				setTimeout( () => setSaved( false ), 2000 );
+				return true;
 			} )
 			.catch( ( err ) => {
 				// eslint-disable-next-line no-console
 				if ( err ) console.error( 'Neural Forms save failed:', err );
 				setSaving( false );
-				setError( err?.message || __( 'Save failed.', 'neural-forms-lite' ) );
+				// Failure: do NOT advance the baseline — keep
+				// isDirty=true so the user can retry without
+				// re-editing. Header switches the button label
+				// to "Retry save" off of (isDirty && saveError).
+				const message = err?.message || __( 'Save failed.', 'neural-forms-lite' );
+				setSaveError( message );
+				// Re-throw so callers can branch on failure (the
+				// unsaved-changes modal needs to keep the user on
+				// the page when Save-as-Draft fails).
+				throw err;
 			} );
 	};
 
@@ -548,11 +634,11 @@ export default function Builder( { formId, isNew } ) {
 				onNameChange={ ( v ) => setForm( { ...form, name: v } ) }
 				onStatusChange={ ( next ) => {
 					// Status is the only top-level field that lives outside
-					// form_schema/settings, so updating it must keep both
-					// untouched. Setting saved=false also flags the change
-					// for the next Save.
+					// form_schema/settings; the dirty derivation includes
+					// it (createComparableSnapshot hashes top-level
+					// `status`), so flipping it here is enough to enable
+					// the Save button.
 					setForm( { ...form, status: next } );
-					setSaved( false );
 				} }
 				activeTab={ safeTab }
 				onTabChange={ setTab }
@@ -560,7 +646,8 @@ export default function Builder( { formId, isNew } ) {
 				onSave={ save }
 				onBack={ goBack }
 				saving={ saving }
-				saved={ saved }
+				isDirty={ isDirty }
+				saveError={ saveError }
 				formId={ liveFormId }
 			/>
 
@@ -598,8 +685,7 @@ export default function Builder( { formId, isNew } ) {
 										settings: ( generated.form_schema && generated.form_schema.settings ) || ( form.form_schema && form.form_schema.settings ) || {},
 									},
 								} );
-								setSaved( false );
-							} }
+													} }
 						/>
 						<main className="nf-builder-main">
 							<BuilderCanvas
@@ -674,6 +760,35 @@ export default function Builder( { formId, isNew } ) {
 				open={ templateModalOpen }
 				onApplyTemplate={ applyTemplate }
 				onCancel={ () => setTemplateModalOpen( false ) }
+			/>
+
+			{ /* Custom unsaved-changes confirmation. Replaces the old
+			    window.confirm path for in-page navigation. The browser-
+			    owned beforeunload still handles tab close / reload via
+			    its native dialog (we can't replace that). */ }
+			<UnsavedChangesModal
+				open={ !! guard.pendingHref }
+				saving={ saving }
+				error={ saveError }
+				onSaveDraft={ () => {
+					// Save with status=draft override, then continue
+					// to the captured URL on success. On failure stay
+					// on the page; saveError is set by save() and
+					// surfaces inside the modal.
+					save( { statusOverride: 'draft' } )
+						.then( ( ok ) => {
+							if ( ok ) guard.confirmNavigate();
+						} )
+						.catch( () => { /* error already shown */ } );
+				} }
+				onDiscard={ () => {
+					// Imperatively detach listeners + flip URL.
+					// beforeunload won't double-fire.
+					guard.confirmNavigate();
+				} }
+				onStay={ () => {
+					guard.cancelNavigate();
+				} }
 			/>
 		</div>
 	);

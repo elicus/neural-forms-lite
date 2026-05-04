@@ -508,46 +508,73 @@ function QuizOptionsEditor( { field, onChange } ) {
 	const correctCount = options.filter( ( o ) => o && o.is_correct ).length;
 	const correctIndex = options.findIndex( ( o ) => o && o.is_correct );
 
+	const radioName = 'nf-quiz-correct-' + ( field.id || 'q' );
+
 	return (
 		<div className="nf-inspector__options nf-inspector__quiz-options">
-			<span className="nf-inspector__label">{ __( 'Options (mark the correct one)', 'neural-forms-lite' ) }</span>
+			<span className="nf-inspector__label">
+				{ __( 'Options', 'neural-forms-lite' ) }
+			</span>
+			<p className="nf-inspector__hint nf-quiz-options__hint">
+				{ __( 'Choose the correct answer for scoring.', 'neural-forms-lite' ) }
+			</p>
 			{ options.length === 0 && (
 				<p className="nf-inspector__empty">{ __( 'No options yet.', 'neural-forms-lite' ) }</p>
 			) }
-			{ options.map( ( opt, i ) => (
-				<div className="nf-inspector__option-row nf-inspector__option-row--quiz" key={ i }>
-					<input
-						type="radio"
-						className="nf-inspector__option-correct"
-						name={ 'nf-quiz-correct-' + ( field.id || 'q' ) }
-						checked={ correctIndex === i }
-						onChange={ () => setCorrect( i ) }
-						aria-label={ __( 'Mark as correct answer', 'neural-forms-lite' ) }
-						title={ __( 'Mark as correct answer', 'neural-forms-lite' ) }
-					/>
-					<input
-						type="text"
-						className="nf-inspector__option-label"
-						value={ ( opt && opt.label ) || '' }
-						onChange={ ( e ) => updateAt( i, { label: e.target.value } ) }
-						placeholder={ __( 'Label', 'neural-forms-lite' ) }
-					/>
-					<input
-						type="text"
-						className="nf-inspector__option-value"
-						value={ ( opt && opt.value ) || '' }
-						onChange={ ( e ) => updateAt( i, { value: e.target.value } ) }
-						placeholder={ __( 'value', 'neural-forms-lite' ) }
-					/>
-					<button
-						type="button"
-						className="nf-inspector__option-remove"
-						onClick={ () => removeAt( i ) }
-						aria-label={ __( 'Remove option', 'neural-forms-lite' ) }
-						title={ __( 'Remove option', 'neural-forms-lite' ) }
-					>×</button>
-				</div>
-			) ) }
+			{ options.map( ( opt, i ) => {
+				const isCorrect = correctIndex === i;
+				const cardClass = 'nf-quiz-option-card'
+					+ ( isCorrect ? ' nf-quiz-option-card--correct' : '' );
+				const labelInputId = 'nf-quiz-' + ( field.id || 'q' ) + '-' + i + '-label';
+				const valueInputId = 'nf-quiz-' + ( field.id || 'q' ) + '-' + i + '-value';
+				return (
+					<div className={ cardClass } key={ i }>
+						<div className="nf-quiz-option-card__top">
+							<label className="nf-quiz-option-card__correct">
+								<input
+									type="radio"
+									className="nf-inspector__option-correct"
+									name={ radioName }
+									checked={ isCorrect }
+									onChange={ () => setCorrect( i ) }
+								/>
+								<span>{ __( 'Correct answer', 'neural-forms-lite' ) }</span>
+							</label>
+							<button
+								type="button"
+								className="nf-quiz-option-card__remove"
+								onClick={ () => removeAt( i ) }
+								aria-label={ __( 'Remove option', 'neural-forms-lite' ) }
+								title={ __( 'Remove option', 'neural-forms-lite' ) }
+							>×</button>
+						</div>
+
+						<label className="nf-quiz-option-card__field" htmlFor={ labelInputId }>
+							<span className="nf-quiz-option-card__field-label">{ __( 'Label', 'neural-forms-lite' ) }</span>
+							<input
+								id={ labelInputId }
+								type="text"
+								className="nf-inspector__option-label"
+								value={ ( opt && opt.label ) || '' }
+								onChange={ ( e ) => updateAt( i, { label: e.target.value } ) }
+								placeholder={ __( 'Option label shown to respondents', 'neural-forms-lite' ) }
+							/>
+						</label>
+
+						<label className="nf-quiz-option-card__field" htmlFor={ valueInputId }>
+							<span className="nf-quiz-option-card__field-label">{ __( 'Value', 'neural-forms-lite' ) }</span>
+							<input
+								id={ valueInputId }
+								type="text"
+								className="nf-inspector__option-value"
+								value={ ( opt && opt.value ) || '' }
+								onChange={ ( e ) => updateAt( i, { value: e.target.value } ) }
+								placeholder={ __( 'option_value', 'neural-forms-lite' ) }
+							/>
+						</label>
+					</div>
+				);
+			} ) }
 			<button
 				type="button"
 				className="neural-forms-btn"

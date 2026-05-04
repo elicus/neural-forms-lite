@@ -141,39 +141,48 @@ export default function FieldRow( {
 					) }
 				</div>
 
-				<span className="nf-card__type-badge">{ typeLabel( field.type ) }</span>
+				{ /* Wrap every badge in a single container so CSS can
+				    place them as one unit. Inside narrow row columns the
+				    container wraps to a second header row; outside, it
+				    sits inline before the actions cluster. Without this
+				    wrapper, four loose <span>s sat flat in the flex row
+				    and pushed the duplicate/delete actions out of the
+				    card in 3-/4-column rows. */ }
+				<div className="nf-card__badges">
+					<span className="nf-card__type-badge">{ typeLabel( field.type ) }</span>
 
-				{ pollResultsBadge && (
-					<span
-						className="nf-card__poll-badge"
-						title={ pollResultsBadge }
-						aria-label={ pollResultsBadge }
-					>{ pollResultsBadge }</span>
-				) }
+					{ pollResultsBadge && (
+						<span
+							className="nf-card__poll-badge"
+							title={ pollResultsBadge }
+							aria-label={ pollResultsBadge }
+						>{ pollResultsBadge }</span>
+					) }
 
-				{ quizPointsBadge && (
-					<span
-						className="nf-card__quiz-badge"
-						title={ quizPointsBadge }
-						aria-label={ quizPointsBadge }
-					>{ quizPointsBadge }</span>
-				) }
+					{ quizPointsBadge && (
+						<span
+							className="nf-card__quiz-badge"
+							title={ quizPointsBadge }
+							aria-label={ quizPointsBadge }
+						>{ quizPointsBadge }</span>
+					) }
 
-				{ quizExplainBadge && (
-					<span
-						className="nf-card__quiz-badge nf-card__quiz-badge--explain"
-						title={ __( 'Explanation will be shown after submit', 'neural-forms-lite' ) }
-						aria-label={ __( 'Explanation added', 'neural-forms-lite' ) }
-					>{ __( 'Explanation', 'neural-forms-lite' ) }</span>
-				) }
+					{ quizExplainBadge && (
+						<span
+							className="nf-card__quiz-badge nf-card__quiz-badge--explain"
+							title={ __( 'Explanation will be shown after submit', 'neural-forms-lite' ) }
+							aria-label={ __( 'Explanation added', 'neural-forms-lite' ) }
+						>{ __( 'Explanation', 'neural-forms-lite' ) }</span>
+					) }
 
-				{ hasLogic && (
-					<span
-						className="nf-card__logic-badge"
-						title={ __( 'Conditional logic enabled', 'neural-forms-lite' ) }
-						aria-label={ __( 'Conditional logic enabled', 'neural-forms-lite' ) }
-					>{ __( 'Logic', 'neural-forms-lite' ) }</span>
-				) }
+					{ hasLogic && (
+						<span
+							className="nf-card__logic-badge"
+							title={ __( 'Conditional logic enabled', 'neural-forms-lite' ) }
+							aria-label={ __( 'Conditional logic enabled', 'neural-forms-lite' ) }
+						>{ __( 'Logic', 'neural-forms-lite' ) }</span>
+					) }
+				</div>
 
 				<div className="nf-card__actions">
 					<button
