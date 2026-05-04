@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 
 define( 'NEURAL_FORMS_LITE_VERSION',    '1.0.0' );
 define( 'NEURAL_FORMS_VERSION',         NEURAL_FORMS_LITE_VERSION );
-define( 'NEURAL_FORMS_DB_VERSION',      '1.0.0' );
+define( 'NEURAL_FORMS_DB_VERSION',      '1.1.0' );
 define( 'NEURAL_FORMS_CAP_MANAGE_FORMS', 'neural_forms_manage_forms' );
 define( 'NEURAL_FORMS_FILE',      __FILE__ );
 define( 'NEURAL_FORMS_PATH',      plugin_dir_path( __FILE__ ) );  // trailing slash

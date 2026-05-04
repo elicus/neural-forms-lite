@@ -1,26 +1,35 @@
 /**
- * Results screen header chrome: title, form selector, refresh button.
+ * Analytics screen header — Stats dashboard pattern: thin underline,
+ * no card chrome, title + helper text on the left, form selector +
+ * refresh button on the right.
  */
 
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 
 export default function ResultsHeader( {
 	forms,
 	formsLoading,
 	formsError,
 	selectedId,
+	selectedFormName,
 	onSelect,
 	onRefresh,
 	refreshing,
 	canRefresh,
 } ) {
+	const helper = selectedFormName
+		? sprintf(
+			/* translators: %s: form name */
+			__( 'Showing analytics for %s', 'neural-forms-lite' ),
+			selectedFormName
+		)
+		: __( 'Select a form to view its submission, poll, and quiz analytics.', 'neural-forms-lite' );
+
 	return (
 		<header className="nf-results__header">
 			<div className="nf-results__title-wrap">
-				<h1 className="nf-results__title">{ __( 'Results', 'neural-forms-lite' ) }</h1>
-				<p className="nf-results__subtitle">
-					{ __( 'Poll, survey, and analytics insights for your forms.', 'neural-forms-lite' ) }
-				</p>
+				<h1 className="nf-results__title">{ __( 'Form Analytics', 'neural-forms-lite' ) }</h1>
+				<p className="nf-results__subtitle">{ helper }</p>
 			</div>
 
 			<div className="nf-results__controls">

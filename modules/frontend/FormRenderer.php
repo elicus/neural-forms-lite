@@ -248,6 +248,21 @@ class FormRenderer {
 		if ( ! in_array( $progress_indicator, [ 'numbers', 'bar', 'none' ], true ) ) {
 			$progress_indicator = 'numbers';
 		}
+
+		// Block-level override. The Neural Multi Step block exposes a
+		// SelectControl that lets the page author override the form's
+		// stored progress-indicator style PER PLACEMENT — without
+		// touching form_schema.settings.multistep.progress_indicator,
+		// which other placements / shortcode users still depend on.
+		// Only honoured for the well-defined values; an empty string
+		// (the "Use form setting" choice) leaves the schema value alone.
+		$progress_override = isset( $options['progress_indicator_override'] )
+			? (string) $options['progress_indicator_override']
+			: '';
+		if ( in_array( $progress_override, [ 'numbers', 'bar', 'none' ], true ) ) {
+			$progress_indicator = $progress_override;
+		}
+
 		$show_progress = $has_steps && $progress_indicator !== 'none';
 
 		// ' Honeypot '

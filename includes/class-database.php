@@ -65,6 +65,22 @@ class Database {
     public static function maybe_upgrade(): void {
         if ( self::needs_upgrade() ) {
             self::create_tables();
+
+            // 1.1.0+ slug uniqueness repair. Existing installs may
+            // have accumulated duplicate form slugs before the
+            // hardened generate_unique_slug() guards landed in
+            // create/update. Repair is idempotent: a clean table is a
+            // no-op. Wrapped in a class_exists guard so this method
+            // never fatals during a partial-load upgrade where the
+            // forms autoloader hasn't run yet.
+            if ( class_exists( '\\NeuralForms\\Forms\\FormRepository' ) ) {
+                try {
+                    \NeuralForms\Forms\FormRepository::repair_duplicate_slugs();
+                } catch ( \Throwable $e ) {
+                    // Don't break the upgrade if repair throws — the
+                    // schema work has already succeeded.
+                }
+            }
         }
     }
 

@@ -180,7 +180,9 @@
         "labelMarginBottom":     { "type": "string",  "default": "" },
         "labelMarginLeft":       { "type": "string",  "default": "" },
 
-        "extraClass":            { "type": "string",  "default": "" }
+        "extraClass":            { "type": "string",  "default": "" },
+
+        "progressIndicatorOverride": { "type": "string", "default": "" }
     },
 
     "editorScript": "neural-forms-block",

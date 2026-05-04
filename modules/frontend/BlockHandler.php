@@ -100,6 +100,98 @@ class BlockHandler {
 				'editor_style'   => 'neural-forms-block-editor',
 			]
 		);
+
+		// 0.2.0: register the 3 extra blocks (quiz / multi-step / poll).
+		static::register_extra_blocks();
+	}
+
+	/**
+	 * Register the 3 extra blocks added in 0.2.0:
+	 *
+	 *   - neural-forms/quiz
+	 *   - neural-forms/multi-step
+	 *   - neural-forms/poll
+	 *
+	 * They share the form block's full attribute schema (so this same
+	 * render() method renders any of them) and a single editor-script
+	 * bundle (build/blocks-extra.js, compiled from
+	 * src/blocks-extra-entry.js via `npm run build:blocks-extra`).
+	 *
+	 * Why they're registered programmatically rather than each having
+	 * its own block.json: their attribute schema is an exact clone of
+	 * the form block's, and three near-duplicate 200-line block.json
+	 * files would drift the moment a new attribute is added. The
+	 * single source of truth stays in modules/frontend/block/block.json.
+	 */
+	private static function register_extra_blocks(): void {
+		$asset_file = NEURAL_FORMS_PATH . 'modules/admin/build/blocks-extra.asset.php';
+		$asset      = file_exists( $asset_file )
+			? require $asset_file
+			: [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+
+		wp_register_script(
+			'neural-forms-blocks-extra',
+			NEURAL_FORMS_URL . 'modules/admin/build/blocks-extra.js',
+			$asset['dependencies'],
+			$asset['version'],
+			true
+		);
+
+		// Read the form block's metadata once so attribute + supports
+		// schemas stay in sync across all 4 blocks. If block.json is
+		// missing or unreadable for any reason, bail rather than
+		// registering blocks with no attributes (which would corrupt
+		// every saved instance on the next editor load).
+		$base_json = @file_get_contents( __DIR__ . '/block/block.json' );
+		if ( $base_json === false ) {
+			return;
+		}
+		$base = json_decode( $base_json, true );
+		if ( ! is_array( $base ) ) {
+			return;
+		}
+		$attributes = isset( $base['attributes'] ) && is_array( $base['attributes'] ) ? $base['attributes'] : [];
+		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
+
+		$blocks = [
+			[
+				'name'        => 'neural-forms/quiz',
+				'title'       => __( 'Neural Quiz', 'neural-forms-lite' ),
+				'description' => __( 'Embed a Neural Forms quiz on any post or page. Picks up forms with quiz_question fields.', 'neural-forms-lite' ),
+				'keywords'    => [ 'quiz', 'questions', 'score' ],
+			],
+			[
+				'name'        => 'neural-forms/multi-step',
+				'title'       => __( 'Neural Multi Step', 'neural-forms-lite' ),
+				'description' => __( 'Embed a multi-step Neural Forms form. Picks up forms with two or more Step layout blocks.', 'neural-forms-lite' ),
+				'keywords'    => [ 'multi-step', 'wizard', 'steps' ],
+			],
+			[
+				'name'        => 'neural-forms/poll',
+				'title'       => __( 'Neural Poll', 'neural-forms-lite' ),
+				'description' => __( 'Embed a Neural Forms poll. Picks up forms that contain a Poll field.', 'neural-forms-lite' ),
+				'keywords'    => [ 'poll', 'survey', 'vote' ],
+			],
+		];
+
+		foreach ( $blocks as $b ) {
+			register_block_type(
+				$b['name'],
+				[
+					'api_version'     => 3,
+					'title'           => $b['title'],
+					'description'     => $b['description'],
+					'category'        => 'embed',
+					'keywords'        => $b['keywords'],
+					'textdomain'      => 'neural-forms-lite',
+					'attributes'      => $attributes,
+					'supports'        => $supports,
+					'editor_script'   => 'neural-forms-blocks-extra',
+					'editor_style'    => 'neural-forms-block-editor',
+					'render_callback' => [ static::class, 'render' ],
+				]
+			);
+		}
 	}
 
 	// Render callback
@@ -138,6 +230,14 @@ class BlockHandler {
 			'show_placeholders' => ! isset( $attributes['showPlaceholders'] )
 				|| $attributes['showPlaceholders'] !== false,
 		];
+
+		// Multi-Step block (and the form block, harmlessly): per-placement
+		// progress-indicator override. Empty string = "Use form setting"
+		// → no override. Any other value is validated by FormRenderer.
+		$progress_override = (string) ( $attributes['progressIndicatorOverride'] ?? '' );
+		if ( $progress_override !== '' ) {
+			$render_options['progress_indicator_override'] = $progress_override;
+		}
 
 		// In editor context, render the form without enqueuing the submission
 		// handler JS - the preview should be visual only, not interactive.

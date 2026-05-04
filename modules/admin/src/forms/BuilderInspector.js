@@ -856,6 +856,16 @@ function RowInspector( { hit, nodes, onChange } ) {
 }
 
 function EmptyInspector() {
+	// Reads the Pro-capability flag Lite localizes at boot. When Pro is
+	// active (capability true), the left sidebar's AiPromptPanel owns
+	// every state of AI generation — render-as-textarea / connect-cloud
+	// / activate-license / out-of-credits — so a duplicate card here
+	// would either repeat that state or, worse, ship the obsolete
+	// "Soon you will be able…" copy that predates the feature shipping.
+	const root = ( typeof window !== 'undefined' && window.neuralFormsAdmin ) || {};
+	const caps = ( root.plugin && root.plugin.capabilities ) || {};
+	const proInstalled = !! caps.ai_form_generate;
+
 	return (
 		<>
 			<h3 className="nf-inspector__title">{ __( 'Inspector', 'neural-forms-lite' ) }</h3>
@@ -872,15 +882,29 @@ function EmptyInspector() {
 				</ul>
 			</div>
 
-			<div className="nf-inspector__ai-card">
-				<h4 className="nf-inspector__ai-title">
-					{ __( 'AI form generation', 'neural-forms-lite' ) }
-					<span className="nf-inspector__ai-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
-				</h4>
-				<p className="nf-inspector__ai-hint">
-					{ __( 'Soon you will be able to describe the form you want and Neural Forms will draft the fields for you.', 'neural-forms-lite' ) }
-				</p>
-			</div>
+			{ /* Pro-only upsell. When Pro is active, the left sidebar
+			     AiPromptPanel handles every connect/license/credit/
+			     working state — rendering anything here would either
+			     duplicate that or contradict it. */ }
+			{ ! proInstalled && (
+				<div className="nf-inspector__ai-card">
+					<h4 className="nf-inspector__ai-title">
+						{ __( 'AI form generation', 'neural-forms-lite' ) }
+						<span className="nf-inspector__ai-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
+					</h4>
+					<p className="nf-inspector__ai-hint">
+						{ __( 'Generate complete forms from a short prompt with Neural Forms Pro.', 'neural-forms-lite' ) }
+					</p>
+					<a
+						className="neural-forms-btn neural-forms-btn--primary nf-inspector__ai-cta"
+						href="https://neuralforms.ai/pricing"
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
+					</a>
+				</div>
+			) }
 		</>
 	);
 }

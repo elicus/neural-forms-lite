@@ -3,7 +3,9 @@ namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Core\Logger;
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\FormTypeDetector;
 use NeuralForms\Forms\FormValidator;
+use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
 use WP_Error;
 
@@ -144,6 +146,8 @@ class FormsEndpoint {
             $rows_key = 'forms';
         }
         if ( $rows_key !== null ) {
+            // Pass 1: schema-derived fields (poll/quiz/type) and id collection.
+            $form_ids = [];
             foreach ( $result[ $rows_key ] as &$form_row ) {
                 $poll_count = self::poll_count_for_schema( $form_row['form_schema'] ?? null );
                 $quiz_count = self::quiz_count_for_schema( $form_row['form_schema'] ?? null );
@@ -151,6 +155,26 @@ class FormsEndpoint {
                 $form_row['has_polls']  = $poll_count > 0;
                 $form_row['quiz_count'] = $quiz_count;
                 $form_row['has_quiz']   = $quiz_count > 0;
+
+                $detected_type = FormTypeDetector::detect( $form_row['form_schema'] ?? null );
+                $form_row['detected_type']       = $detected_type;
+                $form_row['detected_type_label'] = FormTypeDetector::label( $detected_type );
+
+                $fid = (int) ( $form_row['id'] ?? 0 );
+                if ( $fid > 0 ) $form_ids[] = $fid;
+            }
+            unset( $form_row );
+
+            // Pass 2: one grouped query for entry/spam counts across the page.
+            $totals = ! empty( $form_ids )
+                ? EntryRepository::count_form_totals( $form_ids )
+                : [];
+
+            foreach ( $result[ $rows_key ] as &$form_row ) {
+                $fid = (int) ( $form_row['id'] ?? 0 );
+                $row = $totals[ $fid ] ?? [ 'entry_count' => 0, 'spam_count' => 0 ];
+                $form_row['entry_count'] = (int) $row['entry_count'];
+                $form_row['spam_count']  = (int) $row['spam_count'];
             }
             unset( $form_row );
         }

@@ -11,6 +11,7 @@
     "start": "wp-scripts start --webpack-src-dir=src --output-path=build",
     "build:builder": "wp-scripts build --config webpack.split.config.js --env screen=builder",
     "build:results": "wp-scripts build --config webpack.split.config.js --env screen=results",
+    "build:blocks-extra": "wp-scripts build --config webpack.split.config.js --env screen=blocks-extra",
     "build:forms": "wp-scripts build --config webpack.split.config.js --env screen=forms",
     "build:entries": "wp-scripts build --config webpack.split.config.js --env screen=entries",
     "build:settings": "wp-scripts build --config webpack.split.config.js --env screen=settings",

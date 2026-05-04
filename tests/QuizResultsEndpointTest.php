@@ -82,6 +82,23 @@ class NF_Quiz_Endpoint_WPDB {
 		}
 		return $n;
 	}
+	public function get_results( $query, $output = null ) {
+		// Pattern: SELECT id, submitted_at, data FROM ... WHERE form_id = %d AND status != %s ORDER BY id DESC LIMIT %d OFFSET %d
+		[ , $form_id, $status_filter, $limit, $offset ] = $query['args'];
+		$matches = [];
+		foreach ( $this->rows as $r ) {
+			if ( (int) $r['form_id'] !== (int) $form_id ) continue;
+			if ( $r['status'] === $status_filter ) continue;
+			$matches[] = [
+				'id'           => $r['id'],
+				'submitted_at' => $r['submitted_at'] ?? '2026-05-02 10:00:00',
+				'data'         => $r['data'],
+			];
+		}
+		// id DESC
+		usort( $matches, static fn( $a, $b ) => (int) $b['id'] - (int) $a['id'] );
+		return array_slice( $matches, (int) $offset, (int) $limit );
+	}
 }
 $GLOBALS['wpdb'] = new NF_Quiz_Endpoint_WPDB();
 

@@ -8,31 +8,48 @@
  */
 
 #neural-forms-results-app {
+	/* Token values mirror the Stats screen's --f-* dashboard tokens
+	 * (--f-blue-600, --f-green-600, --f-radius-xl, --f-shadow-xs,
+	 * --f-gray-200, --f-gray-500, --f-gray-900) so Analytics reads
+	 * as the same dashboard family as Stats. The local --nfr-*
+	 * names stay so existing class hooks keep working without a
+	 * mass rename. */
 	--nfr-primary:      #080f5b;
+	--nfr-primary-dark: #050942;
 	--nfr-primary-soft: rgba( 8, 15, 91, 0.08 );
 	--nfr-accent:       #15db95;
-	--nfr-text:         #1f2937;
+	--nfr-accent-soft:  #e6fbf3;
+	--nfr-text:         #111827;
 	--nfr-muted:        #6b7280;
+	--nfr-muted-strong: #4b5563;
 	--nfr-border:       #e5e7eb;
+	--nfr-border-soft:  #f3f4f6;
 	--nfr-card-bg:      #ffffff;
-	--nfr-page-bg:      #f7f8fc;
-	--nfr-radius:       10px;
-	--nfr-shadow:       0 1px 2px rgba( 17, 24, 39, 0.04 );
+	--nfr-page-bg:      #f9fafb;
+	--nfr-radius:       14px;
+	--nfr-radius-pill:  9999px;
+	--nfr-shadow:       0 1px 3px rgba( 0, 0, 0, 0.07 ), 0 1px 2px rgba( 0, 0, 0, 0.04 );
 
 	color: var( --nfr-text );
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-	max-width: 1200px;
-	margin: 0 auto;
-	padding: 16px 4px 48px;
+	max-width: 960px;
+	/* Left-aligned inside the WP admin .wrap, matching the Stats page
+	 * (.neural-forms-stats { max-width: 960px } with no margin:auto).
+	 * margin:0 (not 0 auto) keeps the container flush to the .wrap's
+	 * native left edge instead of centering on wide screens. */
+	margin: 0;
+	padding: 0 0 48px;
 }
 
 .nf-results {
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
+	gap: 16px;
 }
 
-/* Header */
+/* Header — Stats dashboard pattern: thin underline, no card chrome.
+ * Mirrors .neural-forms-stats__header { border-bottom; padding 0 0 20px;
+ * margin-bottom 24px } so the page reads as the same family as Stats. */
 
 #neural-forms-results-app .nf-results__header {
 	display: flex;
@@ -40,23 +57,25 @@
 	justify-content: space-between;
 	gap: 16px;
 	flex-wrap: wrap;
-	background: var( --nfr-card-bg );
-	border: 1px solid var( --nfr-border );
-	border-radius: var( --nfr-radius );
-	padding: 18px 20px;
-	box-shadow: var( --nfr-shadow );
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var( --nfr-border );
+	border-radius: 0;
+	padding: 0 0 20px;
+	box-shadow: none;
+	margin-bottom: 8px;
 }
 
 #neural-forms-results-app .nf-results__title {
-	margin: 0;
-	font-size: 24px;
-	font-weight: 700;
-	color: var( --nfr-primary );
-	line-height: 1.2;
+	margin: 0 0 2px;
+	font-size: 22px;
+	font-weight: 600;
+	color: var( --nfr-text );
+	line-height: 1.3;
 }
 
 #neural-forms-results-app .nf-results__subtitle {
-	margin: 4px 0 0;
+	margin: 0;
 	font-size: 13px;
 	color: var( --nfr-muted );
 }
@@ -106,66 +125,86 @@
 
 #neural-forms-results-app .nf-results__refresh {
 	height: 36px;
-	padding: 0 14px;
+	padding: 0 16px;
 	background: var( --nfr-primary );
 	color: #fff;
-	border: none;
-	border-radius: 6px;
+	border: 1px solid var( --nfr-primary );
+	border-radius: 4px;
 	font-size: 13px;
-	font-weight: 600;
+	font-weight: 500;
+	line-height: 1;
 	cursor: pointer;
-	transition: background 120ms ease;
+	transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 #neural-forms-results-app .nf-results__refresh:hover:not([disabled]) {
-	background: #060c47;
+	background: var( --nfr-primary-dark );
+	border-color: var( --nfr-primary-dark );
 }
 
 #neural-forms-results-app .nf-results__refresh[disabled] {
 	background: #9ca3af;
+	border-color: #9ca3af;
 	cursor: default;
 }
 
-/* Form name */
+/* Form name — kept as a sub-heading inside the body for consumers
+ * that still render it; new layout shows the form name in the header
+ * subtitle so this rule is mostly load-bearing for any third-party
+ * Pro renders that mount under #neural-forms-results-app. */
 
 #neural-forms-results-app .nf-results__form-name {
 	margin: 0;
-	font-size: 16px;
-	font-weight: 600;
-	color: var( --nfr-text );
+	font-size: 13px;
+	font-weight: 500;
+	color: var( --nfr-muted );
+	display: none;
 }
 
-/* KPI cards */
+/* KPI card grid — Stats dashboard pattern: 4-column grid, 12px gap,
+ * 16px bottom margin. Mobile collapses to 2 columns to match Stats. */
 
 #neural-forms-results-app .nf-results__cards {
 	display: grid;
-	grid-template-columns: repeat( auto-fit, minmax( 180px, 1fr ) );
+	grid-template-columns: repeat( 4, 1fr );
 	gap: 12px;
+	margin-bottom: 16px;
 }
 
+@media ( max-width: 1024px ) {
+	#neural-forms-results-app .nf-results__cards {
+		grid-template-columns: repeat( 2, 1fr );
+	}
+}
+
+/* Default card: white with border. Stats radius/shadow tokens. The
+ * value renders in navy text so the card reads as a calm dashboard
+ * stat instead of a flat panel. */
 #neural-forms-results-app .nf-results__card {
 	background: var( --nfr-card-bg );
 	border: 1px solid var( --nfr-border );
 	border-radius: var( --nfr-radius );
-	padding: 16px 18px;
+	padding: 20px;
 	box-shadow: var( --nfr-shadow );
+	transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-#neural-forms-results-app .nf-results__card--accent {
-	background: linear-gradient( 135deg, var( --nfr-primary ) 0%, #1a247a 100% );
-	border-color: transparent;
-	color: #fff;
-}
-
-#neural-forms-results-app .nf-results__card--accent .nf-results__card-label {
-	color: rgba( 255, 255, 255, 0.85 );
+@media ( max-width: 1024px ) {
+	#neural-forms-results-app .nf-results__card {
+		padding: 14px 16px;
+	}
 }
 
 #neural-forms-results-app .nf-results__card-value {
-	font-size: 28px;
+	font-size: 30px;
 	font-weight: 700;
 	line-height: 1;
 	font-variant-numeric: tabular-nums;
+	color: var( --nfr-primary );
+}
+
+@media ( max-width: 1024px ) {
+	#neural-forms-results-app .nf-results__card-value { font-size: 24px; }
 }
 
 #neural-forms-results-app .nf-results__card-label {
@@ -175,12 +214,35 @@
 	font-weight: 500;
 }
 
-/* Section */
+/* Accent / highlight card — first card in the grid. Mirrors the Stats
+ * --highlight variant: dark navy bg + mint border, white value text. */
+#neural-forms-results-app .nf-results__card--accent {
+	background: var( --nfr-primary-dark );
+	border-color: var( --nfr-accent );
+	color: #ffffff;
+}
+
+#neural-forms-results-app .nf-results__card--accent .nf-results__card-value {
+	color: #ffffff;
+}
+
+#neural-forms-results-app .nf-results__card--accent .nf-results__card-label {
+	color: rgba( 255, 255, 255, 0.78 );
+}
+
+/* Section — Stats card pattern: white card, gray-200 border, 14px
+ * radius, padding 20px 24px, margin-bottom 16px. */
 
 #neural-forms-results-app .nf-results__section {
+	background: var( --nfr-card-bg );
+	border: 1px solid var( --nfr-border );
+	border-radius: var( --nfr-radius );
+	padding: 20px 24px;
+	margin-bottom: 0;
+	box-shadow: var( --nfr-shadow );
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 14px;
 }
 
 #neural-forms-results-app .nf-results__section-head {
@@ -189,17 +251,23 @@
 	gap: 2px;
 }
 
+/* Section title — Stats caps style. */
 #neural-forms-results-app .nf-results__section-title {
-	margin: 0;
-	font-size: 16px;
+	margin: 0 0 2px;
+	font-size: 11.5px;
 	font-weight: 700;
-	color: var( --nfr-primary );
+	color: var( --nfr-muted );
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
 }
 
 #neural-forms-results-app .nf-results__section-subtitle {
 	margin: 0;
-	font-size: 12px;
+	font-size: 12.5px;
 	color: var( --nfr-muted );
+	font-weight: 400;
+	letter-spacing: 0;
+	text-transform: none;
 }
 
 /* Poll grid */
@@ -361,6 +429,157 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* Badge row — points / total / correct rate / difficulty.
+ * All chips share the same shape; color signals meaning. */
+#neural-forms-results-app .nf-results__quiz-card-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: -4px;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 9px;
+	border-radius: var( --nfr-radius-pill );
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--points {
+	background: var( --nfr-primary-soft );
+	color: var( --nfr-primary );
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--neutral {
+	background: var( --nfr-border-soft );
+	color: var( --nfr-muted-strong );
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--rate {
+	background: var( --nfr-primary );
+	color: #ffffff;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--easy {
+	background: var( --nfr-accent-soft );
+	color: #0f766e;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--medium {
+	background: rgba( 217, 119, 6, 0.10 );
+	color: #b45309;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--hard {
+	background: rgba( 220, 38, 38, 0.08 );
+	color: #b91c1c;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-badge--none {
+	background: var( --nfr-border-soft );
+	color: var( --nfr-muted );
+}
+
+/* Summary row — donut + stacked bar side by side. */
+#neural-forms-results-app .nf-results__quiz-summary {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 12px 14px;
+	background: var( --nfr-border-soft );
+	border-radius: 10px;
+}
+
+#neural-forms-results-app .nf-results__quiz-summary-body {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+#neural-forms-results-app .nf-results__quiz-summary-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 12px;
+}
+
+#neural-forms-results-app .nf-results__quiz-summary-label {
+	color: var( --nfr-muted-strong );
+	font-weight: 600;
+}
+
+#neural-forms-results-app .nf-results__quiz-summary-meta {
+	color: var( --nfr-muted );
+	font-variant-numeric: tabular-nums;
+}
+
+/* Stacked correct/wrong bar.
+ * .correct uses navy → mint gradient.
+ * .wrong uses neutral grey. flex with widths drives the split. */
+#neural-forms-results-app .nf-results__quiz-stacked {
+	display: flex;
+	height: 10px;
+	border-radius: var( --nfr-radius-pill );
+	overflow: hidden;
+	background: #e5e7eb;
+}
+
+#neural-forms-results-app .nf-results__quiz-stacked-correct {
+	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
+	transition: width 250ms ease;
+}
+
+#neural-forms-results-app .nf-results__quiz-stacked-wrong {
+	background: #d1d5db;
+	transition: width 250ms ease;
+}
+
+/* Compact CSS conic-gradient donut.
+ * --pct (0–100) drives the arc; ::after carves the donut hole.
+ * Center label sits above via z-index. Kept small (60px) so the
+ * card never feels busy — the per-option bars below carry the
+ * detail. */
+#neural-forms-results-app .nf-results__quiz-donut {
+	position: relative;
+	flex: 0 0 auto;
+	width: 60px;
+	height: 60px;
+	border-radius: 50%;
+	background: conic-gradient(
+		var( --nfr-accent ) 0% calc( var( --pct, 0 ) * 1% ),
+		#e5e7eb calc( var( --pct, 0 ) * 1% ) 100%
+	);
+}
+
+#neural-forms-results-app .nf-results__quiz-donut::after {
+	content: '';
+	position: absolute;
+	inset: 7px;
+	background: var( --nfr-card-bg );
+	border-radius: 50%;
+}
+
+#neural-forms-results-app .nf-results__quiz-donut__center {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11.5px;
+	font-weight: 700;
+	color: var( --nfr-primary );
+	z-index: 1;
+	font-variant-numeric: tabular-nums;
+}
+
 #neural-forms-results-app .nf-results__quiz-card-empty {
 	margin: 0;
 	font-size: 12px;
@@ -486,18 +705,54 @@
 	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
 }
 
+#neural-forms-results-app .nf-results__quiz-card-row--most-wrong .nf-results__quiz-card-row-fill {
+	background: linear-gradient( 90deg, #f59e0b 0%, #fbbf24 100% );
+}
+
 #neural-forms-results-app .nf-results__quiz-card-row--other .nf-results__quiz-card-row-fill {
 	background: #cbd5e0;
 }
 
-/* Empty / loading / error block */
+/* Per-option helper line ("Correct answer", "Most common wrong",
+ * "Top vote"). Sits between the label/count head and the bar. */
+#neural-forms-results-app .nf-results__quiz-card-row-helper,
+#neural-forms-results-app .nf-results__poll-card-row-helper {
+	margin: 2px 0 0;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: var( --nfr-muted );
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row--correct .nf-results__quiz-card-row-helper {
+	color: #15803d;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row--most-wrong .nf-results__quiz-card-row-helper {
+	color: #b45309;
+}
+
+#neural-forms-results-app .nf-results__poll-card-row--top .nf-results__poll-card-row-helper {
+	color: var( --nfr-primary );
+}
+
+/* Top-vote poll bar accent — slightly mintier so the leader pops
+ * without breaking the chart's neutral hierarchy. */
+#neural-forms-results-app .nf-results__poll-card-row--top .nf-results__poll-card-bar-fill {
+	background: linear-gradient( 90deg, var( --nfr-accent ) 0%, var( --nfr-primary ) 100% );
+}
+
+/* Empty / loading / error block — Stats card pattern (solid border,
+ * proper radius/shadow) so empty states read as "intentional dashboard
+ * state" instead of dashed-placeholder limbo. */
 
 #neural-forms-results-app .nf-results__empty {
 	background: var( --nfr-card-bg );
-	border: 1px dashed var( --nfr-border );
+	border: 1px solid var( --nfr-border );
 	border-radius: var( --nfr-radius );
-	padding: 32px 20px;
+	padding: 32px 24px;
 	text-align: center;
+	box-shadow: var( --nfr-shadow );
 }
 
 #neural-forms-results-app .nf-results__empty--error {
@@ -520,4 +775,493 @@
 
 #neural-forms-results-app .nf-results__empty--error .nf-results__empty-title {
 	color: #b91c1c;
+}
+
+/* Inline empty (used inside section bodies, not as a full page state) */
+
+#neural-forms-results-app .nf-results__empty-inline {
+	margin: 0;
+	padding: 14px 16px;
+	font-size: 12px;
+	font-style: italic;
+	color: var( --nfr-muted );
+	background: rgba( 8, 15, 91, 0.025 );
+	border: 1px dashed var( --nfr-border );
+	border-radius: var( --nfr-radius );
+}
+
+/* Deep-link orphan note (when ?form_id=N points outside the filtered list) */
+
+#neural-forms-results-app .nf-results__deep-link-note {
+	margin: 0;
+	font-size: 11px;
+	color: var( --nfr-muted );
+	font-style: italic;
+}
+
+/* Insights pane */
+
+#neural-forms-results-app .nf-results__insights-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 280px, 1fr ) );
+	gap: 10px;
+}
+
+#neural-forms-results-app .nf-results__insight {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 12px 14px;
+	background: var( --nfr-card-bg );
+	border: 1px solid var( --nfr-border );
+	border-left: 3px solid var( --nfr-border );
+	border-radius: var( --nfr-radius );
+	box-shadow: var( --nfr-shadow );
+}
+
+#neural-forms-results-app .nf-results__insight--success {
+	border-left-color: #15803d;
+	background: linear-gradient( 90deg, rgba( 21, 128, 61, 0.05 ) 0%, var( --nfr-card-bg ) 60% );
+}
+
+#neural-forms-results-app .nf-results__insight--warning {
+	border-left-color: #d97706;
+	background: linear-gradient( 90deg, rgba( 217, 119, 6, 0.06 ) 0%, var( --nfr-card-bg ) 60% );
+}
+
+#neural-forms-results-app .nf-results__insight--info {
+	border-left-color: var( --nfr-primary );
+	background: linear-gradient( 90deg, rgba( 8, 15, 91, 0.04 ) 0%, var( --nfr-card-bg ) 60% );
+}
+
+#neural-forms-results-app .nf-results__insight-icon {
+	flex: 0 0 auto;
+	width: 22px;
+	height: 22px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1;
+	color: #fff;
+}
+
+#neural-forms-results-app .nf-results__insight--success .nf-results__insight-icon {
+	background: #15803d;
+}
+
+#neural-forms-results-app .nf-results__insight--warning .nf-results__insight-icon {
+	background: #d97706;
+}
+
+#neural-forms-results-app .nf-results__insight--info .nf-results__insight-icon {
+	background: var( --nfr-primary );
+}
+
+#neural-forms-results-app .nf-results__insight-body {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+#neural-forms-results-app .nf-results__insight-title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nfr-text );
+	line-height: 1.35;
+}
+
+#neural-forms-results-app .nf-results__insight-message {
+	margin: 0;
+	font-size: 12px;
+	color: var( --nfr-muted );
+	line-height: 1.4;
+}
+
+/* Individual Attempts table */
+
+#neural-forms-results-app .nf-attempts__wrap {
+	background: var( --nfr-card-bg );
+	border: 1px solid var( --nfr-border );
+	border-radius: var( --nfr-radius );
+	box-shadow: var( --nfr-shadow );
+	overflow-x: auto;
+}
+
+#neural-forms-results-app .nf-attempts__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+#neural-forms-results-app .nf-attempts__th {
+	text-align: left;
+	padding: 10px 12px;
+	background: rgba( 8, 15, 91, 0.03 );
+	border-bottom: 1px solid var( --nfr-border );
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var( --nfr-muted );
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-attempts__th--actions {
+	text-align: right;
+}
+
+#neural-forms-results-app .nf-attempts__td {
+	padding: 10px 12px;
+	border-bottom: 1px solid var( --nfr-border );
+	color: var( --nfr-text );
+	vertical-align: top;
+}
+
+#neural-forms-results-app .nf-attempts__row:hover .nf-attempts__td {
+	background: rgba( 8, 15, 91, 0.02 );
+}
+
+#neural-forms-results-app .nf-attempts__row.is-expanded .nf-attempts__td {
+	background: rgba( 8, 15, 91, 0.04 );
+	border-bottom-color: transparent;
+}
+
+#neural-forms-results-app .nf-attempts__td--id {
+	color: var( --nfr-muted );
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	font-size: 12px;
+}
+
+#neural-forms-results-app .nf-attempts__td--meta {
+	color: var( --nfr-muted );
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-attempts__td--score {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-attempts__pct {
+	color: var( --nfr-muted );
+	font-size: 12px;
+}
+
+#neural-forms-results-app .nf-attempts__td--summary {
+	color: var( --nfr-muted );
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-attempts__td--actions {
+	text-align: right;
+	white-space: nowrap;
+	min-width: 220px;
+}
+
+/* Wrap both action controls so they share consistent spacing and
+ * never overflow the cell. flex:end keeps them right-aligned to
+ * match the column's text-align. */
+#neural-forms-results-app .nf-attempts__action-group {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	justify-content: flex-end;
+	white-space: nowrap;
+	flex-wrap: nowrap;
+}
+
+/* Pass / fail / neutral verdict */
+
+#neural-forms-results-app .nf-attempts__verdict {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+#neural-forms-results-app .nf-attempts__verdict--passed {
+	background: rgba( 21, 128, 61, 0.1 );
+	color: #15803d;
+}
+
+#neural-forms-results-app .nf-attempts__verdict--failed {
+	background: rgba( 185, 28, 28, 0.1 );
+	color: #b91c1c;
+}
+
+#neural-forms-results-app .nf-attempts__verdict--neutral {
+	background: transparent;
+	color: var( --nfr-muted );
+	font-weight: 500;
+}
+
+/* Action buttons */
+
+#neural-forms-results-app .nf-attempts__expand-btn {
+	background: transparent;
+	border: 1px solid var( --nfr-border );
+	color: var( --nfr-primary );
+	border-radius: 6px;
+	padding: 4px 10px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease;
+}
+
+#neural-forms-results-app .nf-attempts__expand-btn:hover {
+	background: var( --nfr-primary-soft );
+	border-color: var( --nfr-primary );
+}
+
+/* "View entry" — small secondary button. Mint accent on navy text so
+ * it reads as the primary attempt action without overpowering the
+ * row's "Show answers" toggle. */
+#neural-forms-results-app .nf-attempts__view-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px 12px;
+	border-radius: 6px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	background: rgba( 21, 219, 149, 0.12 );
+	color: var( --nfr-primary );
+	border: 1px solid rgba( 21, 219, 149, 0.45 );
+	text-decoration: none;
+	transition: background 120ms ease, border-color 120ms ease;
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-attempts__view-btn:hover,
+#neural-forms-results-app .nf-attempts__view-btn:focus {
+	background: rgba( 21, 219, 149, 0.22 );
+	border-color: rgba( 21, 219, 149, 0.65 );
+	color: var( --nfr-primary );
+	text-decoration: none;
+}
+
+/* Expanded answers row */
+
+#neural-forms-results-app .nf-attempts__detail-row .nf-attempts__detail-cell {
+	background: rgba( 8, 15, 91, 0.04 );
+	padding: 0 12px 14px;
+	border-bottom: 1px solid var( --nfr-border );
+}
+
+#neural-forms-results-app .nf-attempts__answers {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 260px, 1fr ) );
+	gap: 8px;
+}
+
+#neural-forms-results-app .nf-attempts__answer {
+	background: var( --nfr-card-bg );
+	border: 1px solid var( --nfr-border );
+	border-left: 3px solid var( --nfr-border );
+	border-radius: 8px;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+#neural-forms-results-app .nf-attempts__answer--correct {
+	border-left-color: #15803d;
+}
+
+#neural-forms-results-app .nf-attempts__answer--incorrect {
+	border-left-color: #b91c1c;
+}
+
+#neural-forms-results-app .nf-attempts__answer-q {
+	margin: 0;
+	font-size: 12px;
+	font-weight: 600;
+	color: var( --nfr-text );
+	line-height: 1.35;
+}
+
+#neural-forms-results-app .nf-attempts__answer-line {
+	margin: 0;
+	font-size: 12px;
+	color: var( --nfr-text );
+	display: flex;
+	gap: 6px;
+	align-items: baseline;
+	flex-wrap: wrap;
+}
+
+#neural-forms-results-app .nf-attempts__answer-line--muted {
+	color: var( --nfr-muted );
+	font-style: italic;
+}
+
+#neural-forms-results-app .nf-attempts__answer-tag {
+	font-size: 11px;
+	font-weight: 600;
+}
+
+#neural-forms-results-app .nf-attempts__answer--correct .nf-attempts__answer-tag {
+	color: #15803d;
+}
+
+#neural-forms-results-app .nf-attempts__answer--incorrect .nf-attempts__answer-tag {
+	color: #b91c1c;
+}
+
+#neural-forms-results-app .nf-attempts__answer-meta {
+	margin-left: auto;
+	font-size: 11px;
+	color: var( --nfr-muted );
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-results-app .nf-attempts__answer-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: var( --nfr-muted );
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+#neural-forms-results-app .nf-attempts__answer-value {
+	font-size: 12px;
+	color: var( --nfr-text );
+}
+
+/* Status card text variant — used inside Submission KPI grid. */
+
+#neural-forms-results-app .nf-results__card-value--text {
+	font-size: 18px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	color: var( --nfr-text );
+}
+
+#neural-forms-results-app .nf-results__card--status-active .nf-results__card-value--text {
+	color: #15803d;
+}
+
+#neural-forms-results-app .nf-results__card--status-draft .nf-results__card-value--text {
+	color: var( --nfr-muted );
+}
+
+#neural-forms-results-app .nf-results__card--status-archived .nf-results__card-value--text {
+	color: #b45309;
+}
+
+/* "View entries" CTA — sits inside its own section card now. */
+#neural-forms-results-app .nf-results__simple-cta {
+	margin: 0;
+}
+
+#neural-forms-results-app .nf-results__simple-cta-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 36px;
+	padding: 0 16px;
+	background: var( --nfr-primary );
+	border: 1px solid var( --nfr-primary );
+	border-radius: 4px;
+	color: #ffffff;
+	text-decoration: none;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1;
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#neural-forms-results-app .nf-results__simple-cta-btn:hover,
+#neural-forms-results-app .nf-results__simple-cta-btn:focus {
+	background: var( --nfr-primary-dark );
+	border-color: var( --nfr-primary-dark );
+	color: #ffffff;
+}
+
+/* Section-scoped empty placeholder (lives inside a section, smaller
+ * and dashed compared to the page-wide nf-results__empty). */
+
+#neural-forms-results-app .nf-section__empty {
+	padding: 14px 16px;
+	border: 1px dashed var( --nfr-border );
+	background: rgba( 8, 15, 91, 0.025 );
+	border-radius: var( --nfr-radius );
+}
+
+#neural-forms-results-app .nf-section__empty-title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nfr-text );
+}
+
+#neural-forms-results-app .nf-section__empty-message {
+	margin: 4px 0 0;
+	font-size: 12px;
+	color: var( --nfr-muted );
+}
+
+/* AI Insights / Future Insights — Stats __insight-rows pattern:
+ * label/value rows separated by hairlines, with a "Coming soon"
+ * pill in mint. Reads as a finished card rather than a placeholder
+ * because the rows match the rest of the dashboard's rhythm. */
+
+#neural-forms-results-app .nf-future-insights__rows {
+	display: flex;
+	flex-direction: column;
+}
+
+#neural-forms-results-app .nf-future-insights__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 0;
+	border-bottom: 1px solid var( --nfr-border-soft );
+	font-size: 13px;
+}
+
+#neural-forms-results-app .nf-future-insights__row:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+#neural-forms-results-app .nf-future-insights__row:first-child {
+	padding-top: 0;
+}
+
+#neural-forms-results-app .nf-future-insights__label {
+	color: var( --nfr-muted-strong );
+	font-weight: 500;
+}
+
+#neural-forms-results-app .nf-future-insights__badge {
+	background: var( --nfr-accent-soft );
+	color: #0f766e;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	padding: 2px 10px;
+	border-radius: var( --nfr-radius-pill );
+	text-transform: capitalize;
 }

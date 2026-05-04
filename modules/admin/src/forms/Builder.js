@@ -572,7 +572,35 @@ export default function Builder( { formId, isNew } ) {
 					onSelectStep={ selectStep }
 				>
 					<div className="nf-builder-body">
-						<BuilderSidebar onAddField={ addField } onAddRow={ addRow } onAddStep={ addStep } onAddSection={ addSection } />
+						<BuilderSidebar
+							onAddField={ addField }
+							onAddRow={ addRow }
+							onAddStep={ addStep }
+							onAddSection={ addSection }
+							currentFieldCount={ fields.length }
+							onApplyAiForm={ ( generated, mode ) => {
+								// AI form generator hand-off. mode = 'append' | 'replace'.
+								// On replace, we also adopt the generated name + schema settings.
+								const nextFields = ( generated && generated.form_schema && Array.isArray( generated.form_schema.fields ) )
+									? generated.form_schema.fields
+									: [];
+								if ( mode === 'append' ) {
+									setFields( [ ...fields, ...nextFields ] );
+									return;
+								}
+								// 'replace' (or 'insert' into empty form — same logical write).
+								setForm( {
+									...form,
+									name: generated.name || form.name,
+									form_schema: {
+										...( form.form_schema || {} ),
+										fields: nextFields,
+										settings: ( generated.form_schema && generated.form_schema.settings ) || ( form.form_schema && form.form_schema.settings ) || {},
+									},
+								} );
+								setSaved( false );
+							} }
+						/>
 						<main className="nf-builder-main">
 							<BuilderCanvas
 								nodes={ fields }

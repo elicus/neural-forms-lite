@@ -1,20 +1,40 @@
 /**
- * Top-level Results screen container.
+ * Top-level Analytics screen container.
  *
- * Future-proof structure:
+ * Section-based architecture (v1.1.0+):
+ *
  *   <ResultsApp>
- *     <ResultsHeader>            chrome: title + form selector + refresh
- *     <ResultsOverviewCards>     overview KPIs (entries / votes / polls)
- *     <PollResultsSection>       the only section in v1
- *     <SurveyResultsSection>     <- future
- *     <QuizResultsSection>       <- future
- *     <DropoffSection>           <- future
+ *     <ResultsHeader>     chrome: title + form selector + refresh
+ *     <AnalyticsSection>* one wrapper per descriptor returned by
+ *                         buildSections() — assembled top-down so
+ *                         "add a new section" = "add one entry to
+ *                         buildSections.js".
  *
- * Adding a section later means adding one component and one render
- * call — no routing change, no fetch refactor.
+ * Today's descriptor list:
+ *   1. Overview                 — KPI cards
+ *   2. Submission Analytics     — baseline (when no poll/quiz)
+ *   3. Poll Analytics           — when form has poll fields
+ *   4. Quiz Analytics           — when form has quiz fields
+ *      (bundles ResultsInsights + per-question + attempts table)
+ *   5. Future Insights          — subtle placeholder for AI/demographics
+ *
+ * Future descriptors plug in here without touching this file:
+ *   - Demographics (opt-in, see FutureInsightsSection.js for privacy)
+ *   - Device / source analytics
+ *   - Survey analytics
+ *   - AI summaries (manual trigger; see endpoint TODO in
+ *     FutureInsightsSection.js)
+ *   - Conversion tracking
+ *   - Spam / security trends
  *
  * Data model is single-form scoped: the form selector picks which
  * form's analytics we show. URL ?form_id=123 auto-selects on mount.
+ *
+ * Backend endpoints are UNCHANGED in this refactor — frontend only:
+ * we still call /forms/{id}/polls and /forms/{id}/quiz and normalise
+ * into a section-friendly shape inside buildSections.js. If a
+ * future release ships a unified GET /forms/{id}/analytics, the
+ * server payload can match that shape and the assembler stays put.
  */
 
 import { useEffect, useState, useCallback, useMemo } from '@wordpress/element';
@@ -22,9 +42,8 @@ import { __ } from '@wordpress/i18n';
 import api from '../api';
 import ResultsHeader from './ResultsHeader';
 import EmptyState from './EmptyState';
-import ResultsOverviewCards from './ResultsOverviewCards';
-import PollResultsSection from './PollResultsSection';
-import QuizResultsSection from './QuizResultsSection';
+import AnalyticsSection from './sections/AnalyticsSection';
+import buildSections from './sections/buildSections';
 
 function readFormIdFromUrl() {
 	try {
@@ -176,14 +195,24 @@ export default function ResultsApp() {
 		[ forms, selectedId ]
 	);
 
-	// Forms that should appear in the dropdown: those with polls OR
-	// quiz questions. Sorted by name for stable presentation.
+	// Selector lists ACTIVE forms only — drafts/archived would just
+	// confuse a user looking at analytics for live data. Simple/poll/
+	// quiz/survey/mixed all show up here as long as their status is
+	// 'active'. Sorted by name for stable presentation.
 	const resultsForms = useMemo(
-		() => forms.filter( ( f ) =>
-			Number( f.poll_count ) > 0 || !! f.has_polls
-			|| Number( f.quiz_count ) > 0 || !! f.has_quiz
-		).sort( ( a, b ) => String( a.name || '' ).localeCompare( String( b.name || '' ) ) ),
+		() => forms
+			.filter( ( f ) => String( f.status || '' ).toLowerCase() === 'active' )
+			.sort( ( a, b ) => String( a.name || '' ).localeCompare( String( b.name || '' ) ) ),
 		[ forms ]
+	);
+
+	// Deep-link inactive: ?form_id=N points at an existing form whose
+	// status is draft/archived. We surface a clean message instead of
+	// loading analytics for a form the user can't actually publish.
+	const deepLinkInactive = !! (
+		selectedId > 0
+		&& selectedForm
+		&& String( selectedForm.status || '' ).toLowerCase() !== 'active'
 	);
 
 	// Combined refresh: re-fetches both forms list AND (if a form is
@@ -194,15 +223,30 @@ export default function ResultsApp() {
 	}, [ fetchForms, load, selectedId ] );
 
 	// Deep-link fallback: when ?form_id=N points at a form that's not
-	// in the filtered resultsForms list (could be archived, or its
-	// poll/quiz_count detection failed), still attempt to load
-	// the endpoints directly. The server will return a 404 if the
-	// form genuinely doesn't exist, which surfaces as the error
-	// EmptyState below.
-	const deepLinkOrphan = selectedId > 0 && ! formsLoading && ! resultsForms.find( ( f ) => Number( f.id ) === Number( selectedId ) );
+	// in the filtered resultsForms list AND is not flagged as
+	// inactive (selectedForm is null because the id doesn't resolve
+	// at all — could be a hard-deleted form, or the forms-list page
+	// hasn't fetched it yet). Still attempt to load the endpoints
+	// directly. The server returns 404 if the form genuinely doesn't
+	// exist, which surfaces as the error EmptyState below.
+	const deepLinkOrphan = selectedId > 0
+		&& ! formsLoading
+		&& ! deepLinkInactive
+		&& ! resultsForms.find( ( f ) => Number( f.id ) === Number( selectedId ) );
 
-	const hasPolls = !! ( data && Number( data.poll_count ) > 0 );
-	const hasQuiz  = !! ( quizData && Number( quizData.quiz_count ) > 0 );
+	// Assemble the descriptor list once per data refresh. The render
+	// loop below filters on isAvailable so unavailable sections cost
+	// nothing structurally.
+	const sections = useMemo(
+		() => buildSections( {
+			selectedId,
+			selectedForm,
+			data,
+			quizData,
+			quizError,
+		} ),
+		[ selectedId, selectedForm, data, quizData, quizError ]
+	);
 
 	return (
 		<div className="nf-results">
@@ -211,6 +255,12 @@ export default function ResultsApp() {
 				formsLoading={ formsLoading }
 				formsError={ formsError }
 				selectedId={ selectedId }
+				selectedFormName={
+					( data && data.form_name )
+						|| ( quizData && quizData.form_name )
+						|| ( selectedForm && selectedForm.name )
+						|| ''
+				}
 				onSelect={ setSelectedId }
 				onRefresh={ refreshAll }
 				refreshing={ loading || formsLoading }
@@ -226,63 +276,49 @@ export default function ResultsApp() {
 				/>
 			) }
 
-			{ /* No form selected, no error, dropdown empty. */ }
+			{ /* Zero active forms — nothing to pick. */ }
 			{ ! formsError && selectedId === 0 && ! formsLoading && resultsForms.length === 0 && (
 				<EmptyState
-					title={ __( 'No results yet', 'neural-forms-lite' ) }
-					subtitle={ __( 'Create a form with a Poll or Quiz Question field to start collecting results.', 'neural-forms-lite' ) }
+					title={ __( 'No active forms found.', 'neural-forms-lite' ) }
+					subtitle={ __( 'Activate a form to view analytics.', 'neural-forms-lite' ) }
 				/>
 			) }
 
-			{ /* No form selected but there ARE poll/quiz forms. */ }
+			{ /* Active forms exist, none selected yet. */ }
 			{ ! formsError && selectedId === 0 && ! formsLoading && resultsForms.length > 0 && (
 				<EmptyState
-					title={ __( 'Select a form to view results.', 'neural-forms-lite' ) }
+					title={ __( 'Select a form to view analytics.', 'neural-forms-lite' ) }
 				/>
 			) }
 
-			{ selectedId > 0 && error && (
+			{ /* Deep-link points at a draft/archived form — clean message,
+			     no analytics fetch. Takes precedence over the load/error
+			     branches because we don't want to surface a stale spinner
+			     for a form the user shouldn't be analysing yet. */ }
+			{ ! formsError && deepLinkInactive && (
 				<EmptyState
-					title={ __( 'Could not load results.', 'neural-forms-lite' ) }
+					title={ __( 'This form is not active.', 'neural-forms-lite' ) }
+					subtitle={ __( 'Activate it to view analytics.', 'neural-forms-lite' ) }
+				/>
+			) }
+
+			{ selectedId > 0 && ! deepLinkInactive && error && (
+				<EmptyState
+					title={ __( 'Could not load analytics.', 'neural-forms-lite' ) }
 					subtitle={ error }
 					tone="error"
 				/>
 			) }
 
-			{ selectedId > 0 && ! error && loading && ! data && ! quizData && (
-				<EmptyState title={ __( 'Loading results…', 'neural-forms-lite' ) } />
+			{ selectedId > 0 && ! deepLinkInactive && ! error && loading && ! data && ! quizData && (
+				<EmptyState title={ __( 'Loading analytics…', 'neural-forms-lite' ) } />
 			) }
 
-			{ selectedId > 0 && ! error && ( data || quizData ) && (
+			{ selectedId > 0 && ! deepLinkInactive && ! error && ( data || quizData ) && (
 				<>
-					<h2 className="nf-results__form-name">
-						{ ( ( data && data.form_name ) || ( quizData && quizData.form_name ) || ( selectedForm && selectedForm.name ) || '' ) }
-					</h2>
-
-					<ResultsOverviewCards data={ data } quiz={ quizData } />
-
-					{ hasPolls && (
-						<PollResultsSection polls={ ( data && data.polls ) || [] } />
-					) }
-
-					{ hasQuiz && (
-						<QuizResultsSection quiz={ quizData } />
-					) }
-
-					{ ! hasPolls && ! hasQuiz && (
-						<EmptyState
-							title={ __( 'This form has no poll or quiz fields yet.', 'neural-forms-lite' ) }
-							subtitle={ __( 'Add a Poll or Quiz Question field in the form builder to see results here.', 'neural-forms-lite' ) }
-						/>
-					) }
-
-					{ quizError && (
-						<EmptyState
-							title={ __( 'Quiz analytics could not be loaded.', 'neural-forms-lite' ) }
-							subtitle={ quizError }
-							tone="error"
-						/>
-					) }
+					{ sections.map( ( s ) => (
+						<AnalyticsSection key={ s.id } { ...s } />
+					) ) }
 
 					{ deepLinkOrphan && (
 						<p className="nf-results__deep-link-note">

@@ -15,12 +15,18 @@ import FieldPalette from './FieldPalette';
 import LayoutPalette from './LayoutPalette';
 import AiPromptPanel from './AiPromptPanel';
 
-export default function BuilderSidebar( { onAddField, onAddRow, onAddStep, onAddSection } ) {
+export default function BuilderSidebar( {
+	onAddField, onAddRow, onAddStep, onAddSection,
+	currentFieldCount, onApplyAiForm,
+} ) {
 	return (
 		<aside className="nf-builder-sidebar" aria-label={ __( 'Add fields and layout', 'neural-forms-lite' ) }>
 			<FieldPalette  onAddField={ onAddField } />
 			<LayoutPalette onAddRow={ onAddRow } onAddStep={ onAddStep } onAddSection={ onAddSection } />
-			<AiPromptPanel />
+			<AiPromptPanel
+				currentFieldCount={ currentFieldCount }
+				onApplyForm={ onApplyAiForm }
+			/>
 		</aside>
 	);
 }

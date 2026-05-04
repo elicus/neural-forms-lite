@@ -103,9 +103,10 @@ export default function BuilderHeader( {
 					<a
 						className="neural-forms-btn nf-builder-header__results"
 						href={ resultsHref }
-						title={ __( 'View poll & analytics results for this form', 'neural-forms-lite' ) }
+						title={ __( 'View analytics for this form', 'neural-forms-lite' ) }
+						aria-label={ __( 'Analytics', 'neural-forms-lite' ) }
 					>
-						{ __( 'Results', 'neural-forms-lite' ) }
+						{ __( 'Analytics', 'neural-forms-lite' ) }
 					</a>
 				) }
 				<button

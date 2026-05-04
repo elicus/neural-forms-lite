@@ -399,7 +399,158 @@ class PollsEndpoint {
 			? round( ( $score_sum / ( $max_score * $attempts ) ) * 100, 2 )
 			: 0.0;
 
-		return rest_ensure_response( [
+		// ── Individual Attempts (latest 50) ────────────────────────
+		// Identity is best-effort: prefer the first email field's
+		// value, fall back to a name-like text field, fall back to
+		// "Entry #ID". Heuristic computed once per request.
+		$identity_field_id = self::guess_identity_field( $fields );
+		$attempts_limit    = 50;
+		$entries           = \NeuralForms\Storage\EntryRepository::list_form_entries_with_data( $form_id, $attempts_limit );
+
+		// Form-level quiz settings for pass/fail detection.
+		$schema_settings = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : [];
+		$quiz_form_settings = SchemaHelper::normalize_quiz_form_settings( $schema_settings['quiz'] ?? null );
+		$show_pass_fail   = ! empty( $quiz_form_settings['show_pass_fail'] );
+		$passing_score    = (int) $quiz_form_settings['passing_score'];
+
+		$attempts_payload = [];
+		$pass_count       = 0;
+		$counted_for_pass = 0;
+		$highest_score    = null;
+		$lowest_score     = null;
+
+		foreach ( $entries as $entry ) {
+			$row = $entry['data'];
+			$attempt_score   = 0;
+			$attempt_correct = 0;
+			$attempt_wrong   = 0;
+			$has_quiz_answer = false;
+			$answers_payload = [];
+
+			foreach ( $quiz_fields as $field ) {
+				$fid = (string) ( $field['id'] ?? '' );
+				if ( $fid === '' ) continue;
+
+				$qsettings   = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
+				$default_pts = (int) $qsettings['points'];
+				$options     = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+
+				// Detect weighted scoring (any option.points key).
+				$has_weighted = false;
+				$option_max   = 0;
+				foreach ( $options as $opt ) {
+					$opt = (array) $opt;
+					if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
+						$pts = (int) round( (float) $opt['points'] );
+						if ( $pts < 0 ) $pts = 0;
+						$has_weighted = true;
+						if ( $pts > $option_max ) $option_max = $pts;
+					}
+				}
+				$points_possible = $has_weighted ? $option_max : $default_pts;
+
+				// Correct option lookup.
+				$correct_value = '';
+				$correct_label = '';
+				foreach ( $options as $opt ) {
+					$opt = (array) $opt;
+					if ( empty( $opt['is_correct'] ) ) continue;
+					$opt_label = (string) ( $opt['label'] ?? '' );
+					$opt_raw   = (string) ( $opt['value'] ?? '' );
+					$correct_value = $opt_raw !== '' ? $opt_raw : $opt_label;
+					$correct_label = $opt_label !== '' ? $opt_label : $correct_value;
+					break;
+				}
+
+				// Selected value + label.
+				$raw_sel = $row[ $fid ] ?? null;
+				$selected_value = ( $raw_sel === null || $raw_sel === '' || is_array( $raw_sel ) ) ? null : (string) $raw_sel;
+				$selected_label = null;
+				$selected_pts   = null;
+				if ( $selected_value !== null ) {
+					$has_quiz_answer = true;
+					foreach ( $options as $opt ) {
+						$opt = (array) $opt;
+						$opt_label = (string) ( $opt['label'] ?? '' );
+						$opt_raw   = (string) ( $opt['value'] ?? '' );
+						$effective = $opt_raw !== '' ? $opt_raw : $opt_label;
+						if ( $effective === $selected_value ) {
+							$selected_label = $opt_label !== '' ? $opt_label : $effective;
+							if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
+								$pts = (int) round( (float) $opt['points'] );
+								$selected_pts = $pts < 0 ? 0 : $pts;
+							}
+							break;
+						}
+					}
+				}
+
+				$is_correct = ( $selected_value !== null && $correct_value !== '' && $selected_value === $correct_value );
+				$points_awarded = $has_weighted
+					? ( $selected_pts !== null ? $selected_pts : 0 )
+					: ( $is_correct ? $default_pts : 0 );
+				$attempt_score += $points_awarded;
+				if ( $selected_value !== null ) {
+					if ( $is_correct ) $attempt_correct++;
+					else $attempt_wrong++;
+				}
+
+				$answers_payload[] = [
+					'field_id'        => $fid,
+					'label'           => (string) ( $field['label'] ?? '' ),
+					'selected_value'  => $selected_value,
+					'selected_label'  => $selected_label,
+					'correct'         => $is_correct,
+					'correct_label'   => $correct_label,
+					'points_awarded'  => $points_awarded,
+					'points_possible' => $points_possible,
+				];
+			}
+
+			if ( ! $has_quiz_answer ) continue; // Skip non-attempts.
+
+			$attempt_pct = $max_score > 0 ? round( ( $attempt_score / $max_score ) * 100, 2 ) : 0.0;
+			$attempt_passed = $show_pass_fail ? ( $attempt_pct >= (float) $passing_score ) : null;
+			if ( $show_pass_fail ) {
+				$counted_for_pass++;
+				if ( $attempt_passed ) $pass_count++;
+			}
+			if ( $highest_score === null || $attempt_score > $highest_score ) $highest_score = $attempt_score;
+			if ( $lowest_score  === null || $attempt_score < $lowest_score  ) $lowest_score  = $attempt_score;
+
+			// Identity: email > name > Entry #ID.
+			$identity = '';
+			if ( $identity_field_id !== '' && isset( $row[ $identity_field_id ] ) ) {
+				$candidate = $row[ $identity_field_id ];
+				if ( is_string( $candidate ) && trim( $candidate ) !== '' ) $identity = trim( $candidate );
+			}
+			if ( $identity === '' ) {
+				$identity = sprintf( /* translators: %d: entry id */ __( 'Entry #%d', 'neural-forms-lite' ), $entry['id'] );
+			}
+
+			$attempt_entry = [
+				'entry_id'        => $entry['id'],
+				'submitted_at'    => $entry['submitted_at'],
+				'identity'        => $identity,
+				'score'           => $attempt_score,
+				'max_score'       => $max_score,
+				'percentage'      => $attempt_pct,
+				'correct_count'   => $attempt_correct,
+				'incorrect_count' => $attempt_wrong,
+				'answers'         => $answers_payload,
+			];
+			if ( $show_pass_fail ) $attempt_entry['passed'] = $attempt_passed;
+			$attempts_payload[] = $attempt_entry;
+		}
+
+		$pass_rate = ( $show_pass_fail && $counted_for_pass > 0 )
+			? round( ( $pass_count / $counted_for_pass ) * 100, 2 )
+			: null;
+
+		// ── Insights (rule-based, no AI) ──────────────────────────
+		$insights = self::build_quiz_insights( $questions, $attempts, $average_percentage, $show_pass_fail, $pass_rate, $passing_score );
+
+		$response = [
 			'form_id'            => $form_id,
 			'form_name'          => (string) ( $form['name'] ?? '' ),
 			'total_entries'      => $total_entries,
@@ -408,8 +559,169 @@ class PollsEndpoint {
 			'max_score'          => $max_score,
 			'average_score'      => $average_score,
 			'average_percentage' => $average_percentage,
+			'highest_score'      => $highest_score === null ? 0 : (int) $highest_score,
+			'lowest_score'       => $lowest_score  === null ? 0 : (int) $lowest_score,
 			'questions'          => $questions,
-		] );
+			'attempts'           => $attempts_payload,
+			'attempts_limit'     => $attempts_limit,
+			'attempts_total'     => $attempts,
+			'insights'           => $insights,
+		];
+		if ( $show_pass_fail ) {
+			$response['pass_rate']     = $pass_rate;
+			$response['passing_score'] = $passing_score;
+		}
+		return rest_ensure_response( $response );
+	}
+
+	/**
+	 * Heuristic: pick a field id whose value best identifies the
+	 * submitter for the Attempts table.
+	 *   1. First field with type='email'.
+	 *   2. First text/text-like field whose id or label contains "name".
+	 *   3. Empty string → caller falls back to "Entry #ID".
+	 */
+	private static function guess_identity_field( array $fields ): string {
+		// Pass 1: email type.
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
+			if ( ( $f['type'] ?? '' ) === 'email' && ! empty( $f['id'] ) ) {
+				return (string) $f['id'];
+			}
+		}
+		// Pass 2: name-ish text/text-like fields.
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
+			$type = $f['type'] ?? '';
+			if ( ! in_array( $type, [ 'text', 'textarea' ], true ) ) continue;
+			$id   = strtolower( (string) ( $f['id']    ?? '' ) );
+			$lbl  = strtolower( (string) ( $f['label'] ?? '' ) );
+			if ( strpos( $id, 'name' ) !== false || strpos( $lbl, 'name' ) !== false ) {
+				return (string) $f['id'];
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Rule-based insights for the quiz Results screen.
+	 *
+	 *   type: 'success' | 'warning' | 'info'
+	 *
+	 * Generated from the question breakdown + averages — no entry-level
+	 * data needed, so this is cheap and stable.
+	 */
+	private static function build_quiz_insights(
+		array $questions,
+		int $attempts,
+		float $average_percentage,
+		bool $show_pass_fail,
+		$pass_rate,
+		int $passing_score
+	): array {
+		$out = [];
+
+		if ( $attempts === 0 ) {
+			$out[] = [
+				'type'    => 'info',
+				'title'   => __( 'No responses yet', 'neural-forms-lite' ),
+				'message' => __( 'Once people submit this quiz, insights will appear here.', 'neural-forms-lite' ),
+			];
+			return $out;
+		}
+
+		// Overall performance.
+		if ( $average_percentage >= 80 ) {
+			$out[] = [
+				'type'    => 'success',
+				'title'   => __( 'Strong performance', 'neural-forms-lite' ),
+				'message' => sprintf(
+					/* translators: %s: percentage */
+					__( 'Average score is %s%% — most users are answering correctly.', 'neural-forms-lite' ),
+					(string) $average_percentage
+				),
+			];
+		} elseif ( $average_percentage < 50 ) {
+			$out[] = [
+				'type'    => 'warning',
+				'title'   => __( 'Average score is low', 'neural-forms-lite' ),
+				'message' => sprintf(
+					/* translators: %s: percentage */
+					__( 'Average score is %s%%. Consider reviewing the quiz wording or content.', 'neural-forms-lite' ),
+					(string) $average_percentage
+				),
+			];
+		}
+
+		// Pass/fail signal.
+		if ( $show_pass_fail && is_numeric( $pass_rate ) ) {
+			if ( $pass_rate >= 80 ) {
+				$out[] = [
+					'type'    => 'success',
+					'title'   => __( 'High pass rate', 'neural-forms-lite' ),
+					'message' => sprintf(
+						/* translators: 1: pass rate, 2: passing score */
+						__( '%1$s%% of attempts passed (≥ %2$d%%).', 'neural-forms-lite' ),
+						(string) $pass_rate, $passing_score
+					),
+				];
+			} elseif ( $pass_rate < 50 ) {
+				$out[] = [
+					'type'    => 'warning',
+					'title'   => __( 'Low pass rate', 'neural-forms-lite' ),
+					'message' => sprintf(
+						/* translators: 1: pass rate, 2: passing score */
+						__( 'Only %1$s%% of attempts passed (≥ %2$d%%).', 'neural-forms-lite' ),
+						(string) $pass_rate, $passing_score
+					),
+				];
+			}
+		}
+
+		// Per-question insights.
+		foreach ( $questions as $q ) {
+			$total   = (int) ( $q['total_answers']      ?? 0 );
+			$correct = (int) ( $q['correct_answers']    ?? 0 );
+			$pct     = (float) ( $q['correct_percentage'] ?? 0 );
+			if ( $total === 0 ) continue;
+
+			$label = (string) ( $q['label'] ?? $q['field_id'] ?? '' );
+			if ( $pct < 50 ) {
+				$out[] = [
+					'type'    => 'warning',
+					'title'   => __( 'Question needs review', 'neural-forms-lite' ),
+					'message' => sprintf(
+						/* translators: 1: question label, 2: percentage */
+						__( '“%1$s” — only %2$s%% answered correctly.', 'neural-forms-lite' ),
+						$label, (string) $pct
+					),
+				];
+			}
+
+			// Most-selected wrong answer (if any wrong dominates).
+			$worst_label = '';
+			$worst_count = 0;
+			foreach ( ( $q['options'] ?? [] ) as $opt ) {
+				if ( ! empty( $opt['is_correct'] ) ) continue;
+				if ( ( $opt['value'] ?? '' ) === '__other__' ) continue;
+				$cnt = (int) ( $opt['answers'] ?? 0 );
+				if ( $cnt > $worst_count ) {
+					$worst_count = $cnt;
+					$worst_label = (string) ( $opt['label'] ?? '' );
+				}
+			}
+			if ( $worst_count > 0 && $worst_count >= $correct && $worst_label !== '' ) {
+				$out[] = [
+					'type'    => 'warning',
+					'title'   => __( 'Most-picked wrong answer', 'neural-forms-lite' ),
+					'message' => sprintf(
+						/* translators: 1: question label, 2: option label */
+						__( 'On “%1$s”, the most common wrong answer was “%2$s”.', 'neural-forms-lite' ),
+						$label, $worst_label
+					),
+				];
+			}
+		}
+
+		return $out;
 	}
 
 	/**

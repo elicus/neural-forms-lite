@@ -30,8 +30,13 @@ const defaultConfig  = require( '@wordpress/scripts/config/webpack.config' );
 const { CleanWebpackPlugin } = require( 'clean-webpack-plugin' );
 
 const SCREENS = {
-	builder: 'src/builder-entry.js',
-	results: 'src/results-entry.js',
+	builder:       'src/builder-entry.js',
+	results:       'src/results-entry.js',
+	// Editor entry for the 3 extra Gutenberg blocks added in 0.2.0
+	// (quiz / multi-step / poll). Sibling to the pre-existing
+	// build/block.js (rich form-block bundle) — see blocks-extra-entry.js
+	// for why they're separate.
+	'blocks-extra': 'src/blocks-extra-entry.js',
 	// Future screens (do NOT enable until their source is restored):
 	//   forms:        'src/forms-entry.js',
 	//   entries:      'src/entries-entry.js',

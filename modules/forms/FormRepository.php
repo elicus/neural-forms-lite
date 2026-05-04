@@ -236,8 +236,20 @@ class FormRepository {
     public static function find_by_slug( string $slug ): ?array {
         global $wpdb;
 
+        // Deterministic ordering safety net: if duplicates somehow
+        // remain (legacy data not yet repaired, or a race that beat
+        // the repair routine), prefer an active form first, then the
+        // lowest id. The shortcode + REST routes always render the
+        // SAME form for the same slug.
         $row = $wpdb->get_row(
-            $wpdb->prepare( 'SELECT * FROM %i WHERE slug = %s', self::table(), $slug ),
+            $wpdb->prepare(
+                "SELECT * FROM %i
+                 WHERE slug = %s
+                 ORDER BY ( status = 'active' ) DESC, id ASC
+                 LIMIT 1",
+                self::table(),
+                $slug
+            ),
             ARRAY_A
         );
 
@@ -339,27 +351,50 @@ class FormRepository {
     }
 
     /**
-     * Generate a slug that does not already exist in the table.
-     * Appends -2, -3 ... until it finds a free one.
+     * Generate a slug that does not already exist in the forms table.
+     * Appends -2, -3, ... until a free slug is found.
      *
-     * @param string   $base  Starting slug candidate.
-     * @param int|null $exclude_id  Ignore this row's current slug (for updates).
+     * Hardened (1.1.0+):
+     *   - Empty / unsanitisable input falls back to "form".
+     *   - Comparison is case-insensitive (LOWER(slug) == LOWER(candidate))
+     *     so "Contact" and "contact" can't slip past each other on a
+     *     case-insensitive collation. The MySQL default `utf8mb4_unicode_ci`
+     *     is already case-insensitive, but explicit LOWER() avoids
+     *     surprises on installs running case-sensitive collations.
+     *   - $exclude_id is the form being updated — its OWN current slug
+     *     is excluded from the conflict check so no-op saves keep the
+     *     same slug instead of churning to "-2".
+     *
+     * @param string $base_slug
+     * @param int    $exclude_id  Pass 0 (default) on create.
+     * @return string
      */
-    private static function unique_slug( string $base, ?int $exclude_id = null ): string {
+    public static function generate_unique_slug( string $base_slug, int $exclude_id = 0 ): string {
         global $wpdb;
 
-        $slug    = sanitize_title( $base );
+        $slug = sanitize_title( $base_slug );
+        if ( $slug === '' ) {
+            $slug = 'form';
+        }
+
         $suffix  = 1;
         $attempt = $slug;
+        $table   = self::table();
 
-        while ( true ) {
-            $sql  = 'SELECT id FROM %i WHERE slug = %s';
-            $args = [ $wpdb->prefix . 'neural_forms_forms', $attempt ];
+        // Hard cap so a misbehaving caller can't loop forever. With
+        // unique slugs this never trips; if it ever did, fall back to
+        // a slug + microtime so the insert still succeeds uniquely.
+        $max_attempts = 10000;
+        $iteration    = 0;
 
-            if ( $exclude_id ) {
-                $sql   .= ' AND id != %d';
+        while ( $iteration++ < $max_attempts ) {
+            $sql  = 'SELECT id FROM %i WHERE LOWER(slug) = LOWER(%s)';
+            $args = [ $table, $attempt ];
+            if ( $exclude_id > 0 ) {
+                $sql .= ' AND id != %d';
                 $args[] = $exclude_id;
             }
+            $sql .= ' LIMIT 1';
 
             // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $found = $wpdb->get_var( $wpdb->prepare( $sql, ...$args ) );
@@ -371,6 +406,83 @@ class FormRepository {
             $suffix++;
             $attempt = "{$slug}-{$suffix}";
         }
+
+        // Pathological fallback (essentially unreachable): time-based
+        // suffix guarantees uniqueness when the loop somehow can't.
+        return $slug . '-' . substr( (string) microtime( true ), -6 );
+    }
+
+    /**
+     * Backwards-compatible private alias. Older callers used
+     * `unique_slug()`; new callers should use the public
+     * `generate_unique_slug()`. Kept private so external consumers
+     * use the documented public method.
+     */
+    private static function unique_slug( string $base, ?int $exclude_id = null ): string {
+        return self::generate_unique_slug( $base, (int) ( $exclude_id ?? 0 ) );
+    }
+
+    /**
+     * Repair existing duplicate slugs in the forms table.
+     *
+     * Strategy: group by slug. For each slug appearing >1 time, the
+     * lowest id KEEPS the original slug; every later duplicate is
+     * renamed to `{slug}-2`, `{slug}-3`, ... using
+     * generate_unique_slug() so the renames don't collide with
+     * existing suffixed rows already in the table.
+     *
+     * Idempotent — running twice on a clean table is a no-op.
+     * Returns the count of rows renamed.
+     *
+     * Called from Database::maybe_upgrade() so existing installs that
+     * accumulated duplicates before the create/update guards landed
+     * are repaired automatically on upgrade.
+     */
+    public static function repair_duplicate_slugs(): int {
+        global $wpdb;
+
+        $table = self::table();
+
+        // Group slugs that appear more than once. ORDER BY id ASC
+        // inside GROUP_CONCAT so the LOWEST id is the "winner" that
+        // keeps the original slug.
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT slug, GROUP_CONCAT(id ORDER BY id ASC) AS ids
+                 FROM %i
+                 GROUP BY slug
+                 HAVING COUNT(*) > 1',
+                $table
+            ),
+            ARRAY_A
+        );
+
+        if ( ! is_array( $rows ) || empty( $rows ) ) {
+            return 0;
+        }
+
+        $renamed = 0;
+        foreach ( $rows as $row ) {
+            $base = (string) ( $row['slug'] ?? '' );
+            $ids  = array_filter( array_map( 'intval', explode( ',', (string) ( $row['ids'] ?? '' ) ) ) );
+            if ( count( $ids ) < 2 ) continue;
+
+            // Keep the lowest id. Rename every subsequent duplicate.
+            array_shift( $ids );
+            foreach ( $ids as $dup_id ) {
+                $new_slug = self::generate_unique_slug( $base !== '' ? $base : 'form', $dup_id );
+                $wpdb->update(
+                    $table,
+                    [ 'slug' => $new_slug, 'updated_at' => current_time( 'mysql' ) ],
+                    [ 'id'   => $dup_id ],
+                    [ '%s', '%s' ],
+                    [ '%d' ]
+                );
+                $renamed++;
+            }
+        }
+        return $renamed;
     }
 
     /**

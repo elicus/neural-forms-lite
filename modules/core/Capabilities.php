@@ -35,8 +35,9 @@ final class Capabilities {
     /** Capability keys - stable public strings; renaming any of these is
      *  a breaking change for Pro and any third-party integration. */
     const AI_SPAM_DETECT  = 'ai_spam_detect';
-    const AI_REANALYZE    = 'ai_reanalyze';
-    const AI_REFINE_REPLY = 'ai_refine_reply';
+    const AI_REANALYZE      = 'ai_reanalyze';
+    const AI_REFINE_REPLY   = 'ai_refine_reply';
+    const AI_FORM_GENERATE  = 'ai_form_generate';
 
     /**
      * True when the given premium capability is unlocked in this install.
@@ -62,9 +63,10 @@ final class Capabilities {
      */
     public static function all(): array {
         return [
-            self::AI_SPAM_DETECT  => self::can( self::AI_SPAM_DETECT ),
-            self::AI_REANALYZE    => self::can( self::AI_REANALYZE ),
-            self::AI_REFINE_REPLY => self::can( self::AI_REFINE_REPLY ),
+            self::AI_SPAM_DETECT     => self::can( self::AI_SPAM_DETECT ),
+            self::AI_REANALYZE       => self::can( self::AI_REANALYZE ),
+            self::AI_REFINE_REPLY    => self::can( self::AI_REFINE_REPLY ),
+            self::AI_FORM_GENERATE   => self::can( self::AI_FORM_GENERATE ),
         ];
     }
 

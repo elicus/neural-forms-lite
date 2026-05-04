@@ -293,6 +293,67 @@ class EntryRepository {
 	}
 
 	/**
+	 * Aggregate per-form totals for the Forms list.
+	 *
+	 * Returns one row per requested id with non-trash entry_count and
+	 * spam-status spam_count. A single grouped query handles every form
+	 * in the page so the Forms list does not fan out into N COUNT(*)
+	 * queries — the typical admin Forms list shows 20 forms per page.
+	 *
+	 * Forms with zero entries are still represented in the result so
+	 * callers can blindly look up by id without checking isset().
+	 *
+	 * @param int[] $form_ids
+	 * @return array<int, array{entry_count:int, spam_count:int}>
+	 */
+	public static function count_form_totals( array $form_ids ): array {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter(
+			array_map( 'intval', $form_ids ),
+			static fn ( $id ) => $id > 0
+		) ) );
+		if ( empty( $ids ) ) {
+			return [];
+		}
+
+		$out = [];
+		foreach ( $ids as $id ) {
+			$out[ $id ] = [ 'entry_count' => 0, 'spam_count' => 0 ];
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$table        = self::table();
+
+		// One grouped query: counts both buckets per form_id. CASE WHEN
+		// inside SUM() avoids a second round-trip for spam.
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->prepare(
+				"SELECT form_id,
+				        SUM( CASE WHEN status != 'trash' THEN 1 ELSE 0 END ) AS entry_count,
+				        SUM( CASE WHEN status =  'spam'  THEN 1 ELSE 0 END ) AS spam_count
+				 FROM %i
+				 WHERE form_id IN ({$placeholders})
+				 GROUP BY form_id",
+				...array_merge( [ $table ], $ids )
+			),
+			ARRAY_A
+		);
+
+		foreach ( (array) $rows as $row ) {
+			$fid = (int) ( $row['form_id'] ?? 0 );
+			if ( ! isset( $out[ $fid ] ) ) continue;
+			$out[ $fid ] = [
+				'entry_count' => (int) ( $row['entry_count'] ?? 0 ),
+				'spam_count'  => (int) ( $row['spam_count']  ?? 0 ),
+			];
+		}
+
+		return $out;
+	}
+
+	/**
 	 * Hard-delete a single entry.
 	 *
 	 * Intended for admin use and GDPR erasure requests.
@@ -828,6 +889,53 @@ class EntryRepository {
 			$out['total']++;
 		}
 
+		return $out;
+	}
+
+	/**
+	 * List recent non-trash entries for a form with their decoded
+	 * `data` blob, id, and submitted_at timestamp. Ordered by id DESC
+	 * (newest first). Powers the Results screen's Individual Attempts
+	 * table.
+	 *
+	 * Spam state is intentionally NOT excluded — same rationale as
+	 * aggregate_poll_votes / aggregate_quiz_answers (spam is a Pro
+	 * capability; Lite installs have no classification).
+	 *
+	 * @param int $form_id
+	 * @param int $limit   Max rows to return. Caller should cap (≤200).
+	 * @param int $offset
+	 * @return array  [ ['id'=>int, 'submitted_at'=>string, 'data'=>array], ... ]
+	 */
+	public static function list_form_entries_with_data( int $form_id, int $limit = 50, int $offset = 0 ): array {
+		global $wpdb;
+		if ( $form_id <= 0 || $limit <= 0 ) return [];
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, submitted_at, data FROM %i
+				 WHERE form_id = %d AND status != %s
+				 ORDER BY id DESC
+				 LIMIT %d OFFSET %d',
+				self::table(),
+				$form_id,
+				'trash',
+				$limit,
+				max( 0, $offset )
+			),
+			ARRAY_A
+		);
+		if ( ! is_array( $rows ) ) return [];
+
+		$out = [];
+		foreach ( $rows as $r ) {
+			$decoded = is_string( $r['data'] ?? '' ) ? json_decode( $r['data'], true ) : null;
+			$out[] = [
+				'id'           => (int) ( $r['id'] ?? 0 ),
+				'submitted_at' => (string) ( $r['submitted_at'] ?? '' ),
+				'data'         => is_array( $decoded ) ? $decoded : [],
+			];
+		}
 		return $out;
 	}
 
