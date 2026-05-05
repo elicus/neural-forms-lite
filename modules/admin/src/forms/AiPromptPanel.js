@@ -259,6 +259,10 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 				return __( 'The AI request timed out. Please try again.', 'neural-forms-lite' );
 			case 'ai_provider_error':
 				return __( 'The AI service is temporarily unavailable. Please try again in a moment.', 'neural-forms-lite' );
+			case 'blocked_by_safety':
+				return __( 'AI skipped this prompt because it appears unsafe. No credits were deducted.', 'neural-forms-lite' );
+			case 'ai_safety_unavailable':
+				return __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' );
 		}
 		return fallback;
 	};

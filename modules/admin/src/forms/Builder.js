@@ -30,37 +30,16 @@ import BuilderDndProvider from './BuilderDnd';
 import PreviewModal from './PreviewModal';
 import BuilderTemplateModal from './BuilderTemplateModal';
 import { newField } from './FieldTypes';
-import { makeRow, createStep, createSection, isStep } from './schemaHelper';
+import { makeRow, createStep, createSection, isStep, collectIds, ensureUniqueIds } from './schemaHelper';
 import { buildTemplate } from './formTemplates';
 import createComparableSnapshot from './createComparableSnapshot';
 import useUnsavedChangesGuard  from './useUnsavedChangesGuard';
 import UnsavedChangesModal     from './UnsavedChangesModal';
 
-function collectIds( nodes ) {
-	const ids = [];
-	const walk = ( arr ) => {
-		for ( const n of arr ) {
-			if ( ! n ) continue;
-			if ( n.type === 'step' ) {
-				ids.push( n.id );
-				walk( n.fields || [] );
-				continue;
-			}
-			if ( n.type === 'row' ) {
-				ids.push( n.id );
-				for ( const c of ( n.columns || [] ) ) {
-					ids.push( c.id );
-					for ( const f of ( c.fields || [] ) ) ids.push( f.id );
-				}
-				continue;
-			}
-			// section, real field, or anything else with an id at this level.
-			if ( n.id ) ids.push( n.id );
-		}
-	};
-	walk( nodes );
-	return ids;
-}
+// collectIds is now imported from ./schemaHelper as the single source of
+// truth. The local copy was retired because the same walker also powers
+// ensureUniqueIds (the load/save repair pass) — having two implementations
+// risks drift if a new container type is added on one side and not the other.
 
 export default function Builder( { formId, isNew } ) {
 	const [ form,         setForm         ] = useState( null );
@@ -149,9 +128,32 @@ export default function Builder( { formId, isNew } ) {
 		api( `/forms/${ formId }` )
 			.then( ( res ) => {
 				if ( cancelled ) return;
-				// IMPORTANT: store the response verbatim. Any normalisation
-				// here would mutate a v1.0.0 flat schema on open, which
-				// CompatibilityTest 1d forbids.
+				// IMPORTANT: store the response verbatim by default. Any
+				// normalisation here would mutate a v1.0.0 flat schema on
+				// open, which CompatibilityTest 1d forbids.
+				//
+				// EXCEPTION: defensive id-uniqueness repair. If the loaded
+				// schema contains duplicate field/row/column/step ids
+				// (from older buggy saves, AI-generated forms saved
+				// before the unique-id fix, or hand-edited DB rows),
+				// `ensureUniqueIds` returns a new array with the
+				// duplicates renamed; otherwise it returns the SAME
+				// reference and the save button stays disabled. When
+				// repair happens, baseline stays at the ORIGINAL schema
+				// so isDirty fires and the user can save the fix.
+				const fields = res?.form_schema?.fields;
+				if ( Array.isArray( fields ) ) {
+					const repaired = ensureUniqueIds( fields );
+					if ( repaired !== fields ) {
+						setForm( {
+							...res,
+							form_schema: { ...res.form_schema, fields: repaired },
+						} );
+						setLastSavedSnapshot( createComparableSnapshot( res ) );
+						setLoading( false );
+						return;
+					}
+				}
 				setForm( res );
 				// Baseline is the loaded payload — opening a form
 				// without changes must NOT show "unsaved changes".
@@ -476,9 +478,13 @@ export default function Builder( { formId, isNew } ) {
 
 		// form.settings (captcha / on_success / on_error / autoresponder)
 		// are LEFT UNTOUCHED. The template only writes form_schema.
+		// ensureUniqueIds runs over template fields too — templates are
+		// authored by us and SHOULD be conflict-free, but defence here
+		// means a template author can't accidentally ship two fields
+		// with id "rating" and brick a save.
 		const nextSchema = {
 			...( form.form_schema || {} ),
-			fields: Array.isArray( tpl.fields ) ? tpl.fields : [],
+			fields: ensureUniqueIds( Array.isArray( tpl.fields ) ? tpl.fields : [] ),
 			meta: {
 				...( ( form.form_schema && form.form_schema.meta ) || {} ),
 				template: templateId,
@@ -572,12 +578,35 @@ export default function Builder( { formId, isNew } ) {
 		const path     = isCreate ? '/forms' : `/forms/${ liveFormId }`;
 		const method   = isCreate ? 'POST'   : 'PUT';
 
+		// Pre-flight id-uniqueness repair. Defence-in-depth: every
+		// creation path already routes through makeFieldId, but if a
+		// stale saved schema OR an AI-applied form somehow reaches
+		// here with duplicates, repair silently before sending. The
+		// server's FormValidator still rejects duplicates as the
+		// final guard, so any miss here surfaces as a clear error
+		// rather than a silent data issue.
+		let safeForm = form;
+		const currentFields = form && form.form_schema && form.form_schema.fields;
+		if ( Array.isArray( currentFields ) ) {
+			const repairedFields = ensureUniqueIds( currentFields );
+			if ( repairedFields !== currentFields ) {
+				safeForm = {
+					...form,
+					form_schema: { ...form.form_schema, fields: repairedFields },
+				};
+				// Reflect the repair in builder state so the user sees
+				// the same schema we're about to save. Done before the
+				// network call so a slow save doesn't show a stale tree.
+				setForm( safeForm );
+			}
+		}
+
 		// Build the request body. statusOverride wins when supplied;
 		// otherwise we send whatever the user has selected in the
 		// header status dropdown.
 		const payload = statusOverride
-			? { ...form, status: statusOverride }
-			: form;
+			? { ...safeForm, status: statusOverride }
+			: safeForm;
 
 		return api( path, { method, data: payload } )
 			.then( ( res ) => {
@@ -668,20 +697,31 @@ export default function Builder( { formId, isNew } ) {
 							onApplyAiForm={ ( generated, mode ) => {
 								// AI form generator hand-off. mode = 'append' | 'replace'.
 								// On replace, we also adopt the generated name + schema settings.
-								const nextFields = ( generated && generated.form_schema && Array.isArray( generated.form_schema.fields ) )
+								const rawFields = ( generated && generated.form_schema && Array.isArray( generated.form_schema.fields ) )
 									? generated.form_schema.fields
 									: [];
 								if ( mode === 'append' ) {
-									setFields( [ ...fields, ...nextFields ] );
+									// Repair the merged tree so AI ids that
+									// happen to collide with existing form
+									// ids get renamed (the cloud normalizer
+									// guarantees uniqueness within the
+									// generated subset, NOT against the
+									// existing form).
+									const merged = [ ...fields, ...rawFields ];
+									setFields( ensureUniqueIds( merged ) );
 									return;
 								}
 								// 'replace' (or 'insert' into empty form — same logical write).
+								// AI-generated forms are guarded against
+								// duplicates by ensureUniqueIds even though
+								// the cloud normalizer already does this —
+								// trusting one layer is fragile.
 								setForm( {
 									...form,
 									name: generated.name || form.name,
 									form_schema: {
 										...( form.form_schema || {} ),
-										fields: nextFields,
+										fields: ensureUniqueIds( rawFields ),
 										settings: ( generated.form_schema && generated.form_schema.settings ) || ( form.form_schema && form.form_schema.settings ) || {},
 									},
 								} );
@@ -701,6 +741,7 @@ export default function Builder( { formId, isNew } ) {
 								onAddMultistepStarter={ addMultistepStarter }
 								onApplyTemplate={ applyTemplate }
 								templateId={ currentTemplateId }
+								formId={ liveFormId }
 								onRequestChangeTemplate={ () => setTemplateModalOpen( true ) }
 								onRequestClear={ clearForm }
 							/>
@@ -726,6 +767,45 @@ export default function Builder( { formId, isNew } ) {
 						onChange={ setSettings }
 						formSchemaSettings={ formSchemaSettings }
 						onChangeFormSchemaSettings={ setFormSchemaSettings }
+						detectedType={ ( () => {
+							// Inline form-type detection mirroring the
+							// PHP-side FormTypeDetector / blocks/shared/formType.js.
+							// Used by the "Process with AI" panel's recommendation
+							// box; never mutates settings.
+							let foundQuiz = false;
+							let foundPoll = false;
+							let foundRating = false;
+							let stepCount = 0;
+							const visit = ( node ) => {
+								if ( ! node || typeof node !== 'object' ) return;
+								const t = node.type;
+								if ( t === 'quiz_question' ) foundQuiz = true;
+								if ( t === 'poll' )          foundPoll = true;
+								if ( t === 'rating' )        foundRating = true;
+							};
+							const walk = ( nodes ) => {
+								for ( const n of nodes ) {
+									if ( ! n || typeof n !== 'object' ) continue;
+									visit( n );
+									if ( n.type === 'step'   && Array.isArray( n.fields ) )  walk( n.fields );
+									if ( n.type === 'row'    && Array.isArray( n.columns ) ) {
+										for ( const col of n.columns ) {
+											if ( col && Array.isArray( col.fields ) ) walk( col.fields );
+										}
+									}
+								}
+							};
+							for ( const n of fields ) {
+								if ( n && n.type === 'step' ) stepCount++;
+							}
+							walk( fields );
+							if ( foundQuiz && foundPoll ) return 'mixed';
+							if ( foundQuiz )              return 'quiz';
+							if ( foundPoll )              return 'poll';
+							if ( stepCount >= 2 )         return 'multistep';
+							if ( foundRating )            return 'survey';
+							return 'simple';
+						} )() }
 						hasQuiz={ ( () => {
 							// Walk top-level fields + step.fields + row.column.fields
 							// to detect any quiz_question. Mirror SchemaHelper.flatten_fields.

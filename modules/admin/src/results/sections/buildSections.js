@@ -27,6 +27,7 @@ import OverviewCards from '../ResultsOverviewCards';
 import SubmissionAnalyticsSection from './SubmissionAnalyticsSection';
 import PollAnalyticsSection from './PollAnalyticsSection';
 import QuizAnalyticsSection from './QuizAnalyticsSection';
+import PagePerformanceSection from './PagePerformanceSection';
 import FutureInsightsSection from './FutureInsightsSection';
 
 /**
@@ -154,7 +155,20 @@ export default function buildSections( ctx ) {
 		} );
 	}
 
-	// 6. AI Insights / Future Insights — Stats-style insight-rows
+	// 6. Page Performance — Pro analytics. Always available so the
+	//    Lite locked card can render an upsell; the section
+	//    component decides between locked / empty / data states
+	//    internally based on capability + fetched payload.
+	descriptors.push( {
+		id:          'page-performance',
+		isAvailable: a.form.id > 0,
+		isEmpty:     false,
+		chrome:      false, // Component renders its own card chrome.
+		data:        { formId: a.form.id },
+		render:      ( d ) => <PagePerformanceSection formId={ d.formId } />,
+	} );
+
+	// 7. AI Insights / Future Insights — Stats-style insight-rows
 	//    card. Renders only when there is real data above it so it
 	//    reads as forward-looking rather than unfinished.
 	descriptors.push( {

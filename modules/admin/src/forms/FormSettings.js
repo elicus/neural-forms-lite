@@ -38,11 +38,91 @@ import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 const BASE_SECTIONS = [
+	{ id: 'process_with_ai', label: 'Process with AI', hint: 'Decide how Neural Forms uses AI for this form.' },
 	{ id: 'security',     label: 'Security',     hint: 'Protect this form from automated submissions.' },
 	{ id: 'notifications', label: 'Notifications', hint: 'Choose who hears about new submissions.' },
 	{ id: 'on_success',   label: 'On success',   hint: 'What submitters see after a successful submit.' },
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
 ];
+
+/**
+ * 5 AI-processing modes stored on form_schema.settings.ai_processing.mode.
+ * Mirror the PHP whitelist in SchemaHelper::AI_PROCESSING_MODES — both
+ * sides must agree, the resolver clamps unknown values to "inherit".
+ */
+const AI_PROCESSING_MODES = [
+	{
+		value: 'inherit',
+		label: 'Use global setting',
+		description: 'Follows your global Neural Forms AI configuration.',
+	},
+	{
+		value: 'disabled',
+		label: 'Do not process this form',
+		description: 'No automatic AI processing for entries or results.',
+	},
+	{
+		value: 'every_entry',
+		label: 'Process every entry',
+		description: 'Analyze each submission automatically. Best for lead/contact forms.',
+	},
+	{
+		value: 'manual',
+		label: 'Manual only',
+		description: 'No automatic processing. Run AI on demand from Entries or Analytics.',
+	},
+	{
+		value: 'final_results',
+		label: 'Process final results',
+		description: 'Analyze aggregate results instead of individual submissions. Best for polls, quizzes, and surveys.',
+	},
+];
+
+/** Per-form-type recommendation copy. Display-only — never mutates settings. */
+function recommendationFor( type ) {
+	switch ( type ) {
+		case 'poll':
+			return 'This form contains poll fields. Per-entry AI processing is usually unnecessary. Use Final results or Manual only to save credits.';
+		case 'quiz':
+			return 'This form contains quiz questions. Scoring is handled automatically without AI. Use Final results or Manual only if you want AI insights across attempts.';
+		case 'mixed':
+			return 'This form contains quiz/poll fields. Use Final results or Manual only unless each submission needs individual AI review.';
+		case 'multistep':
+			return 'This multi-step form can use entry processing if submissions need human follow-up.';
+		case 'survey':
+			return 'Surveys benefit from aggregate analysis. Final results is usually the best choice.';
+		case 'simple':
+		default:
+			return 'This looks like a simple form. Entry analysis can help with summaries, categories, priority, and suggested replies.';
+	}
+}
+
+/**
+ * Read the per-install AI capability + cloud-connection state from the
+ * server-localized window.neuralFormsAdmin payload. The values are a
+ * snapshot — they don't update live, but Settings is a non-real-time
+ * surface so a reload after enabling AI is acceptable UX.
+ *
+ * Shape comes from AdminPanel::script_data() — the values live under
+ * window.neuralFormsAdmin.plugin (NOT under a top-level `cloud` key,
+ * which is what an earlier pass of this code mistakenly read).
+ */
+function readAiAvailability() {
+	if ( typeof window === 'undefined' ) return { capable: false, cloudConnected: false, aiEnabled: false };
+	const root = window.neuralFormsAdmin || {};
+	const plugin = root.plugin || {};
+	const capabilities = plugin.capabilities || {};
+	return {
+		capable:        !! capabilities.ai_process_entries,
+		// `cloudConnected` is true when both the cloud master toggle is on
+		// AND an API key is saved. The QueueListener gate uses the same
+		// pair (ai_enabled + cloud_ai_enabled + cloud_api_key) — keeping
+		// the UI in agreement avoids "settings say connected but listener
+		// still skips" mismatches.
+		cloudConnected: !! plugin.cloudAiEnabled && !! plugin.cloudApiKeySet,
+		aiEnabled:      !! plugin.cloudAiEnabled,
+	};
+}
 
 const QUIZ_SECTION = { id: 'quiz', label: 'Quiz', hint: 'Pass/fail and result messages for score quizzes.' };
 
@@ -58,6 +138,7 @@ export default function FormSettings( {
 	formSchemaSettings,
 	onChangeFormSchemaSettings,
 	hasQuiz,
+	detectedType,
 } ) {
 	const SECTIONS = hasQuiz ? [ ...BASE_SECTIONS, QUIZ_SECTION ] : BASE_SECTIONS;
 
@@ -86,6 +167,23 @@ export default function FormSettings( {
 		const next = { ...schemaSettings, quiz: { ...quizSettings, ...patch } };
 		onChangeFormSchemaSettings( next );
 	};
+
+	// Per-form AI processing mode lives on form_schema.settings.ai_processing.
+	// Same routing as the quiz block above — schema-level settings, not
+	// form.settings (which is reserved for submission/security/email).
+	const aiProcessing = {
+		mode: 'inherit',
+		...( ( schemaSettings.ai_processing && typeof schemaSettings.ai_processing === 'object' ) ? schemaSettings.ai_processing : {} ),
+	};
+	const setAiProcessingMode = ( mode ) => {
+		if ( typeof onChangeFormSchemaSettings !== 'function' ) return;
+		const validModes = AI_PROCESSING_MODES.map( ( m ) => m.value );
+		const safe = validModes.includes( mode ) ? mode : 'inherit';
+		const next = { ...schemaSettings, ai_processing: { mode: safe } };
+		onChangeFormSchemaSettings( next );
+	};
+	const aiAvailability = readAiAvailability();
+	const aiUiEnabled = aiAvailability.capable && aiAvailability.cloudConnected && aiAvailability.aiEnabled;
 
 	const activeSection = SECTIONS.find( ( x ) => x.id === section ) || SECTIONS[ 0 ];
 
@@ -121,6 +219,72 @@ export default function FormSettings( {
 						</h3>
 						<p className="nf-form-settings__hint">{ __( activeSection.hint, 'neural-forms-lite' ) }</p>
 					</header>
+
+					{ section === 'process_with_ai' && (
+						<div className="nf-form-settings__body nf-ai-processing">
+							<p className="nf-form-settings__note nf-ai-processing__note">
+								{ __( 'AI credits are used only when AI processing runs successfully.', 'neural-forms-lite' ) }
+							</p>
+
+							{ /* Capability + cloud-connection gate. Lite-only
+							    installs see the upsell; Pro installs without
+							    Cloud connected see the connect-CTA. */ }
+							{ ! aiAvailability.capable && (
+								<div className="nf-ai-processing__upsell" role="note">
+									<strong>{ __( 'Available with Neural Forms Pro', 'neural-forms-lite' ) }</strong>
+									<p>{ __( 'AI processing requires Neural Forms Pro and a connected Neural Forms Cloud account. You can still configure the mode below — it will activate once Pro is installed.', 'neural-forms-lite' ) }</p>
+								</div>
+							) }
+							{ aiAvailability.capable && ( ! aiAvailability.cloudConnected || ! aiAvailability.aiEnabled ) && (
+								<div className="nf-ai-processing__upsell" role="note">
+									<strong>{ __( 'Connect Neural Forms Cloud', 'neural-forms-lite' ) }</strong>
+									<p>{ __( 'Connect your Cloud account in Settings to enable AI processing. The mode below will be honoured once the cloud is connected.', 'neural-forms-lite' ) }</p>
+								</div>
+							) }
+
+							<fieldset
+								className={ 'nf-ai-processing__modes' + ( aiUiEnabled ? '' : ' is-disabled' ) }
+								disabled={ ! aiUiEnabled }
+								aria-disabled={ ! aiUiEnabled }
+							>
+								<legend className="screen-reader-text">{ __( 'AI processing mode', 'neural-forms-lite' ) }</legend>
+								{ AI_PROCESSING_MODES.map( ( m ) => {
+									const id = `nf-ai-processing-${ m.value }`;
+									const checked = aiProcessing.mode === m.value;
+									return (
+										<label
+											key={ m.value }
+											htmlFor={ id }
+											className={ 'nf-ai-processing__option' + ( checked ? ' is-selected' : '' ) }
+										>
+											<input
+												id={ id }
+												type="radio"
+												name="nf-ai-processing-mode"
+												value={ m.value }
+												checked={ checked }
+												onChange={ () => setAiProcessingMode( m.value ) }
+											/>
+											<span className="nf-ai-processing__option-body">
+												<span className="nf-ai-processing__option-label">{ __( m.label, 'neural-forms-lite' ) }</span>
+												<span className="nf-ai-processing__option-desc">{ __( m.description, 'neural-forms-lite' ) }</span>
+											</span>
+										</label>
+									);
+								} ) }
+							</fieldset>
+
+							{ /* Recommendation panel — display-only, never
+							    mutates the saved mode. Driven by the form's
+							    detected type which Builder.js passes as a
+							    prop derived from the same FormTypeDetector
+							    used by the Forms list badge. */ }
+							<div className="nf-ai-processing__recommendation" role="note">
+								<strong>{ __( 'Recommendation', 'neural-forms-lite' ) }</strong>
+								<p>{ __( recommendationFor( detectedType ), 'neural-forms-lite' ) }</p>
+							</div>
+						</div>
+					) }
 
 					{ section === 'security' && (
 						<div className="nf-form-settings__body">

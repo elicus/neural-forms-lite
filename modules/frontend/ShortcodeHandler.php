@@ -117,6 +117,38 @@ class ShortcodeHandler {
 	// Helpers
 
 	/**
+	 * Build the shortcode string for a form row.
+	 *
+	 * Single source of truth for admin-UI shortcode generation as of
+	 * 0.2.0. ID-based shortcode is preferred — slugs are mutable
+	 * (renames) and can collide across statuses, while ids are
+	 * immutable. ShortcodeHandler::handle() still accepts the
+	 * `slug=` attribute on the parsing side so existing pages that
+	 * embedded slug-based shortcodes keep rendering unchanged.
+	 *
+	 * Behaviour:
+	 *   - id present → `[neural-forms id="N"]` (absint sanitised)
+	 *   - id missing, slug present → `[neural-forms slug="..."]`
+	 *     (esc_attr sanitised). Saved forms always have an id, so
+	 *     this branch is effectively a defence-in-depth fallback.
+	 *   - neither → empty string
+	 *
+	 * @param array $form  Form row from FormRepository::list/find.
+	 * @return string
+	 */
+	public static function for_form( array $form ): string {
+		$id = isset( $form['id'] ) ? absint( $form['id'] ) : 0;
+		if ( $id > 0 ) {
+			return '[neural-forms id="' . $id . '"]';
+		}
+		$slug = isset( $form['slug'] ) ? (string) $form['slug'] : '';
+		if ( $slug !== '' ) {
+			return '[neural-forms slug="' . esc_attr( $slug ) . '"]';
+		}
+		return '';
+	}
+
+	/**
 	 * Render a dismissible admin-only diagnostic notice.
 	 *
 	 * Returns an empty string for all non-admin visitors - safe to echo.

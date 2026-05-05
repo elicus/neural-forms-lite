@@ -38,6 +38,47 @@ final class Capabilities {
     const AI_REANALYZE      = 'ai_reanalyze';
     const AI_REFINE_REPLY   = 'ai_refine_reply';
     const AI_FORM_GENERATE  = 'ai_form_generate';
+    /**
+     * AI_PROCESS_ENTRIES (added 0.2.0): unlocks per-form "Process with AI"
+     * processing, both auto and manual. Lite stores the per-form mode but
+     * NEVER actually runs entry analysis on its own — the cloud-call paths
+     * are gated on this cap. Pro flips it via the
+     * `neural_forms_can_ai_process_entries` filter as part of its Unlocker.
+     * Default false → Lite-only installs see the settings UI as an upsell
+     * and never enqueue entry-analysis jobs.
+     */
+    const AI_PROCESS_ENTRIES = 'ai_process_entries';
+
+    /**
+     * PAGE_PERFORMANCE_ANALYTICS (added 1.1.0): unlocks the Page
+     * Performance section in the Analytics screen — entries grouped
+     * by source page (server-recorded HTTP_REFERER / page_url
+     * column) with spam / priority breakdowns. Lite installs see a
+     * locked upsell card; Pro flips this to true via the
+     * `neural_forms_can_page_performance_analytics` filter.
+     *
+     * Source-page CAPTURE happens unconditionally in Lite (column
+     * was already populated from HTTP_REFERER) — only the analytics
+     * UI + aggregation endpoint are gated.
+     */
+    const PAGE_PERFORMANCE_ANALYTICS = 'page_performance_analytics';
+
+    /**
+     * POLL_QUIZ_UNLIMITED_SUBMISSIONS (added 1.1.0): Lite caps poll
+     * and quiz forms at 1,000 non-trash submissions per form. Pro
+     * flips this to true to lift the cap. Plain contact / multi-step
+     * forms are NOT limited regardless of plan.
+     *
+     * Spam entries count toward the limit (they consume storage and
+     * are real submissions); trashed entries do not.
+     *
+     * NOTE: this is a LOCAL PRODUCT LIMIT, not a security boundary.
+     * Since WordPress is self-hosted, site owners with code/database
+     * access can modify local behavior. Cloud/AI credit limits must
+     * be enforced on api.neuralforms.ai — see the full rationale on
+     * SubmitEndpoint::check_poll_quiz_submission_limit().
+     */
+    const POLL_QUIZ_UNLIMITED_SUBMISSIONS = 'poll_quiz_unlimited_submissions';
 
     /**
      * True when the given premium capability is unlocked in this install.
@@ -63,10 +104,13 @@ final class Capabilities {
      */
     public static function all(): array {
         return [
-            self::AI_SPAM_DETECT     => self::can( self::AI_SPAM_DETECT ),
-            self::AI_REANALYZE       => self::can( self::AI_REANALYZE ),
-            self::AI_REFINE_REPLY    => self::can( self::AI_REFINE_REPLY ),
-            self::AI_FORM_GENERATE   => self::can( self::AI_FORM_GENERATE ),
+            self::AI_SPAM_DETECT             => self::can( self::AI_SPAM_DETECT ),
+            self::AI_REANALYZE               => self::can( self::AI_REANALYZE ),
+            self::AI_REFINE_REPLY            => self::can( self::AI_REFINE_REPLY ),
+            self::AI_FORM_GENERATE           => self::can( self::AI_FORM_GENERATE ),
+            self::AI_PROCESS_ENTRIES         => self::can( self::AI_PROCESS_ENTRIES ),
+            self::PAGE_PERFORMANCE_ANALYTICS      => self::can( self::PAGE_PERFORMANCE_ANALYTICS ),
+            self::POLL_QUIZ_UNLIMITED_SUBMISSIONS => self::can( self::POLL_QUIZ_UNLIMITED_SUBMISSIONS ),
         ];
     }
 

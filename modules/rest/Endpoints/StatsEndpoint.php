@@ -39,6 +39,21 @@ class StatsEndpoint {
 			'callback'            => [ $this, 'get_stats' ],
 			'permission_callback' => [ $this, 'check_permission' ],
 		] );
+
+		// Page Performance (1.1.0+): per-form aggregation of entries
+		// grouped by source page. Capability-gated for Pro; Lite
+		// callers receive a feature_locked error so the analytics
+		// bundle can render an upsell card.
+		register_rest_route( $ns, '/forms/(?P<id>\d+)/analytics/page-performance', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'get_page_performance' ],
+			'permission_callback' => [ $this, 'check_permission' ],
+			'args'                => [
+				'id' => [
+					'sanitize_callback' => 'absint',
+				],
+			],
+		] );
 	}
 
 	public function check_permission(): bool {
@@ -272,6 +287,218 @@ class StatsEndpoint {
 			'ai_spam_enabled' => (bool) Config::get( 'ai_spam_enabled' ),
 			'pending_jobs'    => $pending_jobs,
 			'email_failures'  => $email_failures,
+		];
+	}
+
+	// Page Performance
+
+	/**
+	 * GET /forms/{id}/analytics/page-performance
+	 *
+	 * Per-page aggregation of entries for a single form. Groups by a
+	 * normalized origin+path slice of `page_url` (the column already
+	 * recorded from HTTP_REFERER on every submission), so existing
+	 * entries surface without a schema change.
+	 *
+	 * Pro-only: Lite callers receive a feature_locked error so the
+	 * Analytics bundle can render an upsell card without a 403 toast.
+	 *
+	 * Returns: {
+	 *   form_id, form_name, total_entries, untracked_entries,
+	 *   pages: [ {
+	 *     page_path, page_url, page_origin,
+	 *     entries, spam, not_spam,
+	 *     high_priority, medium_priority, low_priority, unknown_priority,
+	 *     unread, needs_reply,
+	 *     conversion_share, spam_rate, high_priority_rate,
+	 *     last_entry_at
+	 *   } ]
+	 * }
+	 *
+	 * Sort: entries desc, then high_priority desc, then last_entry_at desc.
+	 */
+	public function get_page_performance( WP_REST_Request $request ) {
+		// Pro capability gate. Distinct error so the Analytics bundle
+		// renders an upsell rather than a generic permission denial.
+		if ( ! \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::PAGE_PERFORMANCE_ANALYTICS ) ) {
+			return new \WP_Error(
+				'pro_feature_locked',
+				__( 'Page Performance Analytics is available in Neural Forms Pro.', 'neural-forms-lite' ),
+				[ 'status' => 403, 'feature' => \NeuralForms\Core\Capabilities::PAGE_PERFORMANCE_ANALYTICS ]
+			);
+		}
+
+		$form_id = (int) $request['id'];
+		if ( $form_id < 1 ) {
+			return new \WP_Error( 'invalid_form_id', __( 'Invalid form id.', 'neural-forms-lite' ), [ 'status' => 400 ] );
+		}
+
+		global $wpdb;
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+		$forms   = $wpdb->prefix . 'neural_forms_forms';
+
+		// Form name lookup (cheap, used by the response envelope).
+		$form_name = (string) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT name FROM %i WHERE id = %d', $forms, $form_id )
+		);
+		if ( $form_name === '' ) {
+			return new \WP_Error( 'form_not_found', __( 'Form not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
+		}
+
+		// Pull every entry's page_url + status + ai_priority. We do
+		// the bucketing in PHP rather than SQL because we need
+		// origin+path normalization (strip query strings, lowercase
+		// host) — easier to express deterministically in PHP than
+		// SUBSTRING_INDEX gymnastics. Per-form scope keeps result
+		// sizes bounded by typical form volumes (≤ tens of thousands
+		// of rows per form even for high-traffic sites).
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, page_url, status, ai_priority, ai_is_spam, ai_auto_spam_applied,
+				        is_starred, needs_reply, submitted_at, created_at
+				 FROM %i WHERE form_id = %d',
+				$entries,
+				$form_id
+			),
+			ARRAY_A
+		) ?: [];
+
+		$buckets = []; // page_key => bucket
+		$total = 0;
+		$untracked = 0;
+
+		foreach ( $rows as $r ) {
+			$total++;
+			$norm = self::normalize_page_url( (string) ( $r['page_url'] ?? '' ) );
+			if ( $norm['key'] === '' ) {
+				$untracked++;
+				$key = '__unknown__';
+				$norm = [
+					'key'    => $key,
+					'origin' => '',
+					'path'   => '',
+					'url'    => '',
+				];
+			} else {
+				$key = $norm['key'];
+			}
+
+			if ( ! isset( $buckets[ $key ] ) ) {
+				$buckets[ $key ] = [
+					'page_key'         => $key,
+					'page_origin'      => $norm['origin'],
+					'page_path'        => $norm['path'],
+					'page_url'         => $norm['url'],
+					'entries'          => 0,
+					'spam'             => 0,
+					'not_spam'         => 0,
+					'high_priority'    => 0,
+					'medium_priority'  => 0,
+					'low_priority'     => 0,
+					'unknown_priority' => 0,
+					'unread'           => 0,
+					'needs_reply'      => 0,
+					'last_entry_at'    => null,
+				];
+			}
+			$b = &$buckets[ $key ];
+			$b['entries']++;
+
+			$status = (string) ( $r['status'] ?? '' );
+			if ( $status === 'spam' ) {
+				$b['spam']++;
+			} else {
+				$b['not_spam']++;
+			}
+
+			$priority = strtolower( (string) ( $r['ai_priority'] ?? '' ) );
+			if ( $priority === 'high' )      $b['high_priority']++;
+			elseif ( $priority === 'medium' ) $b['medium_priority']++;
+			elseif ( $priority === 'low' )    $b['low_priority']++;
+			else                              $b['unknown_priority']++;
+
+			if ( $status === 'new' ) $b['unread']++;
+			if ( (int) ( $r['needs_reply'] ?? 0 ) === 1 ) $b['needs_reply']++;
+
+			$ts = (string) ( $r['submitted_at'] ?? $r['created_at'] ?? '' );
+			if ( $ts !== '' && ( $b['last_entry_at'] === null || $ts > $b['last_entry_at'] ) ) {
+				$b['last_entry_at'] = $ts;
+			}
+			unset( $b );
+		}
+
+		// Compute rates + share, then sort.
+		$pages = array_values( array_map(
+			static function ( array $b ) use ( $total ): array {
+				$entries = (int) $b['entries'];
+				$b['conversion_share']  = $total > 0   ? round( ( $entries / $total ) * 100, 2 ) : 0.0;
+				$b['spam_rate']         = $entries > 0 ? round( ( (int) $b['spam']          / $entries ) * 100, 2 ) : 0.0;
+				$b['high_priority_rate']= $entries > 0 ? round( ( (int) $b['high_priority'] / $entries ) * 100, 2 ) : 0.0;
+				return $b;
+			},
+			$buckets
+		) );
+
+		usort( $pages, static function ( $a, $b ) {
+			if ( $a['entries']       !== $b['entries']      ) return $b['entries']      <=> $a['entries'];
+			if ( $a['high_priority'] !== $b['high_priority']) return $b['high_priority']<=> $a['high_priority'];
+			return strcmp( (string) ( $b['last_entry_at'] ?? '' ), (string) ( $a['last_entry_at'] ?? '' ) );
+		} );
+
+		return rest_ensure_response( [
+			'form_id'           => $form_id,
+			'form_name'         => $form_name,
+			'total_entries'     => $total,
+			'untracked_entries' => $untracked,
+			'pages'             => $pages,
+			// Future hook: AI insight will consume `pages` aggregate
+			// (NOT raw entries) to summarize "page X is your best
+			// converter, page Y has high spam rate". See brief Part F.
+		] );
+	}
+
+	/**
+	 * Normalize a stored page_url into { key, origin, path, url }.
+	 *
+	 *   key    = canonical group identifier (origin + path, lowercased)
+	 *   origin = scheme://host[:port]
+	 *   path   = the page's path (defaults to '/')
+	 *   url    = clean origin + path (no query / no fragment)
+	 *
+	 * Query strings are stripped because the brief calls them out
+	 * as a privacy hazard (utm_*, email=, name=, token=). The
+	 * untracked / empty case returns key=''. parse_url is safe with
+	 * untrusted input — we re-build the URL ourselves rather than
+	 * trust whatever was in the column.
+	 */
+	private static function normalize_page_url( string $raw ): array {
+		$raw = trim( $raw );
+		if ( $raw === '' ) {
+			return [ 'key' => '', 'origin' => '', 'path' => '', 'url' => '' ];
+		}
+		$parts = wp_parse_url( $raw );
+		if ( ! is_array( $parts ) ) {
+			return [ 'key' => '', 'origin' => '', 'path' => '', 'url' => '' ];
+		}
+
+		$scheme = isset( $parts['scheme'] ) ? strtolower( (string) $parts['scheme'] ) : '';
+		$host   = isset( $parts['host'] )   ? strtolower( (string) $parts['host'] )   : '';
+		$port   = isset( $parts['port'] )   ? ':' . (int) $parts['port']              : '';
+		$path   = isset( $parts['path'] )   ? (string) $parts['path']                 : '/';
+		if ( $path === '' ) $path = '/';
+
+		// Without a host the URL is unusable for analytics grouping.
+		if ( $host === '' ) {
+			return [ 'key' => '', 'origin' => '', 'path' => '', 'url' => '' ];
+		}
+
+		$origin = $scheme !== '' ? "{$scheme}://{$host}{$port}" : "//{$host}{$port}";
+		$url    = $origin . $path;
+		return [
+			'key'    => strtolower( $origin . $path ),
+			'origin' => $origin,
+			'path'   => $path,
+			'url'    => $url,
 		];
 	}
 }

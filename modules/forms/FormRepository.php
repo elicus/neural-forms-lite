@@ -44,9 +44,16 @@ class FormRepository {
             return false;
         }
 
-        $slug = self::unique_slug(
-            $data['slug'] ?? sanitize_title( $data['name'] )
-        );
+        // ?? only triggers on null — an empty-string slug from the
+        // builder (form.slug = '' for new forms) would otherwise pass
+        // through and `generate_unique_slug('')` would default to the
+        // generic prefix "form" instead of name-deriving. Truthy
+        // check ensures the user-visible name drives the slug for
+        // brand-new forms.
+        $base_slug = ! empty( $data['slug'] )
+            ? (string) $data['slug']
+            : sanitize_title( (string) $data['name'] );
+        $slug = self::unique_slug( $base_slug );
 
         $now = current_time( 'mysql' );
 
@@ -334,6 +341,71 @@ class FormRepository {
             'items' => array_map( [ self::class, 'decode' ], $rows ?: [] ),
             'total' => $total,
         ];
+    }
+
+    /**
+     * Resolve form ids whose detected type matches one of `$types`
+     * (added 0.2.0 for the Entries inbox smart-folder filtering).
+     *
+     * Strategy: SELECT id + form_schema for non-trash forms, decode
+     * each row's schema, run FormTypeDetector::detect, keep ids whose
+     * type is in the requested set. The N-row decode is acceptable
+     * because the forms table is in the dozens, not millions; if it
+     * ever becomes a hot path we can cache the detected type as a
+     * column.
+     *
+     * Type taxonomy mirrors FormTypeDetector exactly:
+     *   simple, poll, quiz, mixed, survey
+     *
+     * Brief's mixed-routing rule: mixed forms (quiz_question + poll)
+     * appear in QUIZ folder primarily; pass `[ 'quiz', 'mixed' ]` to
+     * resolve the Quizzes-folder set, and `[ 'poll' ]` (without
+     * 'mixed') to resolve the Polls-folder set.
+     *
+     * @param string[] $types Subset of FormTypeDetector::TYPE_* constants.
+     * @param string $status_scope 'any' | 'active' (default 'any')
+     * @return int[] Form IDs matching at least one of the requested types.
+     */
+    public static function get_form_ids_by_detected_type( array $types, string $status_scope = 'any' ): array {
+        global $wpdb;
+        if ( empty( $types ) ) return [];
+
+        $table = $wpdb->prefix . 'neural_forms_forms';
+
+        // Status filter: 'any' includes draft + active but excludes
+        // archived rows from inbox-style folders. Callers that want
+        // archived-too pass status_scope='all' (caller-side; not exposed
+        // in the brief, default works).
+        $where = '1=1';
+        $args  = [ $table ];
+        if ( $status_scope === 'active' ) {
+            $where .= ' AND status = %s';
+            $args[]  = 'active';
+        }
+        // Always exclude archived from smart folders.
+        $where .= " AND status != 'archived'";
+
+        $rows = $wpdb->get_results(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->prepare( "SELECT id, form_schema FROM %i WHERE {$where}", ...$args ),
+            ARRAY_A
+        );
+        if ( ! is_array( $rows ) || empty( $rows ) ) return [];
+
+        $detector = '\\NeuralForms\\Forms\\FormTypeDetector';
+        $type_set = array_flip( $types );
+        $out      = [];
+
+        foreach ( $rows as $row ) {
+            $schema = json_decode( (string) ( $row['form_schema'] ?? '{}' ), true );
+            if ( ! is_array( $schema ) ) continue;
+            $detected = $detector::detect( $schema );
+            if ( isset( $type_set[ $detected ] ) ) {
+                $out[] = (int) $row['id'];
+            }
+        }
+
+        return $out;
     }
 
     // Helpers

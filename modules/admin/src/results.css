@@ -1265,3 +1265,262 @@
 	border-radius: var( --nfr-radius-pill );
 	text-transform: capitalize;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Page Performance (Pro analytics)
+ *
+ * Card-shaped section that lists per-page entry counts + spam +
+ * priority breakdown. Brand colors: dark blue #080f5b for headings
+ * + chrome (--nfr-primary), mint #15db95 for positive accents
+ * (high-priority pill, top-card highlight) (--nfr-accent).
+ * ───────────────────────────────────────────────────────────────── */
+
+#neural-forms-results-app .nf-pp {
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 20px 24px;
+	margin: 16px 0;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
+}
+#neural-forms-results-app .nf-pp__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+#neural-forms-results-app .nf-pp__title {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 700;
+	color: var( --nfr-primary );
+	letter-spacing: 0.01em;
+}
+#neural-forms-results-app .nf-pp__sub {
+	flex-basis: 100%;
+	margin: 0;
+	color: #64748b;
+	font-size: 12px;
+}
+#neural-forms-results-app .nf-pp__desc {
+	margin: 0;
+	color: #475569;
+	font-size: 13px;
+	line-height: 1.5;
+}
+#neural-forms-results-app .nf-pp__error {
+	margin: 0;
+	padding: 10px 12px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	border-radius: 6px;
+	color: #b91c1c;
+	font-size: 12px;
+}
+#neural-forms-results-app .nf-pp__pro-pill {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: linear-gradient( 90deg, var( --nfr-primary ), var( --nfr-accent ) );
+	color: #fff;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+#neural-forms-results-app .nf-pp__upgrade {
+	display: inline-block;
+	margin-top: 12px;
+	padding: 8px 14px;
+	background: var( --nfr-primary );
+	color: #fff;
+	border-radius: 6px;
+	text-decoration: none;
+	font-size: 13px;
+	font-weight: 600;
+}
+#neural-forms-results-app .nf-pp__upgrade:hover { background: #060a44; color: #fff; }
+
+/* Top cards row */
+#neural-forms-results-app .nf-pp__cards {
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 220px, 1fr ) );
+	gap: 12px;
+	margin: 12px 0 18px;
+}
+#neural-forms-results-app .nf-pp__card {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 12px 14px;
+}
+#neural-forms-results-app .nf-pp__card--primary {
+	background: linear-gradient( 135deg, var( --nfr-primary ) 0%, #1a237e 100% );
+	border-color: var( --nfr-primary );
+	color: #fff;
+}
+#neural-forms-results-app .nf-pp__card--primary .nf-pp__card-label,
+#neural-forms-results-app .nf-pp__card--primary .nf-pp__card-stat,
+#neural-forms-results-app .nf-pp__card--primary .nf-pp__card-page {
+	color: #fff;
+}
+#neural-forms-results-app .nf-pp__card--muted { background: #f1f5f9; }
+#neural-forms-results-app .nf-pp__card-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: #64748b;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+#neural-forms-results-app .nf-pp__card-page {
+	margin-top: 4px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nfr-primary );
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#neural-forms-results-app .nf-pp__card-stat {
+	margin-top: 6px;
+	font-size: 13px;
+	color: #334155;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+#neural-forms-results-app .nf-pp__rate {
+	display: inline-block;
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: rgba( 21, 219, 149, 0.15 );
+	color: #047857;
+	font-size: 11px;
+	font-weight: 600;
+}
+#neural-forms-results-app .nf-pp__rate--warn {
+	background: #fef3c7;
+	color: #92400e;
+}
+#neural-forms-results-app .nf-pp__card--primary .nf-pp__rate {
+	background: rgba( 255, 255, 255, 0.2 );
+	color: #fff;
+}
+
+/* Main table */
+#neural-forms-results-app .nf-pp__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+#neural-forms-results-app .nf-pp__th {
+	text-align: left;
+	padding: 8px 12px;
+	background: #f8fafc;
+	color: #64748b;
+	font-weight: 600;
+	font-size: 11px;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	border-bottom: 1px solid #e2e8f0;
+}
+#neural-forms-results-app .nf-pp__th--page { width: 36%; }
+#neural-forms-results-app .nf-pp__td {
+	padding: 12px;
+	border-bottom: 1px solid #f1f5f9;
+	color: #1f2937;
+	vertical-align: top;
+}
+#neural-forms-results-app .nf-pp__td--num { white-space: nowrap; }
+#neural-forms-results-app .nf-pp__td--page { min-width: 0; }
+#neural-forms-results-app .nf-pp__page-title {
+	font-weight: 600;
+	color: var( --nfr-primary );
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 360px;
+}
+#neural-forms-results-app .nf-pp__page-url {
+	display: inline-block;
+	margin-top: 2px;
+	font-size: 11px;
+	color: #64748b;
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 360px;
+}
+#neural-forms-results-app .nf-pp__page-url:hover { color: var( --nfr-primary ); text-decoration: underline; }
+#neural-forms-results-app .nf-pp__num { font-weight: 600; color: var( --nfr-primary ); }
+#neural-forms-results-app .nf-pp__tr--muted .nf-pp__page-title { color: #64748b; font-style: italic; }
+
+/* Volume bar */
+#neural-forms-results-app .nf-pp__vol-bar {
+	margin-top: 4px;
+	height: 4px;
+	background: #e2e8f0;
+	border-radius: 2px;
+	overflow: hidden;
+	width: 80px;
+}
+#neural-forms-results-app .nf-pp__vol-bar-fill {
+	display: block;
+	height: 100%;
+	background: var( --nfr-accent );
+	border-radius: 2px;
+}
+
+/* Priority counts + bar */
+#neural-forms-results-app .nf-pp__pri-counts {
+	display: inline-flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+#neural-forms-results-app .nf-pp__pri-pill {
+	display: inline-block;
+	min-width: 22px;
+	text-align: center;
+	padding: 1px 6px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+}
+#neural-forms-results-app .nf-pp__pri-pill--high { background: rgba( 21, 219, 149, 0.2 ); color: #047857; }
+#neural-forms-results-app .nf-pp__pri-pill--med  { background: rgba( 8,  15,  91,  0.1 ); color: var( --nfr-primary ); }
+#neural-forms-results-app .nf-pp__pri-pill--low  { background: #f1f5f9; color: #64748b; }
+#neural-forms-results-app .nf-pp__pri-bar {
+	margin-top: 6px;
+	display: flex;
+	height: 4px;
+	background: #e2e8f0;
+	border-radius: 2px;
+	overflow: hidden;
+	max-width: 120px;
+}
+#neural-forms-results-app .nf-pp__pri-bar-seg { display: block; height: 100%; }
+#neural-forms-results-app .nf-pp__pri-bar-seg--high { background: var( --nfr-accent ); }
+#neural-forms-results-app .nf-pp__pri-bar-seg--med  { background: var( --nfr-primary ); }
+#neural-forms-results-app .nf-pp__pri-bar-seg--low  { background: #cbd5e1; }
+
+#neural-forms-results-app .nf-pp__cta {
+	margin: 12px 0 0;
+	text-align: right;
+}
+#neural-forms-results-app .nf-pp__cta-link {
+	font-size: 12px;
+	color: var( --nfr-primary );
+	font-weight: 600;
+	text-decoration: none;
+}
+#neural-forms-results-app .nf-pp__cta-link:hover { text-decoration: underline; }
+
+/* Mobile collapse: stack the table cells into mini-rows */
+@media ( max-width: 720px ) {
+	#neural-forms-results-app .nf-pp__table thead { display: none; }
+	#neural-forms-results-app .nf-pp__tr { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+	#neural-forms-results-app .nf-pp__td { border-bottom: 0; padding: 0; }
+	#neural-forms-results-app .nf-pp__td--page { grid-column: 1 / -1; }
+}

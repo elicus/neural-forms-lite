@@ -4,6 +4,7 @@ namespace NeuralForms\AI\Providers;
 use NeuralForms\AI\Contracts\AIAnalysisProviderInterface;
 use NeuralForms\AI\AIRepository;
 use NeuralForms\AI\Exceptions\CloudPlanException;
+use NeuralForms\AI\Exceptions\CloudSafetyException;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -227,6 +228,28 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			// Plan-related errors carry structured data so the plugin can react
 			// without parsing messages. Surface them as a typed exception.
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
+
+			// SafetyGate decisions: distinct exception so AIQueueProcessor
+			// can mark the entry blocked_by_safety instead of failed (no
+			// retry, no credit deduction). Both block and unavailable
+			// codes flow through this branch with the cloud's flat payload.
+			if ( in_array( $body_code, [ 'blocked_by_safety', 'ai_safety_unavailable' ], true ) ) {
+				$safety   = is_array( $data['safety'] ?? null ) ? $data['safety'] : [];
+				$usage    = is_array( $data['usage']  ?? null ) ? $data['usage']  : [];
+				$category = isset( $safety['category'] ) && is_string( $safety['category'] )
+					? $safety['category'] : null;
+				$action   = isset( $safety['action'] )   && is_string( $safety['action'] )
+					? $safety['action']   : 'block';
+				throw new CloudSafetyException(
+					esc_html( (string) ( $data['message'] ?? $body_code ) ),
+					esc_html( $body_code ),
+					(int) $code,
+					$category !== null ? esc_html( $category ) : null,
+					esc_html( $action ),
+					$usage
+				);
+			}
+
 			if ( in_array( $body_code, [ 'feature_locked', 'quota_exceeded' ], true ) ) {
 				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : [];
 				throw new CloudPlanException(

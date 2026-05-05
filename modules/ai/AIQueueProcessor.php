@@ -15,6 +15,7 @@ use NeuralForms\Storage\AIResponseRepository;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\AI\Contracts\AIAnalysisProviderInterface;
 use NeuralForms\AI\Exceptions\CloudPlanException;
+use NeuralForms\AI\Exceptions\CloudSafetyException;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -214,6 +215,27 @@ class AIQueueProcessor {
 			self::handle_plan_exception( $e, 'ai_analyze' );
 			self::finish_job( (int) $job['id'], 'failed', $e->getMessage() );
 			AIRepository::update_status( $entry_id, 'failed', $e->getMessage() );
+			self::maybe_send_deferred_notifications_on_failure( $entry_id, $payload );
+			self::log_error( $entry_id, (int) $job['id'], (int) $job['attempts'] + 1, $e->getMessage() );
+		} catch ( CloudSafetyException $e ) {
+			// SafetyGate blocked the entry. No retries (a blocked input
+			// will block again) and no failure status — this is a
+			// distinct ai_status so the UI can badge the entry as
+			// "filtered" rather than "errored". The cloud already
+			// returned credits_deducted=false, so no billing concern.
+			$next_status = $e->is_unavailable() ? 'failed' : 'blocked_by_safety';
+			self::finish_job( (int) $job['id'], 'failed', $e->getMessage() );
+			AIRepository::update_status( $entry_id, $next_status, $e->getMessage() );
+			Logger::file(
+				'ai_queue',
+				'info',
+				sprintf(
+					'Job %d: blocked_by_safety entry=%d category=%s',
+					(int) $job['id'],
+					$entry_id,
+					$e->get_category() ?? '-'
+				)
+			);
 			self::maybe_send_deferred_notifications_on_failure( $entry_id, $payload );
 			self::log_error( $entry_id, (int) $job['id'], (int) $job['attempts'] + 1, $e->getMessage() );
 		} catch ( \Throwable $e ) {

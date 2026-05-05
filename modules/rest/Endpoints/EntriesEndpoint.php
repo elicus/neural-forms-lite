@@ -162,26 +162,65 @@ class EntriesEndpoint {
 	public function get_entries( WP_REST_Request $request ) {
 		$form_id = (int) $request->get_param( 'form_id' );
 		$view    = (string) $request->get_param( 'view' );
+		// 0.2.0 smart folders. `folder` is exclusive with `form_id`
+		// (a single-form view always wins). Allowed values:
+		//   polls         → entries from forms detected as poll
+		//   quizzes       → entries from forms detected as quiz OR mixed
+		//   normal_inbox  → All Forms → Inbox view excluding poll/quiz/mixed
+		$folder  = (string) $request->get_param( 'folder' );
 
 		// Require at least one scoping parameter so we never return the entire
 		// unfiltered entries table. A non-empty search term counts as a filter.
 		$search = trim( (string) $request->get_param( 'search' ) );
-		if ( $form_id < 1 && $view === '' && $search === '' ) {
+		if ( $form_id < 1 && $view === '' && $search === '' && $folder === '' ) {
 			return new WP_Error(
 				'missing_filter',
-				__( 'A valid form_id, view, or search term is required.', 'neural-forms-lite' ),
+				__( 'A valid form_id, view, folder, or search term is required.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		$result = EntryRepository::list( $form_id, [
+		$list_args = [
 			'view'       => $view,
 			'page'       => (int) $request->get_param( 'page' ),
 			'per_page'   => (int) $request->get_param( 'per_page' ),
 			'status'     => $request->get_param( 'status' ),
 			'search'     => $search,
 			'sort_order' => (string) $request->get_param( 'sort_order' ),
-		] );
+		];
+
+		// Resolve folder → form_ids / exclude_form_ids using the
+		// shared FormTypeDetector via FormRepository::get_form_ids_by_detected_type.
+		// folder is ignored when form_id is set (single-form view wins).
+		//
+		// Auto-exclusion of poll/quiz/mixed at All Forms scope is
+		// EXPLICIT, not implicit. The rich admin bundle has no
+		// Polls/Quizzes top-level folders yet, so silently filtering
+		// those entries out of the default Inbox would hide them
+		// completely. Clients that want the filtered inbox must ask
+		// for it via folder=normal_inbox; the new per-screen entries
+		// bundle does this when enabled.
+		if ( $form_id < 1 && $folder !== '' ) {
+			switch ( $folder ) {
+				case 'polls':
+					// Polls folder: poll-only forms. Mixed routes to
+					// quizzes per the brief's mixed→quiz rule.
+					$list_args['form_ids'] = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'poll' ] );
+					break;
+				case 'quizzes':
+					// Quizzes folder: quiz + mixed forms.
+					$list_args['form_ids'] = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'quiz', 'mixed' ] );
+					break;
+				case 'normal_inbox':
+					// All Forms → Inbox (split-bundle UI): exclude
+					// poll/quiz/mixed so the normal contact/lead
+					// workflow stays uncluttered.
+					$list_args['exclude_form_ids'] = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'poll', 'quiz', 'mixed' ] );
+					break;
+			}
+		}
+
+		$result = EntryRepository::list( $form_id, $list_args );
 
 		$items = array_map(
 			static function ( array $entry ): array {
@@ -210,7 +249,25 @@ class EntriesEndpoint {
 	 */
 	public function get_counts( WP_REST_Request $request ) {
 		$form_id = (int) $request->get_param( 'form_id' );
-		$counts  = EntryRepository::count_by_view( $form_id > 0 ? $form_id : null );
+
+		// Default per-view counts: NO auto-exclusion. The rich admin
+		// bundle's All Forms → Inbox shows every entry regardless of
+		// detected form type, so the badges next to Inbox / Unread /
+		// Starred / etc. must match. Clients that want the filtered
+		// counts (split-bundle UI) ask for them via folder=normal_inbox
+		// against /entries directly.
+		$counts = EntryRepository::count_by_view( $form_id > 0 ? $form_id : null );
+
+		// Surface Polls / Quizzes smart-folder totals at All Forms
+		// scope so the future split UI's sidebar can render its badges
+		// without a second roundtrip. Harmless for the rich UI which
+		// ignores these keys.
+		if ( $form_id < 1 ) {
+			$smart = EntryRepository::count_smart_folders();
+			$counts['polls']   = (int) ( $smart['polls']   ?? 0 );
+			$counts['quizzes'] = (int) ( $smart['quizzes'] ?? 0 );
+		}
+
 		return rest_ensure_response( $counts );
 	}
 

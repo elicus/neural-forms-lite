@@ -37,9 +37,13 @@ const SCREENS = {
 	// build/block.js (rich form-block bundle) — see blocks-extra-entry.js
 	// for why they're separate.
 	'blocks-extra': 'src/blocks-extra-entry.js',
+	// Restored in 1.1.0: per-screen Entries bundle (sibling to builder).
+	// Lets us ship Entries UI changes without rebuilding the rich
+	// byte-protected build/index.js. AdminPanel.php enqueues
+	// build/entries.js on the entries screen instead of index.js.
+	entries:       'src/entries-entry.js',
 	// Future screens (do NOT enable until their source is restored):
 	//   forms:        'src/forms-entry.js',
-	//   entries:      'src/entries-entry.js',
 	//   settings:     'src/settings-entry.js',
 	//   stats:        'src/stats-entry.js',
 	//   'admin-shell': 'src/admin-shell-entry.js',

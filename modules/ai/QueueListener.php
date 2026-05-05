@@ -40,6 +40,30 @@ class QueueListener {
 		if ( ! Config::get( 'cloud_ai_enabled'  ) ) return;
 		if ( ! Config::get( 'cloud_api_key'     ) ) return;
 
+		// Per-form "Process with AI" mode (0.2.0). Resolver layers the
+		// AI_PROCESS_ENTRIES capability + cloud connection + form mode.
+		// Anything other than ALLOW_AUTO short-circuits the listener:
+		//   unavailable      — Lite-only install or cloud misconfigured
+		//   skip             — form mode = disabled
+		//   allow_manual_only — form mode = manual / final_results / inherit-with-global-off
+		//
+		// Returns one log line per skipped submission so ops can see
+		// the credit-protection guard firing.
+		$decision = \NeuralForms\AI\AiProcessingResolver::resolve( $form_id );
+		if ( $decision !== \NeuralForms\AI\AiProcessingResolver::RESULT_ALLOW_AUTO ) {
+			Logger::file(
+				'ai_queue',
+				'info',
+				sprintf(
+					'auto-process skipped form=%d entry=%d decision=%s',
+					$form_id,
+					$entry_id,
+					$decision
+				)
+			);
+			return;
+		}
+
 		// Either trigger is enough to queue: auto-processing for the full
 		// summary/reply/category output, OR spam detection on its own. Spam
 		// classification is part of the same analyze() response, so it rides

@@ -112,12 +112,64 @@ class NotificationService {
 
 		$headers = self::build_from_headers( $settings );
 
+		// Reply-To: when the submission carries a valid email field,
+		// the admin should be able to hit "Reply" in their mail
+		// client and reply directly to the user — not to themselves.
+		// We never set From to the user (SPF/DKIM/DMARC would reject
+		// most outbound mail); only Reply-To is rewritten.
+		//
+		// Resolution priority:
+		//   1. Explicit per-form override   $form['settings']['reply_to_email']
+		//   2. Explicit global override     $settings['admin_reply_to_email']
+		//   3. Submitter email field        find_submitter_email()
+		//   4. None                         (no Reply-To header)
+		//
+		// The neural_forms_admin_reply_to filter lets integrations
+		// override or veto the auto Reply-To without changing settings.
+		$reply_to_email = '';
+		$reply_to_name  = '';
+
+		$override = (string) ( $form['settings']['reply_to_email'] ?? '' );
+		if ( $override === '' ) {
+			$override = (string) ( $settings['admin_reply_to_email'] ?? '' );
+		}
+
+		if ( $override !== '' && is_email( $override ) ) {
+			$reply_to_email = $override;
+		} else {
+			$reply_to_email = self::find_submitter_email( $schema_fields, $data );
+			$reply_to_name  = self::find_submitter_name( $schema_fields, $data );
+		}
+
+		/**
+		 * Filter the Reply-To pair before it's serialized into a header.
+		 *
+		 * @param array $reply_to  [ 'email' => string, 'name' => string ]
+		 * @param array $form
+		 * @param array $data
+		 * @param int   $entry_id
+		 */
+		$filtered = apply_filters(
+			'neural_forms_admin_reply_to',
+			[ 'email' => $reply_to_email, 'name' => $reply_to_name ],
+			$form,
+			$data,
+			$entry_id
+		);
+		$reply_to_email = is_array( $filtered ) ? (string) ( $filtered['email'] ?? '' ) : '';
+		$reply_to_name  = is_array( $filtered ) ? (string) ( $filtered['name']  ?? '' ) : '';
+
+		$reply_to_header = self::build_reply_to_header( $reply_to_email, $reply_to_name );
+		if ( $reply_to_header !== '' ) {
+			$headers[] = $reply_to_header;
+		}
+
 		$sent = self::send_with_retry( $to, $subject, $body, $headers );
 
 		if ( $sent ) {
 			Logger::log( 'admin_notification_sent', 'info',
 				sprintf( 'Admin notification sent to %s.', $to ),
-				[ 'to' => $to ], $entry_id );
+				[ 'to' => $to, 'reply_to' => $reply_to_email ], $entry_id );
 		} else {
 			Logger::log( 'admin_notification_failed', 'error',
 				sprintf( 'Admin notification failed for %s - wp_mail() returned false after retry.', $to ),
@@ -187,6 +239,104 @@ class NotificationService {
 	 * @param array $data           Sanitized submitted field values.
 	 * @return string  Valid email address or empty string if none found.
 	 */
+	/**
+	 * Best-effort submitter display name for the Reply-To header.
+	 *
+	 * Resolution order:
+	 *   A. Field id/name contains "name"  (e.g. id="name", id="full_name")
+	 *   B. Field label contains "name"   (case-insensitive)
+	 *   C. First text/textarea field with a non-empty value
+	 *
+	 * Returns an empty string when nothing usable is found — Reply-To
+	 * will then be the bare email address with no display name.
+	 *
+	 * Output is sanitized: HTML stripped, control chars removed,
+	 * angle brackets / commas / CR/LF stripped (so a hostile name
+	 * cannot inject an extra header line), capped at 120 chars.
+	 *
+	 * @param array $schema_fields  Flattened schema fields.
+	 * @param array $data           Sanitized submitted values.
+	 * @return string
+	 */
+	private static function find_submitter_name( array $schema_fields, array $data ): string {
+		$candidates = [];
+
+		// Pass A: id/name contains "name".
+		foreach ( $schema_fields as $field ) {
+			$field    = (array) $field;
+			$type     = $field['type'] ?? '';
+			$field_id = (string) ( $field['id'] ?? '' );
+			if ( $field_id === '' ) continue;
+			if ( ! in_array( $type, [ 'text', 'textarea', 'hidden' ], true ) ) continue;
+			if ( stripos( $field_id, 'name' ) === false ) continue;
+			$value = (string) ( $data[ $field_id ] ?? '' );
+			if ( $value !== '' ) { $candidates[] = $value; break; }
+		}
+
+		// Pass B: label contains "name".
+		if ( empty( $candidates ) ) {
+			foreach ( $schema_fields as $field ) {
+				$field    = (array) $field;
+				$type     = $field['type'] ?? '';
+				$field_id = (string) ( $field['id'] ?? '' );
+				$label    = (string) ( $field['label'] ?? '' );
+				if ( $field_id === '' || $label === '' ) continue;
+				if ( ! in_array( $type, [ 'text', 'textarea', 'hidden' ], true ) ) continue;
+				if ( stripos( $label, 'name' ) === false ) continue;
+				$value = (string) ( $data[ $field_id ] ?? '' );
+				if ( $value !== '' ) { $candidates[] = $value; break; }
+			}
+		}
+
+		// Pass C: first non-empty text/textarea value as a final fallback.
+		if ( empty( $candidates ) ) {
+			foreach ( $schema_fields as $field ) {
+				$field    = (array) $field;
+				$type     = $field['type'] ?? '';
+				$field_id = (string) ( $field['id'] ?? '' );
+				if ( $field_id === '' ) continue;
+				if ( ! in_array( $type, [ 'text', 'textarea' ], true ) ) continue;
+				$value = (string) ( $data[ $field_id ] ?? '' );
+				if ( $value !== '' ) { $candidates[] = $value; break; }
+			}
+		}
+
+		if ( empty( $candidates ) ) return '';
+
+		$name = (string) $candidates[0];
+		$name = wp_strip_all_tags( $name );
+		$name = sanitize_text_field( $name );
+		// Defense-in-depth header-injection guards: drop any CR / LF /
+		// NULL plus the structural characters wp_mail header parsers
+		// use (`,`, `<`, `>`, `"`).
+		$name = str_replace( [ "\r", "\n", "\0", ',', '<', '>', '"' ], '', $name );
+		$name = trim( $name );
+		if ( strlen( $name ) > 120 ) {
+			$name = substr( $name, 0, 120 );
+		}
+		return $name;
+	}
+
+	/**
+	 * Build a Reply-To header line, or empty string if the email
+	 * isn't usable. Output is safe to append to wp_mail()'s $headers
+	 * array. CRLF / NULL / structural chars are stripped from both
+	 * the email and the optional display name to prevent header
+	 * injection.
+	 */
+	private static function build_reply_to_header( string $email, string $name ): string {
+		$email = trim( str_replace( [ "\r", "\n", "\0" ], '', sanitize_email( $email ) ) );
+		if ( $email === '' || ! is_email( $email ) ) {
+			return '';
+		}
+		$name = str_replace( [ "\r", "\n", "\0", ',', '<', '>', '"' ], '', $name );
+		$name = trim( $name );
+		if ( $name === '' ) {
+			return 'Reply-To: ' . $email;
+		}
+		return sprintf( 'Reply-To: %s <%s>', $name, $email );
+	}
+
 	private static function find_submitter_email( array $schema_fields, array $data ): string {
 		// Pass 1: typed email fields - most reliable.
 		// Scans the schema for fields declared as type='email' and returns the

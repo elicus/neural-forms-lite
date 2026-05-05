@@ -5,13 +5,13 @@
  *   Name      - form.name with form.slug below
  *   Status    - pill (Active / Draft / Archived)
  *   Actions   - Edit / Archive (or Restore for archived)
- *   Shortcode - [neural-forms slug="..."] + Copy button
+ *   Shortcode - [neural-forms id="N"] + Copy button (0.2.0: id-based)
  *
  * The Shortcode column is the embed helper the classic-editor / non-block
- * users need. The shortcode is built from form.slug because that is the
- * identifier ShortcodeHandler.php resolves at render time - using the slug
- * (not the numeric id) means the shortcode survives an export/import that
- * re-numbers form rows.
+ * users need. As of 0.2.0 the shortcode is built from form.id, not slug —
+ * slugs can change (renames) or duplicate, while ids are immutable.
+ * ShortcodeHandler.php still accepts the slug attribute for back-compat
+ * with any page that already uses [neural-forms slug="..."].
  */
 
 import { useEffect, useState } from '@wordpress/element';
@@ -121,7 +121,17 @@ export default function Forms() {
 
 function FormRow( { form } ) {
 	const slug = String( form.slug || '' );
-	const shortcode = slug !== '' ? `[neural-forms slug="${ slug }"]` : '';
+	// 0.2.0: ID-based shortcodes are the canonical embed format.
+	// Slugs can change (rename) and duplicate (rare but possible
+	// across statuses), while ids are immutable. Slug remains
+	// supported by ShortcodeHandler.php for back-compat with any
+	// page that already uses [neural-forms slug="..."]; this admin
+	// UI just stops MINTING them. Falls back to slug only if a row
+	// somehow has no id (shouldn't happen for saved forms).
+	const formId = Number( form.id ) || 0;
+	const shortcode = formId > 0
+		? `[neural-forms id="${ formId }"]`
+		: ( slug !== '' ? `[neural-forms slug="${ slug }"]` : '' );
 
 	return (
 		<tr>

@@ -266,11 +266,43 @@ class EntryRepository {
 	 * @param int|null $form_id  If non-null, scope counts to a single form.
 	 * @return array { inbox: int, unread: int, starred: int, needs_reply: int, spam: int, trash: int, high_priority: int, spam_suspected: int }
 	 */
-	public static function count_by_view( ?int $form_id = null ): array {
+	public static function count_by_view( ?int $form_id = null, array $args = [] ): array {
 		global $wpdb;
 
 		$table        = self::table();
-		$scope_clause = $form_id ? $wpdb->prepare( ' AND form_id = %d', $form_id ) : '';
+		$scope_clause = '';
+		if ( $form_id ) {
+			$scope_clause = $wpdb->prepare( ' AND form_id = %d', $form_id );
+		}
+
+		// Smart-folder scoping (0.2.0). When the caller passes a
+		// `form_ids` array (Polls/Quizzes folders) or `exclude_form_ids`
+		// (All Forms → Inbox excluding poll/quiz/mixed), we layer those
+		// onto the AND-chain of every per-view count.
+		if ( isset( $args['form_ids'] ) && is_array( $args['form_ids'] ) ) {
+			$ids = array_values( array_unique( array_filter(
+				array_map( 'intval', $args['form_ids'] ),
+				static fn ( $id ) => $id > 0
+			) ) );
+			if ( empty( $ids ) ) {
+				// No matching forms → all counts zero. Short-circuit
+				// with a literal false predicate.
+				$scope_clause .= ' AND 0 = 1';
+			} else {
+				$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+				$scope_clause .= $wpdb->prepare( " AND form_id IN ({$placeholders})", ...$ids );
+			}
+		}
+		if ( isset( $args['exclude_form_ids'] ) && is_array( $args['exclude_form_ids'] ) ) {
+			$exclude = array_values( array_unique( array_filter(
+				array_map( 'intval', $args['exclude_form_ids'] ),
+				static fn ( $id ) => $id > 0
+			) ) );
+			if ( ! empty( $exclude ) ) {
+				$placeholders = implode( ', ', array_fill( 0, count( $exclude ), '%d' ) );
+				$scope_clause .= $wpdb->prepare( " AND form_id NOT IN ({$placeholders})", ...$exclude );
+			}
+		}
 
 		$count = static function ( string $where ) use ( $wpdb, $table, $scope_clause ): int {
 			// $where is a hardcoded literal from the array below; $scope_clause
@@ -290,6 +322,65 @@ class EntryRepository {
 			'high_priority'  => $count( "ai_priority = 'high' AND status IN ('new','read')" ),
 			'spam_suspected' => $count( "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')" ),
 		];
+	}
+
+	/**
+	 * Smart-folder counts for the Entries sidebar (0.2.0).
+	 *
+	 * Returns the totals shown next to "Polls" and "Quizzes" nav items.
+	 * Counts include status='new'+'read' only — same scope as the
+	 * regular Inbox view (excludes spam/trash). Mixed forms count
+	 * toward Quizzes per the brief's mixed→quiz routing rule.
+	 *
+	 * Returns 0 for any folder whose form-id resolution yields an
+	 * empty list — the sidebar uses these counts to decide whether
+	 * to render the folder at all.
+	 *
+	 * @return array{ polls:int, quizzes:int }
+	 */
+	public static function count_smart_folders(): array {
+		$poll_ids = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'poll' ] );
+		$quiz_ids = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'quiz', 'mixed' ] );
+
+		$tally = static function ( array $ids ) {
+			if ( empty( $ids ) ) return 0;
+			global $wpdb;
+			$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+			$table        = self::table();
+			$args         = array_merge( [ $table ], $ids );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			return (int) $wpdb->get_var( $wpdb->prepare(
+				"SELECT COUNT(*) FROM %i WHERE status IN ('new','read') AND form_id IN ({$placeholders})",
+				...$args
+			) );
+		};
+
+		return [
+			'polls'   => $tally( $poll_ids ),
+			'quizzes' => $tally( $quiz_ids ),
+		];
+	}
+
+	/**
+	 * Count non-trashed entries for a single form.
+	 *
+	 * Used by the Lite poll/quiz submission limit (1,000 per form).
+	 * Spam IS counted because spam entries still consume storage and
+	 * are real submissions; only `status = 'trash'` is excluded so a
+	 * site owner can recover capacity by emptying trash.
+	 *
+	 * @param int $form_id
+	 * @return int
+	 */
+	public static function count_non_trash_entries_for_form( int $form_id ): int {
+		if ( $form_id < 1 ) return 0;
+		global $wpdb;
+		$count = $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM %i WHERE form_id = %d AND status != 'trash'",
+			self::table(),
+			$form_id
+		) );
+		return (int) $count;
 	}
 
 	/**
@@ -624,6 +715,54 @@ class EntryRepository {
 			$plain_parts[]   = 'form_id = %d';
 			$aliased_parts[] = 'e.form_id = %d';
 			$values[]        = $form_id;
+		}
+
+		// Smart-folder scoping (added 0.2.0). Polls / Quizzes folders
+		// resolve to a list of form ids via FormRepository::get_form_ids_by_detected_type
+		// and pass them through here as `form_ids`. The IN-clause is
+		// composed from %d placeholders so it stays prepared.
+		//
+		// Empty array on `form_ids` means "no forms match this folder";
+		// short-circuit by inserting an always-false predicate so the
+		// query returns zero rows + zero count without dropping the
+		// rest of the WHERE chain.
+		if ( isset( $args['form_ids'] ) && is_array( $args['form_ids'] ) ) {
+			$ids = array_values( array_unique( array_filter(
+				array_map( 'intval', $args['form_ids'] ),
+				static fn ( $id ) => $id > 0
+			) ) );
+			if ( empty( $ids ) ) {
+				$plain_parts[]   = '0 = 1';
+				$aliased_parts[] = '0 = 1';
+			} else {
+				$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+				$plain_parts[]   = "form_id IN ({$placeholders})";
+				$aliased_parts[] = "e.form_id IN ({$placeholders})";
+				// Same placeholders, same values, twice (once for the
+				// COUNT/plain query, once for the SELECT/aliased query —
+				// both run with `array_merge( ..., $values )`). $values
+				// is shared between the two, so we list the ids once
+				// and the prepared-statement substitution wraps both
+				// fragments with the same value list. WAIT — the two
+				// fragments use the SAME values array on each query
+				// invocation; the ids must appear once in $values.
+				$values = array_merge( $values, $ids );
+			}
+		}
+
+		// Exclude-list scoping. Used by the All Forms → Inbox folder
+		// to hide poll/quiz/mixed entries (the smart folders own them).
+		if ( isset( $args['exclude_form_ids'] ) && is_array( $args['exclude_form_ids'] ) ) {
+			$exclude = array_values( array_unique( array_filter(
+				array_map( 'intval', $args['exclude_form_ids'] ),
+				static fn ( $id ) => $id > 0
+			) ) );
+			if ( ! empty( $exclude ) ) {
+				$placeholders = implode( ', ', array_fill( 0, count( $exclude ), '%d' ) );
+				$plain_parts[]   = "form_id NOT IN ({$placeholders})";
+				$aliased_parts[] = "e.form_id NOT IN ({$placeholders})";
+				$values = array_merge( $values, $exclude );
+			}
 		}
 
 		// View filter takes precedence over the plain 'status' param.

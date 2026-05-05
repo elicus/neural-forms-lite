@@ -30,6 +30,7 @@ export default function BuilderCanvas( {
 	onAddMultistepStarter,
 	onApplyTemplate,
 	templateId,
+	formId,
 	onRequestChangeTemplate,
 	onRequestClear,
 } ) {
@@ -69,6 +70,7 @@ export default function BuilderCanvas( {
 				<div onClick={ ( e ) => e.stopPropagation() }>
 					<BuilderCanvasToolbar
 						templateId={ templateId }
+						formId={ formId }
 						onChangeTemplate={ onRequestChangeTemplate }
 						onClear={ onRequestClear }
 					/>

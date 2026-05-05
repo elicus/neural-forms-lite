@@ -391,6 +391,61 @@ class SchemaHelper {
 	}
 
 	/**
+	 * Allowed values for form_schema.settings.ai_processing.mode.
+	 * Stored on the schema so the resolver can decide whether to
+	 * enqueue an AI job when an entry is submitted.
+	 *
+	 *   inherit         → fall back to the global ai_auto_process setting
+	 *   disabled        → never run AI for this form (auto OR manual)
+	 *   every_entry     → analyze every submission automatically
+	 *   manual          → no automatic AI; admins can analyze on demand
+	 *   final_results   → no per-entry AI; aggregate insights only
+	 */
+	const AI_PROCESSING_MODES = [
+		'inherit',
+		'disabled',
+		'every_entry',
+		'manual',
+		'final_results',
+	];
+	const AI_PROCESSING_DEFAULT_MODE = 'inherit';
+
+	/**
+	 * Default form_schema.settings.ai_processing — per-form AI mode.
+	 *
+	 * `inherit` is the only safe default: it preserves whatever
+	 * existing forms were doing (global ai_auto_process drives
+	 * behaviour) and lets users opt in to disabled/every_entry/
+	 * manual/final_results explicitly.
+	 *
+	 * Per-form override gated by Capabilities::AI_PROCESS_ENTRIES.
+	 * Lite stores the value but never runs entry analysis itself —
+	 * the resolver short-circuits to "unavailable" when the cap is
+	 * false. See AiProcessingResolver.
+	 */
+	public static function default_ai_processing_settings(): array {
+		return [ 'mode' => self::AI_PROCESSING_DEFAULT_MODE ];
+	}
+
+	/**
+	 * Coerce form_schema.settings.ai_processing to canonical shape.
+	 *
+	 * - mode: must be one of AI_PROCESSING_MODES; unknown clamps to
+	 *   `inherit` (the safest default — preserves existing behaviour
+	 *   driven by the global toggle).
+	 * - unknown keys dropped.
+	 * - missing/non-array input → defaults.
+	 */
+	public static function normalize_ai_processing_settings( $settings ): array {
+		$in = is_array( $settings ) ? $settings : [];
+		$mode = isset( $in['mode'] ) ? (string) $in['mode'] : self::AI_PROCESSING_DEFAULT_MODE;
+		if ( ! in_array( $mode, self::AI_PROCESSING_MODES, true ) ) {
+			$mode = self::AI_PROCESSING_DEFAULT_MODE;
+		}
+		return [ 'mode' => $mode ];
+	}
+
+	/**
 	 * Default form_schema.settings.quiz — advanced score-quiz config
 	 * applied at the form level (pass/fail, result messages).
 	 *

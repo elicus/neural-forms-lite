@@ -31,10 +31,17 @@ export const TYPES_THAT_PAIR = FIELD_TYPES
 	.map( ( t ) => t.value );
 
 /**
- * Generate a unique-ish field id from a type. The form builder appends
- * a numeric suffix when the chosen id collides with an existing field
- * (FormValidator enforces uniqueness on save, so this is just a UX
- * convenience that avoids the 422).
+ * Legacy label-derived id generator. Kept exported for back-compat
+ * with any external caller that imports it directly, but is NO
+ * LONGER USED by `newField()` — that path now routes through
+ * `makeFieldId(type, existing)` from schemaHelper.js which uses a
+ * monotonic-counter token, guaranteeing uniqueness without relying
+ * on a possibly-stale `existingIds` snapshot.
+ *
+ * The old behaviour ("rating" → "rating_2" → "rating_3") was the
+ * source of the duplicate-id save error that this 0.2.0 change
+ * fixes: two paths could both miss the second add and both emit
+ * `id: "rating"`. See FormValidator's "Duplicate field id" guard.
  */
 export function defaultIdForType( type, existingIds = [] ) {
 	const base = type === 'tel' ? 'phone' : type;
@@ -47,9 +54,15 @@ export function defaultIdForType( type, existingIds = [] ) {
 	return candidate;
 }
 
+import { makeFieldId } from './schemaHelper';
+
 /** Default skeleton for a newly-added field of a given type. */
 export function newField( type, existingIds = [] ) {
-	const id    = defaultIdForType( type, existingIds );
+	// Routes through the centralised, collision-defended id factory
+	// in schemaHelper. existingIds is accepted as an Array OR Set
+	// and used purely as a defence — `newFieldId(type)` is already
+	// monotonic, so a collision is essentially impossible.
+	const id    = makeFieldId( type, existingIds );
 	const label = type[ 0 ].toUpperCase() + type.slice( 1 );
 
 	const base = {

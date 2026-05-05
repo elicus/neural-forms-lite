@@ -97,6 +97,27 @@ class SubmitEndpoint {
 			);
 		}
 
+		// ' Step 2b: Lite poll/quiz submission cap '
+		//
+		// Poll and quiz forms (including mixed quiz+poll) are capped
+		// at 1,000 non-trash entries per form on Lite. Pro flips
+		// `poll_quiz_unlimited_submissions` via Capabilities to lift
+		// the cap entirely. Plain contact / multi-step / rating-only
+		// forms are NEVER limited regardless of plan.
+		//
+		// Spam entries count toward the cap (they consume storage
+		// and represent real submissions); trashed entries do not,
+		// so a site owner can recover capacity by emptying trash.
+		//
+		// Runs BEFORE the rate-limit, validation, and CAPTCHA gates
+		// so a form already at cap doesn't burn IP rate slots or
+		// CAPTCHA verifications. Rejection cost is one indexed
+		// COUNT(*) per attempt against a capped form.
+		$limit_error = $this->check_poll_quiz_submission_limit( $form );
+		if ( is_wp_error( $limit_error ) ) {
+			return $limit_error;
+		}
+
 		// ' Step 3: Rate-limit gate '
 		// Built-in transient-based limiter: max 10 submissions per IP per 10
 		// minutes. The filter lets extensions replace or tighten this logic.
@@ -414,6 +435,105 @@ class SubmitEndpoint {
 	 *       'results_visibility' => 'after_vote' | 'always',
 	 *   ] ]
 	 *
+	 * Enforce the Lite poll/quiz submission cap.
+	 *
+	 * Returns a WP_Error (403) when the cap is reached, true when the
+	 * submission is allowed to proceed. Detection delegates to
+	 * FormTypeDetector — same source of truth used by the Smart
+	 * Folders backend, so "what counts as a poll/quiz form" is
+	 * defined in exactly one place.
+	 *
+	 * The cap is hard-coded (1000) but exposed via the
+	 * `neural_forms_poll_quiz_submission_limit` filter so site owners
+	 * can tighten it without forking the plugin. Returning 0 from
+	 * the filter disables the cap entirely.
+	 *
+	 * ─── Security model ───────────────────────────────────────────
+	 *
+	 * This is a LOCAL PRODUCT LIMIT, not a security boundary. Since
+	 * WordPress is self-hosted, site owners with code or database
+	 * access can modify local behavior — flip a filter, swap a class,
+	 * delete the table row, etc. The 1,000 cap exists to keep Lite's
+	 * storage footprint predictable and to give Pro a clear value
+	 * proposition; it is intentionally not designed to resist a
+	 * determined operator on their own server.
+	 *
+	 * What this enforces well:
+	 *   * The default Lite UX: paid users keep collecting responses,
+	 *     unpaid users hit a clear upgrade prompt.
+	 *   * Honest operators: the cap is server-side (not frontend JS),
+	 *     applied before EntryRepository::create(), and survives
+	 *     CSRF/replay/headless-client submissions.
+	 *
+	 * What this is NOT:
+	 *   * A monetization-enforcement boundary. Cloud / AI credit
+	 *     limits — anything that costs us provider tokens — MUST be
+	 *     enforced on api.neuralforms.ai. Never trust a WordPress
+	 *     plugin-side check alone for billable features. The cloud
+	 *     re-validates plan, credits, feature availability, and rate
+	 *     limits on every AI request; that is the source of truth.
+	 *
+	 * Why no cloud round-trip per submission:
+	 *   * Forms must accept submissions even when api.neuralforms.ai
+	 *     is unreachable (network partition, cloud incident, free
+	 *     plan with no key). Calling the cloud here would couple
+	 *     core form intake to an external service and degrade
+	 *     reliability for every customer. Form storage is a
+	 *     self-contained Lite responsibility; the cloud is involved
+	 *     only when paid AI features run.
+	 *
+	 * Why no frontend-only check:
+	 *   * The browser cannot be trusted to enforce caps — anyone can
+	 *     curl /submit directly, disable JS, or replay the request.
+	 *     The server is the only place a limit can actually take
+	 *     effect.
+	 *
+	 * @param array $form  Full form row (id, status, form_schema).
+	 * @return true|\WP_Error
+	 */
+	private function check_poll_quiz_submission_limit( array $form ) {
+		$type = \NeuralForms\Forms\FormTypeDetector::detect( $form['form_schema'] ?? null );
+		$limited_types = [
+			\NeuralForms\Forms\FormTypeDetector::TYPE_POLL,
+			\NeuralForms\Forms\FormTypeDetector::TYPE_QUIZ,
+			\NeuralForms\Forms\FormTypeDetector::TYPE_MIXED,
+		];
+		if ( ! in_array( $type, $limited_types, true ) ) {
+			return true;
+		}
+
+		// Pro lifts the cap entirely.
+		if ( \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::POLL_QUIZ_UNLIMITED_SUBMISSIONS ) ) {
+			return true;
+		}
+
+		$limit = (int) apply_filters( 'neural_forms_poll_quiz_submission_limit', 1000 );
+		if ( $limit <= 0 ) {
+			return true; // Filter disabled the cap.
+		}
+
+		$form_id = (int) ( $form['id'] ?? 0 );
+		$count   = \NeuralForms\Storage\EntryRepository::count_non_trash_entries_for_form( $form_id );
+		if ( $count < $limit ) {
+			return true;
+		}
+
+		return new WP_Error(
+			'poll_quiz_submission_limit_reached',
+			__(
+				'This poll or quiz has reached the 1,000 submission limit available in Lite. Upgrade to Pro to continue collecting responses.',
+				'neural-forms-lite'
+			),
+			[
+				'status'      => 403,
+				'limit'       => $limit,
+				'count'       => $count,
+				'upgrade_url' => 'https://neuralforms.ai/pro/',
+			]
+		);
+	}
+
+	/**
 	 * @param int   $form_id
 	 * @param array $form_schema  Decoded form_schema (already loaded by submit()).
 	 * @return array              Map keyed by poll field id, or empty array.

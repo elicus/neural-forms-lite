@@ -479,3 +479,162 @@ export const generateColumnId  = newColumnId;
 export const generateStepId    = newStepId;
 export const generateSectionId = newSectionId;
 export const generateFieldId   = newFieldId;
+
+/* ─── ID uniqueness toolkit (single source of truth) ──────────────
+ *
+ * Used by:
+ *   - newField()                 (FieldTypes.js)
+ *   - Builder.js field/row/step/section/AI/template creation paths
+ *   - duplicateField/Row/Step    (above in this file)
+ *   - load + before-save repair  (Builder.js)
+ *
+ * Why a centralised toolkit: prior to 0.2.0 the builder had two
+ * generators — `defaultIdForType()` in FieldTypes.js produced
+ * label-derived ids ("rating" → "rating_2") gated only on a
+ * stale `existingIds` snapshot, while `newFieldId()` here
+ * produced timestamp+counter ids. Two Rating fields created
+ * via the palette could both end up with `id="rating"` if the
+ * snapshot missed the second add (or just sat in two flow
+ * paths), and the server's FormValidator rejected the save.
+ *
+ * The fix: every creation path uses these helpers, and a final
+ * `ensureUniqueIds()` pass on load + before save guarantees no
+ * duplicate ever reaches the wire.
+ */
+
+/**
+ * Recursively collect every id present in a fields tree. Used by
+ * makeFieldId / ensureUniqueIds and by the Builder's add-field path
+ * to detect (and now repair) duplicates pre-emptively.
+ *
+ * Walks: top-level fields, row.columns[].fields, step.fields[],
+ * step.fields[]→row.columns[]→fields. Sections are leaves.
+ */
+export function collectIds( nodes ) {
+	const ids = new Set();
+	const visit = ( arr ) => {
+		if ( ! Array.isArray( arr ) ) return;
+		for ( const n of arr ) {
+			if ( ! n || typeof n !== 'object' ) continue;
+			if ( n.id ) ids.add( n.id );
+			if ( n.type === ROW_TYPE && Array.isArray( n.columns ) ) {
+				for ( const col of n.columns ) {
+					if ( col && col.id ) ids.add( col.id );
+					if ( col && Array.isArray( col.fields ) ) visit( col.fields );
+				}
+				continue;
+			}
+			if ( n.type === STEP_TYPE && Array.isArray( n.fields ) ) {
+				visit( n.fields );
+			}
+		}
+	};
+	visit( nodes );
+	return ids;
+}
+
+/**
+ * Pick a unique field id for `type`, defending against an
+ * accidental collision with `existing` (Set or Array). The
+ * underlying `newFieldId(type)` is monotonic + per-millisecond
+ * unique so a collision is essentially impossible — but the
+ * defence costs nothing and makes the contract obvious.
+ */
+export function makeFieldId( type, existing ) {
+	const seen = existing instanceof Set
+		? existing
+		: new Set( Array.isArray( existing ) ? existing : [] );
+	let id;
+	do {
+		id = newFieldId( type );
+	} while ( seen.has( id ) );
+	seen.add( id );
+	return id;
+}
+
+/**
+ * Repair a fields tree so every node has a unique, valid id.
+ *
+ * Rules:
+ *   - Missing id → generate one based on the node's type.
+ *   - Duplicate id (already seen earlier in the walk) → replace
+ *     with a fresh one based on type. The FIRST occurrence keeps
+ *     its id; subsequent collisions are renamed.
+ *   - Labels, options, settings, conditional logic refs are NOT
+ *     touched. (Conditional logic refs may stop matching if a
+ *     duplicate downstream id was renamed; that's an existing
+ *     edge case we surface but don't auto-rewrite — see brief.)
+ *   - When no node needs repair, returns the SAME `nodes`
+ *     reference so callers can use `result === input` to detect
+ *     a no-op. This avoids fake dirty flips on already-valid
+ *     forms.
+ *
+ * Walks the same shape collectIds does (root, rows.columns.fields,
+ * steps.fields, step→row→col→fields, sections as leaves).
+ */
+export function ensureUniqueIds( nodes ) {
+	if ( ! Array.isArray( nodes ) ) return nodes;
+
+	const seen = new Set();
+	let changed = false;
+
+	const repairNode = ( node ) => {
+		if ( ! node || typeof node !== 'object' ) return node;
+		const type = String( node.type || '' );
+		const needsId = ! node.id || seen.has( node.id );
+
+		let nextNode = node;
+
+		if ( needsId ) {
+			let prefix;
+			if ( type === ROW_TYPE )         prefix = 'row';
+			else if ( type === COLUMN_TYPE ) prefix = 'col';
+			else if ( type === STEP_TYPE )   prefix = 'step';
+			else if ( type === SECTION_TYPE ) prefix = 'section';
+			else                              prefix = ( type || 'field' ).replace( /[^a-z0-9]+/gi, '' ).toLowerCase() || 'field';
+
+			let fresh;
+			do { fresh = token( prefix ); } while ( seen.has( fresh ) );
+			nextNode = { ...node, id: fresh };
+			changed = true;
+		}
+		seen.add( nextNode.id );
+
+		if ( type === ROW_TYPE && Array.isArray( nextNode.columns ) ) {
+			let columnsChanged = false;
+			const nextColumns = nextNode.columns.map( ( col ) => {
+				if ( ! col || typeof col !== 'object' ) return col;
+				let nextCol = col;
+				if ( ! col.id || seen.has( col.id ) ) {
+					let fresh;
+					do { fresh = token( 'col' ); } while ( seen.has( fresh ) );
+					nextCol = { ...col, id: fresh };
+					columnsChanged = true;
+					changed = true;
+				}
+				seen.add( nextCol.id );
+				if ( Array.isArray( col.fields ) ) {
+					const repairedChildren = col.fields.map( repairNode );
+					if ( repairedChildren.some( ( child, i ) => child !== col.fields[ i ] ) ) {
+						nextCol = { ...nextCol, fields: repairedChildren };
+						columnsChanged = true;
+					}
+				}
+				return nextCol;
+			} );
+			if ( columnsChanged ) {
+				nextNode = { ...nextNode, columns: nextColumns };
+			}
+		} else if ( type === STEP_TYPE && Array.isArray( nextNode.fields ) ) {
+			const repairedChildren = nextNode.fields.map( repairNode );
+			if ( repairedChildren.some( ( child, i ) => child !== nextNode.fields[ i ] ) ) {
+				nextNode = { ...nextNode, fields: repairedChildren };
+			}
+		}
+
+		return nextNode;
+	};
+
+	const repaired = nodes.map( repairNode );
+	return changed ? repaired : nodes;
+}

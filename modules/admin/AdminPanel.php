@@ -272,6 +272,55 @@ class AdminPanel {
             return;
         }
 
+        // Entries screen split (1.1.0+): a per-screen build/entries.js
+        // bundle exists in the source tree but is NOT enqueued by
+        // default. The rich byte-protected build/index.js paints the
+        // Entries inbox today and the per-screen bundle's CSS does
+        // not yet reproduce that rich card/sidebar layout. Until source
+        // parity for the rich Entries CSS is restored we keep loading
+        // the rich bundle on the entries screen via the default branch
+        // below. This early-return is opt-in via a constant so it can
+        // be re-enabled for testing without a code change.
+        if (
+            self::is_entries_screen()
+            && defined( 'NEURAL_FORMS_USE_ENTRIES_SPLIT' )
+            && NEURAL_FORMS_USE_ENTRIES_SPLIT
+            && file_exists( $build_dir . 'entries.js' )
+        ) {
+            $asset_file = $build_dir . 'entries.asset.php';
+            $asset      = file_exists( $asset_file )
+                ? require $asset_file
+                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+
+            if ( ! is_array( $asset ) ) {
+                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+            }
+            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
+            $bust    = (string) filemtime( $build_dir . 'entries.js' );
+            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+            wp_enqueue_script(
+                'neural-forms-entries',
+                $build_url . 'entries.js',
+                $deps,
+                $version,
+                true
+            );
+
+            wp_localize_script( 'neural-forms-entries', 'neuralFormsAdmin', self::script_data() );
+
+            if ( file_exists( $build_dir . 'index.css' ) ) {
+                wp_enqueue_style(
+                    'neural-forms-admin',
+                    $build_url . 'index.css',
+                    [ 'wp-components' ],
+                    (string) filemtime( $build_dir . 'index.css' )
+                );
+            }
+
+            return;
+        }
+
         // Builder screen split: when the URL is the form editor
         // (?page=neural-forms&edit=N or &new=1) AND a builder.js bundle
         // exists alongside the rich admin bundle, enqueue the builder
@@ -367,6 +416,7 @@ class AdminPanel {
             self::enqueue_shortcode_column_injector();
             self::enqueue_builder_navigation_injector();
             self::enqueue_forms_list_meta_injector();
+            self::enqueue_new_form_dropdown_injector();
         }
 
         if ( self::get_current_screen() === 'entries' ) {
@@ -489,22 +539,55 @@ JS;
         ] );
 
         $items   = is_array( $result['items'] ?? null ) ? $result['items'] : [];
-        $map     = [];
+        $by_slug = [];
+        $by_id   = [];
+        $name_count = [];
         $by_name = [];
+        // First pass: count names so we know which are unique. Forms
+        // sharing a name (e.g. three "Contact Form" rows) cannot be
+        // distinguished by name alone, so we MUST drop them from the
+        // byName fallback — keeping them would let a row resolve to
+        // the wrong duplicate and copy the wrong shortcode.
         foreach ( $items as $form ) {
+            $name = strtolower( (string) ( $form['name'] ?? '' ) );
+            if ( $name === '' ) continue;
+            $name_count[ $name ] = ( $name_count[ $name ] ?? 0 ) + 1;
+        }
+        foreach ( $items as $form ) {
+            $id   = (int) ( $form['id'] ?? 0 );
             $slug = (string) ( $form['slug'] ?? '' );
-            if ( $slug === '' ) {
-                continue;
-            }
             $name = (string) ( $form['name'] ?? '' );
             $entry = [
-                'id'        => (int) ( $form['id'] ?? 0 ),
+                'id'        => $id,
                 'slug'      => $slug,
                 'name'      => $name,
-                'shortcode' => '[neural-forms slug="' . $slug . '"]',
+                // 0.2.0: ID-based shortcode is the canonical embed format.
+                // Slugs change (renames) and can collide; ids don't.
+                // ShortcodeHandler::for_form() returns the id form when
+                // possible and falls back to slug only when the row has
+                // no id (shouldn't happen for saved forms — defensive).
+                // ShortcodeHandler::handle() still accepts slug= for
+                // back-compat with pages that embedded slug-shortcodes
+                // before this change.
+                'shortcode' => \NeuralForms\Frontend\ShortcodeHandler::for_form( $form ),
             ];
-            $map[ $slug ] = $entry;
-            if ( $name !== '' ) {
+            // Primary key (1.1.0): the row's edit link carries the
+            // form id in its href, so the injector can resolve every
+            // row reliably even when the React UI doesn't render the
+            // slug as plain text. byId is keyed by string so JS
+            // lookup is allocation-free.
+            if ( $id > 0 ) {
+                $by_id[ (string) $id ] = $entry;
+            }
+            if ( $slug !== '' ) {
+                $by_slug[ $slug ] = $entry;
+            }
+            // byName is intentionally LOSSY-SAFE: only populated when
+            // exactly one form bears this name. The previous logic
+            // wrote each duplicate over the last and silently bound
+            // every duplicate row to whichever form was iterated last
+            // — the source of the "every row shows id=33" bug.
+            if ( $name !== '' && ( $name_count[ strtolower( $name ) ] ?? 0 ) === 1 ) {
                 $by_name[ strtolower( $name ) ] = $entry;
             }
         }
@@ -514,7 +597,8 @@ JS;
         // rather than a separate file so the markup remains a single source of
         // truth - no extra round-trip, no risk of a stale cached file.
         $payload = wp_json_encode( [
-            'bySlug' => $map,
+            'byId'   => $by_id,
+            'bySlug' => $by_slug,
             'byName' => $by_name,
             'i18n'   => [
                 'header' => __( 'Shortcode',          'neural-forms-lite' ),
@@ -551,30 +635,74 @@ JS;
     if ( ! mount ) { return; }
 
     /**
-     * For each <tr> in the forms table, find the form by:
-     *   1. an exact slug match in the row's text content (the React UI shows
-     *      the slug in small/code text under the name);
-     *   2. an exact form-name match against any link/heading text in the row.
-     * Returns the form record from the localized map, or null if no match.
+     * Resolve the form for a row in priority order:
+     *
+     *   1. Edit-link id — every Forms list row has an
+     *      <a href="...&edit=N"> link. N is the form's primary key,
+     *      sourced directly from the React UI's own data, so it is
+     *      always correct (even when multiple forms share a name).
+     *      This is the canonical resolver.
+     *   2. Slug regex against textContent — works when the React UI
+     *      renders the slug as plain text. Word-boundary-ish.
+     *   3. byName — ONLY for names that are unique across the list.
+     *      Duplicate-named forms are deliberately omitted from byName
+     *      on the PHP side because resolving by name alone would bind
+     *      every duplicate row to whichever form happened to be last.
+     *
+     * Returns the form record from the localized map, or null.
      */
     function resolveFormForRow( row ) {
+        var byId   = data.byId   || {};
         var bySlug = data.bySlug || {};
         var byName = data.byName || {};
 
-        // Match by slug - slugs are kebab-case alphanumerics, distinctive enough
-        // that a substring match against an exact slug key is reliable.
-        var text = row.textContent || '';
-        for ( var slug in bySlug ) {
-            if ( ! Object.prototype.hasOwnProperty.call( bySlug, slug ) ) { continue; }
-            // Word-boundary-ish check: surrounded by non-alphanumeric or string edge
-            // so 'contact-us' doesn't false-match against 'contact-us-extended'.
-            var re = new RegExp( '(^|[^a-z0-9-])' + slug.replace( /[-/\\^$*+?.()|[\]{}]/g, '\\$&' ) + '($|[^a-z0-9-])' );
-            if ( re.test( text ) ) {
-                return bySlug[ slug ];
+        // 1. Edit-link id. Match an `edit=N` query in any anchor href
+        //    within the row. Works when the React UI renders Edit as
+        //    a real <a href="...&edit=N">.
+        var anchors = row.querySelectorAll( 'a[href]' );
+        for ( var a = 0; a < anchors.length; a++ ) {
+            var href = anchors[ a ].getAttribute( 'href' ) || '';
+            var m = href.match( /[?&]edit=(\d+)/ );
+            if ( m && byId[ m[ 1 ] ] ) {
+                return byId[ m[ 1 ] ];
             }
         }
 
-        // Fallback: match by full form name in any link/heading inside the row.
+        // 2. data-* attributes — many React UIs expose the row's
+        //    primary key on the row or on action buttons.
+        var dataIdNodes = row.querySelectorAll( '[data-form-id], [data-id], [data-form], [data-key]' );
+        for ( var d = 0; d < dataIdNodes.length; d++ ) {
+            var attrs = [ 'data-form-id', 'data-id', 'data-form', 'data-key' ];
+            for ( var ai = 0; ai < attrs.length; ai++ ) {
+                var v = dataIdNodes[ d ].getAttribute( attrs[ ai ] );
+                if ( v && /^\d+$/.test( v ) && byId[ v ] ) {
+                    return byId[ v ];
+                }
+            }
+        }
+
+        // 3. Slug match per descendant. The React Forms list renders
+        //    the slug in its own small <code>/<span>, so that
+        //    element's textContent equals the slug exactly. This is
+        //    far more robust than a regex against the row's full
+        //    textContent because React doesn't add whitespace
+        //    between adjacent elements — slugs like "contact-form-2"
+        //    end up concatenated to the form name (e.g.
+        //    "Formcontact-form-2") and a word-boundary regex misses.
+        var descendants = row.querySelectorAll( '*' );
+        for ( var s = 0; s < descendants.length; s++ ) {
+            // Skip nodes with element children — we want the
+            // innermost text leaf so we don't false-match a parent
+            // that wraps the slug along with other text.
+            if ( descendants[ s ].children && descendants[ s ].children.length > 0 ) continue;
+            var nodeText = ( descendants[ s ].textContent || '' ).trim();
+            if ( nodeText && bySlug[ nodeText ] ) {
+                return bySlug[ nodeText ];
+            }
+        }
+
+        // 4. Unique-name fallback. Only triggers for names appearing
+        //    exactly once in the list (PHP filtered duplicates out).
         var nameNodes = row.querySelectorAll( 'a, h1, h2, h3, strong, [class*="name"], [class*="title"]' );
         for ( var i = 0; i < nameNodes.length; i++ ) {
             var t = ( nameNodes[ i ].textContent || '' ).trim().toLowerCase();
@@ -629,16 +757,60 @@ JS;
     }
 
     /**
-     * Add a Shortcode <td> to a body <tr>. Idempotent.
+     * Add or REFRESH the Shortcode <td> on a body <tr>. Re-entrant —
+     * called once per scan() pass plus whenever MutationObserver
+     * fires.
+     *
+     * The previous implementation skipped any row that already had a
+     * shortcode cell. That broke when React reused a <tr> across
+     * status-tab switches / filter changes / pagination: the stale
+     * <td> from the prior render persisted and the row showed the
+     * WRONG form's shortcode (different name, same id) — exactly
+     * the "two rows show id=28" bug from 0.2.0 QA.
+     *
+     * New behaviour:
+     *   1. Resolve the form for the CURRENT row text.
+     *   2. If the row already has a shortcode cell whose
+     *      data-nf-form-id matches the resolved form id, no-op.
+     *   3. Otherwise, remove the stale cell (if any) and append a
+     *      fresh one stamped with data-nf-form-id.
+     *
+     * Resolved-form-id is the source of truth — slug or name text
+     * inside the row drives resolveFormForRow, but it's the form's
+     * primary key that goes onto the <td> as the cache identity.
      */
     function augmentRow( row ) {
-        if ( row.querySelector( '[data-nf-shortcode-cell]' ) ) { return; }
-        var form = resolveFormForRow( row );
-        if ( ! form ) { return; }
+        var form   = resolveFormForRow( row );
+        var formId = form ? String( form.id || '' ) : '';
 
+        var existing = row.querySelector( '[data-nf-shortcode-cell]' );
+        if ( existing ) {
+            // The cell already shows the right form — leave it alone.
+            if ( form && existing.getAttribute( 'data-nf-form-id' ) === formId ) {
+                return;
+            }
+            // Row was reused for a different form (or now resolves
+            // differently) — drop the stale cell so we re-render.
+            existing.parentNode.removeChild( existing );
+        }
+
+        // Always append a <td>, even when the form can't be
+        // resolved. The header always has a "Shortcode" <th>, so
+        // every <tr> needs a matching <td> to keep the table
+        // columns aligned. An unresolved row gets an empty
+        // placeholder cell that any later resolution pass can
+        // replace once the row's DOM stabilises.
         var td = document.createElement( 'td' );
         td.setAttribute( 'data-nf-shortcode-cell', '1' );
+        td.setAttribute( 'data-nf-form-id', formId );
         td.className = 'nf-shortcode-col__td';
+
+        if ( ! form ) {
+            // Empty placeholder — matches column widths so the
+            // table doesn't collapse rows that we couldn't resolve.
+            row.appendChild( td );
+            return;
+        }
 
         var wrap = document.createElement( 'div' );
         wrap.className = 'nf-shortcode-col__wrap';
@@ -661,7 +833,11 @@ JS;
         btn.className = 'button nf-shortcode-col__copy';
         btn.textContent = ( data.i18n && data.i18n.copy ) || 'Copy';
         btn.setAttribute( 'aria-label', ( data.i18n && data.i18n.aria ) || 'Copy shortcode' );
-        btn.addEventListener( 'click', function () { copy( form.shortcode, btn ); } );
+        // Capture the shortcode by closure so a stale callback
+        // never copies the wrong form's value (defensive — the
+        // <td>/<button> are recreated on form-id change anyway).
+        var shortcodeAtClickTime = form.shortcode;
+        btn.addEventListener( 'click', function () { copy( shortcodeAtClickTime, btn ); } );
 
         wrap.appendChild( code );
         wrap.appendChild( btn );
@@ -832,6 +1008,740 @@ JS;
         max-width: 360px;
         padding-right: 16px;
     }
+}
+CSS;
+    }
+
+    /**
+     * Forms-list-only: turn the rich bundle's "+ New Form" button into
+     * a split dropdown when Neural Forms Pro + AI form-generation are
+     * available.
+     *
+     *   Lite-only / Pro inactive          → no change. The plain
+     *                                       "+ New Form" button stays.
+     *   Pro + AI configured + eligible    → dropdown with three items:
+     *                                         Blank Form
+     *                                         Use Template
+     *                                         Create Form with AI ✨
+     *   Pro installed but AI not ready    → AI item visible but
+     *                                       disabled, with a "Connect
+     *                                       Neural Forms Cloud..."
+     *                                       hint pointing at Settings.
+     *
+     * Same vanilla-JS DOM-augmentation pattern as the shortcode column
+     * injector. The rich bundle's React tree is not modified — we
+     * locate the original button via its title/aria text, render a
+     * sibling caret button, and emit a dropdown menu rooted in
+     * #neural-forms-app.
+     *
+     * The "Create with AI" flow opens its own modal (rendered into a
+     * portal under document.body so it isn't constrained by the rich
+     * bundle's container CSS). The modal POSTs the prompt to Pro's
+     * /neural-forms-pro/v1/ai/generate-form endpoint, then on Create
+     * persists the returned schema via /neural-forms/v1/forms with
+     * status=draft and redirects to ?page=neural-forms&edit=N so the
+     * builder split-bundle picks up where the user left off.
+     */
+    private static function enqueue_new_form_dropdown_injector(): void {
+        $cloud_ai_enabled = (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' );
+        $cloud_key_set    = \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '';
+        $can_generate     = \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::AI_FORM_GENERATE );
+        $pro_installed    = class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' );
+
+        // Don't bother shipping any of this for Lite-only installs.
+        // Pro flips ai_form_generate to true; without Pro the original
+        // "+ New Form" button is the right UX (no dropdown clutter).
+        if ( ! $pro_installed && ! $can_generate ) {
+            return;
+        }
+
+        $payload = wp_json_encode( [
+            'available'      => $can_generate && $cloud_ai_enabled && $cloud_key_set,
+            'proInstalled'   => $pro_installed,
+            'canGenerate'    => $can_generate,
+            'cloudConnected' => $cloud_ai_enabled && $cloud_key_set,
+            'cloudKeySet'    => $cloud_key_set,
+            'cloudAiEnabled' => $cloud_ai_enabled,
+            'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
+            'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
+            'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
+            'i18n' => [
+                'caretLabel'   => __( 'New form options',           'neural-forms-lite' ),
+                'blank'        => __( 'Blank Form',                  'neural-forms-lite' ),
+                'template'     => __( 'Use Template',                'neural-forms-lite' ),
+                'ai'           => __( 'Create Form with AI',         'neural-forms-lite' ),
+                'aiBadge'      => __( 'AI',                          'neural-forms-lite' ),
+                'aiSetup'      => __( 'Connect Neural Forms Cloud to use AI', 'neural-forms-lite' ),
+                'modalTitle'   => __( 'Create form with AI',         'neural-forms-lite' ),
+                'modalDesc'    => __( 'Describe the form you want. Neural Forms will draft the fields for you.', 'neural-forms-lite' ),
+                'placeholder'  => __( 'e.g. Create a dental appointment form with name, email, phone, preferred date, and message.', 'neural-forms-lite' ),
+                'cancel'       => __( 'Cancel',                      'neural-forms-lite' ),
+                'generate'     => __( 'Generate form',               'neural-forms-lite' ),
+                'generating'   => __( 'Generating...',               'neural-forms-lite' ),
+                'creating'     => __( 'Creating draft...',           'neural-forms-lite' ),
+                'createDraft'  => __( 'Create draft and edit',       'neural-forms-lite' ),
+                'editPrompt'   => __( 'Edit prompt',                 'neural-forms-lite' ),
+                'fieldsCount'  => __( '%d fields generated',         'neural-forms-lite' ),
+                'genericError' => __( 'AI generation failed. Please try again.', 'neural-forms-lite' ),
+                'createError'  => __( 'Could not create the form. Please try again.', 'neural-forms-lite' ),
+                'safetyBlock'  => __( 'AI skipped this prompt because it appears unsafe.', 'neural-forms-lite' ),
+                'safetyDown'   => __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' ),
+                'noCharge'     => __( 'No credits were deducted.',   'neural-forms-lite' ),
+                'creditsUsed'  => __( '%s credits used',             'neural-forms-lite' ),
+                'creditsLeft'  => __( '· %s remaining',              'neural-forms-lite' ),
+            ],
+        ] );
+
+        wp_add_inline_script(
+            'neural-forms-admin',
+            'window.neuralFormsNewFormDropdown = ' . $payload . ';',
+            'before'
+        );
+        wp_add_inline_script(
+            'neural-forms-admin',
+            self::new_form_dropdown_injector_js(),
+            'after'
+        );
+        wp_add_inline_style(
+            'neural-forms-admin',
+            self::new_form_dropdown_injector_css()
+        );
+    }
+
+    /**
+     * Vanilla-JS DOM augmentation for the "+ New Form" button.
+     */
+    private static function new_form_dropdown_injector_js(): string {
+        return <<<'JS'
+(function () {
+    var data = window.neuralFormsNewFormDropdown;
+    if ( ! data ) { return; }
+
+    var mount = document.getElementById( 'neural-forms-app' );
+    if ( ! mount ) { return; }
+
+    /**
+     * Locate the rich bundle's "+ New Form" button. The button has no
+     * stable class, so we match on visible text content (case-insensitive,
+     * trimmed). The first match wins — in the Forms list UI there is only
+     * ever one button labeled "New Form" / "+ New Form".
+     */
+    function findNewFormButton( root ) {
+        var candidates = root.querySelectorAll( 'button, a' );
+        for ( var i = 0; i < candidates.length; i++ ) {
+            var t = ( candidates[ i ].textContent || '' ).trim().toLowerCase();
+            if ( t === '+ new form' || t === 'new form' || t === '+new form' ) {
+                return candidates[ i ];
+            }
+        }
+        return null;
+    }
+
+    function safeEscape( s ) {
+        var d = document.createElement( 'div' );
+        d.textContent = s == null ? '' : String( s );
+        return d.innerHTML;
+    }
+
+    function format( tmpl, args ) {
+        var i = 0;
+        return String( tmpl ).replace( /%[ds]/g, function () {
+            return args[ i++ ] != null ? args[ i - 1 ] : '';
+        } );
+    }
+
+    /**
+     * Render the modal that hosts the AI generation flow. Lives outside
+     * #neural-forms-app on document.body so React re-renders never wipe
+     * it. State is held in a closure-private object passed between
+     * step renderers.
+     */
+    function openAiModal() {
+        var i18n = data.i18n || {};
+        var state = { phase: 'compose', prompt: '', generated: null, warnings: [], usage: null, busy: null, error: '' };
+
+        var wrap = document.createElement( 'div' );
+        wrap.className = 'nf-aiform-modal';
+        wrap.setAttribute( 'role', 'dialog' );
+        wrap.setAttribute( 'aria-modal', 'true' );
+        wrap.setAttribute( 'aria-label', i18n.modalTitle || 'Create form with AI' );
+        document.body.appendChild( wrap );
+
+        function close() {
+            if ( wrap.parentNode ) wrap.parentNode.removeChild( wrap );
+            document.removeEventListener( 'keydown', onKey );
+        }
+
+        function onKey( e ) {
+            if ( e.key === 'Escape' && state.busy == null ) close();
+        }
+        document.addEventListener( 'keydown', onKey );
+
+        function renderUsage( usage ) {
+            if ( ! usage ) return '';
+            if ( usage.credits_deducted === false ) {
+                return '<p class="nf-aiform-modal__usage">' + safeEscape( i18n.noCharge ) + '</p>';
+            }
+            if ( usage.credits_deducted === true ) {
+                var used = usage.credits_used != null ? Number( usage.credits_used ).toFixed( 2 ) : '';
+                var left = usage.credits_remaining != null ? Number( usage.credits_remaining ).toFixed( 2 ) : '';
+                var line = format( i18n.creditsUsed || '%s credits used', [ used ] );
+                if ( left !== '' ) line += ' ' + format( i18n.creditsLeft || '· %s remaining', [ left ] );
+                return '<p class="nf-aiform-modal__usage">' + safeEscape( line ) + '</p>';
+            }
+            return '';
+        }
+
+        function fieldCountOf( gen ) {
+            if ( ! gen || ! gen.form_schema || ! Array.isArray( gen.form_schema.fields ) ) return 0;
+            return gen.form_schema.fields.length;
+        }
+
+        function render() {
+            wrap.innerHTML =
+                '<div class="nf-aiform-modal__backdrop"></div>' +
+                '<div class="nf-aiform-modal__panel">' +
+                    '<header class="nf-aiform-modal__head">' +
+                        '<h2 class="nf-aiform-modal__title">' + safeEscape( state.phase === 'preview' && state.generated ? ( state.generated.name || i18n.modalTitle ) : i18n.modalTitle ) + '</h2>' +
+                    '</header>' +
+                    '<div class="nf-aiform-modal__body" data-nf-body></div>' +
+                    '<footer class="nf-aiform-modal__foot" data-nf-foot></footer>' +
+                '</div>';
+
+            wrap.querySelector( '.nf-aiform-modal__backdrop' ).addEventListener( 'click', function () {
+                if ( state.busy == null ) close();
+            } );
+
+            var body = wrap.querySelector( '[data-nf-body]' );
+            var foot = wrap.querySelector( '[data-nf-foot]' );
+
+            if ( state.phase === 'compose' ) {
+                body.innerHTML =
+                    '<p class="nf-aiform-modal__desc">' + safeEscape( i18n.modalDesc ) + '</p>' +
+                    '<textarea class="nf-aiform-modal__textarea" rows="6" maxlength="1500" placeholder="' + safeEscape( i18n.placeholder ) + '"></textarea>' +
+                    ( state.error ? '<p class="nf-aiform-modal__error">' + safeEscape( state.error ) + '</p>' : '' ) +
+                    renderUsage( state.usage );
+
+                var ta = body.querySelector( 'textarea' );
+                ta.value = state.prompt;
+                ta.addEventListener( 'input', function () { state.prompt = ta.value; updateGenerateBtn(); } );
+                setTimeout( function () { ta.focus(); }, 0 );
+
+                foot.innerHTML =
+                    '<button type="button" class="button" data-nf-cancel>' + safeEscape( i18n.cancel ) + '</button>' +
+                    '<button type="button" class="button button-primary" data-nf-generate>' + safeEscape( state.busy === 'generate' ? i18n.generating : i18n.generate ) + '</button>';
+
+                foot.querySelector( '[data-nf-cancel]' ).addEventListener( 'click', function () {
+                    if ( state.busy == null ) close();
+                } );
+                var genBtn = foot.querySelector( '[data-nf-generate]' );
+                genBtn.addEventListener( 'click', generate );
+                updateGenerateBtn();
+
+                function updateGenerateBtn() {
+                    var ok = state.prompt.trim().length >= 5 && state.busy == null;
+                    genBtn.disabled = ! ok;
+                }
+                return;
+            }
+
+            // preview phase
+            var gen = state.generated;
+            var count = fieldCountOf( gen );
+            var fieldsList = '<ul class="nf-aiform-modal__fields">';
+            if ( gen && gen.form_schema && Array.isArray( gen.form_schema.fields ) ) {
+                gen.form_schema.fields.slice( 0, 12 ).forEach( function ( f ) {
+                    fieldsList += '<li><span class="nf-aiform-modal__type">' + safeEscape( f.type || '?' ) + '</span> ' + safeEscape( f.label || f.id || '' ) + '</li>';
+                } );
+                if ( gen.form_schema.fields.length > 12 ) {
+                    fieldsList += '<li class="nf-aiform-modal__more">…</li>';
+                }
+            }
+            fieldsList += '</ul>';
+
+            var warningsBlock = '';
+            if ( state.warnings && state.warnings.length ) {
+                warningsBlock = '<ul class="nf-aiform-modal__warnings">';
+                state.warnings.forEach( function ( w ) { warningsBlock += '<li>' + safeEscape( w ) + '</li>'; } );
+                warningsBlock += '</ul>';
+            }
+
+            body.innerHTML =
+                '<p class="nf-aiform-modal__subtitle">' + safeEscape( format( i18n.fieldsCount || '%d fields generated', [ count ] ) ) + '</p>' +
+                fieldsList +
+                warningsBlock +
+                ( state.error ? '<p class="nf-aiform-modal__error">' + safeEscape( state.error ) + '</p>' : '' ) +
+                renderUsage( state.usage );
+
+            foot.innerHTML =
+                '<button type="button" class="button" data-nf-edit-prompt>' + safeEscape( i18n.editPrompt ) + '</button>' +
+                '<button type="button" class="button" data-nf-cancel>' + safeEscape( i18n.cancel ) + '</button>' +
+                '<button type="button" class="button button-primary" data-nf-create>' + safeEscape( state.busy === 'create' ? i18n.creating : i18n.createDraft ) + '</button>';
+
+            foot.querySelector( '[data-nf-edit-prompt]' ).addEventListener( 'click', function () {
+                if ( state.busy != null ) return;
+                state.phase = 'compose';
+                state.error = '';
+                render();
+            } );
+            foot.querySelector( '[data-nf-cancel]' ).addEventListener( 'click', function () {
+                if ( state.busy == null ) close();
+            } );
+            var createBtn = foot.querySelector( '[data-nf-create]' );
+            createBtn.disabled = state.busy != null;
+            createBtn.addEventListener( 'click', createDraft );
+        }
+
+        function generate() {
+            var prompt = state.prompt.trim();
+            if ( prompt.length < 5 ) return;
+            state.busy = 'generate';
+            state.error = '';
+            render();
+
+            var apiSettings = ( window.wpApiSettings || {} );
+            var rootUrl = apiSettings.root || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.root ) || '/wp-json/';
+            var nonce   = apiSettings.nonce || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.nonce ) || '';
+
+            var url = ( rootUrl.replace( /\/$/, '' ) ) + '/neural-forms-pro/v1/ai/generate-form';
+
+            fetch( url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                body: JSON.stringify( { prompt: prompt } )
+            } ).then( function ( resp ) {
+                return resp.json().then( function ( body ) { return { ok: resp.ok, body: body }; } );
+            } ).then( function ( res ) {
+                state.busy = null;
+                if ( ! res.ok || ! res.body || ! res.body.form ) {
+                    var i18n2 = window.neuralFormsNewFormDropdown.i18n;
+                    var code  = res.body && res.body.code;
+                    var msg;
+                    if ( code === 'blocked_by_safety' ) {
+                        msg = i18n2.safetyBlock;
+                        // SafetyGate guarantees credits_deducted=false on
+                        // this code; surface the no-charge confirmation
+                        // alongside the message so the user trusts the
+                        // failed call didn't burn their balance.
+                        if ( res.body.usage && res.body.usage.credits_deducted === false ) {
+                            msg += ' ' + i18n2.noCharge;
+                        }
+                    } else if ( code === 'ai_safety_unavailable' ) {
+                        msg = i18n2.safetyDown;
+                    } else {
+                        msg = ( res.body && ( res.body.message || res.body.code ) ) || i18n2.genericError;
+                    }
+                    state.error = msg;
+                    state.usage = ( res.body && res.body.usage ) || null;
+                    render();
+                    return;
+                }
+                state.generated = res.body.form;
+                state.warnings  = Array.isArray( res.body.warnings ) ? res.body.warnings : [];
+                state.usage     = res.body.usage || null;
+                state.phase     = 'preview';
+                render();
+            } ).catch( function () {
+                state.busy = null;
+                state.error = window.neuralFormsNewFormDropdown.i18n.genericError;
+                render();
+            } );
+        }
+
+        function createDraft() {
+            if ( ! state.generated ) return;
+            state.busy = 'create';
+            state.error = '';
+            render();
+
+            var apiSettings = ( window.wpApiSettings || {} );
+            var rootUrl = apiSettings.root || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.root ) || '/wp-json/';
+            var nonce   = apiSettings.nonce || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.nonce ) || '';
+
+            var url = ( rootUrl.replace( /\/$/, '' ) ) + '/neural-forms/v1/forms';
+
+            // Generated payload may use either 'form_schema' or
+            // already-flattened keys; FormsEndpoint expects name/slug
+            // top-level + form_schema object.
+            var gen = state.generated;
+            var body = {
+                name:        gen.name || 'AI form',
+                slug:        gen.slug || '',
+                description: gen.description || '',
+                form_schema: gen.form_schema || gen.schema || { fields: [] },
+                settings:    gen.settings || {},
+                status:      'draft'
+            };
+
+            fetch( url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                body: JSON.stringify( body )
+            } ).then( function ( resp ) {
+                return resp.json().then( function ( jsonBody ) { return { ok: resp.ok, body: jsonBody }; } );
+            } ).then( function ( res ) {
+                if ( ! res.ok || ! res.body || ! res.body.id ) {
+                    state.busy = null;
+                    state.error = ( res.body && res.body.message ) || window.neuralFormsNewFormDropdown.i18n.createError;
+                    render();
+                    return;
+                }
+                // Redirect to the builder for review/edit. The builder
+                // split-bundle picks up ?edit=N.
+                var target = window.neuralFormsNewFormDropdown.editFormUrl.replace( '__ID__', String( res.body.id ) );
+                window.location.href = target;
+            } ).catch( function () {
+                state.busy = null;
+                state.error = window.neuralFormsNewFormDropdown.i18n.createError;
+                render();
+            } );
+        }
+
+        render();
+    }
+
+    /**
+     * Inject a sibling caret + dropdown menu next to the original
+     * "+ New Form" button. Idempotent - we tag the wrapper with
+     * data-nf-new-form-dropdown so a re-scan won't duplicate it.
+     * If React unmounts the original button, the next MutationObserver
+     * pass re-runs scan() and we re-augment whatever new button
+     * appears.
+     */
+    function augment() {
+        var btn = findNewFormButton( mount );
+        if ( ! btn ) return;
+        if ( btn.getAttribute( 'data-nf-new-form-augmented' ) === '1' ) return;
+        btn.setAttribute( 'data-nf-new-form-augmented', '1' );
+
+        var wrapper = document.createElement( 'span' );
+        wrapper.className = 'nf-newform-split';
+        wrapper.setAttribute( 'data-nf-new-form-dropdown', '1' );
+
+        var parent = btn.parentNode;
+        if ( ! parent ) return;
+        parent.insertBefore( wrapper, btn );
+        wrapper.appendChild( btn );
+
+        var caret = document.createElement( 'button' );
+        caret.type = 'button';
+        caret.className = 'nf-newform-split__caret';
+        caret.setAttribute( 'aria-label', data.i18n.caretLabel );
+        caret.setAttribute( 'aria-haspopup', 'menu' );
+        caret.setAttribute( 'aria-expanded', 'false' );
+        caret.innerHTML = '<span aria-hidden="true">▾</span>';
+        wrapper.appendChild( caret );
+
+        var menu = document.createElement( 'ul' );
+        menu.className = 'nf-newform-split__menu';
+        menu.setAttribute( 'role', 'menu' );
+        menu.hidden = true;
+        wrapper.appendChild( menu );
+
+        // Build menu items.
+        var items = [
+            { id: 'blank',    label: data.i18n.blank,    enabled: true,  action: function () { btn.click(); } },
+            { id: 'template', label: data.i18n.template, enabled: true,  action: function () { btn.click(); } },
+        ];
+
+        var aiEnabled  = !! data.available;
+        var aiHint     = aiEnabled ? '' : data.i18n.aiSetup;
+        items.push( {
+            id: 'ai',
+            label: data.i18n.ai,
+            enabled: aiEnabled,
+            badge: data.i18n.aiBadge,
+            hint: aiHint,
+            action: aiEnabled
+                ? openAiModal
+                : function () { window.location.href = data.settingsUrl; }
+        } );
+
+        items.forEach( function ( it ) {
+            var li = document.createElement( 'li' );
+            li.className = 'nf-newform-split__item' + ( it.enabled ? '' : ' is-disabled' );
+            li.setAttribute( 'role', 'none' );
+            var b = document.createElement( 'button' );
+            b.type = 'button';
+            b.setAttribute( 'role', 'menuitem' );
+            b.className = 'nf-newform-split__menuitem';
+            var html = '<span class="nf-newform-split__label">' + safeEscape( it.label ) + '</span>';
+            if ( it.badge ) html += '<span class="nf-newform-split__badge">' + safeEscape( it.badge ) + '</span>';
+            if ( it.hint  ) html += '<span class="nf-newform-split__hint">'  + safeEscape( it.hint  ) + '</span>';
+            b.innerHTML = html;
+            b.addEventListener( 'click', function ( e ) {
+                e.stopPropagation();
+                hideMenu();
+                it.action();
+            } );
+            li.appendChild( b );
+            menu.appendChild( li );
+        } );
+
+        function showMenu() {
+            menu.hidden = false;
+            caret.setAttribute( 'aria-expanded', 'true' );
+            setTimeout( function () { document.addEventListener( 'click', onDoc ); document.addEventListener( 'keydown', onKey ); }, 0 );
+        }
+        function hideMenu() {
+            menu.hidden = true;
+            caret.setAttribute( 'aria-expanded', 'false' );
+            document.removeEventListener( 'click', onDoc );
+            document.removeEventListener( 'keydown', onKey );
+        }
+        function onDoc( e ) {
+            if ( ! wrapper.contains( e.target ) ) hideMenu();
+        }
+        function onKey( e ) {
+            if ( e.key === 'Escape' ) hideMenu();
+        }
+
+        caret.addEventListener( 'click', function ( e ) {
+            e.stopPropagation();
+            if ( menu.hidden ) showMenu(); else hideMenu();
+        } );
+    }
+
+    function scan() { augment(); }
+
+    scan();
+
+    var observer = new MutationObserver( function () { scan(); } );
+    observer.observe( mount, { childList: true, subtree: true } );
+})();
+JS;
+    }
+
+    private static function new_form_dropdown_injector_css(): string {
+        return <<<'CSS'
+/* Split button for "+ New Form".
+ *
+ * The wrapper holds the rich bundle's original primary button on the
+ * left and our injected caret on the right, joined by a shared border
+ * so they read as a single control. The dropdown menu is rendered in
+ * the same wrapper (right-aligned) and absolutely positioned so the
+ * Forms list layout doesn't reflow when it opens.
+ */
+#neural-forms-app .nf-newform-split {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+}
+#neural-forms-app .nf-newform-split > button:first-of-type,
+#neural-forms-app .nf-newform-split > a:first-of-type {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+#neural-forms-app .nf-newform-split__caret {
+    margin: 0;
+    padding: 0 8px;
+    border: 1px solid #1d4ed8;
+    border-left: 1px solid rgba( 255, 255, 255, 0.35 );
+    background: #2563eb;
+    color: #fff;
+    cursor: pointer;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+}
+#neural-forms-app .nf-newform-split__caret:hover {
+    background: #1d4ed8;
+}
+#neural-forms-app .nf-newform-split__caret:focus-visible {
+    outline: 2px solid #1d4ed8;
+    outline-offset: 2px;
+}
+
+/* Dropdown menu. Right-aligned so it doesn't trigger horizontal
+ * overflow when the parent column is narrow. */
+#neural-forms-app .nf-newform-split__menu {
+    position: absolute;
+    top: calc( 100% + 4px );
+    right: 0;
+    min-width: 240px;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba( 15, 23, 42, 0.12 );
+    z-index: 10000;
+}
+#neural-forms-app .nf-newform-split__item {
+    margin: 0;
+    padding: 0;
+}
+#neural-forms-app .nf-newform-split__menuitem {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #0f172a;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+#neural-forms-app .nf-newform-split__menuitem:hover,
+#neural-forms-app .nf-newform-split__menuitem:focus-visible {
+    background: #eff6ff;
+    color: #1d4ed8;
+    outline: none;
+}
+#neural-forms-app .nf-newform-split__item.is-disabled .nf-newform-split__menuitem {
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+#neural-forms-app .nf-newform-split__label {
+    font-weight: 500;
+}
+#neural-forms-app .nf-newform-split__badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #6366f1, #d946ef);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+#neural-forms-app .nf-newform-split__hint {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+/* AI generation modal — rendered into document.body so it floats
+ * above the rich admin chrome without inheriting its container CSS. */
+.nf-aiform-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.nf-aiform-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba( 15, 23, 42, 0.55 );
+}
+.nf-aiform-modal__panel {
+    position: relative;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 20px 60px rgba( 15, 23, 42, 0.35 );
+    width: min( 640px, 92vw );
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+}
+.nf-aiform-modal__head,
+.nf-aiform-modal__foot {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.nf-aiform-modal__foot {
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.nf-aiform-modal__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #0f172a;
+}
+.nf-aiform-modal__body {
+    padding: 16px 20px;
+    overflow-y: auto;
+}
+.nf-aiform-modal__desc,
+.nf-aiform-modal__subtitle {
+    margin: 0 0 12px;
+    color: #475569;
+    font-size: 13px;
+}
+.nf-aiform-modal__textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 10px;
+    font-size: 13px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    resize: vertical;
+    box-sizing: border-box;
+}
+.nf-aiform-modal__error {
+    margin: 12px 0 0;
+    padding: 8px 10px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    color: #b91c1c;
+    font-size: 12px;
+}
+.nf-aiform-modal__usage {
+    margin: 12px 0 0;
+    color: #64748b;
+    font-size: 12px;
+}
+.nf-aiform-modal__fields {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat( auto-fill, minmax( 220px, 1fr ) );
+    gap: 6px 12px;
+    font-size: 12px;
+    color: #334155;
+}
+.nf-aiform-modal__fields li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.nf-aiform-modal__type {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: #1e293b;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+}
+.nf-aiform-modal__more {
+    color: #64748b;
+}
+.nf-aiform-modal__warnings {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 4px;
+    list-style: disc;
+    padding-left: 28px;
+    color: #92400e;
+    font-size: 12px;
 }
 CSS;
     }
@@ -1406,6 +2316,18 @@ JS;
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
         $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
         return $page === 'neural-forms-results';
+    }
+
+    /**
+     * True when ?page=neural-forms-entries. The entries screen ships
+     * as its own split bundle in 1.1.0+ so we can iterate on the inbox
+     * UI (Polls/Quizzes folders, AI carousel, bulk toolbar) without
+     * rebuilding the byte-protected rich build/index.js.
+     */
+    private static function is_entries_screen(): bool {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        return $page === 'neural-forms-entries';
     }
 
     /**

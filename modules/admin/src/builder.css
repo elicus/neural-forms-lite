@@ -2844,13 +2844,71 @@
 	font-size: 13px;
 	font-weight: 600;
 	color: var( --nf-primary );
-	flex: 1;
-	min-width: 200px;
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+/* Shortcode pill — shown on the right of the template label once the
+ * form has a saved id. Wraps to a new row on narrow toolbars. */
+#neural-forms-app .nf-canvas-toolbar__shortcode {
+	display: inline-flex;
+	align-items: stretch;
+	gap: 0;
+	flex: 1 1 280px;
+	min-width: 0;
+	max-width: 100%;
+	margin-left: auto; /* push to the right of the template label on wide rows */
+}
+
+#neural-forms-app .nf-canvas-toolbar__shortcode-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+	font-size: 12px;
+	color: #1f2937;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-right: 0;
+	border-radius: 6px 0 0 6px;
+	padding: 6px 10px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-canvas-toolbar__shortcode-input:focus {
+	outline: none;
+	background: #fff;
+	border-color: var( --nf-primary-ring, #c7d2fe );
+}
+
+#neural-forms-app .nf-canvas-toolbar__shortcode-copy {
+	flex: 0 0 auto;
+	border-radius: 0 6px 6px 0;
+	min-width: 76px;
+}
+
+/* "Copied" feedback — mint tint, mirrors the success palette used for
+ * the saved-status Save button. Fades back to default after 1.5s. */
+#neural-forms-app .nf-canvas-toolbar__shortcode-copy.is-copied {
+	background: #ecfdf5;
+	color: #047857;
+	border-color: #a7f3d0;
+}
+
+/* Muted hint shown for unsaved forms (formId === 0). */
+#neural-forms-app .nf-canvas-toolbar__shortcode-hint {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 12px;
+	color: #6b7280;
+	font-style: italic;
+	margin-left: auto;
+	text-align: right;
 }
 
 #neural-forms-app .nf-canvas-toolbar__actions {
 	display: inline-flex;
 	gap: 8px;
+	flex: 0 0 auto;
 }
 
 #neural-forms-app .nf-canvas-toolbar__btn {
@@ -3140,3 +3198,119 @@
 }
 
 /* Save as Draft — primary navy via .neural-forms-btn--primary base. */
+
+/* ── Process with AI panel ──────────────────────────────────────────
+ * Per-form AI-processing mode picker. Lite stores the value but
+ * never runs entry analysis — the resolver gates real processing on
+ * Capabilities::AI_PROCESS_ENTRIES + cloud connection. UI shows
+ * upsell card when capability/connection isn't ready and disables
+ * the radio fieldset accordingly. */
+
+#neural-forms-app .nf-ai-processing__note {
+	margin: 0 0 16px;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-ai-processing__upsell {
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	padding: 12px 14px;
+	margin-bottom: 16px;
+	color: #1e3a8a;
+}
+
+#neural-forms-app .nf-ai-processing__upsell strong {
+	display: block;
+	font-size: 13px;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-ai-processing__upsell p {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+#neural-forms-app .nf-ai-processing__modes {
+	border: 0;
+	margin: 0 0 16px;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-ai-processing__modes.is-disabled {
+	opacity: 0.7;
+}
+
+#neural-forms-app .nf-ai-processing__option {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	background: #fff;
+	cursor: pointer;
+	transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+#neural-forms-app .nf-ai-processing__option:hover:not(:has(input:disabled)) {
+	border-color: #cbd5e1;
+}
+
+#neural-forms-app .nf-ai-processing__option.is-selected {
+	border-color: var( --nf-primary );
+	background: var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-ai-processing__option input[type="radio"] {
+	margin-top: 2px;
+	flex: 0 0 auto;
+}
+
+#neural-forms-app .nf-ai-processing__option-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-ai-processing__option-label {
+	font-size: 13px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-ai-processing__option-desc {
+	font-size: 12px;
+	color: #6b7280;
+	line-height: 1.4;
+}
+
+#neural-forms-app .nf-ai-processing__recommendation {
+	background: #f0fdf4;
+	border: 1px solid #a7f3d0;
+	border-radius: 8px;
+	padding: 12px 14px;
+	color: #065f46;
+}
+
+#neural-forms-app .nf-ai-processing__recommendation strong {
+	display: block;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-ai-processing__recommendation p {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+}
