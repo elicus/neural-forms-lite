@@ -276,11 +276,19 @@ export default function ResultsApp() {
 				/>
 			) }
 
-			{ /* Zero active forms — nothing to pick. */ }
+			{ /* Zero active forms — nothing to pick. Hero-card variant
+			     so the page doesn't feel hollow at first load; offers
+			     two CTAs that match the WP admin's standard new-form /
+			     forms-list URLs. */ }
 			{ ! formsError && selectedId === 0 && ! formsLoading && resultsForms.length === 0 && (
 				<EmptyState
-					title={ __( 'No active forms found.', 'neural-forms-lite' ) }
-					subtitle={ __( 'Activate a form to view analytics.', 'neural-forms-lite' ) }
+					variant="card"
+					title={ __( 'No active forms found', 'neural-forms-lite' ) }
+					subtitle={ __( 'Activate a form to view analytics, or create a new form to start collecting responses.', 'neural-forms-lite' ) }
+					actions={ [
+						{ label: __( 'Create form', 'neural-forms-lite' ), href: 'admin.php?page=neural-forms&new=1', primary: true },
+						{ label: __( 'View forms',  'neural-forms-lite' ), href: 'admin.php?page=neural-forms' },
+					] }
 				/>
 			) }
 

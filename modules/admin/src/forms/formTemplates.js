@@ -126,6 +126,114 @@ const acceptance = ( label, opts = {} ) => ( {
 	required: !! opts.required,
 } );
 
+/**
+ * Canonical Rating factory — mirrors FieldTypes.js newField('rating')
+ * which only sets `stars: 5` on top of the shared base. Templates
+ * MUST use this rather than fake-rendering a select with "5 Stars /
+ * 4 Stars / …" — that path was deprecated when the dedicated
+ * RatingField component shipped.
+ */
+const rating = ( label = 'Rating', opts = {} ) => ( {
+	id:       fieldIdFromLabel( label, 'rating' ),
+	type:     'rating',
+	label,
+	required: !! opts.required,
+	width:    opts.width || 'full',
+	stars:    opts.stars || 5,
+} );
+
+/**
+ * Canonical Poll factory — matches FieldTypes.js newField('poll')
+ * exactly so PollField + PollResultsPanel render the template-
+ * generated form identically to one built field-by-field in the UI.
+ *
+ * Default settings are the same Lite defaults that newField() ships:
+ *   results_visibility: 'after_vote'
+ *   chart_type: 'bar'
+ *   allow_multiple: false
+ *   randomize_options: false
+ */
+const poll = ( label, options, opts = {} ) => ( {
+	id:       fieldIdFromLabel( label, 'poll' ),
+	type:     'poll',
+	label,
+	required: opts.required !== undefined ? !! opts.required : false,
+	width:    opts.width || 'full',
+	options:  options.map( ( o ) =>
+		typeof o === 'string'
+			? { value: o.toLowerCase().replace( /[^a-z0-9]+/g, '_' ).replace( /^_+|_+$/g, '' ), label: o }
+			: o
+	),
+	settings: {
+		results_visibility: opts.results_visibility ?? 'after_vote',
+		chart_type:         opts.chart_type         ?? 'bar',
+		allow_multiple:     !! opts.allow_multiple,
+		randomize_options:  !! opts.randomize_options,
+	},
+} );
+
+/**
+ * Canonical Quiz Question factory. Each option is `{value, label,
+ * is_correct}`; exactly one option must carry is_correct=true per
+ * the Phase-3 frozen quiz schema. Template authors flag the correct
+ * option by passing { correct: '<value-or-label>' } in opts; the
+ * builder resolves that to is_correct on the matching option.
+ */
+const quizQuestion = ( label, options, opts = {} ) => {
+	const built = options.map( ( o ) => {
+		const obj = typeof o === 'string'
+			? { value: o.toLowerCase().replace( /[^a-z0-9]+/g, '_' ).replace( /^_+|_+$/g, '' ), label: o }
+			: { ...o };
+		obj.is_correct = false;
+		return obj;
+	} );
+	const correctMatch = String( opts.correct ?? '' ).toLowerCase();
+	let any_correct = false;
+	for ( const o of built ) {
+		if (
+			o.value.toLowerCase() === correctMatch ||
+			String( o.label ).toLowerCase() === correctMatch
+		) {
+			o.is_correct = true;
+			any_correct = true;
+			break;
+		}
+	}
+	// Defensive: if the caller didn't flag a correct answer (typo or
+	// missing `correct`), fall back to the first option so the schema
+	// stays valid — exactly one is_correct=true per question.
+	if ( ! any_correct && built.length > 0 ) {
+		built[ 0 ].is_correct = true;
+	}
+	return {
+		id:       fieldIdFromLabel( label, 'quizquestion' ),
+		type:     'quiz_question',
+		label,
+		required: opts.required !== undefined ? !! opts.required : true,
+		width:    opts.width || 'full',
+		options:  built,
+		settings: {
+			points:              opts.points              ?? 1,
+			explanation:         opts.explanation         ?? '',
+			show_correct_answer: opts.show_correct_answer ?? 'after_submit',
+			randomize_options:   !! opts.randomize_options,
+		},
+	};
+};
+
+const radio = ( label, options, opts = {} ) => ( {
+	id:       fieldIdFromLabel( label, 'radio' ),
+	type:     'radio',
+	label,
+	required: !! opts.required,
+	width:    opts.width || 'full',
+	options:  options.map( ( o ) =>
+		typeof o === 'string'
+			? { value: o.toLowerCase().replace( /[^a-z0-9]+/g, '_' ).replace( /^_+|_+$/g, '' ), label: o }
+			: o
+	),
+} );
+
 /* ---------------------------------------------------------------- */
 /* Template builders                                                */
 /* ---------------------------------------------------------------- */
@@ -176,27 +284,118 @@ const builders = {
 	} ),
 
 	feedback: () => ( {
+		// Updated from the deprecated `select` "5 Stars / 4 Stars …"
+		// pattern to the canonical RatingField. Other fields kept
+		// the same so existing users picking Feedback get the same
+		// data-shape they expect.
 		name:   'Feedback',
 		fields: [
 			text(     'Name' ),
 			email(    'Email' ),
-			select(   'Rating', [ 'Excellent', 'Good', 'Average', 'Poor' ] ),
-			textarea( 'Feedback', { required: true, rows: 4 } ),
+			rating(   'Overall rating', { required: true } ),
+			textarea( 'What did you like?', { rows: 3 } ),
+			textarea( 'What can we improve?', { required: true, rows: 4 } ),
 		],
 	} ),
 
 	testimonial: () => ( {
 		name:   'Testimonial',
 		fields: [
-			text(       'Name',                          { required: true } ),
+			text(       'Name',                                       { required: true } ),
+			email(      'Email' ),
 			text(       'Company / Website' ),
-			select(     'Rating',
-				[ '5 Stars', '4 Stars', '3 Stars', '2 Stars', '1 Star' ]
-			),
-			textarea(   'Testimonial',                   { required: true, rows: 4 } ),
+			rating(     'Rating' ),
+			textarea(   'Testimonial',                                { required: true, rows: 4 } ),
 			acceptance( 'I agree to share this testimonial publicly.' ),
 		],
 	} ),
+
+	survey: () => ( {
+		name:   'Survey',
+		fields: [
+			text(     'Name' ),
+			email(    'Email' ),
+			rating(   'Overall experience', { required: true } ),
+			radio(    'How did you hear about us?',
+				[ 'Search engine', 'Social media', 'Friend or colleague', 'Advertisement', 'Other' ]
+			),
+			textarea( 'Any suggestions?', { rows: 4 } ),
+		],
+	} ),
+
+	poll: () => ( {
+		// Single-question poll — keeps it deliberately minimal so
+		// the Poll smart folder + analytics show a clean signal.
+		// Template authors who need lead capture can add an email
+		// field after applying the template.
+		name:   'Poll',
+		fields: [
+			poll(
+				'Which feature should we build next?',
+				[ 'More templates', 'Better analytics', 'AI form generation' ],
+				{ required: true }
+			),
+		],
+	} ),
+
+	quiz: () => ( {
+		// Two-question scored quiz using the Phase-3 frozen quiz
+		// schema. Form-level settings.quiz drives pass/fail logic
+		// + tier-bucketed result messages.
+		name:   'Quiz',
+		fields: [
+			quizQuestion(
+				'What is the capital of India?',
+				[ 'Mumbai', 'New Delhi', 'Jaipur' ],
+				{ correct: 'New Delhi', explanation: 'New Delhi is the capital of India.', points: 1 }
+			),
+			quizQuestion(
+				'Which planet is known as the Red Planet?',
+				[ 'Earth', 'Mars', 'Venus' ],
+				{ correct: 'Mars', explanation: 'Mars appears red because of iron-oxide dust on its surface.', points: 1 }
+			),
+		],
+		settings: {
+			quiz: {
+				show_pass_fail: true,
+				passing_score:  70,
+				result_messages: [
+					{ min: 0,  max: 49,  message: 'Keep practicing.' },
+					{ min: 50, max: 79,  message: 'Good attempt.'    },
+					{ min: 80, max: 100, message: 'Excellent!'       },
+				],
+			},
+		},
+	} ),
+
+	'multistep-appointment': () => {
+		const step1 = createStep( 'Contact Details' );
+		step1.description = 'How can we reach you?';
+		step1.fields = [
+			text(  'Full Name', { required: true } ),
+			email( 'Email',     { required: true } ),
+			phone( 'Phone',     { required: true } ),
+		];
+
+		const step2 = createStep( 'Appointment Details' );
+		step2.description = 'When would you like to come in?';
+		step2.fields = [
+			date(     'Preferred Date',  { required: true } ),
+			select(   'Service Needed',
+				[ 'Consultation', 'Treatment', 'Follow-up', 'Other' ],
+				{ required: true }
+			),
+			textarea( 'Notes for the team', { rows: 3 } ),
+		];
+
+		return {
+			name:     'Multi-step Appointment Form',
+			fields:   [ step1, step2 ],
+			settings: {
+				multistep: { progress_indicator: 'numbers' },
+			},
+		};
+	},
 
 	newsletter: () => ( {
 		name:   'Newsletter Signup',
@@ -238,20 +437,26 @@ const builders = {
 /* ---------------------------------------------------------------- */
 
 export const TEMPLATE_CATALOG = [
-	{ id: 'blank',             label: 'Blank Form',             description: 'Start from scratch.',                                category: 'Basic',     locked: false },
-	{ id: 'contact',           label: 'Contact Form',           description: 'Name, email, phone, message.',                       category: 'Basic',     locked: false },
-	{ id: 'appointment',       label: 'Appointment Form',       description: 'Bookings with preferred date and time.',             category: 'Service',   locked: false },
-	{ id: 'quote',             label: 'Quote Request',          description: 'Service + budget + project brief.',                  category: 'Sales',     locked: false },
-	{ id: 'feedback',          label: 'Feedback',               description: 'Rating and free-text comments.',                     category: 'Customer',  locked: false },
-	{ id: 'testimonial',       label: 'Testimonial',            description: 'Customer name, rating, story, consent.',             category: 'Customer',  locked: false },
-	{ id: 'newsletter',        label: 'Newsletter Signup',      description: 'Email + opt-in checkbox.',                           category: 'Marketing', locked: false },
-	{ id: 'multistep-contact', label: 'Multi-step Contact',     description: 'Two-step contact form with progress indicator.',     category: 'Advanced',  locked: false },
+	{ id: 'blank',                  label: 'Blank Form',                description: 'Start from scratch.',                                            category: 'Basic',       locked: false },
+	{ id: 'contact',                label: 'Contact Form',              description: 'Name, email, phone, message.',                                   category: 'Basic',       locked: false },
+	{ id: 'appointment',            label: 'Appointment Form',          description: 'Bookings with preferred date and time.',                         category: 'Service',     locked: false },
+	{ id: 'quote',                  label: 'Quote Request',             description: 'Service + budget + project brief.',                              category: 'Sales',       locked: false },
+	{ id: 'feedback',               label: 'Feedback',                  description: 'Star rating and free-text comments.',                            category: 'Customer',    locked: false },
+	{ id: 'testimonial',            label: 'Testimonial',               description: 'Customer name, rating, story, consent.',                         category: 'Customer',    locked: false },
+	{ id: 'newsletter',             label: 'Newsletter Signup',         description: 'Email + opt-in checkbox.',                                       category: 'Marketing',   locked: false },
+	{ id: 'survey',                 label: 'Survey',                    description: 'Rating + source + open-ended feedback.',                         category: 'Engagement',  locked: false },
+	{ id: 'poll',                   label: 'Poll Form',                 description: 'Single-question poll with live results.',                        category: 'Interactive', locked: false },
+	{ id: 'quiz',                   label: 'Quiz Form',                 description: 'Auto-scored questions with pass / fail messaging.',              category: 'Interactive', locked: false },
+	{ id: 'multistep-contact',      label: 'Multi-step Contact',        description: 'Two-step contact form with progress indicator.',                 category: 'Multi-step',  locked: false },
+	{ id: 'multistep-appointment',  label: 'Multi-step Appointment',    description: 'Two-step appointment booking with contact + service + date.',    category: 'Multi-step',  locked: false },
 
-	// Locked future templates - placeholders only.
-	{ id: 'quiz',              label: 'Quiz Form',              description: 'Scored questions and answers.',                      category: 'Advanced',  locked: true },
-	{ id: 'poll',              label: 'Poll Form',              description: 'Single-question polls with vote tally.',             category: 'Advanced',  locked: true },
-	{ id: 'payment',           label: 'Payment Form',           description: 'Collect payments with Stripe / PayPal.',             category: 'Pro',       locked: true,  pro: true },
-	{ id: 'ai',                label: 'AI Generated Form',      description: 'Describe what you need and we build it.',            category: 'Pro',       locked: true,  pro: true },
+	// Future templates — still locked. Payment is genuinely upcoming;
+	// AI generated forms are now available via the "Create Form with
+	// AI" entry point on the Forms list (Pro), so we leave the AI
+	// catalog entry locked as a discovery hint and let the FormType
+	// chooser footer phrase it accurately.
+	{ id: 'payment',                label: 'Payment Form',              description: 'Collect payments with Stripe / PayPal.',                         category: 'Pro',         locked: true,  pro: true },
+	{ id: 'ai',                     label: 'AI Generated Form',         description: 'Describe what you need and Neural Forms drafts it for you.',     category: 'Pro',         locked: true,  pro: true, available: 'pro-modal' },
 ];
 
 /* ---------------------------------------------------------------- */

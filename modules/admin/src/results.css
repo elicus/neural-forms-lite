@@ -38,7 +38,22 @@
 	 * margin:0 (not 0 auto) keeps the container flush to the .wrap's
 	 * native left edge instead of centering on wide screens. */
 	margin: 0;
-	padding: 0 0 48px;
+	/* Match .neural-forms-screen (Stats/Forms/Entries/Settings) so
+	 * Analytics opens at the same x/y offset as every other Neural
+	 * Forms admin page. The rich admin bundle uses
+	 *   .neural-forms-screen { padding: 28px 24px 48px }
+	 * on desktop and { padding: 20px 16px 40px } below the
+	 * `responsive` breakpoint, so we mirror those exact values. */
+	padding: 28px 24px 48px;
+	box-sizing: border-box;
+}
+
+/* Responsive — track Stats' 20px/16px/40px reduction so Analytics
+ * doesn't suddenly feel wider/looser than Stats on tablet widths. */
+@media ( max-width: 782px ) {
+	#neural-forms-results-app {
+		padding: 20px 16px 40px;
+	}
 }
 
 .nf-results {
@@ -1523,4 +1538,222 @@
 	#neural-forms-results-app .nf-pp__tr { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
 	#neural-forms-results-app .nf-pp__td { border-bottom: 0; padding: 0; }
 	#neural-forms-results-app .nf-pp__td--page { grid-column: 1 / -1; }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Analytics hero (header card)
+ *
+ * Replaces the previous `.nf-results__header` thin-underline pattern
+ * with a single white card that contains: title + subtitle on the
+ * left, label + select + Refresh button on the right. Brand colors
+ * (#080f5b dark blue, #15db95 mint) come from --nfr-primary /
+ * --nfr-accent already defined at the top of this file.
+ *
+ * The legacy `.nf-results__header` rule above is kept so any
+ * future markup using the old class still degrades gracefully —
+ * but ResultsHeader.js now emits `.nf-analytics-hero` exclusively.
+ *
+ * Empty-state hero variant `.nf-results__empty--card` is grouped
+ * here so the visual rhythm of "hero card, then content card"
+ * stays in a single CSS region.
+ * ───────────────────────────────────────────────────────────────── */
+
+#neural-forms-results-app .nf-analytics-hero {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 24px;
+	padding: 28px 32px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 18px;
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.06 );
+	margin-bottom: 24px;
+}
+
+#neural-forms-results-app .nf-analytics-hero__copy {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+#neural-forms-results-app .nf-analytics-hero__title {
+	margin: 0 0 6px;
+	font-size: 22px;
+	font-weight: 700;
+	color: var( --nfr-primary );
+	line-height: 1.2;
+	letter-spacing: 0.01em;
+}
+
+#neural-forms-results-app .nf-analytics-hero__subtitle {
+	margin: 0;
+	color: #475569;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+#neural-forms-results-app .nf-analytics-hero__controls {
+	display: flex;
+	align-items: flex-end;
+	gap: 12px;
+	flex: 0 0 auto;
+}
+
+#neural-forms-results-app .nf-analytics-hero__selector {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+#neural-forms-results-app .nf-analytics-hero__selector-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: #64748b;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+#neural-forms-results-app .nf-analytics-hero__selector-input {
+	min-width: 320px;
+	max-width: 380px;
+	height: 44px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #111827;
+	background: #fff;
+	border: 1px solid #cbd5e1;
+	border-radius: 10px;
+	cursor: pointer;
+	appearance: auto;
+}
+
+#neural-forms-results-app .nf-analytics-hero__selector-input:focus {
+	outline: none;
+	border-color: var( --nfr-primary );
+	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.12 );
+}
+
+#neural-forms-results-app .nf-analytics-hero__selector-input:disabled {
+	background: #f8fafc;
+	cursor: not-allowed;
+	opacity: 0.7;
+}
+
+#neural-forms-results-app .nf-analytics-hero__selector-error {
+	font-size: 12px;
+	color: #b91c1c;
+}
+
+#neural-forms-results-app .nf-analytics-hero__refresh {
+	height: 44px;
+	padding: 0 18px;
+	background: var( --nfr-primary );
+	color: #fff;
+	border: 1px solid var( --nfr-primary );
+	border-radius: 10px;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease;
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-analytics-hero__refresh:hover:not([disabled]) {
+	background: #060a44;
+	border-color: #060a44;
+}
+
+#neural-forms-results-app .nf-analytics-hero__refresh:focus-visible {
+	outline: 2px solid var( --nfr-accent );
+	outline-offset: 2px;
+}
+
+#neural-forms-results-app .nf-analytics-hero__refresh[disabled] {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+@media ( max-width: 900px ) {
+	#neural-forms-results-app .nf-analytics-hero {
+		flex-direction: column;
+		align-items: stretch;
+		padding: 24px 20px;
+	}
+	#neural-forms-results-app .nf-analytics-hero__controls {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 12px;
+	}
+	#neural-forms-results-app .nf-analytics-hero__selector-input {
+		min-width: 0;
+		max-width: none;
+		width: 100%;
+	}
+	#neural-forms-results-app .nf-analytics-hero__refresh {
+		width: 100%;
+	}
+}
+
+/* Hero empty-state — used when no active forms exist. Aligns with
+ * the hero card's width and spacing so the page reads as one
+ * vertical column rather than a banner + an isolated message. */
+#neural-forms-results-app .nf-results__empty--card {
+	padding: 48px 32px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	border-radius: 18px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.04 );
+}
+#neural-forms-results-app .nf-results__empty-icon {
+	margin-bottom: 4px;
+}
+#neural-forms-results-app .nf-results__empty--card .nf-results__empty-title {
+	font-size: 16px;
+	color: var( --nfr-primary );
+}
+#neural-forms-results-app .nf-results__empty--card .nf-results__empty-subtitle {
+	max-width: 460px;
+	margin-top: 4px;
+	font-size: 13px;
+	color: #475569;
+	line-height: 1.5;
+}
+#neural-forms-results-app .nf-results__empty-actions {
+	display: flex;
+	gap: 10px;
+	margin-top: 16px;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+#neural-forms-results-app .nf-results__empty-btn {
+	display: inline-block;
+	padding: 9px 18px;
+	border-radius: 8px;
+	border: 1px solid #cbd5e1;
+	background: #fff;
+	color: #1f2937;
+	font-size: 13px;
+	font-weight: 600;
+	text-decoration: none;
+	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+#neural-forms-results-app .nf-results__empty-btn:hover {
+	border-color: var( --nfr-primary );
+	color: var( --nfr-primary );
+}
+#neural-forms-results-app .nf-results__empty-btn--primary {
+	background: var( --nfr-primary );
+	color: #fff;
+	border-color: var( --nfr-primary );
+}
+#neural-forms-results-app .nf-results__empty-btn--primary:hover {
+	background: #060a44;
+	border-color: #060a44;
+	color: #fff;
 }

@@ -23,8 +23,29 @@ import { TEMPLATE_CATALOG, templateSummary } from './formTemplates';
 
 // Tier groupings. The catalog itself stays catalog-shaped; the order
 // here decides which tiles surface where without changing the source.
-const PRIMARY_IDS   = [ 'blank', 'contact', 'appointment', 'multistep-contact' ];
-const SECONDARY_IDS = [ 'quote', 'feedback', 'testimonial', 'newsletter' ];
+//
+// Primary row keeps the four most-used starters.
+// Secondary row covers everything else that ships unlocked, ordered
+// roughly by category (Sales/Customer → Marketing/Engagement →
+// Interactive → Multi-step). Quiz / Poll / Survey / Multi-step
+// Appointment are all surfaced here now that they're implemented.
+const PRIMARY_IDS = [
+	'blank',
+	'contact',
+	'appointment',
+	'multistep-contact',
+];
+
+const SECONDARY_IDS = [
+	'quote',
+	'feedback',
+	'testimonial',
+	'newsletter',
+	'survey',
+	'poll',
+	'quiz',
+	'multistep-appointment',
+];
 
 function meta( id ) {
 	const summary = templateSummary( id );
@@ -83,13 +104,19 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 	const primary   = PRIMARY_IDS.map( findTemplate ).filter( Boolean );
 	const secondary = SECONDARY_IDS.map( findTemplate ).filter( Boolean );
 
-	// Coming-soon line is built from whatever's locked in the catalog,
-	// so adding/removing locked templates updates the footer
-	// automatically.
-	const lockedNames = TEMPLATE_CATALOG
-		.filter( ( t ) => t.locked )
-		.map( ( t ) => t.label )
-		.join( ', ' );
+	// Footer copy is split by reason for the lock so the line stays
+	// accurate as features ship:
+	//   * `available: 'pro-modal'` items (AI Generated Form) point
+	//     at the existing Pro entry point on the Forms list — they
+	//     are already shippable, just not as a static template.
+	//   * Everything else still locked is genuinely upcoming and
+	//     gets the literal "coming soon" sentence.
+	const upcoming = TEMPLATE_CATALOG
+		.filter( ( t ) => t.locked && t.available !== 'pro-modal' )
+		.map( ( t ) => t.label );
+	const proAvailable = TEMPLATE_CATALOG
+		.filter( ( t ) => t.locked && t.available === 'pro-modal' )
+		.map( ( t ) => t.label );
 
 	const title = heading || (
 		mode === 'modal'
@@ -126,12 +153,26 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 				</>
 			) }
 
-			{ lockedNames && (
+			{ upcoming.length > 0 && (
 				<p className="nf-starter__footer">
 					{ sprintf(
 						/* translators: %s: comma-separated list of upcoming template names */
-						__( '%s forms are coming soon.', 'neural-forms-lite' ),
-						lockedNames
+						_n(
+							'%s template is coming soon.',
+							'%s templates are coming soon.',
+							upcoming.length,
+							'neural-forms-lite'
+						),
+						upcoming.join( ', ' )
+					) }
+				</p>
+			) }
+			{ proAvailable.length > 0 && (
+				<p className="nf-starter__footer">
+					{ sprintf(
+						/* translators: %s: feature label, e.g. "AI Generated Form" */
+						__( '%s is available with Neural Forms Pro from the Forms list.', 'neural-forms-lite' ),
+						proAvailable.join( ', ' )
 					) }
 				</p>
 			) }

@@ -1198,11 +1198,14 @@ CSS;
         }
 
         function render() {
+            // Markup mirrors UnsavedChangesModal: overlay → panel →
+            // header → body → footer. Header/footer are stable shells;
+            // only the body slot reflows between compose/preview phases.
             wrap.innerHTML =
                 '<div class="nf-aiform-modal__backdrop"></div>' +
-                '<div class="nf-aiform-modal__panel">' +
+                '<div class="nf-aiform-modal__panel" role="dialog" aria-modal="true" aria-labelledby="nf-aiform-modal-title">' +
                     '<header class="nf-aiform-modal__head">' +
-                        '<h2 class="nf-aiform-modal__title">' + safeEscape( state.phase === 'preview' && state.generated ? ( state.generated.name || i18n.modalTitle ) : i18n.modalTitle ) + '</h2>' +
+                        '<h2 id="nf-aiform-modal-title" class="nf-aiform-modal__title">' + safeEscape( state.phase === 'preview' && state.generated ? ( state.generated.name || i18n.modalTitle ) : i18n.modalTitle ) + '</h2>' +
                     '</header>' +
                     '<div class="nf-aiform-modal__body" data-nf-body></div>' +
                     '<footer class="nf-aiform-modal__foot" data-nf-foot></footer>' +
@@ -1227,9 +1230,15 @@ CSS;
                 ta.addEventListener( 'input', function () { state.prompt = ta.value; updateGenerateBtn(); } );
                 setTimeout( function () { ta.focus(); }, 0 );
 
+                // Buttons use ONLY the local .nf-aiform-modal__btn
+                // classes so they inherit the modal's own typography
+                // tokens — NOT the WP-admin .button / .button-primary
+                // styling, which would force a light-blue secondary
+                // and a WP-native blue primary that don't match the
+                // Unsaved modal's muted-grey + dark-navy pair.
                 foot.innerHTML =
-                    '<button type="button" class="button" data-nf-cancel>' + safeEscape( i18n.cancel ) + '</button>' +
-                    '<button type="button" class="button button-primary" data-nf-generate>' + safeEscape( state.busy === 'generate' ? i18n.generating : i18n.generate ) + '</button>';
+                    '<button type="button" class="nf-aiform-modal__btn nf-aiform-modal__btn--cancel" data-nf-cancel>' + safeEscape( i18n.cancel ) + '</button>' +
+                    '<button type="button" class="nf-aiform-modal__btn nf-aiform-modal__btn--primary" data-nf-generate>' + safeEscape( state.busy === 'generate' ? i18n.generating : i18n.generate ) + '</button>';
 
                 foot.querySelector( '[data-nf-cancel]' ).addEventListener( 'click', function () {
                     if ( state.busy == null ) close();
@@ -1274,9 +1283,9 @@ CSS;
                 renderUsage( state.usage );
 
             foot.innerHTML =
-                '<button type="button" class="button" data-nf-edit-prompt>' + safeEscape( i18n.editPrompt ) + '</button>' +
-                '<button type="button" class="button" data-nf-cancel>' + safeEscape( i18n.cancel ) + '</button>' +
-                '<button type="button" class="button button-primary" data-nf-create>' + safeEscape( state.busy === 'create' ? i18n.creating : i18n.createDraft ) + '</button>';
+                '<button type="button" class="nf-aiform-modal__btn nf-aiform-modal__btn--cancel" data-nf-edit-prompt>' + safeEscape( i18n.editPrompt ) + '</button>' +
+                '<button type="button" class="nf-aiform-modal__btn nf-aiform-modal__btn--cancel" data-nf-cancel>' + safeEscape( i18n.cancel ) + '</button>' +
+                '<button type="button" class="nf-aiform-modal__btn nf-aiform-modal__btn--primary" data-nf-create>' + safeEscape( state.busy === 'create' ? i18n.creating : i18n.createDraft ) + '</button>';
 
             foot.querySelector( '[data-nf-edit-prompt]' ).addEventListener( 'click', function () {
                 if ( state.busy != null ) return;
@@ -1626,82 +1635,171 @@ JS;
     color: #94a3b8;
 }
 
-/* AI generation modal — rendered into document.body so it floats
- * above the rich admin chrome without inheriting its container CSS. */
+/* AI generation modal — visual baseline matches the builder bundle's
+ * .nf-unsaved-modal__* spec exactly so users perceive both modals as
+ * the same product surface. The unified tokens are:
+ *   overlay     rgba(17,24,39,0.45) + 24px outer padding + flex center
+ *   card        14px radius, 0 12px 40px shadow, white, max-h 86vh
+ *   head        18px 22px 10px + bottom rule #f1f5f9
+ *   title       17px / 600 / #111827
+ *   body        16px 22px 4px
+ *   foot        16px 22px 18px + top rule #f1f5f9 + 16px margin-top
+ *   button      .neural-forms-btn baseline + 108px min-width
+ *   error       8px 10px / 6px radius / #fef2f2 + #fecaca / #b91c1c
+ *
+ * AI modal rendered into document.body (vanilla JS injector path,
+ * not React) so we re-emit the exact same numbers here rather than
+ * sharing classes with the builder bundle. Unsaved modal stays the
+ * authoritative spec — change there first, then mirror here.
+ *
+ * Card width is 760px max (vs Unsaved's 480px) because the AI prompt
+ * textarea benefits from a wider canvas; everything else matches. */
 .nf-aiform-modal {
     position: fixed;
     inset: 0;
-    z-index: 100000;
+    z-index: 100001;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 24px;
 }
 .nf-aiform-modal__backdrop {
     position: absolute;
     inset: 0;
-    background: rgba( 15, 23, 42, 0.55 );
+    background: rgba( 17, 24, 39, 0.45 );
 }
 .nf-aiform-modal__panel {
     position: relative;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 20px 60px rgba( 15, 23, 42, 0.35 );
-    width: min( 640px, 92vw );
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba( 0, 0, 0, 0.18 );
+    width: min( 760px, calc( 100vw - 40px ) );
     max-height: 86vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
-.nf-aiform-modal__head,
-.nf-aiform-modal__foot {
-    padding: 16px 20px;
-    border-bottom: 1px solid #e2e8f0;
-}
-.nf-aiform-modal__foot {
-    border-top: 1px solid #e2e8f0;
-    border-bottom: 0;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
+.nf-aiform-modal__head {
+    padding: 18px 22px 10px;
+    border-bottom: 1px solid #f1f5f9;
 }
 .nf-aiform-modal__title {
     margin: 0;
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 600;
-    color: #0f172a;
+    color: #111827;
 }
 .nf-aiform-modal__body {
-    padding: 16px 20px;
+    padding: 16px 22px 4px;
     overflow-y: auto;
 }
 .nf-aiform-modal__desc,
 .nf-aiform-modal__subtitle {
     margin: 0 0 12px;
-    color: #475569;
-    font-size: 13px;
+    font-size: 14px;
+    color: #1f2937;
+    line-height: 1.5;
 }
 .nf-aiform-modal__textarea {
     width: 100%;
-    min-height: 140px;
-    padding: 10px;
-    font-size: 13px;
-    border: 1px solid #cbd5e1;
+    min-height: 180px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    border: 1px solid #d1d5db;
     border-radius: 6px;
     resize: vertical;
     box-sizing: border-box;
+    color: #111827;
+    background: #ffffff;
+    font-family: inherit;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.nf-aiform-modal__textarea:focus {
+    outline: none;
+    border-color: #080f5b;
+    box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.14 );
 }
 .nf-aiform-modal__error {
     margin: 12px 0 0;
     padding: 8px 10px;
     background: #fef2f2;
     border: 1px solid #fecaca;
-    border-radius: 4px;
+    border-radius: 6px;
     color: #b91c1c;
     font-size: 12px;
 }
 .nf-aiform-modal__usage {
     margin: 12px 0 0;
-    color: #64748b;
+    color: #475569;
     font-size: 12px;
+    line-height: 1.4;
+}
+.nf-aiform-modal__foot {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding: 16px 22px 18px;
+    border-top: 1px solid #f1f5f9;
+    margin-top: 16px;
+}
+/* Self-contained button rules — the AI modal renders into
+ * document.body so it CAN'T inherit the rich bundle's
+ * .neural-forms-btn primary token; specifying everything inline
+ * here keeps the look stable wherever the modal is mounted, and
+ * avoids cascading conflicts with WP's .button / .button-primary
+ * (those classes are intentionally NOT applied to the markup so
+ * their high-specificity rules don't win the cascade either). */
+.nf-aiform-modal__btn {
+    min-width: 108px;
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    font-family: inherit;
+}
+.nf-aiform-modal__btn:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+.nf-aiform-modal__btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Cancel / Edit-prompt — secondary muted (matches Unsaved modal's
+ * .nf-unsaved-modal__btn--stay: bg #f3f4f6, text #1f2937,
+ * border #e5e7eb). */
+.nf-aiform-modal__btn--cancel {
+    background: #f3f4f6;
+    color: #1f2937;
+    border-color: #e5e7eb;
+}
+.nf-aiform-modal__btn--cancel:hover:not(:disabled) {
+    background: #e5e7eb;
+}
+
+/* Primary — dark navy, matches Unsaved modal's "Save as Draft"
+ * .neural-forms-btn--primary (the rich bundle uses #080f5b for
+ * --f-blue-600). Inline values so this works regardless of mount. */
+.nf-aiform-modal__btn--primary {
+    background: #080f5b;
+    color: #ffffff;
+    border-color: #080f5b;
+}
+.nf-aiform-modal__btn--primary:hover:not(:disabled) {
+    background: #050942;
+    border-color: #050942;
 }
 .nf-aiform-modal__fields {
     margin: 0;

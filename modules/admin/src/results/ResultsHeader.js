@@ -1,7 +1,17 @@
 /**
- * Analytics screen header — Stats dashboard pattern: thin underline,
- * no card chrome, title + helper text on the left, form selector +
- * refresh button on the right.
+ * Analytics screen header — single hero card.
+ *
+ * Layout (desktop):
+ *   ┌────────────────────────────────────────────────────────┐
+ *   │ Form Analytics                  [ Form ▾ ] [ Refresh ] │
+ *   │ Understand submissions, polls, …                       │
+ *   └────────────────────────────────────────────────────────┘
+ *
+ * Layout (≤ 900px): controls stack below the title block; the
+ * label/select pair and refresh button each go full width.
+ *
+ * No data-flow changes — this is the same form list, the same
+ * onSelect/onRefresh handlers, just a new visual shell.
  */
 
 import { __, sprintf } from '@wordpress/i18n';
@@ -23,20 +33,20 @@ export default function ResultsHeader( {
 			__( 'Showing analytics for %s', 'neural-forms-lite' ),
 			selectedFormName
 		)
-		: __( 'Select a form to view its submission, poll, and quiz analytics.', 'neural-forms-lite' );
+		: __( 'Understand submissions, polls, quizzes, and form performance.', 'neural-forms-lite' );
 
 	return (
-		<header className="nf-results__header">
-			<div className="nf-results__title-wrap">
-				<h1 className="nf-results__title">{ __( 'Form Analytics', 'neural-forms-lite' ) }</h1>
-				<p className="nf-results__subtitle">{ helper }</p>
+		<header className="nf-analytics-hero">
+			<div className="nf-analytics-hero__copy">
+				<h1 className="nf-analytics-hero__title">{ __( 'Form Analytics', 'neural-forms-lite' ) }</h1>
+				<p className="nf-analytics-hero__subtitle">{ helper }</p>
 			</div>
 
-			<div className="nf-results__controls">
-				<label className="nf-results__selector">
-					<span className="nf-results__selector-label">{ __( 'Form', 'neural-forms-lite' ) }</span>
+			<div className="nf-analytics-hero__controls">
+				<label className="nf-analytics-hero__selector">
+					<span className="nf-analytics-hero__selector-label">{ __( 'Form', 'neural-forms-lite' ) }</span>
 					<select
-						className="nf-results__selector-input"
+						className="nf-analytics-hero__selector-input"
 						value={ selectedId || '' }
 						onChange={ ( e ) => onSelect( Number( e.target.value ) || 0 ) }
 						disabled={ formsLoading }
@@ -61,13 +71,13 @@ export default function ResultsHeader( {
 						} ) }
 					</select>
 					{ formsError && (
-						<span className="nf-results__selector-error" role="alert">{ formsError }</span>
+						<span className="nf-analytics-hero__selector-error" role="alert">{ formsError }</span>
 					) }
 				</label>
 
 				<button
 					type="button"
-					className="nf-results__refresh"
+					className="nf-analytics-hero__refresh"
 					onClick={ onRefresh }
 					disabled={ ! canRefresh || refreshing }
 					title={ __( 'Refresh results', 'neural-forms-lite' ) }

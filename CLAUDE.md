@@ -522,3 +522,80 @@ paths, or spawn Agent subagents for shell work.
 
 Neural Forms should feel like a modern lead inbox system with intelligent
 AI-powered analysis, not just a form plugin.
+
+------------------------------------------------------------------------
+
+## Build commands cheat sheet (1.1.0+)
+
+Every Lite admin asset is a per-screen split bundle. The original full
+bundle (`build/index.js`) is byte-protected and **must not be rebuilt** —
+every other screen has its own webpack entry that you build in isolation
+without touching `index.js`.
+
+| Bundle | Source entry | Command (from `modules/admin/`) | When to rebuild |
+|---|---|---|---|
+| `build/index.js` (rich 1.0.0) | source missing | **never run `npm run build`** | Never. The npm script exits 1 with an error. The unsafe path is `npm run build:full:unsafe`; do not run it. |
+| `build/builder.js` | `src/builder-entry.js` | `npm run build:builder` | After editing anything under `src/forms/` (Builder, FormSettings, formTemplates, etc.) |
+| `build/results.js` | `src/results-entry.js` | `npm run build:results` | After editing anything under `src/results/` (analytics + page-performance section) or `src/results.css` |
+| `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Per-screen Entries source restored in 1.1.0; **gated off by default**. Enqueue swap is opt-in via `define('NEURAL_FORMS_USE_ENTRIES_SPLIT', true)` in `wp-config.php`. The protected `index.js` still owns the live Entries UI until source CSS parity is restored. |
+| `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks |
+
+The split webpack config (`webpack.split.config.js`) drops the
+`CleanWebpackPlugin` so sibling artefacts are preserved on every
+per-screen build.
+
+### Node version
+
+Use Node 18 (or newer) for any `npm run build:*` invocation. The
+default Node 14 environment fails on `--test` and on some recent
+webpack/loader internals. Switch via:
+
+```
+. ~/.nvm/nvm.sh && nvm exec 18 npm run build:builder
+```
+
+### Snapshot + verify the protected bundle around every build
+
+```
+shasum -a 256 modules/admin/build/index.js modules/admin/build/index.css
+# build something
+shasum -a 256 modules/admin/build/index.js modules/admin/build/index.css
+# the four hashes MUST match exactly
+```
+
+Canonical reference hashes (any deviation means the protected bundle
+was overwritten and the change should be reverted before commit):
+
+```
+ce380c0c327d13d399d558fe7eb832aad7a45a3955d4434d0f3eab07141792da  build/index.js
+aa8dde4a68ecd5c5e153307e77cc77f59b55fa9eb13c8609d107f4453e2f879c  build/index.css
+c3457a5529c833af762433002cef1b5b283cbb554d30e2c97b01517197ea1f93  build/index.asset.php
+e29bba9c28501726a5bcfc354f68ebeb3e0ea4af0c2ce570a050934c1f4054eb  build/index-rtl.css
+```
+
+### Picking the right approach for a given UI change
+
+- **Rich-bundle screens** (Forms list, Settings, Stats, Entries-default)
+  — use a vanilla-JS DOM injector in `AdminPanel.php` shipped via
+  `wp_add_inline_script` / `wp_add_inline_style`. NEVER edit the React
+  source for these screens; the source tree only covers scaffolding
+  stubs, not the live UI. Examples already in tree:
+  shortcode-column injector, "+ New Form" split-button + AI modal,
+  forms-list meta injector, builder-navigation redirect injector,
+  entries-form-filter injector.
+- **Builder React work** — edit `src/forms/`, run `build:builder`.
+- **Analytics React work** — edit `src/results/`, run `build:results`.
+- **Entries source split** — edit `src/entries/`, run `build:entries`,
+  flip the constant for testing.
+- **Inline CSS/JS in PHP** — no build at all; ships the moment PHP is
+  deployed.
+
+### Smart build verification (run after every per-screen build)
+
+1. `shasum -a 256` against the four protected files; must equal the
+   reference hashes above.
+2. `git status --short modules/admin/build/` should ONLY show the
+   per-screen artefact you intended to rebuild plus its `.css` /
+   `.asset.php` siblings.
+3. PHP test sweep — run every file under `tests/`:
+   `for f in tests/*.php; do php "$f" 2>&1 | tail -1; done`
