@@ -28,6 +28,9 @@ interface CaptchaVerifierInterface {
 	 *                       Passed to the provider when non-empty - improves
 	 *                       detection accuracy for most providers.
 	 * @return true|\WP_Error  true on success; WP_Error on any failure.
+	 *                        Return type is declared in PHPDoc only because the
+	 *                        union-with-true syntax requires PHP 8.2 and the
+	 *                        plugin supports PHP 7.4+ (per readme.txt).
 	 */
-	public function verify( string $token, string $ip ): true|\WP_Error;
+	public function verify( string $token, string $ip );
 }

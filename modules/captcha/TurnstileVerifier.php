@@ -33,8 +33,10 @@ class TurnstileVerifier implements CaptchaVerifierInterface {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * @return true|\WP_Error
 	 */
-	public function verify( string $token, string $ip ): true|\WP_Error {
+	public function verify( string $token, string $ip ) {
 		$body = [
 			'secret'   => $this->secret_key,
 			'response' => $token,

@@ -23,9 +23,15 @@ defined( 'ABSPATH' ) || exit;
  *
  *   block attributes '->-> BlockHandler::render()
  *     '->-> FormRenderer::render( formId )  '->-> form HTML
- *     '->-> build_scoped_css( attributes )  '->-> <style> tag with CSS custom properties
+ *     '->-> build_scoped_css( attributes )  '->-> CSS string attached via
+ *                                            wp_add_inline_style() to the
+ *                                            'neural-forms-form' (frontend) or
+ *                                            'neural-forms-block-editor' (editor)
+ *                                            registered style handle - WP prints
+ *                                            it alongside the stylesheet, no raw
+ *                                            <style> tag in the render output.
  *     '->-> build_wrap_style( attributes )  '->-> inline layout styles on wrapper div
- *     '->-> final output: <style>...</style><div class="wrap">...form...</div>
+ *     '->-> final output: <div class="wrap" style="...">...form...</div>
  *
  * Editor preview
  *
@@ -278,8 +284,30 @@ class BlockHandler {
 				. ' .neural-forms-form{pointer-events:none;}';
 		}
 
-		return '<style>' . $scoped_css . $editor_css . '</style>'
-			. '<div class="' . $wrap_class . '"' . $style_attr . '>'
+		// Attach per-instance scoped CSS to the appropriate registered style
+		// handle via wp_add_inline_style instead of emitting a raw <style> tag
+		// from the render output (WordPress.org plugin guidelines: assets must
+		// go through the WP enqueue API).
+		//
+		//   * Frontend: FormRenderer::render() has already enqueued
+		//     'neural-forms-form' above; WP prints late-enqueued styles in the
+		//     footer, so the inline CSS is emitted alongside form.css.
+		//   * Editor (ServerSideRender REST request): the block's editor_style
+		//     handle 'neural-forms-block-editor' is already in the registry
+		//     (see BlockHandler::register), which is the WP-required precondition
+		//     for wp_add_inline_style.
+		static $added_inline_css = [];
+		$inline_css = $scoped_css . $editor_css;
+		if ( $inline_css !== '' ) {
+			$handle = $is_editor ? 'neural-forms-block-editor' : 'neural-forms-form';
+			$key    = $handle . '|' . md5( $inline_css );
+			if ( ! isset( $added_inline_css[ $key ] ) ) {
+				wp_add_inline_style( $handle, $inline_css );
+				$added_inline_css[ $key ] = true;
+			}
+		}
+
+		return '<div class="' . $wrap_class . '"' . $style_attr . '>'
 			. $form_html
 			. '</div>';
 	}
@@ -451,7 +479,9 @@ class BlockHandler {
 	 *
 	 * @param string $uid         8-char hex uid for this attribute combination.
 	 * @param array  $attributes  Block attributes.
-	 * @return string             Raw CSS string (safe to echo inside <style>).
+	 * @return string             Raw CSS string. Attached to a registered
+	 *                            stylesheet handle via wp_add_inline_style by
+	 *                            BlockHandler::render(); never echoed directly.
 	 */
 	private static function build_scoped_css( string $uid, array $attributes ): string {
 		$wrap_sel = '.neural-forms-block-' . $uid;

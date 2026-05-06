@@ -49,6 +49,16 @@ defined( 'ABSPATH' ) || exit;
  */
 class SubmitEndpoint {
 
+	/**
+	 * Transient name prefix for the per-IP rate-limit counter.
+	 *
+	 * Plugin-specific prefix per the WordPress.org plugin guidelines: any
+	 * option/transient must be uniquely namespaced to avoid collisions with
+	 * other plugins. Keep this in sync with any cleanup tooling that removes
+	 * stale rate-limit transients.
+	 */
+	private const RATE_LIMIT_TRANSIENT_PREFIX = 'neural_forms_lite_rate_limit_';
+
 	public function register_routes(): void {
 		register_rest_route(
 			\NeuralForms\Rest\RestAPI::NAMESPACE,
@@ -1397,7 +1407,7 @@ class SubmitEndpoint {
 			return false;
 		}
 
-		$key   = 'nf_rl_' . md5( $ip );
+		$key   = self::RATE_LIMIT_TRANSIENT_PREFIX . md5( $ip );
 		$count = (int) get_transient( $key );
 
 		if ( $count >= 10 ) {

@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Neural Forms Lite
- * Plugin URI:        https://neuralforms.io
+ * Plugin URI:        https://neuralforms.ai
  * Description:       A modern lead inbox for WordPress. Build forms, triage submissions, and let AI summarize and draft replies for you. Upgrade to Neural Forms Pro for Divi 5, spam detection, and advanced AI tools.
  * Version:           1.0.0
  * Requires at least: 6.8

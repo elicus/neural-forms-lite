@@ -14,7 +14,7 @@ AI contact form plugin with a built-in lead inbox — auto-summarizes submission
 
 Neural Forms Lite is a modern contact form plugin that turns your WordPress site into an AI-powered lead management system. Build forms visually, receive submissions in a clean lead inbox, and let AI summarize each lead, assign priority, and draft a reply — all from your WordPress dashboard.
 
-### [View Demo](https://neuralforms.io "View Demo")
+### [View Demo](https://neuralforms.ai "View Demo")
 
 = Why Neural Forms? =
 
@@ -44,7 +44,7 @@ Neural Forms uses the Neural Forms Cloud service to analyze submissions. When a 
 3. A draft reply is written based on the context of your form and the visitor's message.
 4. Everything appears on the entry detail screen — ready for you to review, edit, and send.
 
-The AI features require a Neural Forms Cloud API key, which you can get for free at [neuralforms.io](https://neuralforms.io).
+The AI features require a Neural Forms Cloud API key, which you can get for free at [neuralforms.ai](https://neuralforms.ai).
 
 = Perfect For =
 
@@ -67,7 +67,7 @@ No configuration headaches. No third-party accounts required for basic form func
 
 = Neural Forms Pro =
 
-Looking for more? [Neural Forms Pro](https://neuralforms.io/pricing) adds Divi 5 Visual Builder integration, AI spam detection, advanced AI models, and more. Visit [neuralforms.io](https://neuralforms.io) for details.
+Looking for more? [Neural Forms Pro](https://neuralforms.ai/pricing) adds Divi 5 Visual Builder integration, AI spam detection, advanced AI models, and more. Visit [neuralforms.ai](https://neuralforms.ai) for details.
 
 = Documentation =
 
@@ -82,9 +82,9 @@ This plugin optionally connects to external third-party services. No connections
 When you enable AI features and enter a Neural Forms Cloud API key in Settings, the plugin sends form submission content (the text your visitors enter) and form field metadata to the Neural Forms Cloud API for AI analysis. This includes generating submission summaries, categories, priority scores, and draft replies. No data is sent unless you have enabled Cloud AI and provided an API key. The plugin never sends IP addresses, WordPress admin credentials, or WordPress core data to this service.
 
 * Service URL: [https://api.neuralforms.ai](https://api.neuralforms.ai)
-* Service website: [https://neuralforms.io](https://neuralforms.io)
-* Terms of Service: [https://neuralforms.io/term-and-conditions](https://neuralforms.io/term-and-conditions)
-* Privacy Policy: [https://neuralforms.io/privacy-policy](https://neuralforms.io/privacy-policy)
+* Service website: [https://neuralforms.ai](https://neuralforms.ai)
+* Terms of Service: [https://neuralforms.ai/term-and-conditions](https://neuralforms.ai/term-and-conditions)
+* Privacy Policy: [https://neuralforms.ai/privacy-policy](https://neuralforms.ai/privacy-policy)
 
 **Cloudflare Turnstile**
 
@@ -101,6 +101,36 @@ When you select Google reCAPTCHA v2 as your CAPTCHA provider and configure your 
 * Service website: [https://www.google.com/recaptcha/](https://www.google.com/recaptcha/)
 * Terms of Service: [https://policies.google.com/terms](https://policies.google.com/terms)
 * Privacy Policy: [https://policies.google.com/privacy](https://policies.google.com/privacy)
+
+== Source Code and Build Instructions ==
+
+Neural Forms ships pre-built JavaScript and CSS files in `modules/admin/build/` so the plugin works on a clean WordPress install without a Node toolchain. The compiled/generated files are:
+
+* `modules/admin/build/index.js` — admin React SPA (Forms, Entries, Stats, Settings)
+* `modules/admin/build/index.css` and `modules/admin/build/index-rtl.css` — admin styles
+* `modules/admin/build/block.js` — Gutenberg block (`neural-forms/form`) editor script
+* `modules/admin/build/index.asset.php` and `modules/admin/build/block.asset.php` — auto-generated WordPress dependency manifests
+
+The complete, human-readable source for every generated/compressed file above is included inside this plugin package under:
+
+* `modules/admin/src/` — React + CSS source (admin SPA entry, block entry, screens, components, styles)
+* `modules/admin/package.json` — npm dependency list and build scripts
+* `modules/admin/package-lock.json` — exact dependency versions (lockfile)
+* `modules/admin/webpack.config.js` — webpack configuration (extends `@wordpress/scripts`)
+
+`modules/admin/build/index.js` is built from `modules/admin/src/index.js` and the modules it imports. `modules/admin/build/block.js` is built from `modules/admin/src/block-index.js`. Both are bundled by `@wordpress/scripts` (webpack + Babel) using the entry points declared in `modules/admin/webpack.config.js`. No obfuscation, packing, or encoding step is applied.
+
+To rebuild the generated assets from source:
+
+1. Install Node.js 18 or newer and npm.
+2. Open a terminal in the plugin directory.
+3. Run:
+
+`cd modules/admin`
+`npm install`
+`npm run build`
+
+This regenerates the files in `modules/admin/build/` from `modules/admin/src/`.
 
 == Installation ==
 
@@ -129,15 +159,15 @@ When you select Google reCAPTCHA v2 as your CAPTCHA provider and configure your 
 
 = Do I need an API key to use Neural Forms? =
 
-No. The form builder, lead inbox, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (auto-summary, draft replies) require a free Neural Forms Cloud API key, which you can get at [neuralforms.io](https://neuralforms.io).
+No. The form builder, lead inbox, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (auto-summary, draft replies) require a free Neural Forms Cloud API key, which you can get at [neuralforms.ai](https://neuralforms.ai).
 
 = What data does the AI feature send to your servers? =
 
-When AI is enabled, the plugin sends the form submission text (the visitor's answers) and the form schema (field types and labels) to the Neural Forms Cloud API at api.neuralforms.ai. No IP addresses, no WordPress admin emails, and no WordPress core data are sent. You can review the full [Privacy Policy](https://neuralforms.io/privacy-policy).
+When AI is enabled, the plugin sends the form submission text (the visitor's answers) and the form schema (field types and labels) to the Neural Forms Cloud API at api.neuralforms.ai. No IP addresses, no WordPress admin emails, and no WordPress core data are sent. You can review the full [Privacy Policy](https://neuralforms.ai/privacy-policy).
 
 = Is Neural Forms GDPR compliant? =
 
-Neural Forms includes a Privacy Mode toggle that disables IP address and user-agent storage on submissions. When enabled, no personally identifiable visitor metadata is stored. For AI features, form submission content is processed by Neural Forms Cloud — see the [Privacy Policy](https://neuralforms.io/privacy-policy) for data handling details.
+Neural Forms includes a Privacy Mode toggle that disables IP address and user-agent storage on submissions. When enabled, no personally identifiable visitor metadata is stored. For AI features, form submission content is processed by Neural Forms Cloud — see the [Privacy Policy](https://neuralforms.ai/privacy-policy) for data handling details.
 
 = Will this slow down my site? =
 

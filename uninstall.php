@@ -101,28 +101,34 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $table ) );
 		}
 
-		// Log directory. Logger writes daily files to
-		// wp-content/uploads/neural-forms/logs/ along with a .htaccess + index
-		// stub. Remove the whole directory so a reinstall starts clean.
+		// Log directory. Logger writes daily files under the active site's
+		// uploads dir at <uploads>/neural-forms/logs/ along with a .htaccess +
+		// index stub. Resolve the path via wp_upload_dir() (not WP_CONTENT_DIR)
+		// so it works on multisite, with a relocated UPLOADS constant, and on
+		// hosts that mount uploads outside wp-content. Bail out silently if
+		// the uploads dir is unavailable - leftover files are harmless.
 		// phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir, WordPress.WP.AlternativeFunctions.file_system_operations_unlink, WordPress.PHP.NoSilencedErrors.Discouraged
-		$log_dir = WP_CONTENT_DIR . '/uploads/neural-forms/logs/';
-		if ( is_dir( $log_dir ) ) {
-			$files = glob( $log_dir . '*' );
-			if ( is_array( $files ) ) {
-				foreach ( $files as $file ) {
-					if ( is_file( $file ) ) {
-						@unlink( $file );
+		$uploads = wp_upload_dir( null, false );
+		if ( is_array( $uploads ) && empty( $uploads['error'] ) && ! empty( $uploads['basedir'] ) ) {
+			$parent  = trailingslashit( $uploads['basedir'] ) . 'neural-forms/';
+			$log_dir = $parent . 'logs/';
+			if ( is_dir( $log_dir ) ) {
+				$files = glob( $log_dir . '*' );
+				if ( is_array( $files ) ) {
+					foreach ( $files as $file ) {
+						if ( is_file( $file ) ) {
+							@unlink( $file );
+						}
 					}
 				}
-			}
-			if ( file_exists( $log_dir . '.htaccess' ) ) {
-				@unlink( $log_dir . '.htaccess' );
-			}
-			@rmdir( $log_dir );
+				if ( file_exists( $log_dir . '.htaccess' ) ) {
+					@unlink( $log_dir . '.htaccess' );
+				}
+				@rmdir( $log_dir );
 
-			$parent = WP_CONTENT_DIR . '/uploads/neural-forms/';
-			if ( is_dir( $parent ) ) {
-				@rmdir( $parent ); // only succeeds if empty
+				if ( is_dir( $parent ) ) {
+					@rmdir( $parent ); // only succeeds if empty
+				}
 			}
 		}
 		// phpcs:enable WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir, WordPress.WP.AlternativeFunctions.file_system_operations_unlink, WordPress.PHP.NoSilencedErrors.Discouraged
