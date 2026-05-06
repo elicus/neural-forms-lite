@@ -1,0 +1,449 @@
+/**
+ * Stats screen styles. Per-screen split bundle.
+ *
+ * Authored from the rich `build/index.css` rules (the protected
+ * bundle's `.neural-forms-stats__*` namespace). When the Stats screen
+ * is migrated off `build/index.js` to `build/stats.js`, the protected
+ * `index.css` is no longer enqueued here — every rule the screen
+ * needs lives in this file.
+ *
+ * Class namespace: `.neural-forms-stats__*` (BEM). The shared `--f-*`
+ * tokens are scoped to `#neural-forms-app` to mirror the rich bundle's
+ * root.
+ */
+
+/* ── Token system (mirrors the rich-bundle palette) ──────────── */
+#neural-forms-app {
+	--f-blue-50:    #eef0f7;
+	--f-blue-100:   #d6dbeb;
+	--f-blue-200:   #a7b0d3;
+	--f-blue-400:   #5566bb;
+	--f-blue-500:   #1d2a8a;
+	--f-blue-600:   #080f5b;
+	--f-blue-700:   #050942;
+
+	--f-gray-50:    #f9fafb;
+	--f-gray-100:   #f3f4f6;
+	--f-gray-200:   #e5e7eb;
+	--f-gray-300:   #d1d5db;
+	--f-gray-400:   #9ca3af;
+	--f-gray-500:   #6b7280;
+	--f-gray-600:   #4b5563;
+	--f-gray-700:   #374151;
+	--f-gray-800:   #1f2937;
+	--f-gray-900:   #111827;
+
+	--f-green-50:   #e6fbf3;
+	--f-green-100:  #c6f5e2;
+	--f-green-200:  #8feed1;
+	--f-green-600:  #15db95;
+
+	--f-amber-50:   #fef3c7;
+	--f-amber-200:  #fde68a;
+	--f-amber-600:  #d97706;
+
+	--f-red-50:     #fef2f2;
+	--f-red-200:    #fca5a5;
+	--f-red-600:    #dc2626;
+
+	--f-radius-sm:  6px;
+	--f-radius-md:  8px;
+	--f-radius-lg:  10px;
+	--f-radius-xl:  14px;
+	--f-radius-full: 9999px;
+
+	--f-shadow-xs:  0 1px 3px rgba( 0, 0, 0, 0.07 ), 0 1px 2px rgba( 0, 0, 0, 0.04 );
+	--f-shadow-sm:  0 2px 8px rgba( 0, 0, 0, 0.09 ), 0 1px 3px rgba( 0, 0, 0, 0.06 );
+
+	--f-transition: 0.15s ease;
+
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	max-width: 1200px;
+}
+
+/* ── Container ────────────────────────────────────────────────── */
+.neural-forms-stats {
+	max-width: 960px;
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+.neural-forms-stats__header {
+	border-bottom: 1px solid var( --f-gray-200 );
+	margin-bottom: 24px;
+	padding: 0 0 20px;
+}
+
+.neural-forms-stats__title {
+	color: var( --f-gray-900 );
+	font-size: 22px;
+	font-weight: 600;
+	margin: 0 0 2px;
+}
+
+.neural-forms-stats__subtitle {
+	color: var( --f-gray-500 );
+	font-size: 13px;
+	margin: 0;
+}
+
+/* ── KPI stat cards (4-up grid, blue cards with mint accent) ──── */
+.neural-forms-stats__stats {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: repeat( 4, 1fr );
+	margin-bottom: 16px;
+}
+
+.neural-forms-stats__stat-card {
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
+	border-radius: var( --f-radius-xl );
+	box-shadow: var( --f-shadow-xs );
+	padding: 20px;
+	transition: box-shadow var( --f-transition ), border-color var( --f-transition );
+}
+
+.neural-forms-stats__stat-card:hover {
+	border-color: var( --f-blue-700 );
+	box-shadow: var( --f-shadow-sm );
+}
+
+.neural-forms-stats__stat-card--highlight {
+	background: var( --f-blue-700 );
+	border-color: var( --f-green-600 );
+}
+
+.neural-forms-stats__stat-icon {
+	color: var( --f-green-600 );
+	margin-bottom: 8px;
+}
+
+.neural-forms-stats__stat-value {
+	color: #fff;
+	font-size: 30px;
+	font-weight: 700;
+	line-height: 1;
+	margin-bottom: 4px;
+}
+
+.neural-forms-stats__stat-label {
+	color: hsla( 0, 0%, 100%, 0.75 );
+	font-size: 12px;
+}
+
+/* ── Section card (white box with gray-200 border) ────────────── */
+.neural-forms-stats__section {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-xl );
+	margin-bottom: 16px;
+	padding: 20px 24px;
+}
+
+.neural-forms-stats__section--half {
+	flex: 1;
+	margin-bottom: 0;
+	min-width: 0;
+}
+
+.neural-forms-stats__section-title {
+	align-items: center;
+	color: var( --f-gray-500 );
+	display: flex;
+	font-size: 11.5px;
+	font-weight: 700;
+	gap: 6px;
+	letter-spacing: 0.06em;
+	margin: 0 0 16px;
+	text-transform: uppercase;
+}
+
+.neural-forms-stats__section-count {
+	align-items: center;
+	background: var( --f-red-50 );
+	border-radius: var( --f-radius-full );
+	color: var( --f-red-600 );
+	display: inline-flex;
+	font-size: 11px;
+	font-weight: 700;
+	height: 20px;
+	justify-content: center;
+	margin-left: 2px;
+	min-width: 20px;
+	padding: 0 6px;
+}
+
+/* ── Two-column row (AI Insights | Recent Activity) ───────────── */
+.neural-forms-stats__cols {
+	display: flex;
+	gap: 16px;
+	margin-bottom: 16px;
+}
+
+/* ── AI Insights — label/value rows ───────────────────────────── */
+.neural-forms-stats__insight-rows {
+	display: flex;
+	flex-direction: column;
+}
+
+.neural-forms-stats__insight-row {
+	align-items: center;
+	border-bottom: 1px solid var( --f-gray-100 );
+	display: flex;
+	font-size: 13px;
+	justify-content: space-between;
+	padding: 9px 0;
+}
+
+.neural-forms-stats__insight-row:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+.neural-forms-stats__insight-label {
+	color: var( --f-gray-600 );
+}
+
+.neural-forms-stats__insight-value {
+	color: var( --f-gray-900 );
+	font-weight: 600;
+}
+
+.neural-forms-stats__insight-value--badge {
+	background: var( --f-blue-50 );
+	border-radius: var( --f-radius-full );
+	color: var( --f-blue-600 );
+	font-size: 12px;
+	font-weight: 500;
+	padding: 2px 9px;
+	text-transform: capitalize;
+}
+
+/* ── Recent Activity log ──────────────────────────────────────── */
+.neural-forms-stats__activity-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.neural-forms-stats__activity-item {
+	align-items: center;
+	border-bottom: 1px solid var( --f-gray-100 );
+	display: flex;
+	font-size: 13px;
+	gap: 8px;
+	padding: 8px 0;
+}
+
+.neural-forms-stats__activity-item:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+.neural-forms-stats__activity-dot {
+	border-radius: 50%;
+	flex-shrink: 0;
+	height: 7px;
+	width: 7px;
+}
+
+.neural-forms-stats__activity-dot--ok {
+	background: var( --f-green-600 );
+}
+
+.neural-forms-stats__activity-dot--error {
+	background: var( --f-red-600 );
+}
+
+.neural-forms-stats__activity-label {
+	color: var( --f-gray-700 );
+	flex: 1;
+}
+
+.neural-forms-stats__activity-item--error .neural-forms-stats__activity-label {
+	color: var( --f-red-600 );
+}
+
+.neural-forms-stats__activity-entry {
+	color: var( --f-blue-600 );
+	flex-shrink: 0;
+	font-size: 12px;
+	text-decoration: none;
+}
+
+.neural-forms-stats__activity-entry:hover {
+	text-decoration: underline;
+}
+
+.neural-forms-stats__activity-time {
+	color: var( --f-gray-400 );
+	flex-shrink: 0;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+/* ── System status bar ────────────────────────────────────────── */
+.neural-forms-stats__system {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-xl );
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0;
+	padding: 14px 24px;
+}
+
+.neural-forms-stats__system-item {
+	align-items: center;
+	border-right: 1px solid var( --f-gray-200 );
+	display: flex;
+	gap: 7px;
+	margin-right: 20px;
+	padding: 4px 20px 4px 0;
+}
+
+.neural-forms-stats__system-item:last-child {
+	border-right: none;
+	margin-right: 0;
+	padding-right: 0;
+}
+
+.neural-forms-stats__status-dot {
+	border-radius: 50%;
+	flex-shrink: 0;
+	height: 7px;
+	width: 7px;
+}
+
+.neural-forms-stats__status-dot--ok    { background: var( --f-green-600 ); }
+.neural-forms-stats__status-dot--off   { background: var( --f-gray-300 ); }
+.neural-forms-stats__status-dot--warn  { background: var( --f-amber-600 ); }
+.neural-forms-stats__status-dot--error { background: var( --f-red-600 ); }
+
+.neural-forms-stats__system-label {
+	color: var( --f-gray-500 );
+	font-size: 12px;
+}
+
+.neural-forms-stats__system-value {
+	color: var( --f-gray-700 );
+	font-size: 12px;
+	font-weight: 500;
+}
+
+/* ── Empty / loading / error states ───────────────────────────── */
+.neural-forms-stats__empty {
+	color: var( --f-gray-400 );
+	font-size: 13px;
+	font-style: italic;
+	margin: 0;
+	padding: 4px 0;
+}
+
+.neural-forms-stats__error,
+.neural-forms-stats__loading {
+	color: var( --f-gray-500 );
+	font-size: 14px;
+	padding: 48px 0;
+	text-align: center;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media ( max-width: 782px ) {
+	.neural-forms-stats__stats {
+		grid-template-columns: repeat( 2, 1fr );
+	}
+	.neural-forms-stats__cols {
+		flex-direction: column;
+	}
+	.neural-forms-stats__stat-card {
+		padding: 14px 16px;
+	}
+	.neural-forms-stats__stat-value {
+		font-size: 24px;
+	}
+}
+
+/* ── Attention list (rich UI; reserved for a future REST hook) ── */
+.neural-forms-stats__attention-list {
+	margin: -8px -24px -20px;
+}
+
+.neural-forms-stats__attention-item {
+	align-items: center;
+	border-top: 1px solid var( --f-gray-100 );
+	color: inherit;
+	cursor: pointer;
+	display: flex;
+	gap: 12px;
+	padding: 11px 24px;
+	text-decoration: none;
+	transition: background var( --f-transition );
+}
+
+.neural-forms-stats__attention-item:first-child {
+	border-top: none;
+}
+
+.neural-forms-stats__attention-item:hover {
+	background: var( --f-gray-50 );
+}
+
+.neural-forms-stats__attention-body {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.neural-forms-stats__attention-sender {
+	color: var( --f-gray-900 );
+	font-size: 13.5px;
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.neural-forms-stats__attention-meta {
+	align-items: center;
+	color: var( --f-gray-400 );
+	display: flex;
+	font-size: 12px;
+	gap: 6px;
+}
+
+.neural-forms-stats__attention-form          { color: var( --f-gray-400 ); }
+.neural-forms-stats__attention-form--deleted { color: var( --f-red-600 ); }
+.neural-forms-stats__attention-sep           { color: var( --f-gray-300 ); }
+
+.neural-forms-stats__attention-tags {
+	align-items: flex-end;
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	gap: 3px;
+}
+
+.neural-forms-stats__attention-arrow {
+	color: var( --f-gray-300 );
+	flex-shrink: 0;
+	font-size: 18px;
+	line-height: 1;
+	margin-left: 4px;
+}
+
+.neural-forms-stats__tag {
+	border-radius: var( --f-radius-full );
+	display: inline-block;
+	font-size: 11px;
+	font-weight: 500;
+	padding: 2px 7px;
+	text-transform: capitalize;
+	white-space: nowrap;
+}
+
+.neural-forms-stats__tag--priority { background: var( --f-red-50 );   color: var( --f-red-600 ); }
+.neural-forms-stats__tag--reply    { background: var( --f-blue-50 );  color: var( --f-blue-600 ); }
+.neural-forms-stats__tag--spam     { background: var( --f-amber-50 ); color: var( --f-amber-600 ); }

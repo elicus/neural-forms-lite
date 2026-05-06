@@ -48,9 +48,13 @@ const SCREENS = {
 	// by AdminPanel::enqueue_assets() instead of build/index.js when
 	// the admin is on the Forms-list screen.
 	forms:         'src/forms-entry.js',
+	// Phase 2 of refactor/remove-protected-admin-bundle: Stats screen
+	// migrates off the protected bundle. Same pattern as forms — own
+	// entry point, own stats.css, enqueued by AdminPanel when on
+	// ?page=neural-forms-stats.
+	stats:         'src/stats-entry.js',
 	// Future screens (do NOT enable until their source is restored):
 	//   settings:     'src/settings-entry.js',
-	//   stats:        'src/stats-entry.js',
 	//   'admin-shell': 'src/admin-shell-entry.js',
 };
 
