@@ -503,6 +503,54 @@ rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
 
+### Entries source parity is DEFERRED — do not migrate
+
+The live Entries UI ships from the byte-protected `build/index.js`.
+Although `src/entries/` exists with a working React app and
+`build/entries.js` builds cleanly, **the source UI does NOT match the
+rich UI** in three concrete ways that each represent a behavior change:
+
+1. **Inbox taxonomy.** `src/entries/EntriesSidebar.js` ships extra
+   "Polls" and "Quizzes" smart folders. The rich UI does not.
+2. **Default-view semantics.** `src/entries/EntriesScreen.js` can
+   route the All-Forms→Inbox selection to `?folder=normal_inbox`,
+   which excludes poll/quiz/mixed entries. The rich UI uses bare
+   `?view=inbox` and includes everything.
+3. **CSS parity.** The protected bundle owns ~30 KB of styles under
+   `.neural-forms-entries-*` / `.neural-forms-entry-detail__*` (165
+   classes). The source uses `.nf-inbox__*` (86 classes) with no
+   matching CSS authored anywhere — flipping
+   `NEURAL_FORMS_USE_ENTRIES_SPLIT` today produces an unstyled inbox.
+
+**Do NOT do any of these without a dedicated parity-migration task:**
+
+- Do not flip `NEURAL_FORMS_USE_ENTRIES_SPLIT`.
+- Do not introduce a parallel `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` flag.
+- Do not rename `nf-inbox__*` classes piecemeal.
+- Do not remove Polls/Quizzes folders from `src/entries/` in isolation.
+- Do not rebuild or patch `build/index.js`.
+
+The shared admin page-header unifier
+(`AdminPanel::page_hero_unifier_css()`) **intentionally excludes
+Entries** — the inbox's 2-pane Gmail-style layout has no top-level
+`__header` element to retarget, and adding a banner above the grid
+would compete with the inbox's own visual hierarchy. Stats / Forms
+list / Settings / Import are unified via that CSS injector; Analytics
+ships its own (`nf-analytics-hero` in `src/results.css`); Entries
+keeps the protected bundle look.
+
+When the parity migration is eventually scoped, the recommended
+approach is **Path 1**: rename `nf-inbox__*` → matching
+`neural-forms-entries-*` / `neural-forms-entry-detail__*` so the
+existing protected `build/index.css` rules apply for free, with a
+feature-flag fallback to the rich bundle and full side-by-side QA
+(empty inbox / unread / needs-reply / starred / spam / trash /
+per-form / search / sort / export / detail / bulk / AI actions /
+counts / mobile) before flipping the default.
+
+Track the work as a separate "Entries Source Parity Migration" task
+in its own branch.
+
 ------------------------------------------------------------------------
 
 ## Current Direction

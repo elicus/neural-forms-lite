@@ -467,6 +467,15 @@ class AdminPanel {
             );
         }
 
+        // Page-header unifier — ships every screen the same hero-card
+        // header that the Analytics screen already uses. Lives outside the
+        // React bundle so we can apply it to the protected build/index.js
+        // screens (Stats / Forms list / Settings / Import) without
+        // rebuilding the bundle. The CSS retargets each protected
+        // screen's existing `__header` and `__title` classes so the DOM
+        // stays untouched and only the visual shell changes.
+        wp_add_inline_style( 'neural-forms-admin', self::page_hero_unifier_css() );
+
         // Forms-screen-only: inject a Shortcode column into the React-rendered
         // forms table. Lives outside the React bundle so it can ship without
         // rebuilding (the Node 18+ toolchain isn't available in every dev env
@@ -942,6 +951,187 @@ JS;
     observer.observe( mount, { childList: true, subtree: true } );
 })();
 JS;
+    }
+
+    /**
+     * Unified page-header CSS shipped on every Neural Forms admin
+     * screen. The Analytics screen's `nf-analytics-hero` is the visual
+     * source of truth (white rounded card, blue title, soft border,
+     * subtle shadow); this CSS applies the same look to the protected
+     * `build/index.js` screens (Stats / Forms list / Settings / Import)
+     * by retargeting their existing `__header` + `__title` markup.
+     *
+     * No DOM changes: the protected bundle keeps emitting the same
+     * elements; we only restyle them. Subtitles + actions slots are
+     * Analytics-only because the protected screens don't emit DOM for
+     * them — adding those would require rebuilding `build/index.js`,
+     * which is out of scope per the byte-protected-bundle policy in
+     * CLAUDE.md.
+     *
+     * The shared `.nf-page-hero` / `.nf-page-hero__title` /
+     * `.nf-page-hero__subtitle` / `.nf-page-hero__actions` classes are
+     * also exposed so future React work (Lite split bundles, Pro admin
+     * screens) can use the canonical class names directly.
+     */
+    private static function page_hero_unifier_css(): string {
+        // Single source of truth — copied from nf-analytics-hero in
+        // modules/admin/src/results.css. Keep these values in sync
+        // when the Analytics hero is restyled.
+        return <<<'CSS'
+/* ── Shared hero card (canonical class names) ──────────────────── */
+#neural-forms-app .nf-page-hero,
+#neural-forms-results-app .nf-page-hero {
+    box-sizing: border-box;     /* keep 28×32 padding INSIDE 100% width
+                                   so the card aligns with siblings inside
+                                   a constrained parent (e.g. forms-list's
+                                   960px max-width). */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(8, 15, 91, 0.06);
+}
+
+#neural-forms-app .nf-page-hero__copy,
+#neural-forms-results-app .nf-page-hero__copy {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+#neural-forms-app .nf-page-hero__title,
+#neural-forms-results-app .nf-page-hero__title {
+    margin: 0 0 6px;
+    color: #080f5b;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+}
+
+#neural-forms-app .nf-page-hero__subtitle,
+#neural-forms-results-app .nf-page-hero__subtitle {
+    margin: 0;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+#neural-forms-app .nf-page-hero__actions,
+#neural-forms-results-app .nf-page-hero__actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+    #neural-forms-app .nf-page-hero,
+    #neural-forms-results-app .nf-page-hero {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    #neural-forms-app .nf-page-hero__actions,
+    #neural-forms-results-app .nf-page-hero__actions {
+        width: 100%;
+    }
+    #neural-forms-app .nf-page-hero__actions > *,
+    #neural-forms-results-app .nf-page-hero__actions > * {
+        width: 100%;
+    }
+}
+
+/* ── Protected-bundle screens: skin existing __header/__title ──
+ *
+ * The build/index.js bundle emits per-screen header containers
+ * (`__header`) and title elements (`__title`) for Stats / Forms list
+ * / Settings / Import. We retarget those existing classes with the
+ * hero-card visuals — no DOM changes, no rebuild of the protected
+ * bundle.
+ *
+ * Each rule is an `:is()` group so adding a new screen takes one line.
+ *
+ * Subtitle text isn't present in the protected DOM, so these screens
+ * show TITLE-ONLY heroes today. When the rich source is restored,
+ * each screen can emit a `__subtitle` paragraph and the styling
+ * already exists.
+ *
+ * ── Why Entries is intentionally NOT in this list ──
+ *
+ * Entries (?page=neural-forms-entries) is INTENTIONALLY EXCLUDED
+ * from the unifier and stays on the rich/protected bundle's existing
+ * look. The inbox's 2-pane layout
+ * (`.neural-forms-entries-layout`: 220px sidebar | 1fr content) has
+ * no top-level `__header` element to retarget — there is no
+ * `.neural-forms-entries__header` or `.neural-forms-entries__title`
+ * class in the protected bundle. The "Inbox" label users see is a
+ * sidebar folder item (`.neural-forms-entries-sidebar__folder-label`),
+ * not a page banner.
+ *
+ * Migrating Entries to a unified hero would require either rebuilding
+ * the byte-protected `build/index.js` (out of scope) or porting the
+ * source UI in `src/entries/` to match the rich CSS + behaviour
+ * exactly. The latter is tracked as a separate "Entries Source
+ * Parity Migration" task — see the deferral note in CLAUDE.md
+ * (`## Known Gotchas → Entries source parity is DEFERRED`).
+ *
+ * Do NOT add `.neural-forms-entries*` selectors here without
+ * completing that migration. */
+
+#neural-forms-app :is(
+    .neural-forms-stats__header,
+    .neural-forms-forms-list__header,
+    .neural-forms-settings__header,
+    .neural-forms-import__header
+) {
+    box-sizing: border-box;     /* protected bundle does NOT set border-box
+                                   globally; without this, our 28×32 padding
+                                   would visually push the card 64px wider
+                                   than the table/list inside the same
+                                   .neural-forms-{screen}-list parent
+                                   (max-width: 960px on Forms list). */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(8, 15, 91, 0.06);
+}
+
+#neural-forms-app :is(
+    .neural-forms-stats__title,
+    .neural-forms-forms-list__title,
+    .neural-forms-settings__header-text,
+    .neural-forms-import__title
+) {
+    margin: 0;
+    color: #080f5b;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+}
+
+@media (max-width: 900px) {
+    #neural-forms-app :is(
+        .neural-forms-stats__header,
+        .neural-forms-forms-list__header,
+        .neural-forms-settings__header,
+        .neural-forms-import__header
+    ) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+CSS;
     }
 
     /** Scoped CSS for the injected column. */

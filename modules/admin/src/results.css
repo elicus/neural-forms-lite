@@ -1559,6 +1559,17 @@
  * ───────────────────────────────────────────────────────────────── */
 
 #neural-forms-results-app .nf-analytics-hero {
+	/* Same visual tokens as AdminPanel::page_hero_unifier_css() — keep
+	 * these in sync with `.nf-page-hero` and the protected-screen
+	 * `:is(.neural-forms-stats__header, …)` retarget rule. The hero
+	 * card visual language is "one design, three places that emit it":
+	 *   - results bundle  → .nf-analytics-hero (this file)
+	 *   - admin unifier   → .nf-page-hero + protected `__header` retargets
+	 * box-sizing: border-box matches the unifier so 28×32 padding stays
+	 * inside 100% width — alignment with the empty-state / content card
+	 * below works without per-page overrides. */
+	box-sizing: border-box;
+	width: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -1698,8 +1709,16 @@
 
 /* Hero empty-state — used when no active forms exist. Aligns with
  * the hero card's width and spacing so the page reads as one
- * vertical column rather than a banner + an isolated message. */
+ * vertical column rather than a banner + an isolated message.
+ *
+ * box-sizing + width:100% match `.nf-analytics-hero` above so the
+ * empty card and the hero share the same outer box and visually
+ * line up edge-to-edge under the 960px container. Shadow alpha
+ * harmonised to 0.06 (hero value) so the unified hero language is
+ * exactly one shadow weight everywhere. */
 #neural-forms-results-app .nf-results__empty--card {
+	box-sizing: border-box;
+	width: 100%;
 	padding: 48px 32px;
 	display: flex;
 	flex-direction: column;
@@ -1708,7 +1727,7 @@
 	border-radius: 18px;
 	border: 1px solid #e5e7eb;
 	background: #fff;
-	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.04 );
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.06 );
 }
 #neural-forms-results-app .nf-results__empty-icon {
 	margin-bottom: 4px;
