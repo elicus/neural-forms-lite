@@ -42,8 +42,13 @@ const SCREENS = {
 	// byte-protected build/index.js. AdminPanel.php enqueues
 	// build/entries.js on the entries screen instead of index.js.
 	entries:       'src/entries-entry.js',
+	// Phase 1 of refactor/remove-protected-admin-bundle: Forms list
+	// is the first screen to migrate off the protected bundle. Mounts
+	// at #neural-forms-app, ships its own forms.css, and is enqueued
+	// by AdminPanel::enqueue_assets() instead of build/index.js when
+	// the admin is on the Forms-list screen.
+	forms:         'src/forms-entry.js',
 	// Future screens (do NOT enable until their source is restored):
-	//   forms:        'src/forms-entry.js',
 	//   settings:     'src/settings-entry.js',
 	//   stats:        'src/stats-entry.js',
 	//   'admin-shell': 'src/admin-shell-entry.js',
