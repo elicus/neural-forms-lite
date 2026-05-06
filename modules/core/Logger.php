@@ -15,8 +15,10 @@ defined( 'ABSPATH' ) || exit;
  *   Logger::file( ... )  '->-> file only      (debug/diagnostic traces)
  *   Logger::both( ... )  '->-> database + file (actionable errors)
  *
- * File logs are stored in wp-content/uploads/neural-forms/logs/ with daily
- * rotation and automatic .htaccess protection.
+ * File logs are stored under the site's uploads directory at
+ * <uploads>/neural-forms/logs/ (resolved via wp_upload_dir(), so the path
+ * follows multisite/UPLOADS overrides) with daily rotation and automatic
+ * .htaccess protection.
  *
  * All methods are fire-and-forget - failures are silently swallowed so logging
  * can never break a request or submission.
@@ -159,20 +161,42 @@ class Logger {
 	// Directory bootstrap
 
 	/**
+	 * Resolve the log directory path under the active site's uploads dir.
+	 *
+	 * Uses wp_upload_dir() so the path is correct on multisite, on installs
+	 * with a relocated UPLOADS constant, and on hosts that mount uploads
+	 * outside wp-content (WordPress.org plugin guideline).
+	 *
+	 * Returns null when wp_upload_dir() reports an error or no basedir, so
+	 * callers can bail out without touching the filesystem.
+	 *
+	 * @return string|null  Trailing-slash directory path, or null on failure.
+	 */
+	private static function logs_path(): ?string {
+		$uploads = wp_upload_dir( null, false );
+		if ( ! is_array( $uploads ) || ! empty( $uploads['error'] ) || empty( $uploads['basedir'] ) ) {
+			return null;
+		}
+		return trailingslashit( $uploads['basedir'] ) . 'neural-forms/logs/';
+	}
+
+	/**
 	 * Ensure the log directory exists with web-access protection.
 	 *
 	 * @return string|null  Trailing-slash directory path, or null on failure.
 	 */
 	private static function log_dir(): ?string {
-		$dir = WP_CONTENT_DIR . '/uploads/neural-forms/logs/';
+		$dir = self::logs_path();
+		if ( $dir === null ) {
+			return null;
+		}
 
 		if ( self::$dir_ready ) {
 			return $dir;
 		}
 
 		if ( ! is_dir( $dir ) ) {
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
-			if ( ! mkdir( $dir, 0755, true ) ) {
+			if ( ! wp_mkdir_p( $dir ) ) {
 				return null;
 			}
 		}
@@ -213,8 +237,8 @@ class Logger {
 		}
 
 		// Files: remove log files older than 14 days.
-		$dir = WP_CONTENT_DIR . '/uploads/neural-forms/logs/';
-		if ( ! is_dir( $dir ) ) {
+		$dir = self::logs_path();
+		if ( $dir === null || ! is_dir( $dir ) ) {
 			return;
 		}
 
