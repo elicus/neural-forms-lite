@@ -63,6 +63,12 @@ const SCREENS = {
 	// (SettingsSpamPanel, SettingsSiteProfile) register and render
 	// here without any Pro-side change.
 	settings:      'src/settings-entry.js',
+	// Phase 4 of refactor/remove-protected-admin-bundle: Import (CF7
+	// migration) screen migrates off the protected bundle. Three-state
+	// React flow (list → preview → result) over the existing
+	// `/migration/cf7/*` REST endpoints. Same enqueue pattern as the
+	// other split bundles — its handle aliases `neural-forms-admin`.
+	import:        'src/import-entry.js',
 	// Future screens (do NOT enable until their source is restored):
 	//   'admin-shell': 'src/admin-shell-entry.js',
 };

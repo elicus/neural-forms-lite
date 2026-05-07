@@ -16,6 +16,7 @@
     "build:entries": "wp-scripts build --config webpack.split.config.js --env screen=entries",
     "build:settings": "wp-scripts build --config webpack.split.config.js --env screen=settings",
     "build:stats": "wp-scripts build --config webpack.split.config.js --env screen=stats",
+    "build:import": "wp-scripts build --config webpack.split.config.js --env screen=import",
     "build:admin-shell": "wp-scripts build --config webpack.split.config.js --env screen=admin-shell",
     "lint:js": "wp-scripts lint-js src",
     "lint:css": "wp-scripts lint-style \"src/**/*.css\"",
