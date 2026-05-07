@@ -503,31 +503,26 @@ rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
 
-### Entries source parity migration — landed, awaiting QA flip
+### Entries source parity — shipped
 
 Phase 5 of `refactor/remove-protected-admin-bundle` migrated the
-Entries inbox off the byte-protected `build/index.js`:
+Entries inbox to the per-screen `build/entries.js` bundle:
 
-- All `nf-inbox__*` classes renamed to `neural-forms-entries-*` /
-  `neural-forms-entry-detail__*`.
-- Polls / Quizzes / `normal_inbox` smart folders removed from the
-  source sidebar so taxonomy matches the rich UI.
-- Default All-Forms selection now uses bare `?view=inbox` (the old
-  `?folder=normal_inbox` short-circuit is gone).
-- New self-contained `src/entries.css` — split bundle no longer
-  depends on `build/index.css`.
+- `.nf-inbox__*` renamed to `.neural-forms-entries-*` /
+  `.neural-forms-entry-detail__*`; self-contained `src/entries.css`.
+- Polls / Quizzes / `normal_inbox` smart folders removed; default
+  All-Forms selection uses bare `?view=inbox`.
+- Per-form sidebar folders nest six system views (Inbox / Unread /
+  Needs Reply / Starred / Spam / Trash) under each form, scoped via
+  `form_id=N&view=<id>`; selection is URL-synced (replaceState).
+- Entry detail is its own URL-routed view: `entry_id=N` swaps the
+  right pane to a Back-button + EntryDetail layout. Submitted Fields
+  card renders first; `buildFieldLabels(form)` resolves field ids to
+  human labels via the form's `form_schema`.
 - Reanalyze / Regenerate / Refine-with-AI buttons are Pro-rendered
   via `EntryAiActions` and `EntryReplyActions` SlotFills; Lite only
-  passes the click handlers through fillProps and shows an upsell
-  link when caps are off.
-
-Source Entries is now the default. `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI`
-remains as a temporary opt-out rollback knob — defining it as `false`
-in `wp-config.php` falls back to the rich `build/index.js` Entries UI
-while that fallback path still exists in `AdminPanel.php`. The next
-refactor commit removes the fallback, at which point this constant
-has no effect and will be retired. The old `NEURAL_FORMS_USE_ENTRIES_SPLIT`
-flag is gone.
+  passes click handlers through fillProps and shows an upsell link
+  when caps are off.
 
 The shared admin page-header unifier
 (`AdminPanel::page_hero_unifier_css()`) **intentionally excludes
@@ -535,9 +530,6 @@ Entries** — the inbox's 2-pane Gmail-style layout has no top-level
 `__header` element to retarget. Stats / Forms list / Settings /
 Import are unified via that CSS injector; Analytics ships its own
 (`nf-analytics-hero` in `src/results.css`); Entries owns its layout.
-
-After QA passes, flip the default to `true` and remove the old rich
-Entries fallback in a follow-up commit.
 
 ------------------------------------------------------------------------
 
@@ -573,7 +565,7 @@ without touching `index.js`.
 | `build/index.js` (rich 1.0.0) | source missing | **never run `npm run build`** | Never. The npm script exits 1 with an error. The unsafe path is `npm run build:full:unsafe`; do not run it. |
 | `build/builder.js` | `src/builder-entry.js` | `npm run build:builder` | After editing anything under `src/forms/` (Builder, FormSettings, formTemplates, etc.) |
 | `build/results.js` | `src/results-entry.js` | `npm run build:results` | After editing anything under `src/results/` (analytics + page-performance section) or `src/results.css` |
-| `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Per-screen Entries source — Phase 5 of `refactor/remove-protected-admin-bundle` shipped class renames, drift removal, self-contained `src/entries.css`, and Pro-slot wiring for Reanalyze / Regenerate / Refine-with-AI. **Gated off by default**. Opt-in via `define('NEURAL_FORMS_USE_ENTRIES_SOURCE_UI', true)` in `wp-config.php`. Default flips to `true` after QA matrix passes. |
+| `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Per-screen Entries source. Self-contained `src/entries.css`. Pro fills `EntryAiActions` and `EntryReplyActions` slots for Reanalyze / Regenerate / Refine-with-AI. |
 | `build/import.js` | `src/import-entry.js` | `npm run build:import` | Per-screen Import (CF7 migration) bundle from Phase 4 — 3-state list / preview / result flow over `/migration/cf7/*`. Enqueued automatically when `?page=neural-forms-migration`. |
 | `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks |
 
