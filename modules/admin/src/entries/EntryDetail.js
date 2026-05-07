@@ -6,11 +6,12 @@
  * REST handlers and capability state through props so this file
  * stays presentational.
  *
- * Layout:
+ * Layout (top → bottom):
  *   header     form name / submitter / date / status / star
+ *   data       raw submitted field key/value table — rendered FIRST
+ *              so users see what was submitted before the AI gloss
  *   analysis   AI card (Pro slot for Reanalyze + Regenerate buttons)
  *   carousel   AI drafts (only shown when there's at least one)
- *   data       raw field key/value table
  *   reply      reply composer (Pro slot for Polish/Refine button)
  *
  * Props:
@@ -18,6 +19,8 @@
  *   loading        boolean — initial fetch in flight
  *   error          string — initial fetch error
  *   capabilities   capability snapshot from neuralFormsAdmin.plugin.capabilities
+ *   fieldLabels    { field_id: label } — built from the parent form's
+ *                  schema; falls back to the raw key when missing
  *   onReanalyze    () => Promise<void>
  *   reanalyzing    bool
  *   reanalyzeError string
@@ -49,6 +52,7 @@ export default function EntryDetail( {
 	loading,
 	error,
 	capabilities,
+	fieldLabels,
 	onReanalyze,
 	reanalyzing,
 	reanalyzeError,
@@ -95,6 +99,27 @@ export default function EntryDetail( {
 				>{ starred ? '★' : '☆' }</button>
 			</header>
 
+			<section className="neural-forms-entry-detail__data-card">
+				<h4 className="neural-forms-entry-detail__data-card-title">{ __( 'Submitted fields', 'neural-forms-lite' ) }</h4>
+				{ rows.length === 0 ? (
+					<p className="neural-forms-entry-detail__data-empty">{ __( 'No data captured for this entry.', 'neural-forms-lite' ) }</p>
+				) : (
+					<dl className="neural-forms-entry-detail__fields">
+						{ rows.map( ( [ k, v ] ) => {
+							const label = ( fieldLabels && fieldLabels[ k ] ) || k;
+							return (
+								<div className="neural-forms-entry-detail__field-row" key={ k }>
+									<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+									<dd className="neural-forms-entry-detail__field-value">
+										{ typeof v === 'string' ? v : ( v == null ? '' : JSON.stringify( v ) ) }
+									</dd>
+								</div>
+							);
+						} ) }
+					</dl>
+				) }
+			</section>
+
 			<AiAnalysisCard
 				entry={ entry }
 				capabilities={ capabilities }
@@ -110,24 +135,6 @@ export default function EntryDetail( {
 				onFinalize={ onFinalize }
 				busy={ carouselBusy }
 			/>
-
-			<section className="neural-forms-entry-detail__data-card">
-				<h4 className="neural-forms-entry-detail__data-card-title">{ __( 'Submitted fields', 'neural-forms-lite' ) }</h4>
-				{ rows.length === 0 ? (
-					<p className="neural-forms-entry-detail__data-empty">{ __( 'No data captured for this entry.', 'neural-forms-lite' ) }</p>
-				) : (
-					<dl className="neural-forms-entry-detail__fields">
-						{ rows.map( ( [ k, v ] ) => (
-							<div className="neural-forms-entry-detail__field-row" key={ k }>
-								<dt className="neural-forms-entry-detail__field-label">{ k }</dt>
-								<dd className="neural-forms-entry-detail__field-value">
-									{ typeof v === 'string' ? v : ( v == null ? '' : JSON.stringify( v ) ) }
-								</dd>
-							</div>
-						) ) }
-					</dl>
-				) }
-			</section>
 
 			{ entry.status !== 'spam' && entry.status !== 'trash' && (
 				<ReplyComposer

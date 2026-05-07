@@ -292,6 +292,95 @@
 	padding: 0 6px;
 }
 
+/* ── Sidebar: per-form parent (expandable folder row) ────────── */
+.neural-forms-entries-sidebar__form {
+	align-items: center;
+	background: transparent;
+	border: none;
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-700 );
+	cursor: pointer;
+	display: flex;
+	font-family: inherit;
+	font-size: 13.5px;
+	font-weight: 500;
+	gap: 6px;
+	padding: 8px 10px;
+	text-align: left;
+	transition: background var( --f-transition ), color var( --f-transition );
+	width: 100%;
+}
+
+.neural-forms-entries-sidebar__form:hover {
+	background: var( --f-gray-50 );
+	color: var( --f-gray-900 );
+}
+
+/* Parent form has a softer "is-active" state when one of its child
+   folders is selected. The active highlight on the actual selected
+   row sits on the child sub-item below. */
+.neural-forms-entries-sidebar__form--active {
+	background: var( --f-gray-100 );
+	color: var( --f-gray-900 );
+}
+
+.neural-forms-entries-sidebar__chevron {
+	color: var( --f-gray-400 );
+	flex-shrink: 0;
+	font-size: 10px;
+	line-height: 1;
+	text-align: center;
+	width: 12px;
+}
+
+.neural-forms-entries-sidebar__sub-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	list-style: none;
+	margin: 4px 0 6px;
+	padding: 0 0 0 22px;
+}
+
+.neural-forms-entries-sidebar__sub-item {
+	align-items: center;
+	background: transparent;
+	border: none;
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-600 );
+	cursor: pointer;
+	display: flex;
+	font-family: inherit;
+	font-size: 12.5px;
+	gap: 6px;
+	justify-content: space-between;
+	padding: 6px 10px;
+	text-align: left;
+	transition: background var( --f-transition ), color var( --f-transition );
+	width: 100%;
+}
+
+.neural-forms-entries-sidebar__sub-item:hover {
+	background: var( --f-gray-50 );
+	color: var( --f-gray-900 );
+}
+
+.neural-forms-entries-sidebar__sub-item--active {
+	background: var( --f-blue-50 );
+	color: var( --f-blue-600 );
+	font-weight: 500;
+}
+
+.neural-forms-entries-sidebar__sub-item--active:hover {
+	background: var( --f-blue-50 );
+	color: var( --f-blue-600 );
+}
+
+.neural-forms-entries-sidebar__sub-item--active .neural-forms-entries-sidebar__badge {
+	background: var( --f-blue-100 );
+	color: var( --f-blue-600 );
+}
+
 /* ── Empty state ─────────────────────────────────────────────── */
 .neural-forms-entries-empty {
 	background: #fff;
@@ -508,6 +597,32 @@
 .neural-forms-entries-upsell-link:hover {
 	color: var( --f-blue-600 );
 	text-decoration: underline;
+}
+
+/* ── Detail page wrapper (Back button + entry card stack) ───── */
+.neural-forms-entries-detail-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.neural-forms-entries-detail-panel__header {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	justify-content: space-between;
+}
+
+.neural-forms-entries-detail-panel__back {
+	font-weight: 500;
+}
+
+.neural-forms-entries-detail-panel__title {
+	color: var( --f-gray-500 );
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
 }
 
 /* ── Entry detail (right pane) ───────────────────────────────── */

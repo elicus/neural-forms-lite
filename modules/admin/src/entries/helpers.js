@@ -3,6 +3,59 @@
  * No React, no API calls — anything stateful belongs in a hook.
  */
 
+/**
+ * Walk a form's nested schema and yield every leaf field. Schemas
+ * can nest fields under rows / columns / steps (and steps can have
+ * their own rows/columns), so we recurse anywhere a `fields` array
+ * shows up. Mirrors Lite's PHP `SchemaHelper::flatten_fields`.
+ */
+function walkFields( fields, out ) {
+	if ( ! Array.isArray( fields ) ) return;
+	for ( const f of fields ) {
+		if ( ! f || typeof f !== 'object' ) continue;
+		// Container nodes (row, column, step) carry their children
+		// in a nested `fields` array; recurse but don't emit them.
+		if ( Array.isArray( f.fields ) ) {
+			walkFields( f.fields, out );
+			continue;
+		}
+		// Step containers sometimes carry rows under a different key.
+		if ( Array.isArray( f.rows ) ) {
+			for ( const r of f.rows ) {
+				if ( r && Array.isArray( r.fields ) ) walkFields( r.fields, out );
+			}
+			continue;
+		}
+		// Leaf field — must have an id to be addressable.
+		if ( f.id ) out.push( f );
+	}
+}
+
+/**
+ * Build a `{ field_id: label }` map from a form row's `form_schema`.
+ * Empty object when the schema is missing or contains no labelled
+ * fields — callers should fall back to the raw key for display.
+ */
+export function buildFieldLabels( form ) {
+	if ( ! form || typeof form !== 'object' ) return {};
+	const schema = form.form_schema && typeof form.form_schema === 'object'
+		? form.form_schema
+		: null;
+	if ( ! schema ) return {};
+	const fields = Array.isArray( schema.fields ) ? schema.fields : [];
+	const out    = [];
+	walkFields( fields, out );
+	const map = {};
+	for ( const f of out ) {
+		if ( ! f.id ) continue;
+		const label = ( typeof f.label === 'string' && f.label.trim() !== '' )
+			? f.label
+			: String( f.id );
+		map[ String( f.id ) ] = label;
+	}
+	return map;
+}
+
 export function formatDate( s ) {
 	if ( ! s ) return '';
 	const d = new Date( s.replace( ' ', 'T' ) + 'Z' );

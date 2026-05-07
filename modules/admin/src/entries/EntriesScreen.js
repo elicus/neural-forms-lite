@@ -2,7 +2,7 @@
  * Entries inbox — the main screen controller.
  *
  * Owns:
- *   - Sidebar selection state (system view, smart filter, per-form)
+ *   - Sidebar selection state ({ type, formId, view, smartFilter })
  *   - Search + sort + page state
  *   - List fetch (/entries) and counts fetch (/entries/counts)
  *   - Per-form sidebar list (/forms with embedded counts when available)
@@ -13,24 +13,30 @@
  *
  * Composition tree:
  *   EntriesScreen
- *     ├─ EntriesSidebar       sidebar
+ *     ├─ EntriesSidebar       sidebar (All Forms / Forms / Smart Filters)
  *     ├─ BulkToolbar          shown when selection > 0
- *     ├─ EntriesList          rows
- *     └─ EntryDetail          right pane (when openId !== 0)
- *           ├─ AiAnalysisCard
- *           ├─ AiCarousel
- *           └─ ReplyComposer
+ *     ├─ EntriesList          rows         (list mode)
+ *     └─ EntryDetailPanel     full-width   (detail mode, URL has entry_id)
  *
- * The sidebar selection is a tagged union so the active highlight,
- * page title, and request shape stay coherent:
+ * Selection model — three shapes, all four keys always present:
  *
- *   { kind: 'view',   id: 'inbox' }            → ?view=inbox
- *   { kind: 'filter', id: 'high_priority' }    → ?view=high_priority
- *   { kind: 'form',   formId: 12 }             → ?form_id=12&view=inbox
+ *   { type: 'all'  , formId: null, view: '<system view>', smartFilter: null }
+ *   { type: 'form' , formId: N   , view: '<system view>', smartFilter: null }
+ *   { type: 'smart', formId: null, view: 'inbox',         smartFilter: '<id>' }
  *
- * Phase 5 of refactor/remove-protected-admin-bundle drops the smart
- * folders (Polls/Quizzes/normal_inbox) so the source UI matches the
- * rich UI's taxonomy. Default All-Forms selection uses bare ?view=inbox.
+ * REST mapping:
+ *   all   → ?view=<view>
+ *   form  → ?form_id=<formId>&view=<view>
+ *   smart → ?view=<smartFilter>     (smart filter ids are first-class views server-side)
+ *
+ * URL contract (replaceState for selection, pushState for entry detail):
+ *   form_id=N    → form selection
+ *   view=<id>    → child view under form selection, or All-Forms / Smart view
+ *   entry_id=N   → detail mode (overlays the list pane)
+ *
+ * Phase 5 of refactor/remove-protected-admin-bundle. Default All-Forms
+ * selection uses bare ?view=inbox (no folder= alias). Polls/Quizzes
+ * smart folders intentionally absent.
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from '@wordpress/element';
@@ -43,7 +49,20 @@ import EntriesList     from './EntriesList';
 import EntryDetail     from './EntryDetail';
 import BulkToolbar     from './BulkToolbar';
 import useInboxKeyboard from './useInboxKeyboard';
-import { errorMessage, planErrorPayload, safetyErrorPayload } from './helpers';
+import { SYSTEM_VIEWS, SMART_FILTERS } from './constants';
+import { buildFieldLabels, errorMessage, planErrorPayload, safetyErrorPayload } from './helpers';
+
+// Static lookup sets so URL → selection restoration is O(1) and
+// stays in sync with the sidebar's authoritative lists in constants.js.
+const SYSTEM_VIEW_IDS  = new Set( SYSTEM_VIEWS.map( ( v ) => v.id ) );
+const SMART_FILTER_IDS = new Set( SMART_FILTERS.map( ( v ) => v.id ) );
+
+const DEFAULT_SELECTION = {
+	type:        'all',
+	formId:      null,
+	view:        'inbox',
+	smartFilter: null,
+};
 
 /**
  * Map a /reanalyze, /regenerate-reply, or /polish-reply error to the
@@ -95,46 +114,85 @@ function EmptyState() {
 // Convert a sidebar selection into the URLSearchParams shape the
 // /entries endpoint expects. Bare `view` for the All-Forms default —
 // no folder= alias.
-function selectionToQuery( selection ) {
+function selectionToQuery( sel ) {
 	const p = new URLSearchParams();
-	if ( ! selection ) {
+	if ( ! sel ) {
 		p.set( 'view', 'inbox' );
 		return p;
 	}
-	switch ( selection.kind ) {
+	switch ( sel.type ) {
 		case 'form':
-			p.set( 'form_id', String( selection.formId ) );
-			p.set( 'view', 'inbox' );
+			p.set( 'form_id', String( sel.formId ) );
+			p.set( 'view',    sel.view || 'inbox' );
 			return p;
-		case 'filter':
-			p.set( 'view', selection.id );
+		case 'smart':
+			p.set( 'view', sel.smartFilter || 'high_priority' );
 			return p;
-		case 'view':
+		case 'all':
 		default:
-			p.set( 'view', selection.id || 'inbox' );
+			p.set( 'view', sel.view || 'inbox' );
 			return p;
 	}
 }
 
-function selectionTitle( selection, forms ) {
-	if ( ! selection ) return __( 'Inbox', 'neural-forms-lite' );
-	if ( selection.kind === 'form' ) {
-		const f = ( forms || [] ).find( ( x ) => x.id === selection.formId );
-		return f?.name || `#${ selection.formId }`;
+function readEntryIdFromUrl() {
+	if ( typeof window === 'undefined' ) return 0;
+	try {
+		const raw = new URL( window.location.href ).searchParams.get( 'entry_id' );
+		const n = Number( raw );
+		return Number.isFinite( n ) && n > 0 ? n : 0;
+	} catch ( _err ) {
+		return 0;
 	}
-	const labels = {
-		inbox: 'Inbox', unread: 'Unread', needs_reply: 'Needs Reply',
-		starred: 'Starred', spam: 'Spam', trash: 'Trash',
-		high_priority: 'High Priority', spam_suspected: 'Spam Suspected',
-	};
-	return __( labels[ selection.id ] || 'Inbox', 'neural-forms-lite' );
+}
+
+function readSelectionFromUrl() {
+	if ( typeof window === 'undefined' ) return { ...DEFAULT_SELECTION };
+	try {
+		const params  = new URL( window.location.href ).searchParams;
+		const formIdN = Number( params.get( 'form_id' ) );
+		const view    = params.get( 'view' ) || '';
+		if ( Number.isFinite( formIdN ) && formIdN > 0 ) {
+			return {
+				type:        'form',
+				formId:      formIdN,
+				view:        SYSTEM_VIEW_IDS.has( view ) ? view : 'inbox',
+				smartFilter: null,
+			};
+		}
+		if ( SMART_FILTER_IDS.has( view ) ) {
+			return { type: 'smart', formId: null, view: 'inbox', smartFilter: view };
+		}
+		if ( SYSTEM_VIEW_IDS.has( view ) ) {
+			return { type: 'all', formId: null, view, smartFilter: null };
+		}
+	} catch ( _err ) { /* fall through */ }
+	return { ...DEFAULT_SELECTION };
+}
+
+const VIEW_LABELS = {
+	inbox: 'Inbox', unread: 'Unread', needs_reply: 'Needs Reply',
+	starred: 'Starred', spam: 'Spam', trash: 'Trash',
+};
+const SMART_LABELS = { high_priority: 'High Priority', spam_suspected: 'Spam Suspected' };
+
+function selectionTitle( sel, forms ) {
+	if ( ! sel ) return __( 'Inbox', 'neural-forms-lite' );
+	if ( sel.type === 'smart' ) {
+		return __( SMART_LABELS[ sel.smartFilter ] || 'Inbox', 'neural-forms-lite' );
+	}
+	if ( sel.type === 'form' ) {
+		const f = ( forms || [] ).find( ( x ) => x.id === sel.formId );
+		return f?.name || `#${ sel.formId }`;
+	}
+	return __( VIEW_LABELS[ sel.view ] || 'Inbox', 'neural-forms-lite' );
 }
 
 export default function EntriesScreen() {
 	const adminData = window.neuralFormsAdmin || {};
 	const capabilities = adminData.plugin?.capabilities || {};
 
-	const [ selection, setSelection ] = useState( { kind: 'view', id: 'inbox' } );
+	const [ selection, setSelection ] = useState( readSelectionFromUrl );
 	const [ search,    setSearch    ] = useState( '' );
 	const [ sortOrder, setSortOrder ] = useState( 'desc' );
 
@@ -147,7 +205,7 @@ export default function EntriesScreen() {
 	const [ forms,        setForms        ] = useState( [] );
 	const [ formsLoading, setFormsLoading ] = useState( false );
 
-	const [ openEntryId, setOpenEntryId ] = useState( 0 );
+	const [ openEntryId, setOpenEntryId ] = useState( readEntryIdFromUrl );
 	const [ openEntry,   setOpenEntry   ] = useState( null );
 	const [ openLoading, setOpenLoading ] = useState( false );
 	const [ openError,   setOpenError   ] = useState( '' );
@@ -188,13 +246,20 @@ export default function EntriesScreen() {
 		}
 	}, [ filterKey ] );
 
-	// Forms list for the per-form sidebar.
+	// Forms list for the per-form sidebar. FormsEndpoint returns
+	// { items: [...], total: N } — NOT a bare array — because
+	// FormRepository::list() shapes the response that way. Walk both
+	// shapes defensively in case a future caller normalises the wire
+	// format. (Same pattern the rich bundle uses.)
 	useEffect( () => {
 		let cancelled = false;
 		setFormsLoading( true );
-		api( '/forms?per_page=200' ).then( ( res ) => {
+		api( '/forms?per_page=200&status=any' ).then( ( res ) => {
 			if ( cancelled ) return;
-			setForms( Array.isArray( res ) ? res : [] );
+			const list = Array.isArray( res?.items )
+				? res.items
+				: ( Array.isArray( res ) ? res : [] );
+			setForms( list );
 			setFormsLoading( false );
 		} ).catch( () => {
 			if ( cancelled ) return;
@@ -205,10 +270,13 @@ export default function EntriesScreen() {
 	}, [] );
 
 	// Counts — refetched whenever the filter scope changes so badges
-	// update after a bulk action or status flip.
+	// update after a bulk action or status flip. When a form is the
+	// selected scope, the response is form-scoped (so the expanded
+	// form's child rows show the right inbox/unread/etc numbers);
+	// otherwise it's site-wide.
 	const refetchCounts = useCallback( () => {
 		const params = new URLSearchParams();
-		if ( selection?.kind === 'form' ) {
+		if ( selection?.type === 'form' ) {
 			params.set( 'form_id', String( selection.formId ) );
 		}
 		const path = '/entries/counts' + ( params.toString() ? '?' + params.toString() : '' );
@@ -251,30 +319,108 @@ export default function EntriesScreen() {
 		return () => { cancelled = true; };
 	}, [ selection, debouncedSearch, sortOrder ] );
 
-	// Detail fetch.
-	const openEntryDetail = useCallback( ( id ) => {
-		if ( openEntryId === id ) {
-			setOpenEntryId( 0 );
+	// URL-driven detail routing + selection restoration. The presence
+	// of `entry_id` switches the right pane to detail; `form_id` /
+	// `view` restore the sidebar selection on browser back/forward
+	// and on direct-URL load. Selection changes use replaceState (no
+	// history pollution per click); detail open uses pushState so
+	// browser back returns to the list.
+	useEffect( () => {
+		const sync = () => {
+			setOpenEntryId( readEntryIdFromUrl() );
+			setSelection( readSelectionFromUrl() );
+		};
+		window.addEventListener( 'popstate', sync );
+		return () => window.removeEventListener( 'popstate', sync );
+	}, [] );
+
+	// Wrap setSelection so every sidebar click also writes the new
+	// scope to the URL — direct page reloads / shared bookmarks land
+	// the user in the same folder. We use replaceState so a chain of
+	// sidebar clicks doesn't bloat history.
+	const updateSelection = useCallback( ( next ) => {
+		setSelection( next );
+		try {
+			const url = new URL( window.location.href );
+			url.searchParams.delete( 'form_id' );
+			url.searchParams.delete( 'view' );
+			if ( next?.type === 'form' ) {
+				url.searchParams.set( 'form_id', String( next.formId ) );
+				url.searchParams.set( 'view',    next.view || 'inbox' );
+			} else if ( next?.type === 'smart' ) {
+				url.searchParams.set( 'view', next.smartFilter );
+			} else {
+				url.searchParams.set( 'view', next?.view || 'inbox' );
+			}
+			window.history.replaceState( {}, '', url.toString() );
+		} catch ( _err ) { /* URL writes are best-effort */ }
+	}, [] );
+
+	// Fetch detail whenever the URL-driven entry id changes.
+	useEffect( () => {
+		if ( openEntryId === 0 ) {
 			setOpenEntry( null );
-			return;
+			setOpenError( '' );
+			setOpenLoading( false );
+			return undefined;
 		}
-		setOpenEntryId( id );
+		let cancelled = false;
 		setOpenEntry( null );
 		setOpenError( '' );
 		setOpenLoading( true );
-		api( `/entries/${ id }` ).then( ( res ) => {
+		api( `/entries/${ openEntryId }` ).then( ( res ) => {
+			if ( cancelled ) return;
 			setOpenEntry( res );
 			setOpenLoading( false );
 		} ).catch( ( err ) => {
+			if ( cancelled ) return;
 			setOpenError( errorMessage( err, __( 'Could not load entry.', 'neural-forms-lite' ) ) );
 			setOpenLoading( false );
 		} );
+		return () => { cancelled = true; };
 	}, [ openEntryId ] );
 
+	// Push entry_id onto the URL (preserving current scope's form_id /
+	// view for a shareable bookmark) and let the popstate-driven sync
+	// re-render the right pane as the detail view.
+	const openEntryDetail = useCallback( ( id ) => {
+		try {
+			const url = new URL( window.location.href );
+			url.searchParams.set( 'entry_id', String( id ) );
+			url.searchParams.delete( 'form_id' );
+			url.searchParams.delete( 'view' );
+			if ( selection?.type === 'form' ) {
+				url.searchParams.set( 'form_id', String( selection.formId ) );
+				url.searchParams.set( 'view',    selection.view || 'inbox' );
+			} else if ( selection?.type === 'smart' ) {
+				url.searchParams.set( 'view', selection.smartFilter );
+			} else {
+				url.searchParams.set( 'view', selection?.view || 'inbox' );
+			}
+			window.history.pushState( { nfDetail: id }, '', url.toString() );
+		} catch ( _err ) { /* best-effort URL write */ }
+		setOpenEntryId( id );
+	}, [ selection ] );
+
+	// Close the detail. If we pushed the detail onto history (normal
+	// click flow), step back so the previous list URL is restored
+	// without bloating history. If the user direct-loaded a URL with
+	// entry_id (no nfDetail marker on history.state), replaceState
+	// removes entry_id in place so browser Back doesn't take them
+	// back into the same detail.
 	const closeDetail = useCallback( () => {
+		const state = ( window.history && window.history.state ) || null;
+		if ( state && state.nfDetail ) {
+			window.history.back();
+			// popstate-driven sync will reset openEntryId.
+			return;
+		}
+		try {
+			const url = new URL( window.location.href );
+			url.searchParams.delete( 'entry_id' );
+			window.history.replaceState( {}, '', url.toString() );
+		} catch ( _err ) { /* best-effort URL write */ }
 		setOpenEntryId( 0 );
-		setOpenEntry( null );
-		setOpenError( '' );
 	}, [] );
 
 	const patchEntry = useCallback( ( id, fields ) => {
@@ -498,43 +644,37 @@ export default function EntriesScreen() {
 			<div className="neural-forms-entries-body">
 				<EntriesSidebar
 					selection={ selection }
-					onSelect={ setSelection }
+					onSelect={ ( sel ) => {
+						// Clicking a sidebar folder while on the detail
+						// page should return the right pane to the list
+						// scoped to the new selection.
+						updateSelection( sel );
+						if ( openEntryId !== 0 ) closeDetail();
+					} }
 					counts={ counts }
 					forms={ forms }
 					formsLoading={ formsLoading }
 				/>
 
 				<main className="neural-forms-entries-content">
-					<BulkToolbar
-						selection={ selectedIds }
-						onClear={ clearSelection }
-						onAction={ dispatchBulk }
-						busy={ bulkBusy }
-						view={ selection?.kind === 'view' || selection?.kind === 'filter' ? selection.id : 'inbox' }
-					/>
-
-					{ entriesLoading && <p className="neural-forms-entries-status">{ __( 'Loading entries...', 'neural-forms-lite' ) }</p> }
-					{ !! entriesError && <p className="neural-forms-entries-status neural-forms-entries-status--error">{ entriesError }</p> }
-					{ ! entriesLoading && ! entriesError && entries.length === 0 && <EmptyState /> }
-
-					{ entries.length > 0 && (
-						<EntriesList
-							entries={ entries }
-							selection={ selectedIds }
-							onToggleSelect={ toggleSelect }
-							onSelectAll={ selectAll }
-							onOpen={ openEntryDetail }
-							onToggleStar={ toggleStar }
-							openId={ openEntryId }
-						/>
-					) }
-
-					{ openEntryId !== 0 && (
-						<EntryDetail
+					{ openEntryId !== 0 ? (
+						<EntryDetailPanel
+							entryId={ openEntryId }
+							onBack={ closeDetail }
 							entry={ openEntry }
 							loading={ openLoading }
 							error={ openError }
 							capabilities={ capabilities }
+							fieldLabels={
+								// `forms` is already in memory from /forms?per_page=200,
+								// and each row carries its `form_schema`. Rebuild the
+								// label map only when the open entry's form changes.
+								openEntry
+									? buildFieldLabels(
+										forms.find( ( f ) => f.id === openEntry.form_id )
+									)
+									: {}
+							}
 							onReanalyze={ reanalyze }
 							reanalyzing={ reanalyzing }
 							reanalyzeError={ reanalyzeError }
@@ -547,9 +687,74 @@ export default function EntriesScreen() {
 							carouselBusy={ carouselBusy }
 							onToggleStar={ () => openEntry && toggleStar( openEntry ) }
 						/>
+					) : (
+						<>
+							<BulkToolbar
+								selection={ selectedIds }
+								onClear={ clearSelection }
+								onAction={ dispatchBulk }
+								busy={ bulkBusy }
+								view={ ( selection?.view && SYSTEM_VIEW_IDS.has( selection.view ) ) ? selection.view : 'inbox' }
+							/>
+
+							{ entriesLoading && <p className="neural-forms-entries-status">{ __( 'Loading entries...', 'neural-forms-lite' ) }</p> }
+							{ !! entriesError && <p className="neural-forms-entries-status neural-forms-entries-status--error">{ entriesError }</p> }
+							{ ! entriesLoading && ! entriesError && entries.length === 0 && <EmptyState /> }
+
+							{ entries.length > 0 && (
+								<EntriesList
+									entries={ entries }
+									selection={ selectedIds }
+									onToggleSelect={ toggleSelect }
+									onSelectAll={ selectAll }
+									onOpen={ openEntryDetail }
+									onToggleStar={ toggleStar }
+									openId={ 0 }
+								/>
+							) }
+						</>
 					) }
 				</main>
 			</div>
+		</div>
+	);
+}
+
+/**
+ * Right-pane wrapper for the detail view: a back button + the detail
+ * card stack underneath. Pressing Escape (anywhere outside an input)
+ * fires onBack so keyboard users can leave the detail without reaching
+ * for the mouse.
+ */
+function EntryDetailPanel( { entryId, onBack, ...detailProps } ) {
+	useEffect( () => {
+		const handler = ( e ) => {
+			if ( e.key !== 'Escape' ) return;
+			const t = e.target;
+			const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+			if ( tag === 'input' || tag === 'textarea' || tag === 'select' || ( t && t.isContentEditable ) ) return;
+			onBack();
+		};
+		window.addEventListener( 'keydown', handler );
+		return () => window.removeEventListener( 'keydown', handler );
+	}, [ onBack ] );
+
+	return (
+		<div className="neural-forms-entries-detail-panel">
+			<div className="neural-forms-entries-detail-panel__header">
+				<button
+					type="button"
+					className="neural-forms-entries-btn neural-forms-entries-detail-panel__back"
+					onClick={ onBack }
+				>
+					<span aria-hidden="true">&larr;&nbsp;</span>
+					{ __( 'Back to entries', 'neural-forms-lite' ) }
+				</button>
+				<span className="neural-forms-entries-detail-panel__title">
+					{ __( 'Entry', 'neural-forms-lite' ) } #{ entryId }
+				</span>
+			</div>
+			<EntryDetail { ...detailProps } />
 		</div>
 	);
 }
