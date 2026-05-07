@@ -273,19 +273,22 @@ class AdminPanel {
         }
 
         // Entries screen split (Phase 5 of refactor/remove-protected-
-        // admin-bundle): when the user opts in via the
-        // `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` constant, ship the
-        // source-controlled build/entries.js + build/entries.css instead
-        // of the rich byte-protected build/index.js. Default is false so
-        // the rich bundle remains the production Entries UI until QA
-        // confirms parity. The new path does NOT enqueue the protected
+        // admin-bundle): ship the source-controlled build/entries.js +
+        // build/entries.css instead of the rich byte-protected
+        // build/index.js. The new path does NOT enqueue the protected
         // build/index.css — every rule the screen needs lives in
         // build/entries.css (authored from src/entries.css).
+        //
+        // `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` is a temporary opt-out
+        // rollback knob for this release cycle. Define it as `false`
+        // in wp-config.php to fall back to the rich admin bundle while
+        // the rich fallback path still exists in this file. Once that
+        // path is removed (next refactor commit), this constant has no
+        // effect and the check below should be deleted.
         if (
             self::is_entries_screen()
-            && defined( 'NEURAL_FORMS_USE_ENTRIES_SOURCE_UI' )
-            && NEURAL_FORMS_USE_ENTRIES_SOURCE_UI
             && file_exists( $build_dir . 'entries.js' )
+            && ( ! defined( 'NEURAL_FORMS_USE_ENTRIES_SOURCE_UI' ) || NEURAL_FORMS_USE_ENTRIES_SOURCE_UI )
         ) {
             $asset_file = $build_dir . 'entries.asset.php';
             $asset      = file_exists( $asset_file )

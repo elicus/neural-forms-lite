@@ -521,20 +521,13 @@ Entries inbox off the byte-protected `build/index.js`:
   passes the click handlers through fillProps and shows an upsell
   link when caps are off.
 
-The opt-in is now `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` (default
-**false**, defined in `wp-config.php`). The old
-`NEURAL_FORMS_USE_ENTRIES_SPLIT` flag has been retired. Production
-still ships the rich `build/index.js` Entries UI for everyone until
-QA confirms parity:
-
-```
-define( 'NEURAL_FORMS_USE_ENTRIES_SOURCE_UI', true );
-```
-
-QA matrix to walk through before flipping the default — empty inbox
-/ unread / needs-reply / starred / spam / trash / per-form / search
-/ sort / export / detail / bulk / AI actions / counts / mobile /
-default `view=inbox` request shape / no Polls or Quizzes folders.
+Source Entries is now the default. `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI`
+remains as a temporary opt-out rollback knob — defining it as `false`
+in `wp-config.php` falls back to the rich `build/index.js` Entries UI
+while that fallback path still exists in `AdminPanel.php`. The next
+refactor commit removes the fallback, at which point this constant
+has no effect and will be retired. The old `NEURAL_FORMS_USE_ENTRIES_SPLIT`
+flag is gone.
 
 The shared admin page-header unifier
 (`AdminPanel::page_hero_unifier_css()`) **intentionally excludes
