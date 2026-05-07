@@ -112,11 +112,11 @@ class AdminPanel {
             [ self::class, 'render_page' ]
         );
 
-        // Analytics screen (1.1.0). Independent split bundle — does NOT
-        // share build/index.js with Forms/Entries/Settings/Stats. The
-        // dedicated render_results_page() callback emits the
-        // #neural-forms-results-app root that the analytics bundle
-        // mounts into.
+        // Analytics screen (1.1.0). Independent split bundle.
+        // render_results_page() emits the #neural-forms-results-app root
+        // that the analytics bundle mounts into; the rest of the screens
+        // (Forms / Entries / Settings / Stats / Import) each have their
+        // own per-screen bundle and mount under #neural-forms-app.
         //
         // The route slug stays `neural-forms-results` for backwards
         // compatibility with any deep links / bookmarks that already
@@ -186,9 +186,10 @@ class AdminPanel {
     }
 
     /**
-     * Dedicated render callback for the Results screen. Emits a
-     * separate root so the results bundle does not collide with
-     * the rich admin bundle's #neural-forms-app root.
+     * Dedicated render callback for the Results / Analytics screen.
+     * Emits #neural-forms-results-app so the analytics bundle mounts
+     * into its own root, isolated from the per-screen bundles that
+     * mount under #neural-forms-app.
      */
     public static function render_results_page(): void {
         $bundle_missing = ! file_exists( NEURAL_FORMS_PATH . 'modules/admin/build/results.js' );
@@ -226,14 +227,12 @@ class AdminPanel {
         $build_dir = NEURAL_FORMS_PATH . 'modules/admin/build/';
         $build_url = NEURAL_FORMS_URL  . 'modules/admin/build/';
 
-        // Results screen split: independent bundle, never overlaps
-        // with the rich admin bundle. Enqueue results.js on
-        // ?page=neural-forms-results, and ALWAYS short-circuit out of
-        // this function for that screen — even when the bundle is
-        // missing — because the rich index.js mounts at a different
-        // root (#neural-forms-app) and would render Forms-list chrome
-        // on the Results page. The render callback shows a graceful
-        // "missing bundle" notice instead.
+        // Results / Analytics screen — independent bundle mounted on
+        // #neural-forms-results-app. Always short-circuit out of this
+        // function for that screen, even when the bundle is missing,
+        // so the per-screen bundles for Forms / Entries / etc. never
+        // co-mount on a different root. The render callback shows a
+        // graceful "missing bundle" notice instead.
         if ( self::is_results_screen() ) {
             if ( file_exists( $build_dir . 'results.js' ) ) {
                 $asset_file = $build_dir . 'results.asset.php';
@@ -272,9 +271,9 @@ class AdminPanel {
             return;
         }
 
-        // Entries screen split: source-controlled build/entries.js +
-        // build/entries.css. Self-contained — never enqueues
-        // build/index.css.
+        // Entries screen split: build/entries.js + build/entries.css.
+        // Self-contained — every rule the screen needs lives in the
+        // entries bundle.
         if (
             self::is_entries_screen()
             && file_exists( $build_dir . 'entries.js' )
@@ -313,14 +312,12 @@ class AdminPanel {
             return;
         }
 
-        // Builder screen split: when the URL is the form editor
-        // (?page=neural-forms&edit=N or &new=1) AND a builder.js bundle
-        // exists alongside the rich admin bundle, enqueue the builder
-        // bundle INSTEAD of index.js. This is the 1.1.0 split-bundle
-        // path - the rich Forms / Entries / Settings / Stats screens
-        // continue to ship from build/index.js, while the new 3-panel
-        // builder ships independently as build/builder.js. The two
-        // bundles are never both alive on the same page.
+        // Builder screen — when the URL is the form editor
+        // (?page=neural-forms&edit=N or &new=1), enqueue build/builder.js.
+        // The 3-panel builder ships independently from the Forms-list
+        // bundle so a Forms-list visit doesn't pull in the heavier
+        // builder code. The two bundles are never both alive on the
+        // same page.
 
         $is_builder_screen = self::is_builder_screen();
         $use_builder_split = $is_builder_screen && file_exists( $build_dir . 'builder.js' );
@@ -365,22 +362,14 @@ class AdminPanel {
             return;
         }
 
-        // Forms-list screen split (Phase 1 of refactor/remove-protected-
-        // admin-bundle): when on ?page=neural-forms (the default Forms-
-        // list view, NOT the Builder edit/new flow which is handled
-        // above) AND build/forms.js exists, enqueue the per-screen
-        // forms bundle INSTEAD of build/index.js. The forms bundle
-        // ships its own forms.css so the protected build/index.css is
-        // also skipped on this screen.
+        // Forms-list screen — on ?page=neural-forms (the default
+        // Forms-list view, NOT the Builder edit/new flow above),
+        // enqueue build/forms.js + build/forms.css.
         //
         // The Forms-screen-only injectors (shortcode column, builder-
-        // navigation, forms-list-meta, new-form-dropdown) below DO
-        // still run — they target the same `.neural-forms-forms-list__*`
-        // BEM hooks the per-screen bundle emits, so the PHP-side
-        // enhancements work unchanged.
-        //
-        // Each admin screen routes to its own per-screen bundle below;
-        // the rich `build/index.js` catch-all has been retired.
+        // navigation, forms-list-meta, new-form-dropdown) below
+        // target the `.neural-forms-forms-list__*` BEM hooks the
+        // bundle emits, so the PHP-side enhancements work unchanged.
         if (
             self::get_current_screen() === 'forms'
             && ! self::is_builder_screen()
@@ -420,12 +409,11 @@ class AdminPanel {
 
         }
 
-        // Stats screen split (Phase 2 of refactor/remove-protected-
-        // admin-bundle): when on ?page=neural-forms-stats AND
-        // build/stats.js exists, enqueue the per-screen stats bundle
-        // INSTEAD of build/index.js. Same pattern as forms above —
-        // handle name is reused so wp_add_inline_* attachments and
-        // any future Stats-screen injectors keep working.
+        // Stats screen — enqueue build/stats.js + build/stats.css
+        // on ?page=neural-forms-stats. Handle name `neural-forms-admin`
+        // is shared across the per-screen bundles (one bundle per
+        // request) so wp_add_inline_* attachments and any Stats-screen
+        // injectors target a stable handle.
         if (
             self::get_current_screen() === 'stats'
             && file_exists( $build_dir . 'stats.js' )
@@ -466,13 +454,9 @@ class AdminPanel {
 
         }
 
-        // Settings screen split (Phase 3 of refactor/remove-protected-
-        // admin-bundle): when on ?page=neural-forms-settings AND
-        // build/settings.js exists, enqueue the per-screen settings
-        // bundle INSTEAD of build/index.js. Same pattern as forms +
-        // stats above — handle name is reused so wp_add_inline_*
-        // attachments and any future Settings-screen injectors keep
-        // working.
+        // Settings screen — enqueue build/settings.js + build/settings.css
+        // on ?page=neural-forms-settings. Same shared `neural-forms-admin`
+        // handle pattern as stats / forms above.
         if (
             self::get_current_screen() === 'settings'
             && file_exists( $build_dir . 'settings.js' )
@@ -513,12 +497,10 @@ class AdminPanel {
 
         }
 
-        // Import (CF7 migration) screen split (Phase 4 of refactor/
-        // remove-protected-admin-bundle): when on
-        // ?page=neural-forms-migration AND build/import.js exists,
-        // enqueue the per-screen import bundle INSTEAD of build/index.js.
-        // Same pattern as forms / stats / settings — handle name is
-        // reused so wp_add_inline_* attachments keep working.
+        // Import (CF7 migration) screen — enqueue build/import.js +
+        // build/import.css on ?page=neural-forms-migration. Same
+        // shared `neural-forms-admin` handle pattern as the other
+        // per-screen bundles.
         if (
             self::get_current_screen() === 'migration'
             && file_exists( $build_dir . 'import.js' )
@@ -1047,22 +1029,20 @@ JS;
     /**
      * Unified page-header CSS shipped on every Neural Forms admin
      * screen. The Analytics screen's `nf-analytics-hero` is the visual
-     * source of truth (white rounded card, blue title, soft border,
-     * subtle shadow); this CSS applies the same look to the protected
-     * `build/index.js` screens (Stats / Forms list / Settings / Import)
-     * by retargeting their existing `__header` + `__title` markup.
+     * source of truth (white rounded card, navy title, soft border,
+     * subtle shadow); this CSS applies the same look to the per-screen
+     * bundles (Stats / Forms list / Settings / Import) by retargeting
+     * their existing `__header` + `__title` markup.
      *
-     * No DOM changes: the protected bundle keeps emitting the same
-     * elements; we only restyle them. Subtitles + actions slots are
-     * Analytics-only because the protected screens don't emit DOM for
-     * them — adding those would require rebuilding `build/index.js`,
-     * which is out of scope per the byte-protected-bundle policy in
-     * CLAUDE.md.
+     * No DOM changes — each per-screen bundle emits its own header
+     * elements; we only restyle them so the visual chrome stays in
+     * lockstep across the admin without each bundle re-implementing
+     * the hero card.
      *
      * The shared `.nf-page-hero` / `.nf-page-hero__title` /
      * `.nf-page-hero__subtitle` / `.nf-page-hero__actions` classes are
-     * also exposed so future React work (Lite split bundles, Pro admin
-     * screens) can use the canonical class names directly.
+     * also exposed so future React work (Pro admin screens) can use
+     * the canonical class names directly.
      */
     private static function page_hero_unifier_css(): string {
         // Single source of truth — copied from nf-analytics-hero in
@@ -1136,42 +1116,20 @@ JS;
     }
 }
 
-/* ── Protected-bundle screens: skin existing __header/__title ──
+/* ── Per-screen bundles: skin existing __header/__title ──
  *
- * The build/index.js bundle emits per-screen header containers
- * (`__header`) and title elements (`__title`) for Stats / Forms list
- * / Settings / Import. We retarget those existing classes with the
- * hero-card visuals — no DOM changes, no rebuild of the protected
- * bundle.
+ * Each per-screen bundle (Stats / Forms list / Settings / Import)
+ * emits its own header container (`__header`) and title element
+ * (`__title`). We retarget those classes with the hero-card visuals
+ * so every screen reads as part of the same design system without
+ * each bundle re-implementing the hero internally.
  *
  * Each rule is an `:is()` group so adding a new screen takes one line.
  *
- * Subtitle text isn't present in the protected DOM, so these screens
- * show TITLE-ONLY heroes today. When the rich source is restored,
- * each screen can emit a `__subtitle` paragraph and the styling
- * already exists.
- *
- * ── Why Entries is intentionally NOT in this list ──
- *
- * Entries (?page=neural-forms-entries) is INTENTIONALLY EXCLUDED
- * from the unifier and stays on the rich/protected bundle's existing
- * look. The inbox's 2-pane layout
- * (`.neural-forms-entries-layout`: 220px sidebar | 1fr content) has
- * no top-level `__header` element to retarget — there is no
- * `.neural-forms-entries__header` or `.neural-forms-entries__title`
- * class in the protected bundle. The "Inbox" label users see is a
- * sidebar folder item (`.neural-forms-entries-sidebar__folder-label`),
- * not a page banner.
- *
- * Migrating Entries to a unified hero would require either rebuilding
- * the byte-protected `build/index.js` (out of scope) or porting the
- * source UI in `src/entries/` to match the rich CSS + behaviour
- * exactly. The latter is tracked as a separate "Entries Source
- * Parity Migration" task — see the deferral note in CLAUDE.md
- * (`## Known Gotchas → Entries source parity is DEFERRED`).
- *
- * Do NOT add `.neural-forms-entries*` selectors here without
- * completing that migration. */
+ * Entries is intentionally NOT in this list — the entries bundle ships
+ * its own hero card defined in src/entries.css, sized to its 2-pane
+ * Gmail-style layout. Don't add `.neural-forms-entries*` selectors
+ * here without de-duplicating the per-bundle hero first. */
 
 #neural-forms-app :is(
     .neural-forms-stats__header,
@@ -1179,12 +1137,10 @@ JS;
     .neural-forms-settings__header,
     .neural-forms-import__header
 ) {
-    box-sizing: border-box;     /* protected bundle does NOT set border-box
-                                   globally; without this, our 28×32 padding
-                                   would visually push the card 64px wider
-                                   than the table/list inside the same
-                                   .neural-forms-{screen}-list parent
-                                   (max-width: 960px on Forms list). */
+    box-sizing: border-box;     /* keep 28×32 padding INSIDE the screen's
+                                   max-width so the hero card aligns with
+                                   the list/table sibling instead of
+                                   pushing 64px wider than its container. */
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2563,22 +2519,18 @@ CSS;
      * switches into the URL via history.replaceState so refreshing
      * or sharing the link preserves the filter.
      *
-     * Why an injector? The rich admin bundle's Entries screen reads
-     * `?entry=` from the URL on mount but does NOT read `?form_id=` —
-     * form selection is internal React state only. We cannot rebuild
-     * the rich bundle (CLAUDE.md byte-protection guard), so we drive
-     * the filter via DOM events, mirroring the established pattern
-     * used by enqueue_shortcode_column_injector() and
-     * enqueue_forms_list_meta_injector().
+     * NOTE — the per-screen entries bundle (build/entries.js) now reads
+     * `?form_id=` natively (see src/entries/EntriesScreen.js
+     * `readSelectionFromUrl`). This injector is therefore largely
+     * redundant for the source UI; it runs harmlessly because the
+     * source UI applies the URL filter on mount before this script
+     * fires its observer. Candidate for removal once we confirm no
+     * external integration relies on the inline script.
      *
      * Sidebar form items render as
      *   <button class="neural-forms-entries-sidebar__item" title="{name}">
-     * (verified in build/index.js); we match by `title` attribute,
-     * which the rich bundle sets to the full form name. Active state
-     * is the `--active` modifier.
-     *
-     * Removed once the rich bundle is replaced by a split entries.js
-     * that reads ?form_id= natively.
+     * — we match by `title` attribute, which the bundle sets to the
+     * full form name. Active state is the `--active` modifier.
      */
     private static function enqueue_entries_form_filter_injector(): void {
         $result = \NeuralForms\Forms\FormRepository::list( [
@@ -2748,9 +2700,10 @@ JS;
     }
 
     /**
-     * True when ?page=neural-forms-results. The results screen ships
-     * as its own split bundle and must NEVER share enqueue with the
-     * rich admin bundle — different mount root, different routes.
+     * True when ?page=neural-forms-results. The results / analytics
+     * screen ships as its own split bundle and mounts on
+     * #neural-forms-results-app — separate root from the per-screen
+     * bundles which all mount under #neural-forms-app.
      */
     private static function is_results_screen(): bool {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -2760,9 +2713,9 @@ JS;
 
     /**
      * True when ?page=neural-forms-entries. The entries screen ships
-     * as its own split bundle in 1.1.0+ so we can iterate on the inbox
-     * UI (Polls/Quizzes folders, AI carousel, bulk toolbar) without
-     * rebuilding the byte-protected rich build/index.js.
+     * as its own split bundle in 1.1.0+ (build/entries.js +
+     * build/entries.css) so the inbox UI can iterate independently of
+     * the other admin screens.
      */
     private static function is_entries_screen(): bool {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
