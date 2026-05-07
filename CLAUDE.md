@@ -423,8 +423,8 @@ ALWAYS:
 - Follow existing patterns
 - After admin JS/CSS changes, run the matching per-screen build
   (`npm run build:<screen>`) or `npm run build` to rebuild every
-  bundle. The protected `build/index.js` is gone — every screen ships
-  from its own per-screen bundle.
+  bundle. Every screen ships from its own per-screen bundle under
+  `modules/admin/build/`.
 - When adding a new premium feature: implement in Lite behind a new
   `Capabilities::` constant + `neural_forms_can_*` filter, default false.
   Have Pro flip the filter in its `Unlocker`.
@@ -433,11 +433,9 @@ ALWAYS:
 
 ## Admin build (1.1.0+)
 
-The legacy `build/index.js` rich admin bundle has been retired; every
-screen now ships from its own per-screen bundle under
-`modules/admin/build/`. `npm run build` is safe — it chains every
-`build:<screen>` script via `webpack.split.config.js` and never
-regenerates `build/index.*`.
+Every admin screen ships from its own per-screen bundle under
+`modules/admin/build/`. `npm run build` chains every `build:<screen>`
+script via `webpack.split.config.js`.
 
 ```
 cd modules/admin
@@ -472,33 +470,41 @@ rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
 
-### Entries source parity — shipped
+### Entries (per-screen `build/entries.js` bundle)
 
-Phase 5 of `refactor/remove-protected-admin-bundle` migrated the
-Entries inbox to the per-screen `build/entries.js` bundle:
-
-- `.nf-inbox__*` renamed to `.neural-forms-entries-*` /
-  `.neural-forms-entry-detail__*`; self-contained `src/entries.css`.
-- Polls / Quizzes / `normal_inbox` smart folders removed; default
-  All-Forms selection uses bare `?view=inbox`.
+- BEM root: `.neural-forms-entries-*` / `.neural-forms-entry-detail__*`;
+  self-contained `src/entries.css`.
+- Default All-Forms selection uses bare `?view=inbox`.
 - Per-form sidebar folders nest six system views (Inbox / Unread /
   Needs Reply / Starred / Spam / Trash) under each form, scoped via
   `form_id=N&view=<id>`; selection is URL-synced (replaceState).
-- Entry detail is its own URL-routed view: `entry_id=N` swaps the
-  right pane to a Back-button + EntryDetail layout. Submitted Fields
-  card renders first; `buildFieldLabels(form)` resolves field ids to
-  human labels via the form's `form_schema`.
-- Reanalyze / Regenerate / Refine-with-AI buttons are Pro-rendered
-  via `EntryAiActions` and `EntryReplyActions` SlotFills; Lite only
-  passes click handlers through fillProps and shows an upsell link
-  when caps are off.
+- Entry detail is URL-routed: `entry_id=N` swaps the right pane to
+  a toolbar (Back / Mark unread/read / Star / Reply / Spam / Trash) +
+  hero card (icon · form name · `Entry #N · date · IP` · source URL ·
+  read pill) + `NeedsReplyBanner` + Submitted fields + AI Analysis +
+  AI Drafts carousel + Conversation thread + Reply composer.
+  `buildFieldLabels(form)` resolves field ids to human labels via the
+  form's `form_schema`.
+- Reanalyze / Generate reply / Refine with AI: when capability is
+  unlocked, the buttons render via Pro's `EntryAiActions` /
+  `EntryReplyActions` SlotFills (Pro fills the slot with real action
+  buttons). When capability is locked (Pro absent), Lite renders the
+  same-DOM lock-icon buttons that pop a brand-aligned cream/gold
+  "Upgrade to Pro" notice instead of redirecting. Same CSS classes
+  in both cases — Lite owns the styling.
+- Per-action AI feedback: navy pulse on the AI Analysis card after
+  reanalyze, mint pulse on the AI Drafts card + reply textarea after
+  regenerate / refine, inline credit-used strip routed under the
+  action that paid for it (analyze → between AI Analysis and AI
+  Drafts; refine → under reply composer footer).
 
 The shared admin page-header unifier
-(`AdminPanel::page_hero_unifier_css()`) **intentionally excludes
-Entries** — the inbox's 2-pane Gmail-style layout has no top-level
-`__header` element to retarget. Stats / Forms list / Settings /
-Import are unified via that CSS injector; Analytics ships its own
-(`nf-analytics-hero` in `src/results.css`); Entries owns its layout.
+(`AdminPanel::page_hero_unifier_css()`) intentionally excludes
+Entries — the entries bundle ships its own hero card defined in
+`src/entries.css` sized to its 2-pane Gmail-style layout. Stats /
+Forms list / Settings / Import are unified via the CSS injector;
+Analytics ships its own (`nf-analytics-hero` in `src/results.css`);
+Entries owns its layout.
 
 ------------------------------------------------------------------------
 
