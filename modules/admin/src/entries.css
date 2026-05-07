@@ -749,19 +749,6 @@
 .neural-forms-entries-pill--neutral  { background: var( --f-gray-100 ); color: var( --f-gray-500 ); }
 .neural-forms-entries-pill--tier     { background: var( --f-blue-50 );  color: var( --f-blue-600 ); }
 
-/* ── Upsell link ─────────────────────────────────────────────── */
-.neural-forms-entries-upsell-link {
-	color: var( --f-gray-500 );
-	font-size: 12px;
-	text-decoration: none;
-	transition: color var( --f-transition );
-}
-
-.neural-forms-entries-upsell-link:hover {
-	color: var( --f-blue-600 );
-	text-decoration: underline;
-}
-
 /* ── Detail page wrapper (Back button + entry card stack) ───── */
 .neural-forms-entries-detail-panel {
 	display: flex;
@@ -1294,7 +1281,6 @@
 	white-space: nowrap;
 }
 
-.neural-forms-entry-detail__reply-to-address,
 .neural-forms-entry-detail__reply-textarea {
 	background: #fff;
 	border: 1px solid var( --f-gray-200 );
@@ -1302,20 +1288,15 @@
 	color: var( --f-gray-900 );
 	flex: 1 1 auto;
 	font-family: inherit;
-	font-size: 13px;
+	font-size: 13.5px;
+	line-height: 1.55;
+	min-height: 140px;
 	padding: 8px 12px;
+	resize: vertical;
 	transition: border-color var( --f-transition );
 	width: 100%;
 }
 
-.neural-forms-entry-detail__reply-textarea {
-	font-size: 13.5px;
-	line-height: 1.55;
-	min-height: 140px;
-	resize: vertical;
-}
-
-.neural-forms-entry-detail__reply-to-address:focus,
 .neural-forms-entry-detail__reply-textarea:focus {
 	border-color: var( --f-blue-600 );
 	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.12 );

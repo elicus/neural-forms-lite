@@ -226,13 +226,6 @@
 	border-bottom: none;
 }
 
-/* Checkbox fields span the full row — there is no separate label
- * column; the checkbox sits next to its inline label text. */
-.neural-forms-settings__field--checkbox {
-	display: block;
-	padding: 14px 24px;
-}
-
 .neural-forms-settings__label {
 	color: var( --f-gray-700 );
 	font-size: 13.5px;
@@ -251,11 +244,6 @@
 	font-size: 11px;
 	line-height: 1.5;
 	margin: 0;
-}
-
-.neural-forms-settings__hint--checkbox {
-	margin-left: 26px;
-	margin-top: 4px;
 }
 
 /* ── Inputs / select / textarea ─────────────────────────────── */
@@ -312,26 +300,6 @@
 	cursor: not-allowed;
 }
 
-/* ── Checkbox layout ────────────────────────────────────────── */
-.neural-forms-settings__checkbox-label {
-	align-items: flex-start;
-	color: var( --f-gray-700 );
-	cursor: pointer;
-	display: flex;
-	font-size: 13.5px;
-	font-weight: 500;
-	gap: 10px;
-	line-height: 1.4;
-}
-
-.neural-forms-settings__checkbox {
-	margin: 2px 0 0;
-	width: 16px;
-	height: 16px;
-	flex-shrink: 0;
-	cursor: pointer;
-}
-
 /* ── API key wrap (input + "SET" badge overlay) ─────────────── */
 .neural-forms-settings__api-key-wrap {
 	align-items: center;
@@ -358,27 +326,6 @@
 	position: absolute;
 	right: 10px;
 	text-transform: uppercase;
-}
-
-/* ── Range slider row ───────────────────────────────────────── */
-.neural-forms-settings__range-row {
-	align-items: center;
-	display: flex;
-	gap: 12px;
-	max-width: 420px;
-}
-
-.neural-forms-settings__range {
-	flex: 1 1 auto;
-	min-width: 0;
-}
-
-.neural-forms-settings__range-value {
-	color: var( --f-gray-900 );
-	font-size: 13px;
-	font-weight: 600;
-	min-width: 32px;
-	text-align: right;
 }
 
 /* ── iOS-style toggle switch ─────────────────────────────────── */
@@ -749,14 +696,6 @@
 	background: var( --f-amber-50 );
 	border-color: var( --f-amber-200 );
 	color: #92400e;
-}
-
-.neural-forms-settings__placeholder {
-	border-top: 1px solid var( --f-gray-100 );
-	color: var( --f-gray-400 );
-	font-size: 12px;
-	font-style: italic;
-	padding: 20px 24px;
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */
