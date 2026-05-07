@@ -2,7 +2,7 @@
  * Entries inbox — the main screen controller.
  *
  * Owns:
- *   - Sidebar selection state (system view, smart folder, smart filter, per-form)
+ *   - Sidebar selection state (system view, smart filter, per-form)
  *   - Search + sort + page state
  *   - List fetch (/entries) and counts fetch (/entries/counts)
  *   - Per-form sidebar list (/forms with embedded counts when available)
@@ -22,13 +22,15 @@
  *           └─ ReplyComposer
  *
  * The sidebar selection is a tagged union so the active highlight,
- * page title, and request shape stay coherent even when the same UI
- * row could mean either a server `view` or a client `folder`:
+ * page title, and request shape stay coherent:
  *
- *   { kind: 'view',   id: 'inbox' }            → ?view=inbox  (auto-excludes poll/quiz)
- *   { kind: 'smart',  id: 'polls' | 'quizzes' } → ?folder=...
- *   { kind: 'filter', id: 'high_priority' }     → ?view=high_priority
- *   { kind: 'form',   formId: 12 }              → ?form_id=12&view=inbox
+ *   { kind: 'view',   id: 'inbox' }            → ?view=inbox
+ *   { kind: 'filter', id: 'high_priority' }    → ?view=high_priority
+ *   { kind: 'form',   formId: 12 }             → ?form_id=12&view=inbox
+ *
+ * Phase 5 of refactor/remove-protected-admin-bundle drops the smart
+ * folders (Polls/Quizzes/normal_inbox) so the source UI matches the
+ * rich UI's taxonomy. Default All-Forms selection uses bare ?view=inbox.
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from '@wordpress/element';
@@ -56,9 +58,6 @@ function aiErrorMessage( err, fallback ) {
 		if ( safety.kind === 'unavailable' ) {
 			return __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' );
 		}
-		// Blocked. Append the no-charge confirmation when the cloud
-		// includes credits_deducted=false (it always does on the
-		// blocked_by_safety wire shape — defensive check anyway).
 		const noCharge = safety.usage && safety.usage.credits_deducted === false
 			? ' ' + __( 'No credits were deducted.', 'neural-forms-lite' )
 			: '';
@@ -79,35 +78,30 @@ function InboxIcon() {
 	);
 }
 
-function EmptyState( { selection } ) {
-	let title = __( 'Your inbox is quiet', 'neural-forms-lite' );
-	let hint  = __( 'New submissions will land here the moment they come in.', 'neural-forms-lite' );
-	if ( selection?.kind === 'smart' && selection.id === 'polls' ) {
-		title = __( 'No poll responses yet', 'neural-forms-lite' );
-		hint  = __( 'Poll responses will appear here as visitors vote.', 'neural-forms-lite' );
-	} else if ( selection?.kind === 'smart' && selection.id === 'quizzes' ) {
-		title = __( 'No quiz attempts yet', 'neural-forms-lite' );
-		hint  = __( 'Quiz attempts will appear here as visitors submit answers.', 'neural-forms-lite' );
-	}
+function EmptyState() {
 	return (
-		<div className="nf-inbox__empty">
-			<div className="nf-inbox__empty-icon"><InboxIcon /></div>
-			<p className="nf-inbox__empty-title">{ title }</p>
-			<p className="nf-inbox__empty-hint">{ hint }</p>
+		<div className="neural-forms-entries-empty">
+			<div className="neural-forms-entries-empty__icon"><InboxIcon /></div>
+			<p className="neural-forms-entries-empty__title">
+				{ __( 'Your inbox is quiet', 'neural-forms-lite' ) }
+			</p>
+			<p className="neural-forms-entries-empty__hint">
+				{ __( 'New submissions will land here the moment they come in.', 'neural-forms-lite' ) }
+			</p>
 		</div>
 	);
 }
 
 // Convert a sidebar selection into the URLSearchParams shape the
-// /entries endpoint expects. Kept pure so we can unit-test request
-// shaping later if needed.
+// /entries endpoint expects. Bare `view` for the All-Forms default —
+// no folder= alias.
 function selectionToQuery( selection ) {
 	const p = new URLSearchParams();
-	if ( ! selection ) return p;
+	if ( ! selection ) {
+		p.set( 'view', 'inbox' );
+		return p;
+	}
 	switch ( selection.kind ) {
-		case 'smart':
-			p.set( 'folder', selection.id );
-			return p;
 		case 'form':
 			p.set( 'form_id', String( selection.formId ) );
 			p.set( 'view', 'inbox' );
@@ -124,8 +118,6 @@ function selectionToQuery( selection ) {
 
 function selectionTitle( selection, forms ) {
 	if ( ! selection ) return __( 'Inbox', 'neural-forms-lite' );
-	if ( selection.kind === 'smart' && selection.id === 'polls'   ) return __( 'Polls',   'neural-forms-lite' );
-	if ( selection.kind === 'smart' && selection.id === 'quizzes' ) return __( 'Quizzes', 'neural-forms-lite' );
 	if ( selection.kind === 'form' ) {
 		const f = ( forms || [] ).find( ( x ) => x.id === selection.formId );
 		return f?.name || `#${ selection.formId }`;
@@ -150,8 +142,7 @@ export default function EntriesScreen() {
 	const [ entriesLoading, setEntriesLoading ] = useState( false );
 	const [ entriesError,   setEntriesError   ] = useState( '' );
 
-	const [ counts,      setCounts      ] = useState( {} );
-	const [ smartCounts, setSmartCounts ] = useState( { polls: 0, quizzes: 0 } );
+	const [ counts, setCounts ] = useState( {} );
 
 	const [ forms,        setForms        ] = useState( [] );
 	const [ formsLoading, setFormsLoading ] = useState( false );
@@ -197,9 +188,7 @@ export default function EntriesScreen() {
 		}
 	}, [ filterKey ] );
 
-	// Forms list for the per-form sidebar. Embeds entry_count when
-	// the FormsEndpoint surfaces it; falls back to undefined otherwise
-	// so EntriesSidebar simply omits the badge.
+	// Forms list for the per-form sidebar.
 	useEffect( () => {
 		let cancelled = false;
 		setFormsLoading( true );
@@ -226,10 +215,6 @@ export default function EntriesScreen() {
 		api( path ).then( ( res ) => {
 			if ( ! res || typeof res !== 'object' ) return;
 			setCounts( res );
-			setSmartCounts( {
-				polls:   Number( res.polls   ) || 0,
-				quizzes: Number( res.quizzes ) || 0,
-			} );
 		} ).catch( () => { /* counts are non-critical */ } );
 	}, [ selection ] );
 
@@ -251,7 +236,6 @@ export default function EntriesScreen() {
 			const list = Array.isArray( res ) ? res : [];
 			setEntries( list );
 			setEntriesLoading( false );
-			// Keep keyboard focus inside the list when results change.
 			if ( list.length > 0 && ( focusedId == null || ! list.find( ( e ) => e.id === focusedId ) ) ) {
 				setFocusedId( list[ 0 ].id );
 			} else if ( list.length === 0 ) {
@@ -293,8 +277,6 @@ export default function EntriesScreen() {
 		setOpenError( '' );
 	}, [] );
 
-	// Single-entry mutations. We patch the row in place so the list
-	// updates without a full refetch; counts get refreshed afterwards.
 	const patchEntry = useCallback( ( id, fields ) => {
 		return api( `/entries/${ id }`, { method: 'PATCH', data: fields } ).then( ( res ) => {
 			setEntries( ( prev ) => prev.map( ( e ) => e.id === id ? { ...e, ...res } : e ) );
@@ -311,7 +293,6 @@ export default function EntriesScreen() {
 		patchEntry( entry.id, { is_starred: next } ).catch( () => { /* surfaced via inline error */ } );
 	}, [ patchEntry ] );
 
-	// Bulk dispatch.
 	const dispatchBulk = useCallback( ( action ) => {
 		if ( selectedIds.size === 0 ) return Promise.resolve();
 		setBulkBusy( true );
@@ -322,10 +303,7 @@ export default function EntriesScreen() {
 		} ).then( () => {
 			setSelectedIds( new Set() );
 			setBulkBusy( false );
-			// Force a list refetch by toggling sort_order through the same value
-			// (or simpler: refetch directly).
 			refetchCounts();
-			// Re-issue the list query.
 			const params = selectionToQuery( selection );
 			params.set( 'sort_order', sortOrder );
 			params.set( 'per_page',   '50' );
@@ -339,14 +317,12 @@ export default function EntriesScreen() {
 		} );
 	}, [ selectedIds, selection, debouncedSearch, sortOrder, refetchCounts ] );
 
-	// AI mutations on the open entry.
 	const reanalyze = useCallback( () => {
 		if ( ! openEntry ) return Promise.resolve();
 		setReanalyzing( true );
 		setReanalyzeError( '' );
-		return api( `/entries/${ openEntry.id }/reanalyze`, { method: 'POST' } ).then( ( res ) => {
+		return api( `/entries/${ openEntry.id }/reanalyze`, { method: 'POST' } ).then( () => {
 			setReanalyzing( false );
-			// Refetch the detail so the carousel + analysis card pick up the new draft.
 			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
 				setOpenEntry( fresh );
 				setEntries( ( prev ) => prev.map( ( e ) => e.id === openEntry.id ? { ...e, ...fresh } : e ) );
@@ -363,7 +339,6 @@ export default function EntriesScreen() {
 		setComposerError( '' );
 		return api( `/entries/${ openEntry.id }/regenerate-reply`, { method: 'POST' } ).then( ( res ) => {
 			setComposerBusy( null );
-			// Refresh detail so the carousel updates.
 			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
 				setOpenEntry( fresh );
 				return res;
@@ -381,7 +356,6 @@ export default function EntriesScreen() {
 		setComposerError( '' );
 		return api( `/entries/${ openEntry.id }/polish-reply`, { method: 'POST', data: { text } } ).then( ( res ) => {
 			setComposerBusy( null );
-			// Refetch so the new polish draft shows up in the carousel.
 			api( `/entries/${ openEntry.id }` ).then( ( fresh ) => setOpenEntry( fresh ) ).catch( () => {} );
 			return res;
 		} ).catch( ( err ) => {
@@ -397,7 +371,6 @@ export default function EntriesScreen() {
 		setComposerError( '' );
 		return api( `/entries/${ openEntry.id }/reply`, { method: 'POST', data: payload } ).then( () => {
 			setComposerBusy( null );
-			// Mark the entry as read+replied locally and refetch.
 			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
 				setOpenEntry( fresh );
 				setEntries( ( prev ) => prev.map( ( e ) => e.id === openEntry.id ? { ...e, status: fresh.status, needs_reply: fresh.needs_reply } : e ) );
@@ -412,17 +385,14 @@ export default function EntriesScreen() {
 	const finalizeDraft = useCallback( ( draftId ) => {
 		if ( ! openEntry ) return Promise.resolve();
 		setCarouselBusy( draftId );
-		return api( `/entries/${ openEntry.id }/ai-responses/${ draftId }/finalize`, { method: 'POST' } ).then( ( res ) => {
+		return api( `/entries/${ openEntry.id }/ai-responses/${ draftId }/finalize`, { method: 'POST' } ).then( () => {
 			setCarouselBusy( null );
-			// Refetch detail so analysis card swaps fields and reply
-			// composer picks up the finalized text.
 			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => setOpenEntry( fresh ) );
 		} ).catch( () => {
 			setCarouselBusy( null );
 		} );
 	}, [ openEntry ] );
 
-	// CSV export — view-scoped only (form_id is also passed when set).
 	const exportCsv = () => {
 		setExporting( true );
 		setExportError( '' );
@@ -486,14 +456,14 @@ export default function EntriesScreen() {
 	const title = selectionTitle( selection, forms );
 
 	return (
-		<div className="neural-forms-screen nf-inbox">
-			<header className="nf-inbox__header">
-				<h1 className="nf-inbox__title">{ title }</h1>
+		<div className="neural-forms-entries-layout">
+			<header className="neural-forms-entries-header">
+				<h1 className="neural-forms-entries-title">{ title }</h1>
 
-				<div className="nf-inbox__controls">
+				<div className="neural-forms-entries-controls">
 					<button
 						type="button"
-						className="neural-forms-btn nf-inbox__export"
+						className="neural-forms-entries-btn"
 						onClick={ exportCsv }
 						disabled={ exporting }
 						title={ __( 'Export entries matching the current filter as CSV', 'neural-forms-lite' ) }
@@ -502,7 +472,7 @@ export default function EntriesScreen() {
 					</button>
 
 					<select
-						className="nf-inbox__sort"
+						className="neural-forms-entries-sort"
 						value={ sortOrder }
 						onChange={ ( e ) => setSortOrder( e.target.value ) }
 						aria-label={ __( 'Sort order', 'neural-forms-lite' ) }
@@ -513,7 +483,7 @@ export default function EntriesScreen() {
 
 					<input
 						type="search"
-						className="nf-inbox__search"
+						className="neural-forms-entries-search"
 						value={ search }
 						onChange={ ( e ) => setSearch( e.target.value ) }
 						placeholder={ __( 'Search entries...', 'neural-forms-lite' ) }
@@ -522,20 +492,19 @@ export default function EntriesScreen() {
 				</div>
 			</header>
 
-			{ !! exportError && <p className="nf-inbox__inline-error">{ exportError }</p> }
-			{ !! bulkError   && <p className="nf-inbox__inline-error">{ bulkError }</p> }
+			{ !! exportError && <p className="neural-forms-entries-error">{ exportError }</p> }
+			{ !! bulkError   && <p className="neural-forms-entries-error">{ bulkError }</p> }
 
-			<div className="nf-inbox__body">
+			<div className="neural-forms-entries-body">
 				<EntriesSidebar
 					selection={ selection }
 					onSelect={ setSelection }
 					counts={ counts }
-					smartCounts={ smartCounts }
 					forms={ forms }
 					formsLoading={ formsLoading }
 				/>
 
-				<main className="nf-inbox__main">
+				<main className="neural-forms-entries-content">
 					<BulkToolbar
 						selection={ selectedIds }
 						onClear={ clearSelection }
@@ -544,9 +513,9 @@ export default function EntriesScreen() {
 						view={ selection?.kind === 'view' || selection?.kind === 'filter' ? selection.id : 'inbox' }
 					/>
 
-					{ entriesLoading && <p className="nf-inbox__status">{ __( 'Loading entries...', 'neural-forms-lite' ) }</p> }
-					{ !! entriesError && <p className="nf-inbox__status nf-inbox__status--error">{ entriesError }</p> }
-					{ ! entriesLoading && ! entriesError && entries.length === 0 && <EmptyState selection={ selection } /> }
+					{ entriesLoading && <p className="neural-forms-entries-status">{ __( 'Loading entries...', 'neural-forms-lite' ) }</p> }
+					{ !! entriesError && <p className="neural-forms-entries-status neural-forms-entries-status--error">{ entriesError }</p> }
+					{ ! entriesLoading && ! entriesError && entries.length === 0 && <EmptyState /> }
 
 					{ entries.length > 0 && (
 						<EntriesList
@@ -557,8 +526,6 @@ export default function EntriesScreen() {
 							onOpen={ openEntryDetail }
 							onToggleStar={ toggleStar }
 							openId={ openEntryId }
-							sidebarKind={ selection?.kind }
-							sidebarId={ selection?.id }
 						/>
 					) }
 

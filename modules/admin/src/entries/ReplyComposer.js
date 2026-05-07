@@ -2,46 +2,36 @@
  * Reply composer.
  *
  * Wraps the entry detail's bottom panel — to/subject/body inputs, a
- * Send button, and AI helper buttons (Polish, Regenerate). Polish
- * works on the user's text without re-sending the entry to the model;
- * Regenerate hits the cloud against the entry and replaces the body.
+ * Send button, and a slot for Pro-rendered AI helper buttons (Refine
+ * with AI / Polish). Send is Lite-owned (Lite owns wp_mail). Polish
+ * UI is Pro-rendered via the `EntryReplyActions` slot. Regenerate
+ * lives in the AI analysis card slot above, not here.
  *
- * Pro/cloud capability gates:
- *   ai_reanalyze     — Regenerate
- *   ai_refine_reply  — Polish
- *
- * SlotFill mount:
- *   NeuralForms.EntryReplyActions — Pro injects extra buttons (e.g.
- *     a "Send via custom transport" override) inside the action row.
+ * Phase 5 separation: Lite never renders the Polish or Regenerate
+ * button itself. Lite mounts the slot with fillProps `{body,
+ * isPolishing, sending, handlePolish}` matching the contract Pro's
+ * `pro:refine-with-ai` fill expects. When `caps.ai_refine_reply` is
+ * false, Lite shows a single upsell link instead.
  *
  * Props:
  *   entry         full entry row (used to seed To address from preview)
  *   capabilities  capability snapshot
  *   onSend        ({to, subject, body}) => Promise<void>
  *   onPolish      (text) => Promise<{polished_reply, usage}>
- *   onRegenerate  () => Promise<{reply_draft, usage}>
  *   busy          'send' | 'polish' | 'regenerate' | null
  *   error         string — inline error
  */
 
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
+import { ProSlot } from '../slot-registry';
 import { pickSubmitterEmail } from './helpers';
-
-function getReplySlot() {
-	const reg = window.neuralForms?.slots;
-	if ( reg && typeof reg.getSlot === 'function' ) {
-		return reg.getSlot( 'NeuralForms.EntryReplyActions' );
-	}
-	return null;
-}
 
 export default function ReplyComposer( {
 	entry,
 	capabilities,
 	onSend,
 	onPolish,
-	onRegenerate,
 	busy,
 	error,
 } ) {
@@ -54,8 +44,6 @@ export default function ReplyComposer( {
 	const [ subject, setSubject ] = useState( '' );
 	const [ body,    setBody    ] = useState( entry?.ai_reply_draft || '' );
 
-	const Slot = useMemo( getReplySlot, [] );
-
 	// Re-seed the body whenever the entry's draft changes (e.g. after
 	// regenerate or carousel finalize) UNLESS the user has typed over
 	// the seed.
@@ -63,7 +51,6 @@ export default function ReplyComposer( {
 	useEffect( () => {
 		const incoming = entry?.ai_reply_draft || '';
 		if ( incoming !== lastSeed ) {
-			// Seed changed under us — fold it in unless body has been hand-edited away.
 			if ( body === lastSeed || body === '' ) {
 				setBody( incoming );
 			}
@@ -71,8 +58,7 @@ export default function ReplyComposer( {
 		}
 	}, [ entry?.ai_reply_draft ] );
 
-	const canPolish     = !! capabilities?.ai_refine_reply;
-	const canRegenerate = !! capabilities?.ai_reanalyze;
+	const canPolish = !! capabilities?.ai_refine_reply;
 
 	const send = ( ev ) => {
 		ev.preventDefault();
@@ -80,14 +66,27 @@ export default function ReplyComposer( {
 		onSend( { to: to.trim(), subject: subject.trim(), body: body.trim() } );
 	};
 
-	return (
-		<form className="nf-inbox__reply" onSubmit={ send }>
-			<h4 className="nf-inbox__reply-title">{ __( 'Reply', 'neural-forms-lite' ) }</h4>
+	// Pro's `EntryReplyActions` fill calls `handlePolish()` (no args).
+	// Lite resolves the polish by calling `onPolish(body)` and updating
+	// the textarea with the polished result. Pro never touches the body
+	// state directly — it just triggers the action.
+	const handlePolish = () => {
+		if ( ! body.trim() ) return Promise.resolve();
+		return onPolish( body ).then( ( res ) => {
+			if ( res?.polished_reply ) setBody( res.polished_reply );
+			return res;
+		} ).catch( () => { /* surfaced via the parent's error prop */ } );
+	};
 
-			<label className="nf-inbox__reply-field">
-				<span>{ __( 'To', 'neural-forms-lite' ) }</span>
+	return (
+		<form className="neural-forms-entry-detail__reply-card" onSubmit={ send }>
+			<h4 className="neural-forms-entry-detail__reply-header">{ __( 'Reply', 'neural-forms-lite' ) }</h4>
+
+			<label className="neural-forms-entry-detail__reply-to">
+				<span className="neural-forms-entry-detail__reply-to-label">{ __( 'To', 'neural-forms-lite' ) }</span>
 				<input
 					type="email"
+					className="neural-forms-entry-detail__reply-to-address"
 					value={ to }
 					onChange={ ( e ) => setTo( e.target.value ) }
 					placeholder={ __( 'name@example.com', 'neural-forms-lite' ) }
@@ -95,82 +94,56 @@ export default function ReplyComposer( {
 				/>
 			</label>
 
-			<label className="nf-inbox__reply-field">
-				<span>{ __( 'Subject', 'neural-forms-lite' ) }</span>
+			<label className="neural-forms-entry-detail__reply-to">
+				<span className="neural-forms-entry-detail__reply-to-label">{ __( 'Subject', 'neural-forms-lite' ) }</span>
 				<input
 					type="text"
+					className="neural-forms-entry-detail__reply-to-address"
 					value={ subject }
 					onChange={ ( e ) => setSubject( e.target.value ) }
 					placeholder={ __( 'Re: Your submission', 'neural-forms-lite' ) }
 				/>
 			</label>
 
-			<label className="nf-inbox__reply-field nf-inbox__reply-field--body">
-				<span>{ __( 'Body', 'neural-forms-lite' ) }</span>
-				<textarea
-					value={ body }
-					onChange={ ( e ) => setBody( e.target.value ) }
-					rows={ 8 }
-					required
-				/>
-			</label>
+			<textarea
+				className="neural-forms-entry-detail__reply-textarea"
+				value={ body }
+				onChange={ ( e ) => setBody( e.target.value ) }
+				rows={ 8 }
+				required
+			/>
 
-			{ !! error && <p className="nf-inbox__inline-error">{ error }</p> }
+			{ !! error && <p className="neural-forms-entries-error">{ error }</p> }
 
-			<div className="nf-inbox__reply-actions">
+			<div className="neural-forms-entry-detail__reply-footer">
 				<button
 					type="submit"
-					className="neural-forms-btn neural-forms-btn--primary"
+					className="neural-forms-entries-btn neural-forms-entries-btn--primary neural-forms-entry-detail__reply-send"
 					disabled={ busy === 'send' || ! to.trim() || ! body.trim() }
 				>
 					{ busy === 'send' ? __( 'Sending...', 'neural-forms-lite' ) : __( 'Send', 'neural-forms-lite' ) }
 				</button>
 
 				{ canPolish ? (
-					<button
-						type="button"
-						className="neural-forms-btn"
-						disabled={ busy != null || ! body.trim() }
-						onClick={ () => onPolish( body ).then( ( res ) => {
-							if ( res?.polished_reply ) setBody( res.polished_reply );
-						} ).catch( () => { /* parent surfaces error */ } ) }
-					>
-						{ busy === 'polish' ? __( 'Polishing...', 'neural-forms-lite' ) : __( 'Polish', 'neural-forms-lite' ) }
-					</button>
+					<ProSlot
+						name="EntryReplyActions"
+						fillProps={ {
+							body,
+							isPolishing: busy === 'polish',
+							sending:     busy === 'send',
+							handlePolish,
+						} }
+					/>
 				) : (
 					<a
-						className="nf-inbox__upsell-link"
+						className="neural-forms-entries-upsell-link"
 						href="https://neuralforms.ai/pro/"
 						target="_blank"
 						rel="noreferrer"
 					>
-						{ __( 'Polish (Pro)', 'neural-forms-lite' ) }
+						{ __( 'Refine with AI (Pro)', 'neural-forms-lite' ) }
 					</a>
 				) }
-
-				{ canRegenerate ? (
-					<button
-						type="button"
-						className="neural-forms-btn"
-						disabled={ busy != null }
-						onClick={ () => onRegenerate().then( ( res ) => {
-							if ( res?.reply_draft ) setBody( res.reply_draft );
-						} ).catch( () => { /* parent surfaces error */ } ) }
-					>
-						{ busy === 'regenerate' ? __( 'Regenerating...', 'neural-forms-lite' ) : __( 'Regenerate', 'neural-forms-lite' ) }
-					</button>
-				) : (
-					<a
-						className="nf-inbox__upsell-link"
-						href="https://neuralforms.ai/pro/"
-						target="_blank"
-						rel="noreferrer"
-					>
-						{ __( 'Regenerate (Pro)', 'neural-forms-lite' ) }
-					</a>
-				) }
-
-				{ Slot ? <Slot.Slot fillProps={ { entry } } /> : null }
 			</div>
 		</form>
 	);

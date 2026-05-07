@@ -52,20 +52,20 @@ export default function BulkToolbar( { selection, onClear, onAction, busy, view 
 	const acts = buttons( view );
 
 	return (
-		<div className="nf-inbox__bulk-toolbar">
-			<div className="nf-inbox__bulk-count">
+		<div className="neural-forms-entries-bulk-toolbar">
+			<div className="neural-forms-entries-bulk-toolbar__count">
 				{ count === 1
 					? __( '1 selected', 'neural-forms-lite' )
 					: `${ count } ${ __( 'selected', 'neural-forms-lite' ) }` }
 			</div>
-			<div className="nf-inbox__bulk-actions">
+			<div className="neural-forms-entries-bulk-toolbar__actions">
 				{ acts.map( ( a ) => (
 					<button
 						key={ a.id }
 						type="button"
 						className={
-							'neural-forms-btn nf-inbox__bulk-btn'
-							+ ( a.destructive ? ' nf-inbox__bulk-btn--destructive' : '' )
+							'neural-forms-entries-btn neural-forms-entries-bulk-toolbar__btn'
+							+ ( a.destructive ? ' neural-forms-entries-bulk-toolbar__btn--destructive' : '' )
 						}
 						disabled={ busy }
 						onClick={ () => {
@@ -81,7 +81,7 @@ export default function BulkToolbar( { selection, onClear, onAction, busy, view 
 				) ) }
 				<button
 					type="button"
-					className="neural-forms-btn nf-inbox__bulk-btn nf-inbox__bulk-btn--ghost"
+					className="neural-forms-entries-btn neural-forms-entries-bulk-toolbar__btn neural-forms-entries-bulk-toolbar__btn--ghost"
 					onClick={ onClear }
 					disabled={ busy }
 				>

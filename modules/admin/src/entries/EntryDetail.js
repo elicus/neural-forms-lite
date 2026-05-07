@@ -8,10 +8,10 @@
  *
  * Layout:
  *   header     form name / submitter / date / status / star
- *   analysis   AI card (Pro-gated reanalyze)
+ *   analysis   AI card (Pro slot for Reanalyze + Regenerate buttons)
  *   carousel   AI drafts (only shown when there's at least one)
  *   data       raw field key/value table
- *   reply      reply composer (Pro-gated polish/regenerate)
+ *   reply      reply composer (Pro slot for Polish/Refine button)
  *
  * Props:
  *   entry          full entry from /entries/{id}
@@ -38,10 +38,10 @@ import ReplyComposer  from './ReplyComposer';
 import { formatDate, pickSubmitterEmail } from './helpers';
 
 function StatusPill( { entry } ) {
-	if ( entry.status === 'spam' )  return <span className="nf-pill nf-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
-	if ( entry.status === 'trash' ) return <span className="nf-pill nf-pill--trash">{ __( 'Trash', 'neural-forms-lite' ) }</span>;
-	if ( entry.status === 'new'   ) return <span className="nf-pill nf-pill--new">{ __( 'Unread', 'neural-forms-lite' ) }</span>;
-	return <span className="nf-pill nf-pill--read">{ __( 'Read', 'neural-forms-lite' ) }</span>;
+	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
+	if ( entry.status === 'trash' ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--trash">{ __( 'Trash', 'neural-forms-lite' ) }</span>;
+	if ( entry.status === 'new'   ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--new">{ __( 'Unread', 'neural-forms-lite' ) }</span>;
+	return <span className="neural-forms-entries-pill neural-forms-entries-pill--read">{ __( 'Read', 'neural-forms-lite' ) }</span>;
 }
 
 export default function EntryDetail( {
@@ -61,8 +61,8 @@ export default function EntryDetail( {
 	carouselBusy,
 	onToggleStar,
 } ) {
-	if ( loading ) return <div className="nf-inbox__detail nf-inbox__detail--status">{ __( 'Loading entry...', 'neural-forms-lite' ) }</div>;
-	if ( error )   return <div className="nf-inbox__detail nf-inbox__detail--status nf-inbox__detail--error">{ error }</div>;
+	if ( loading ) return <div className="neural-forms-entry-detail neural-forms-entry-detail--status">{ __( 'Loading entry...', 'neural-forms-lite' ) }</div>;
+	if ( error )   return <div className="neural-forms-entry-detail neural-forms-entry-detail--status neural-forms-entry-detail--error">{ error }</div>;
 	if ( ! entry ) return null;
 
 	const data = entry.data && typeof entry.data === 'object' ? entry.data : {};
@@ -75,11 +75,11 @@ export default function EntryDetail( {
 		: null;
 
 	return (
-		<div className="nf-inbox__detail">
-			<header className="nf-inbox__detail-header">
+		<div className="neural-forms-entry-detail">
+			<header className="neural-forms-entry-detail__header">
 				<div>
-					<h3 className="nf-inbox__detail-title">{ entry.form_name || `#${ entry.form_id }` }</h3>
-					<p className="nf-inbox__detail-meta">
+					<h3 className="neural-forms-entry-detail__title">{ entry.form_name || `#${ entry.form_id }` }</h3>
+					<p className="neural-forms-entry-detail__meta">
 						{ email && <span>{ email }</span> }
 						{ email && ' · ' }
 						<span>{ formatDate( entry.submitted_at || entry.created_at ) }</span>
@@ -89,7 +89,7 @@ export default function EntryDetail( {
 				</div>
 				<button
 					type="button"
-					className={ 'nf-inbox__star' + ( starred ? ' is-starred' : '' ) }
+					className={ 'neural-forms-entries-star' + ( starred ? ' is-starred' : '' ) }
 					onClick={ onToggleStar }
 					aria-label={ starred ? __( 'Unstar', 'neural-forms-lite' ) : __( 'Star', 'neural-forms-lite' ) }
 				>{ starred ? '★' : '☆' }</button>
@@ -99,6 +99,7 @@ export default function EntryDetail( {
 				entry={ entry }
 				capabilities={ capabilities }
 				onReanalyze={ onReanalyze }
+				onRegenerate={ onRegenerate }
 				reanalyzing={ reanalyzing }
 				error={ reanalyzeError }
 			/>
@@ -110,16 +111,18 @@ export default function EntryDetail( {
 				busy={ carouselBusy }
 			/>
 
-			<section className="nf-inbox__detail-data">
-				<h4 className="nf-inbox__detail-section-title">{ __( 'Submitted fields', 'neural-forms-lite' ) }</h4>
+			<section className="neural-forms-entry-detail__data-card">
+				<h4 className="neural-forms-entry-detail__data-card-title">{ __( 'Submitted fields', 'neural-forms-lite' ) }</h4>
 				{ rows.length === 0 ? (
-					<p className="nf-inbox__detail-empty">{ __( 'No data captured for this entry.', 'neural-forms-lite' ) }</p>
+					<p className="neural-forms-entry-detail__data-empty">{ __( 'No data captured for this entry.', 'neural-forms-lite' ) }</p>
 				) : (
-					<dl className="nf-inbox__detail-grid">
+					<dl className="neural-forms-entry-detail__fields">
 						{ rows.map( ( [ k, v ] ) => (
-							<div className="nf-inbox__detail-row" key={ k }>
-								<dt>{ k }</dt>
-								<dd>{ typeof v === 'string' ? v : ( v == null ? '' : JSON.stringify( v ) ) }</dd>
+							<div className="neural-forms-entry-detail__field-row" key={ k }>
+								<dt className="neural-forms-entry-detail__field-label">{ k }</dt>
+								<dd className="neural-forms-entry-detail__field-value">
+									{ typeof v === 'string' ? v : ( v == null ? '' : JSON.stringify( v ) ) }
+								</dd>
 							</div>
 						) ) }
 					</dl>
@@ -132,7 +135,6 @@ export default function EntryDetail( {
 					capabilities={ capabilities }
 					onSend={ onSendReply }
 					onPolish={ onPolish }
-					onRegenerate={ onRegenerate }
 					busy={ composerBusy }
 					error={ composerError }
 				/>

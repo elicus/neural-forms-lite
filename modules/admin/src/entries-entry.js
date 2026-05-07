@@ -1,27 +1,28 @@
 /**
- * Entries-only React entry.
+ * Entries-only React entry (Phase 5 of refactor/remove-protected-
+ * admin-bundle).
  *
- * Mounts JUST the Entries inbox into #neural-forms-app. Sibling to
- * builder-entry.js: AdminPanel.php enqueues build/entries.js INSTEAD
- * of build/index.js when the current screen is the entries page, so
- * the rich 1.0.0 index.js bundle keeps owning Forms / Settings /
- * Stats while Entries comes from this rebuildable bundle.
+ * Mounted by AdminPanel::render_page() at #neural-forms-app when the
+ * admin is on ?page=neural-forms-entries AND the
+ * `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` constant is true. Default is
+ * false: Lite continues to ship the rich `build/index.js` Entries UI
+ * for everyone until QA confirms parity.
  *
- * Why split?
- *   The 1.0.0 build/index.js is byte-protected — full source parity
- *   has not been restored. Carving Entries off into its own per-screen
- *   bundle lets Lite ship Entries UI changes (Polls/Quizzes folders,
- *   reanalyze button, AI carousel, bulk toolbar) without rebuilding
- *   the rich bundle.
+ * Self-contained styles in src/entries.css (the protected
+ * `build/index.css` is NOT enqueued on this code path). Slot registry
+ * is shared with every other split bundle via slot-registry.js so
+ * Pro's `EntryAiActions` and `EntryReplyActions` fills land here.
  */
 
 import { createRoot } from '@wordpress/element';
 import EntriesScreen from './entries/EntriesScreen';
-import './index.css';
+import { initSlotRegistry } from './slot-registry';
+import './entries.css';
 
-const mount = document.getElementById( 'neural-forms-app' );
+initSlotRegistry();
 
-if ( mount ) {
-	const root = createRoot( mount );
-	root.render( <EntriesScreen /> );
-}
+document.addEventListener( 'DOMContentLoaded', function () {
+	const mount = document.getElementById( 'neural-forms-app' );
+	if ( ! mount ) return;
+	createRoot( mount ).render( <EntriesScreen /> );
+} );

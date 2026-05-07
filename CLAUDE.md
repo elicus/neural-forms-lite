@@ -503,53 +503,48 @@ rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
 
-### Entries source parity is DEFERRED — do not migrate
+### Entries source parity migration — landed, awaiting QA flip
 
-The live Entries UI ships from the byte-protected `build/index.js`.
-Although `src/entries/` exists with a working React app and
-`build/entries.js` builds cleanly, **the source UI does NOT match the
-rich UI** in three concrete ways that each represent a behavior change:
+Phase 5 of `refactor/remove-protected-admin-bundle` migrated the
+Entries inbox off the byte-protected `build/index.js`:
 
-1. **Inbox taxonomy.** `src/entries/EntriesSidebar.js` ships extra
-   "Polls" and "Quizzes" smart folders. The rich UI does not.
-2. **Default-view semantics.** `src/entries/EntriesScreen.js` can
-   route the All-Forms→Inbox selection to `?folder=normal_inbox`,
-   which excludes poll/quiz/mixed entries. The rich UI uses bare
-   `?view=inbox` and includes everything.
-3. **CSS parity.** The protected bundle owns ~30 KB of styles under
-   `.neural-forms-entries-*` / `.neural-forms-entry-detail__*` (165
-   classes). The source uses `.nf-inbox__*` (86 classes) with no
-   matching CSS authored anywhere — flipping
-   `NEURAL_FORMS_USE_ENTRIES_SPLIT` today produces an unstyled inbox.
+- All `nf-inbox__*` classes renamed to `neural-forms-entries-*` /
+  `neural-forms-entry-detail__*`.
+- Polls / Quizzes / `normal_inbox` smart folders removed from the
+  source sidebar so taxonomy matches the rich UI.
+- Default All-Forms selection now uses bare `?view=inbox` (the old
+  `?folder=normal_inbox` short-circuit is gone).
+- New self-contained `src/entries.css` — split bundle no longer
+  depends on `build/index.css`.
+- Reanalyze / Regenerate / Refine-with-AI buttons are Pro-rendered
+  via `EntryAiActions` and `EntryReplyActions` SlotFills; Lite only
+  passes the click handlers through fillProps and shows an upsell
+  link when caps are off.
 
-**Do NOT do any of these without a dedicated parity-migration task:**
+The opt-in is now `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` (default
+**false**, defined in `wp-config.php`). The old
+`NEURAL_FORMS_USE_ENTRIES_SPLIT` flag has been retired. Production
+still ships the rich `build/index.js` Entries UI for everyone until
+QA confirms parity:
 
-- Do not flip `NEURAL_FORMS_USE_ENTRIES_SPLIT`.
-- Do not introduce a parallel `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` flag.
-- Do not rename `nf-inbox__*` classes piecemeal.
-- Do not remove Polls/Quizzes folders from `src/entries/` in isolation.
-- Do not rebuild or patch `build/index.js`.
+```
+define( 'NEURAL_FORMS_USE_ENTRIES_SOURCE_UI', true );
+```
+
+QA matrix to walk through before flipping the default — empty inbox
+/ unread / needs-reply / starred / spam / trash / per-form / search
+/ sort / export / detail / bulk / AI actions / counts / mobile /
+default `view=inbox` request shape / no Polls or Quizzes folders.
 
 The shared admin page-header unifier
 (`AdminPanel::page_hero_unifier_css()`) **intentionally excludes
 Entries** — the inbox's 2-pane Gmail-style layout has no top-level
-`__header` element to retarget, and adding a banner above the grid
-would compete with the inbox's own visual hierarchy. Stats / Forms
-list / Settings / Import are unified via that CSS injector; Analytics
-ships its own (`nf-analytics-hero` in `src/results.css`); Entries
-keeps the protected bundle look.
+`__header` element to retarget. Stats / Forms list / Settings /
+Import are unified via that CSS injector; Analytics ships its own
+(`nf-analytics-hero` in `src/results.css`); Entries owns its layout.
 
-When the parity migration is eventually scoped, the recommended
-approach is **Path 1**: rename `nf-inbox__*` → matching
-`neural-forms-entries-*` / `neural-forms-entry-detail__*` so the
-existing protected `build/index.css` rules apply for free, with a
-feature-flag fallback to the rich bundle and full side-by-side QA
-(empty inbox / unread / needs-reply / starred / spam / trash /
-per-form / search / sort / export / detail / bulk / AI actions /
-counts / mobile) before flipping the default.
-
-Track the work as a separate "Entries Source Parity Migration" task
-in its own branch.
+After QA passes, flip the default to `true` and remove the old rich
+Entries fallback in a follow-up commit.
 
 ------------------------------------------------------------------------
 
@@ -585,7 +580,8 @@ without touching `index.js`.
 | `build/index.js` (rich 1.0.0) | source missing | **never run `npm run build`** | Never. The npm script exits 1 with an error. The unsafe path is `npm run build:full:unsafe`; do not run it. |
 | `build/builder.js` | `src/builder-entry.js` | `npm run build:builder` | After editing anything under `src/forms/` (Builder, FormSettings, formTemplates, etc.) |
 | `build/results.js` | `src/results-entry.js` | `npm run build:results` | After editing anything under `src/results/` (analytics + page-performance section) or `src/results.css` |
-| `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Per-screen Entries source restored in 1.1.0; **gated off by default**. Enqueue swap is opt-in via `define('NEURAL_FORMS_USE_ENTRIES_SPLIT', true)` in `wp-config.php`. The protected `index.js` still owns the live Entries UI until source CSS parity is restored. |
+| `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Per-screen Entries source — Phase 5 of `refactor/remove-protected-admin-bundle` shipped class renames, drift removal, self-contained `src/entries.css`, and Pro-slot wiring for Reanalyze / Regenerate / Refine-with-AI. **Gated off by default**. Opt-in via `define('NEURAL_FORMS_USE_ENTRIES_SOURCE_UI', true)` in `wp-config.php`. Default flips to `true` after QA matrix passes. |
+| `build/import.js` | `src/import-entry.js` | `npm run build:import` | Per-screen Import (CF7 migration) bundle from Phase 4 — 3-state list / preview / result flow over `/migration/cf7/*`. Enqueued automatically when `?page=neural-forms-migration`. |
 | `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks |
 
 The split webpack config (`webpack.split.config.js`) drops the

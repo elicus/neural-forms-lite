@@ -29,9 +29,10 @@
  * src/settings.css ships with the per-screen build/settings.* bundle.
  */
 
-import { Fragment, useEffect, useState } from '@wordpress/element';
+import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import api from '../api';
+import { ProSlot } from '../slot-registry';
 
 const CAPTCHA_PROVIDERS = [
 	{ value: 'none',         label: __( 'None — CAPTCHA disabled', 'neural-forms-lite' ) },
@@ -189,44 +190,6 @@ function PlanBalanceCard( { plan, credits } ) {
 				</span>
 			</div>
 		</div>
-	);
-}
-
-// ─── Pro-owned UI slot mount ─────────────────────────────────────
-// Per CLAUDE.md the site-profile / spam-settings panels are Pro
-// features. Lite must NEVER render them or call their Pro REST
-// endpoints. Lite only mounts named slot regions; Pro's admin
-// bundle fills them via the cross-bundle slot registry exposed
-// on `window.neuralForms.slots`.
-//
-// On this split-bundle Settings screen Pro's admin bundle is not
-// yet loaded (ProAdmin enqueues against `neural-forms-admin`,
-// which this screen does not register). The mount points still
-// ship now so the wiring is in place once Pro adds a coordinated
-// dep on `neural-forms-settings` — the actual Pro UIs will appear
-// there with no further changes to Lite.
-
-function ProSlot( { name, fillProps } ) {
-	const slots = ( typeof window !== 'undefined' && window.neuralForms?.slots ) || null;
-	const [ , bump ] = useState( 0 );
-
-	useEffect( () => {
-		if ( ! slots || typeof slots.__subscribe !== 'function' ) return undefined;
-		return slots.__subscribe( () => bump( ( v ) => v + 1 ) );
-	}, [ slots ] );
-
-	if ( ! slots || typeof slots.__getFills !== 'function' ) return null;
-	const renders = slots.__getFills( name );
-	if ( renders.length === 0 ) return null;
-	const props = fillProps || {};
-	return (
-		<>
-			{ renders.map( ( render, i ) => (
-				<Fragment key={ i }>
-					{ typeof render === 'function' ? render( props ) : render }
-				</Fragment>
-			) ) }
-		</>
 	);
 }
 

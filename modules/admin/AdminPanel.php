@@ -272,19 +272,19 @@ class AdminPanel {
             return;
         }
 
-        // Entries screen split (1.1.0+): a per-screen build/entries.js
-        // bundle exists in the source tree but is NOT enqueued by
-        // default. The rich byte-protected build/index.js paints the
-        // Entries inbox today and the per-screen bundle's CSS does
-        // not yet reproduce that rich card/sidebar layout. Until source
-        // parity for the rich Entries CSS is restored we keep loading
-        // the rich bundle on the entries screen via the default branch
-        // below. This early-return is opt-in via a constant so it can
-        // be re-enabled for testing without a code change.
+        // Entries screen split (Phase 5 of refactor/remove-protected-
+        // admin-bundle): when the user opts in via the
+        // `NEURAL_FORMS_USE_ENTRIES_SOURCE_UI` constant, ship the
+        // source-controlled build/entries.js + build/entries.css instead
+        // of the rich byte-protected build/index.js. Default is false so
+        // the rich bundle remains the production Entries UI until QA
+        // confirms parity. The new path does NOT enqueue the protected
+        // build/index.css — every rule the screen needs lives in
+        // build/entries.css (authored from src/entries.css).
         if (
             self::is_entries_screen()
-            && defined( 'NEURAL_FORMS_USE_ENTRIES_SPLIT' )
-            && NEURAL_FORMS_USE_ENTRIES_SPLIT
+            && defined( 'NEURAL_FORMS_USE_ENTRIES_SOURCE_UI' )
+            && NEURAL_FORMS_USE_ENTRIES_SOURCE_UI
             && file_exists( $build_dir . 'entries.js' )
         ) {
             $asset_file = $build_dir . 'entries.asset.php';
@@ -309,12 +309,12 @@ class AdminPanel {
 
             wp_localize_script( 'neural-forms-entries', 'neuralFormsAdmin', self::script_data() );
 
-            if ( file_exists( $build_dir . 'index.css' ) ) {
+            if ( file_exists( $build_dir . 'entries.css' ) ) {
                 wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'index.css',
+                    'neural-forms-entries',
+                    $build_url . 'entries.css',
                     [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'index.css' )
+                    (string) filemtime( $build_dir . 'entries.css' )
                 );
             }
 

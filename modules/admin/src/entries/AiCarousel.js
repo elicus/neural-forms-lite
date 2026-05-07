@@ -11,6 +11,11 @@
  * (pre-upgrade rows or rows that have never been analyzed) collapse
  * the carousel entirely so we don't show an empty card.
  *
+ * Carousel itself is Lite-owned: it just pages through saved cloud
+ * responses and calls Lite's /finalize endpoint. Pro renders nothing
+ * here — only the AI rerun buttons (slot above) and the Polish button
+ * (slot in ReplyComposer) are Pro-rendered.
+ *
  * Props:
  *   drafts        array of shaped draft rows from /entries/{id}/ai-responses
  *   selectedId    int | null — id of the currently finalized draft
@@ -54,23 +59,23 @@ export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
 	const isSelected = selectedId === draft.id;
 
 	return (
-		<section className="nf-inbox__ai-carousel">
-			<header className="nf-inbox__ai-carousel-header">
-				<h4 className="nf-inbox__ai-carousel-title">{ __( 'AI drafts', 'neural-forms-lite' ) }</h4>
-				<div className="nf-inbox__ai-carousel-nav">
+		<section className="neural-forms-entry-detail__ai-carousel">
+			<header className="neural-forms-entry-detail__ai-carousel-header">
+				<h4 className="neural-forms-entry-detail__ai-carousel-kind">{ __( 'AI drafts', 'neural-forms-lite' ) }</h4>
+				<div className="neural-forms-entry-detail__ai-carousel-nav">
 					<button
 						type="button"
-						className="neural-forms-btn nf-inbox__ai-carousel-prev"
+						className="neural-forms-entries-btn"
 						onClick={ () => setIndex( ( i ) => Math.max( 0, i - 1 ) ) }
 						disabled={ safeIndex === 0 }
 						aria-label={ __( 'Previous draft', 'neural-forms-lite' ) }
 					>‹</button>
-					<span className="nf-inbox__ai-carousel-index">
+					<span className="neural-forms-entry-detail__ai-carousel-count">
 						{ safeIndex + 1 } / { list.length }
 					</span>
 					<button
 						type="button"
-						className="neural-forms-btn nf-inbox__ai-carousel-next"
+						className="neural-forms-entries-btn"
 						onClick={ () => setIndex( ( i ) => Math.min( list.length - 1, i + 1 ) ) }
 						disabled={ safeIndex === list.length - 1 }
 						aria-label={ __( 'Next draft', 'neural-forms-lite' ) }
@@ -78,35 +83,35 @@ export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
 				</div>
 			</header>
 
-			<div className="nf-inbox__ai-carousel-meta">
-				<span className="nf-pill nf-pill--neutral">
+			<div className="neural-forms-entry-detail__ai-carousel-meta">
+				<span className="neural-forms-entries-pill neural-forms-entries-pill--neutral">
 					{ __( KIND_LABEL[ draft.kind ] || 'Draft', 'neural-forms-lite' ) }
 				</span>
 				{ draft.tier_used && (
-					<span className="nf-pill nf-pill--tier">{ draft.tier_used }</span>
+					<span className="neural-forms-entries-pill neural-forms-entries-pill--tier">{ draft.tier_used }</span>
 				) }
 				{ isSelected && (
-					<span className="nf-pill nf-pill--read">{ __( 'In use', 'neural-forms-lite' ) }</span>
+					<span className="neural-forms-entries-pill neural-forms-entries-pill--read">{ __( 'In use', 'neural-forms-lite' ) }</span>
 				) }
-				<span className="nf-inbox__ai-carousel-date">{ formatDate( draft.created_at ) }</span>
+				<span className="neural-forms-entry-detail__ai-carousel-time">{ formatDate( draft.created_at ) }</span>
 			</div>
 
 			{ ( draft.summary || draft.category || draft.priority ) && (
-				<dl className="nf-inbox__ai-carousel-classify">
+				<dl className="neural-forms-entry-detail__ai-carousel-summary">
 					{ draft.summary && (
-						<div className="nf-inbox__ai-carousel-row nf-inbox__ai-carousel-row--full">
+						<div className="neural-forms-entry-detail__field-row neural-forms-entry-detail__field-row--full">
 							<dt>{ __( 'Summary', 'neural-forms-lite' ) }</dt>
 							<dd>{ draft.summary }</dd>
 						</div>
 					) }
 					{ draft.category && (
-						<div className="nf-inbox__ai-carousel-row">
+						<div className="neural-forms-entry-detail__field-row">
 							<dt>{ __( 'Category', 'neural-forms-lite' ) }</dt>
 							<dd>{ draft.category }</dd>
 						</div>
 					) }
 					{ draft.priority && (
-						<div className="nf-inbox__ai-carousel-row">
+						<div className="neural-forms-entry-detail__field-row">
 							<dt>{ __( 'Priority', 'neural-forms-lite' ) }</dt>
 							<dd>{ draft.priority }</dd>
 						</div>
@@ -114,12 +119,12 @@ export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
 				</dl>
 			) }
 
-			<pre className="nf-inbox__ai-carousel-body">{ bodyForKind( draft ) }</pre>
+			<pre className="neural-forms-entry-detail__ai-carousel-body">{ bodyForKind( draft ) }</pre>
 
-			<footer className="nf-inbox__ai-carousel-actions">
+			<footer className="neural-forms-entry-detail__ai-carousel-footer">
 				<button
 					type="button"
-					className="neural-forms-btn neural-forms-btn--primary"
+					className="neural-forms-entries-btn neural-forms-entries-btn--primary"
 					onClick={ () => onFinalize( draft.id ) }
 					disabled={ isSelected || busy === draft.id }
 				>
