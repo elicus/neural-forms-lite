@@ -53,8 +53,17 @@ const SCREENS = {
 	// entry point, own stats.css, enqueued by AdminPanel when on
 	// ?page=neural-forms-stats.
 	stats:         'src/stats-entry.js',
+	// Phase 3 of refactor/remove-protected-admin-bundle: Settings
+	// screen migrates off the protected bundle. Same pattern as forms
+	// and stats — own entry point, own settings.css, enqueued by
+	// AdminPanel when on ?page=neural-forms-settings. Section order
+	// matches the live rich UI: Cloud AI / Email / Notifications /
+	// CAPTCHA / Privacy. The bundle initialises a runtime-compatible
+	// `window.neuralForms.slots` shim so Pro's existing SlotFills
+	// (SettingsSpamPanel, SettingsSiteProfile) register and render
+	// here without any Pro-side change.
+	settings:      'src/settings-entry.js',
 	// Future screens (do NOT enable until their source is restored):
-	//   settings:     'src/settings-entry.js',
 	//   'admin-shell': 'src/admin-shell-entry.js',
 };
 

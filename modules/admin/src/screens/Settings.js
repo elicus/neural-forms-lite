@@ -1,34 +1,657 @@
 /**
- * Plugin Settings screen - simplified for 1.1.0.
+ * Plugin Settings screen.
  *
- * Reads GET /settings, lets the admin edit the high-traffic keys, then
- * PATCHes only the changed keys back. The endpoint is field-by-field
- * partial: keys that aren't sent are left untouched - so any legacy /
- * unknown / Pro-side settings that happen to exist on the option row
- * survive every save without us having to enumerate them here.
+ * Section order (matches the live rich UI — keep stable):
+ *   1. Neural Forms Cloud AI
+ *   2. Email Settings
+ *   3. Notifications
+ *   4. CAPTCHA
+ *   5. General & Privacy
  *
- * Write-only fields:
- *   - cloud_api_key   -> never returned by GET. UI shows "set" badge
- *                        plus an input that writes a new value when
- *                        non-empty (empty submit leaves the existing
- *                        key in place).
- *   - captcha_secret_key -> same write-only contract.
+ * REST endpoints used:
+ *   GET  /settings                    initial load (returns cloud_plan)
+ *   PATCH /settings                   per-key partial update
+ *   POST /settings/test-connection    verify cloud_api_key
+ *   POST /settings/revoke-connection  drop cloud connection
+ *   POST /settings/test-email         send a one-off test email
+ *   POST /ai/process-queue            trigger AI queue manually
+ *
+ * Capabilities (Pro features rendered as upgrade lock cards in Lite):
+ *   business-aware analysis  → window.neuralFormsAdmin.capabilities.ai_reanalyze
+ *   spam detection           → window.neuralFormsAdmin.capabilities.ai_spam_detect
+ *
+ * Save flow:
+ *   - State diff (only changed keys + write-only API key inputs).
+ *   - Save bar lives at the BOTTOM of the page (right-aligned), with a
+ *     "✓ Saved" success state on the button itself.
+ *
+ * Class naming: `.neural-forms-settings__*` (BEM). All authored CSS in
+ * src/settings.css ships with the per-screen build/settings.* bundle.
  */
 
-import { useEffect, useState } from '@wordpress/element';
+import { Fragment, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import api from '../api';
 
 const CAPTCHA_PROVIDERS = [
-	{ value: 'none',         label: 'None'             },
-	{ value: 'turnstile',    label: 'Cloudflare Turnstile' },
-	{ value: 'recaptcha_v2', label: 'reCAPTCHA v2'     },
+	{ value: 'none',         label: __( 'None — CAPTCHA disabled', 'neural-forms-lite' ) },
+	{ value: 'turnstile',    label: __( 'Cloudflare Turnstile',     'neural-forms-lite' ) },
+	{ value: 'recaptcha_v2', label: __( 'reCAPTCHA v2',             'neural-forms-lite' ) },
 ];
 
-const SPAM_MODES = [
-	{ value: 'suggest', label: 'Suggest only'  },
-	{ value: 'auto',    label: 'Auto-mark spam' },
-];
+// ─── Reusable building blocks ────────────────────────────────────
+
+function Section( { title, description, children } ) {
+	return (
+		<section className="neural-forms-settings__section">
+			<header className="neural-forms-settings__section-header">
+				<h2 className="neural-forms-settings__section-title">{ title }</h2>
+				{ description && (
+					<p className="neural-forms-settings__section-desc">{ description }</p>
+				) }
+			</header>
+			<div className="neural-forms-settings__section-body">
+				{ children }
+			</div>
+		</section>
+	);
+}
+
+function Field( { label, hint, children } ) {
+	return (
+		<div className="neural-forms-settings__field">
+			<label className="neural-forms-settings__label">{ label }</label>
+			<div className="neural-forms-settings__control">
+				{ children }
+				{ hint && <p className="neural-forms-settings__hint">{ hint }</p> }
+			</div>
+		</div>
+	);
+}
+
+function ToggleField( { label, hint, checked, onChange, disabled } ) {
+	return (
+		<div className="neural-forms-settings__field">
+			<span className="neural-forms-settings__label">{ label }</span>
+			<div className="neural-forms-settings__control">
+				<label className={
+					'neural-forms-settings__toggle'
+					+ ( checked ? ' neural-forms-settings__toggle--on' : '' )
+					+ ( disabled ? ' neural-forms-settings__toggle--disabled' : '' )
+				}>
+					<input
+						type="checkbox"
+						className="neural-forms-settings__toggle-input"
+						checked={ !! checked }
+						disabled={ !! disabled }
+						onChange={ ( e ) => onChange( e.target.checked ) }
+					/>
+					<span className="neural-forms-settings__toggle-track" aria-hidden="true">
+						<span className="neural-forms-settings__toggle-thumb" />
+					</span>
+				</label>
+				{ hint && <p className="neural-forms-settings__hint">{ hint }</p> }
+			</div>
+		</div>
+	);
+}
+
+function TextInput( props ) {
+	return <input className="neural-forms-settings__input" { ...props } />;
+}
+
+function Textarea( props ) {
+	return <textarea className="neural-forms-settings__textarea" { ...props } />;
+}
+
+function Select( props ) {
+	return <select className="neural-forms-settings__select" { ...props } />;
+}
+
+function ApiKeyInput( { isSet, value, onChange, placeholder } ) {
+	return (
+		<div className="neural-forms-settings__api-key-wrap">
+			<input
+				type="password"
+				className="neural-forms-settings__input"
+				value={ value }
+				onChange={ ( e ) => onChange( e.target.value ) }
+				placeholder={ isSet ? '••••••••••••••••' : ( placeholder || '' ) }
+			/>
+			{ isSet && (
+				<span className="neural-forms-settings__api-key-badge">
+					{ __( 'SET', 'neural-forms-lite' ) }
+				</span>
+			) }
+		</div>
+	);
+}
+
+function ProLockCard( { title, description, upgradeUrl } ) {
+	return (
+		<div className="neural-forms-settings__pro-card">
+			<span className="neural-forms-settings__pro-icon" aria-hidden="true">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+					<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+				</svg>
+			</span>
+			<div className="neural-forms-settings__pro-body">
+				<h3 className="neural-forms-settings__pro-title">{ title }</h3>
+				<p className="neural-forms-settings__pro-desc">{ description }</p>
+				<a
+					className="neural-forms-settings__pro-cta"
+					href={ upgradeUrl || 'https://neuralforms.ai/pricing' }
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{ __( 'Upgrade to unlock', 'neural-forms-lite' ) }
+				</a>
+			</div>
+		</div>
+	);
+}
+
+function ConnectionStatusPill( { connected, name } ) {
+	if ( connected ) {
+		return (
+			<span className="neural-forms-settings__status-pill neural-forms-settings__status-pill--ok">
+				✓ { name
+					? __( 'Connected — ', 'neural-forms-lite' ) + name
+					: __( 'Connected', 'neural-forms-lite' ) }
+			</span>
+		);
+	}
+	return (
+		<span className="neural-forms-settings__status-pill neural-forms-settings__status-pill--idle">
+			{ __( 'Not connected', 'neural-forms-lite' ) }
+		</span>
+	);
+}
+
+function PlanBalanceCard( { plan, credits } ) {
+	return (
+		<div className="neural-forms-settings__plan-card">
+			<div className="neural-forms-settings__plan-row">
+				<span className="neural-forms-settings__plan-label">
+					{ __( 'Plan', 'neural-forms-lite' ) }
+				</span>
+				<span className="neural-forms-settings__plan-value">
+					{ plan || __( '—', 'neural-forms-lite' ) }
+				</span>
+			</div>
+			<div className="neural-forms-settings__plan-row">
+				<span className="neural-forms-settings__plan-label">
+					{ __( 'Available credits', 'neural-forms-lite' ) }
+				</span>
+				<span className="neural-forms-settings__plan-value neural-forms-settings__plan-value--credits">
+					{ Number.isFinite( credits ) ? credits.toLocaleString() : '—' }
+				</span>
+			</div>
+		</div>
+	);
+}
+
+// ─── Pro-owned UI slot mount ─────────────────────────────────────
+// Per CLAUDE.md the site-profile / spam-settings panels are Pro
+// features. Lite must NEVER render them or call their Pro REST
+// endpoints. Lite only mounts named slot regions; Pro's admin
+// bundle fills them via the cross-bundle slot registry exposed
+// on `window.neuralForms.slots`.
+//
+// On this split-bundle Settings screen Pro's admin bundle is not
+// yet loaded (ProAdmin enqueues against `neural-forms-admin`,
+// which this screen does not register). The mount points still
+// ship now so the wiring is in place once Pro adds a coordinated
+// dep on `neural-forms-settings` — the actual Pro UIs will appear
+// there with no further changes to Lite.
+
+function ProSlot( { name, fillProps } ) {
+	const slots = ( typeof window !== 'undefined' && window.neuralForms?.slots ) || null;
+	const [ , bump ] = useState( 0 );
+
+	useEffect( () => {
+		if ( ! slots || typeof slots.__subscribe !== 'function' ) return undefined;
+		return slots.__subscribe( () => bump( ( v ) => v + 1 ) );
+	}, [ slots ] );
+
+	if ( ! slots || typeof slots.__getFills !== 'function' ) return null;
+	const renders = slots.__getFills( name );
+	if ( renders.length === 0 ) return null;
+	const props = fillProps || {};
+	return (
+		<>
+			{ renders.map( ( render, i ) => (
+				<Fragment key={ i }>
+					{ typeof render === 'function' ? render( props ) : render }
+				</Fragment>
+			) ) }
+		</>
+	);
+}
+
+// Pro fills expect compatible UI primitives in their fillProps.
+// `Toggle` is the bare iOS-style switch (not the labeled row);
+// `ProField` is the same row layout as <Field> but accepts the
+// `htmlFor` prop the rich bundle's primitive exposes.
+
+function Toggle( { id, checked, onChange, disabled, ...rest } ) {
+	return (
+		<label className={
+			'neural-forms-settings__toggle'
+			+ ( checked ? ' neural-forms-settings__toggle--on' : '' )
+			+ ( disabled ? ' neural-forms-settings__toggle--disabled' : '' )
+		}>
+			<input
+				type="checkbox"
+				id={ id }
+				className="neural-forms-settings__toggle-input"
+				checked={ !! checked }
+				disabled={ !! disabled }
+				onChange={ ( e ) => onChange && onChange( e.target.checked ) }
+				{ ...rest }
+			/>
+			<span className="neural-forms-settings__toggle-track" aria-hidden="true">
+				<span className="neural-forms-settings__toggle-thumb" />
+			</span>
+		</label>
+	);
+}
+
+function ProField( { label, htmlFor, children } ) {
+	return (
+		<div className="neural-forms-settings__field">
+			<label className="neural-forms-settings__label" htmlFor={ htmlFor }>{ label }</label>
+			<div className="neural-forms-settings__control">{ children }</div>
+		</div>
+	);
+}
+
+// ─── Section: Neural Forms Cloud AI ──────────────────────────────
+
+function CloudAiSection( {
+	form, set,
+	cloudKey, setCloudKey,
+	caps,
+	onTestConnection, onRevokeConnection, connectionState,
+	onProcessQueue, queueState,
+} ) {
+	const cloudPlan = form?.cloud_plan || {};
+	const planLabel  = cloudPlan?.plan?.label || cloudPlan?.plan?.name || '';
+	const credits    = Number( cloudPlan?.balance?.credits ?? cloudPlan?.balance?.available ?? NaN );
+	const subStatus  = String( cloudPlan?.subscription?.status || '' );
+	const connected  = !! ( form.cloud_api_key_set && subStatus === 'active' );
+	const workspace  = String( cloudPlan?.workspace?.name || cloudPlan?.user?.name || '' );
+
+	const hasBusinessAnalysis = !! caps.ai_reanalyze;
+	const hasSpamDetect       = !! caps.ai_spam_detect;
+
+	return (
+		<Section
+			title={ __( 'Neural Forms Cloud AI', 'neural-forms-lite' ) }
+			description={ __( 'Connect to Neural Forms Cloud to enable AI-powered entry analysis, suggested replies, and spam detection.', 'neural-forms-lite' ) }
+		>
+			<Field
+				label={ __( 'API Key', 'neural-forms-lite' ) }
+				hint={ form.cloud_api_key_set
+					? __( 'Your key is stored securely and never displayed. Leave blank to keep the current key.', 'neural-forms-lite' )
+					: __( 'Paste your Neural Forms Cloud API key.', 'neural-forms-lite' ) }
+			>
+				<ApiKeyInput
+					isSet={ !! form.cloud_api_key_set }
+					value={ cloudKey }
+					onChange={ setCloudKey }
+				/>
+			</Field>
+
+			<Field label={ __( 'Connection', 'neural-forms-lite' ) }>
+				<div className="neural-forms-settings__connection-row">
+					<button
+						type="button"
+						className="neural-forms-settings__btn"
+						onClick={ onTestConnection }
+						disabled={ connectionState.testing }
+					>
+						{ connectionState.testing
+							? __( 'Testing…', 'neural-forms-lite' )
+							: __( 'Test Connection', 'neural-forms-lite' ) }
+					</button>
+					{ form.cloud_api_key_set && (
+						<button
+							type="button"
+							className="neural-forms-settings__btn neural-forms-settings__btn--danger"
+							onClick={ onRevokeConnection }
+							disabled={ connectionState.revoking }
+						>
+							{ connectionState.revoking
+								? __( 'Revoking…', 'neural-forms-lite' )
+								: __( 'Revoke Connection', 'neural-forms-lite' ) }
+						</button>
+					) }
+				</div>
+				<ConnectionStatusPill connected={ connected } name={ workspace } />
+				{ connectionState.message && (
+					<p className={
+						'neural-forms-settings__hint'
+						+ ( connectionState.error
+							? ' neural-forms-settings__hint--error'
+							: ' neural-forms-settings__hint--ok' )
+					}>
+						{ connectionState.message }
+					</p>
+				) }
+			</Field>
+
+			{ form.cloud_api_key_set && (
+				<Field label={ __( 'Plan & Balance', 'neural-forms-lite' ) }>
+					<PlanBalanceCard plan={ planLabel } credits={ credits } />
+				</Field>
+			) }
+
+			{ hasBusinessAnalysis ? (
+				<ProSlot
+					name="SettingsSiteProfile"
+					fillProps={ {
+						Field: ProField,
+						cloudAiEnabled: !! form.cloud_ai_enabled,
+					} }
+				/>
+			) : (
+				<div className="neural-forms-settings__pro-row">
+					<ProLockCard
+						title={ __( 'Business-aware analysis is a Pro feature', 'neural-forms-lite' ) }
+						description={ __( 'Neural Forms Pro classifies your site once a month so off-topic submissions are automatically scored lower and sorted out of your main inbox.', 'neural-forms-lite' ) }
+						upgradeUrl={ cloudPlan?.upgrade_url }
+					/>
+				</div>
+			) }
+
+			<ToggleField
+				label={ __( 'Enable AI', 'neural-forms-lite' ) }
+				checked={ form.cloud_ai_enabled }
+				onChange={ ( v ) => set( { cloud_ai_enabled: v } ) }
+			/>
+
+			<ToggleField
+				label={ __( 'Auto-process entries', 'neural-forms-lite' ) }
+				hint={ __( 'Automatically analyse new submissions when they arrive.', 'neural-forms-lite' ) }
+				checked={ form.ai_auto_process }
+				onChange={ ( v ) => set( { ai_auto_process: v } ) }
+			/>
+
+			<Field
+				label={ __( 'Process queue', 'neural-forms-lite' ) }
+				hint={ __( 'Trigger an immediate AI queue run. Useful on local/dev where WP-Cron may not fire automatically.', 'neural-forms-lite' ) }
+			>
+				<div className="neural-forms-settings__queue-row">
+					<button
+						type="button"
+						className="neural-forms-settings__btn"
+						onClick={ onProcessQueue }
+						disabled={ queueState.running }
+					>
+						{ queueState.running
+							? __( 'Processing…', 'neural-forms-lite' )
+							: __( 'Process AI Queue Now', 'neural-forms-lite' ) }
+					</button>
+					{ queueState.message && (
+						<span className={
+							'neural-forms-settings__queue-msg'
+							+ ( queueState.error
+								? ' neural-forms-settings__queue-msg--error'
+								: ' neural-forms-settings__queue-msg--ok' )
+						}>
+							{ queueState.message }
+						</span>
+					) }
+				</div>
+			</Field>
+
+			{ hasSpamDetect ? (
+				<ProSlot
+					name="SettingsSpamPanel"
+					fillProps={ {
+						form,
+						set,
+						aiEnabled: !! form.cloud_ai_enabled,
+						setSettingsNotice: () => {},
+						Toggle,
+						Field: ProField,
+						requestUpgrade: () => {
+							const url = cloudPlan?.upgrade_url || 'https://neuralforms.ai/pricing';
+							window.open( url, '_blank', 'noopener' );
+						},
+						balance: cloudPlan?.balance || { credits: 0 },
+					} }
+				/>
+			) : (
+				<div className="neural-forms-settings__pro-row">
+					<ProLockCard
+						title={ __( 'Spam detection is a Pro feature', 'neural-forms-lite' ) }
+						description={ __( 'Automatically classify submissions as spam and move high-confidence matches to the Spam folder.', 'neural-forms-lite' ) }
+						upgradeUrl={ cloudPlan?.upgrade_url }
+					/>
+				</div>
+			) }
+		</Section>
+	);
+}
+
+// ─── Section: Email Settings ─────────────────────────────────────
+
+function EmailSettingsSection( {
+	form, set,
+	onSendTestEmail, testEmail, setTestEmail, testEmailState,
+} ) {
+	return (
+		<Section
+			title={ __( 'Email Settings', 'neural-forms-lite' ) }
+			description={ __( 'Control how outgoing emails appear to recipients.', 'neural-forms-lite' ) }
+		>
+			<Field
+				label={ __( 'Sender name', 'neural-forms-lite' ) }
+				hint={ __( "Displayed as the 'From' name. Leave blank to use your site name.", 'neural-forms-lite' ) }
+			>
+				<TextInput
+					type="text"
+					value={ form.sender_name || '' }
+					onChange={ ( e ) => set( { sender_name: e.target.value } ) }
+				/>
+			</Field>
+
+			<Field
+				label={ __( 'Sender email', 'neural-forms-lite' ) }
+				hint={ __( "Displayed as the 'From' address. Leave blank to use the WordPress admin email.", 'neural-forms-lite' ) }
+			>
+				<TextInput
+					type="email"
+					value={ form.sender_email || '' }
+					onChange={ ( e ) => set( { sender_email: e.target.value } ) }
+				/>
+			</Field>
+
+			<Field label={ __( 'Default reply subject', 'neural-forms-lite' ) }>
+				<TextInput
+					type="text"
+					value={ form.reply_subject_pattern || '' }
+					onChange={ ( e ) => set( { reply_subject_pattern: e.target.value } ) }
+				/>
+			</Field>
+
+			<div className="neural-forms-settings__notice neural-forms-settings__notice--info">
+				{ __( "Neural Forms sends email via WordPress's built-in", 'neural-forms-lite' ) }
+				{ ' ' }
+				<code>wp_mail()</code>
+				{ '. ' }
+				{ __( 'To use a custom SMTP server or transactional email service, install a mail plugin such as WP Mail SMTP.', 'neural-forms-lite' ) }
+			</div>
+
+			<Field label={ __( 'Send test email', 'neural-forms-lite' ) }>
+				<div className="neural-forms-settings__test-email-wrap">
+					<TextInput
+						type="email"
+						value={ testEmail }
+						onChange={ ( e ) => setTestEmail( e.target.value ) }
+						placeholder={ form.admin_notification_email || form.sender_email || '' }
+					/>
+				</div>
+				<button
+					type="button"
+					className="neural-forms-settings__btn neural-forms-settings__btn--secondary"
+					onClick={ onSendTestEmail }
+					disabled={ testEmailState.sending }
+				>
+					{ testEmailState.sending
+						? __( 'Sending…', 'neural-forms-lite' )
+						: __( 'Send test email', 'neural-forms-lite' ) }
+				</button>
+				{ testEmailState.message && (
+					<p className={
+						'neural-forms-settings__hint'
+						+ ( testEmailState.error
+							? ' neural-forms-settings__hint--error'
+							: ' neural-forms-settings__hint--ok' )
+					}>
+						{ testEmailState.message }
+					</p>
+				) }
+				<p className="neural-forms-settings__hint">
+					{ __( 'Sends a test message using the sender settings above. Useful for verifying your mail configuration.', 'neural-forms-lite' ) }
+				</p>
+			</Field>
+		</Section>
+	);
+}
+
+// ─── Section: Notifications ──────────────────────────────────────
+
+function NotificationsSection( { form, set } ) {
+	return (
+		<Section
+			title={ __( 'Notifications', 'neural-forms-lite' ) }
+			description={ __( 'Control which emails are sent automatically when a form is submitted.', 'neural-forms-lite' ) }
+		>
+			<ToggleField
+				label={ __( 'Admin notification', 'neural-forms-lite' ) }
+				hint={ __( 'Send an email to the admin whenever a new submission arrives.', 'neural-forms-lite' ) }
+				checked={ form.enable_admin_notification }
+				onChange={ ( v ) => set( { enable_admin_notification: v } ) }
+			/>
+
+			<Field
+				label={ __( 'Notify address', 'neural-forms-lite' ) }
+				hint={ __( 'Leave blank to use the WordPress admin email.', 'neural-forms-lite' ) }
+			>
+				<TextInput
+					type="email"
+					value={ form.admin_notification_email || '' }
+					onChange={ ( e ) => set( { admin_notification_email: e.target.value } ) }
+				/>
+			</Field>
+
+			<ToggleField
+				label={ __( 'Autoresponder', 'neural-forms-lite' ) }
+				hint={ __( 'Send a confirmation email to the submitter when their entry contains an email address.', 'neural-forms-lite' ) }
+				checked={ form.enable_autoresponder }
+				onChange={ ( v ) => set( { enable_autoresponder: v } ) }
+			/>
+
+			{ form.enable_autoresponder && (
+				<>
+					<Field label={ __( 'Subject', 'neural-forms-lite' ) }>
+						<TextInput
+							type="text"
+							value={ form.autoresponder_subject || '' }
+							onChange={ ( e ) => set( { autoresponder_subject: e.target.value } ) }
+						/>
+					</Field>
+					<Field
+						label={ __( 'Message body', 'neural-forms-lite' ) }
+						hint={ __( 'Available tokens: {site_name}, {form_name}, and any field ID wrapped in {curly braces}.', 'neural-forms-lite' ) }
+					>
+						<Textarea
+							rows={ 5 }
+							value={ form.autoresponder_body || '' }
+							onChange={ ( e ) => set( { autoresponder_body: e.target.value } ) }
+						/>
+					</Field>
+				</>
+			) }
+		</Section>
+	);
+}
+
+// ─── Section: CAPTCHA ────────────────────────────────────────────
+
+function CaptchaSection( { form, set, captchaSecretKey, setCaptchaSecretKey } ) {
+	const provider = form.captcha_provider || 'none';
+	return (
+		<Section
+			title={ __( 'CAPTCHA', 'neural-forms-lite' ) }
+			description={ __( 'Add a CAPTCHA challenge to individual forms to reduce spam submissions.', 'neural-forms-lite' ) }
+		>
+			<Field label={ __( 'Provider', 'neural-forms-lite' ) }>
+				<Select
+					value={ provider }
+					onChange={ ( e ) => set( { captcha_provider: e.target.value } ) }
+				>
+					{ CAPTCHA_PROVIDERS.map( ( p ) => (
+						<option key={ p.value } value={ p.value }>{ p.label }</option>
+					) ) }
+				</Select>
+			</Field>
+
+			{ provider !== 'none' && (
+				<>
+					<Field label={ __( 'Site key', 'neural-forms-lite' ) }>
+						<TextInput
+							type="text"
+							value={ form.captcha_site_key || '' }
+							onChange={ ( e ) => set( { captcha_site_key: e.target.value } ) }
+						/>
+					</Field>
+					<Field
+						label={ __( 'Secret key', 'neural-forms-lite' ) }
+						hint={ form.captcha_secret_key_set
+							? __( 'Currently set. Leave blank to keep.', 'neural-forms-lite' )
+							: undefined }
+					>
+						<ApiKeyInput
+							isSet={ !! form.captcha_secret_key_set }
+							value={ captchaSecretKey }
+							onChange={ setCaptchaSecretKey }
+						/>
+					</Field>
+				</>
+			) }
+		</Section>
+	);
+}
+
+// ─── Section: General & Privacy ──────────────────────────────────
+
+function GeneralPrivacySection( { form, set } ) {
+	return (
+		<Section title={ __( 'General & Privacy', 'neural-forms-lite' ) }>
+			<ToggleField
+				label={ __( 'Privacy mode', 'neural-forms-lite' ) }
+				hint={ __( 'When enabled, Neural Forms will not store IP addresses or user-agent strings with form submissions.', 'neural-forms-lite' ) }
+				checked={ form.privacy_mode }
+				onChange={ ( v ) => set( { privacy_mode: v } ) }
+			/>
+
+			{ !! form.cloud_ai_enabled && (
+				<div className="neural-forms-settings__notice neural-forms-settings__notice--warn">
+					<strong>{ __( 'AI & Privacy:', 'neural-forms-lite' ) }</strong>
+					{ ' ' }
+					{ __( 'When AI is on, submission content is sent to Neural Forms Cloud for processing. Ensure this aligns with your privacy policy and any applicable data regulations (e.g. GDPR).', 'neural-forms-lite' ) }
+				</div>
+			) }
+		</Section>
+	);
+}
+
+// ─── Screen ──────────────────────────────────────────────────────
 
 export default function Settings() {
 	const [ initial, setInitial ] = useState( null );
@@ -38,10 +661,21 @@ export default function Settings() {
 	const [ saving,  setSaving  ] = useState( false );
 	const [ saved,   setSaved   ] = useState( false );
 
-	// Write-only key inputs - tracked separately so an empty value means
-	// "leave existing key in place" rather than "blank out the key".
-	const [ cloudKey,        setCloudKey        ] = useState( '' );
+	// Write-only key inputs.
+	const [ cloudKey,         setCloudKey         ] = useState( '' );
 	const [ captchaSecretKey, setCaptchaSecretKey ] = useState( '' );
+
+	// Per-action state for the rich Cloud AI panel + test email.
+	const [ connectionState, setConnectionState ] = useState( { testing: false, revoking: false, message: '', error: false } );
+	const [ queueState,      setQueueState      ] = useState( { running: false, message: '', error: false } );
+	const [ testEmail,       setTestEmail       ] = useState( '' );
+	const [ testEmailState,  setTestEmailState  ] = useState( { sending: false, message: '', error: false } );
+
+	// Plugin-level capability snapshot — see AdminPanel::script_data().
+	// Pro flips these via the `neural_forms_can_*` filters, so when Pro
+	// is installed every cap is `true` and the lock cards are hidden.
+	const caps = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.plugin?.capabilities )
+		|| {};
 
 	useEffect( () => {
 		let cancelled = false;
@@ -61,10 +695,20 @@ export default function Settings() {
 	}, [] );
 
 	if ( loading ) {
-		return <div className="neural-forms-screen"><p>{ __( 'Loading settings...', 'neural-forms-lite' ) }</p></div>;
+		return (
+			<div className="neural-forms-settings">
+				<div className="neural-forms-settings__loading">
+					{ __( 'Loading settings…', 'neural-forms-lite' ) }
+				</div>
+			</div>
+		);
 	}
-	if ( error ) {
-		return <div className="neural-forms-screen neural-forms-screen--error">{ error }</div>;
+	if ( error && ! form ) {
+		return (
+			<div className="neural-forms-settings">
+				<div className="neural-forms-settings__loading">{ error }</div>
+			</div>
+		);
 	}
 	if ( ! form ) return null;
 
@@ -73,17 +717,13 @@ export default function Settings() {
 		setSaved( false );
 	};
 
+	// ── Save flow (diff PATCH) ─────────────────────────────────
 	const save = () => {
 		setSaving( true );
 		setError( '' );
 
-		// Build a diff: only send keys whose value actually changed. The
-		// endpoint already does a per-key partial update, but sending only
-		// changed keys keeps log noise low and makes intent explicit.
 		const diff = {};
 		for ( const k of Object.keys( form ) ) {
-			// Never echo write-only flags (the *_set / cloud_signup_complete
-			// fields the GET response derives) or read-only nested objects.
 			if ( k.endsWith( '_set' ) || k === 'cloud_plan' || k === 'cloud_signup_complete' ) continue;
 			if ( JSON.stringify( form[ k ] ) !== JSON.stringify( initial[ k ] ) ) {
 				diff[ k ] = form[ k ];
@@ -95,7 +735,7 @@ export default function Settings() {
 		if ( Object.keys( diff ).length === 0 ) {
 			setSaving( false );
 			setSaved( true );
-			setTimeout( () => setSaved( false ), 1500 );
+			setTimeout( () => setSaved( false ), 1800 );
 			return;
 		}
 
@@ -107,7 +747,7 @@ export default function Settings() {
 				setCaptchaSecretKey( '' );
 				setSaving( false );
 				setSaved( true );
-				setTimeout( () => setSaved( false ), 1500 );
+				setTimeout( () => setSaved( false ), 1800 );
 			} )
 			.catch( ( err ) => {
 				setSaving( false );
@@ -115,167 +755,158 @@ export default function Settings() {
 			} );
 	};
 
+	// ── Cloud connection actions ────────────────────────────────
+	const onTestConnection = () => {
+		setConnectionState( { testing: true, revoking: false, message: '', error: false } );
+		const payload = cloudKey.trim() !== '' ? { api_key: cloudKey.trim() } : {};
+		api( '/settings/test-connection', { method: 'POST', data: payload } )
+			.then( ( res ) => {
+				// Refresh the local form so cloud_plan / cloud_api_key_set
+				// reflect the test outcome.
+				api( '/settings' ).then( ( settings ) => {
+					setInitial( settings );
+					setForm( settings );
+				} );
+				setConnectionState( {
+					testing: false, revoking: false, error: false,
+					message: res?.workspace_name
+						? __( 'Connected to ', 'neural-forms-lite' ) + res.workspace_name
+						: __( 'Connection successful.', 'neural-forms-lite' ),
+				} );
+			} )
+			.catch( ( err ) => {
+				setConnectionState( {
+					testing: false, revoking: false, error: true,
+					message: err?.message || __( 'Connection failed.', 'neural-forms-lite' ),
+				} );
+			} );
+	};
+
+	const onRevokeConnection = () => {
+		if ( ! window.confirm( __( 'Revoke the saved Cloud API key? AI features will stop working until a new key is connected.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setConnectionState( { testing: false, revoking: true, message: '', error: false } );
+		api( '/settings/revoke-connection', { method: 'POST' } )
+			.then( () => {
+				api( '/settings' ).then( ( settings ) => {
+					setInitial( settings );
+					setForm( settings );
+					setCloudKey( '' );
+				} );
+				setConnectionState( {
+					testing: false, revoking: false, error: false,
+					message: __( 'Connection revoked.', 'neural-forms-lite' ),
+				} );
+			} )
+			.catch( ( err ) => {
+				setConnectionState( {
+					testing: false, revoking: false, error: true,
+					message: err?.message || __( 'Revoke failed.', 'neural-forms-lite' ),
+				} );
+			} );
+	};
+
+	// ── Process AI queue ────────────────────────────────────────
+	const onProcessQueue = () => {
+		setQueueState( { running: true, message: '', error: false } );
+		api( '/ai/process-queue', { method: 'POST' } )
+			.then( ( res ) => {
+				const processed = Number( res?.processed ?? 0 );
+				setQueueState( {
+					running: false, error: false,
+					message: processed > 0
+						? __( 'Processed ', 'neural-forms-lite' ) + processed + __( ' job(s).', 'neural-forms-lite' )
+						: __( 'Queue is empty.', 'neural-forms-lite' ),
+				} );
+			} )
+			.catch( ( err ) => {
+				setQueueState( {
+					running: false, error: true,
+					message: err?.message || __( 'Queue run failed.', 'neural-forms-lite' ),
+				} );
+			} );
+	};
+
+	// ── Send test email ────────────────────────────────────────
+	const onSendTestEmail = () => {
+		setTestEmailState( { sending: true, message: '', error: false } );
+		const payload = testEmail.trim() !== '' ? { to: testEmail.trim() } : {};
+		api( '/settings/test-email', { method: 'POST', data: payload } )
+			.then( ( res ) => {
+				setTestEmailState( {
+					sending: false, error: false,
+					message: res?.sent
+						? __( 'Test email sent.', 'neural-forms-lite' )
+						: __( 'Test email queued.', 'neural-forms-lite' ),
+				} );
+			} )
+			.catch( ( err ) => {
+				setTestEmailState( {
+					sending: false, error: true,
+					message: err?.message || __( 'Test email failed.', 'neural-forms-lite' ),
+				} );
+			} );
+	};
+
 	return (
-		<div className="neural-forms-screen nf-settings">
-			<header className="neural-forms-screen__header">
-				<h1>{ __( 'Settings', 'neural-forms-lite' ) }</h1>
-				<div className="nf-settings__actions">
-					{ saved && <span className="nf-settings__saved">{ __( 'Saved', 'neural-forms-lite' ) }</span> }
-					<button
-						type="button"
-						className="neural-forms-btn neural-forms-btn--primary"
-						onClick={ save }
-						disabled={ saving }
-					>
-						{ saving ? __( 'Saving...', 'neural-forms-lite' ) : __( 'Save changes', 'neural-forms-lite' ) }
-					</button>
-				</div>
-			</header>
+		<div className="neural-forms-settings">
+			<CloudAiSection
+				form={ form }
+				set={ set }
+				cloudKey={ cloudKey }
+				setCloudKey={ setCloudKey }
+				caps={ caps }
+				onTestConnection={ onTestConnection }
+				onRevokeConnection={ onRevokeConnection }
+				connectionState={ connectionState }
+				onProcessQueue={ onProcessQueue }
+				queueState={ queueState }
+			/>
 
-			<section className="nf-settings__section">
-				<h2>{ __( 'Notifications', 'neural-forms-lite' ) }</h2>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.enable_admin_notification }
-						onChange={ ( e ) => set( { enable_admin_notification: e.target.checked } ) } />
-					<span>{ __( 'Send admin notification on submission', 'neural-forms-lite' ) }</span>
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Notification email', 'neural-forms-lite' ) }</span>
-					<input type="email" value={ form.admin_notification_email || '' }
-						onChange={ ( e ) => set( { admin_notification_email: e.target.value } ) }
-						placeholder={ __( 'Falls back to WP admin email when blank.', 'neural-forms-lite' ) } />
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Sender name', 'neural-forms-lite' ) }</span>
-					<input type="text" value={ form.sender_name || '' }
-						onChange={ ( e ) => set( { sender_name: e.target.value } ) } />
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Sender email', 'neural-forms-lite' ) }</span>
-					<input type="email" value={ form.sender_email || '' }
-						onChange={ ( e ) => set( { sender_email: e.target.value } ) } />
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Reply subject pattern', 'neural-forms-lite' ) }</span>
-					<input type="text" value={ form.reply_subject_pattern || '' }
-						onChange={ ( e ) => set( { reply_subject_pattern: e.target.value } ) } />
-				</label>
-			</section>
+			<EmailSettingsSection
+				form={ form }
+				set={ set }
+				onSendTestEmail={ onSendTestEmail }
+				testEmail={ testEmail }
+				setTestEmail={ setTestEmail }
+				testEmailState={ testEmailState }
+			/>
 
-			<section className="nf-settings__section">
-				<h2>{ __( 'Autoresponder', 'neural-forms-lite' ) }</h2>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.enable_autoresponder }
-						onChange={ ( e ) => set( { enable_autoresponder: e.target.checked } ) } />
-					<span>{ __( 'Send a thank-you email to the submitter', 'neural-forms-lite' ) }</span>
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Subject', 'neural-forms-lite' ) }</span>
-					<input type="text" value={ form.autoresponder_subject || '' }
-						onChange={ ( e ) => set( { autoresponder_subject: e.target.value } ) } />
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Body', 'neural-forms-lite' ) }</span>
-					<textarea rows={ 4 } value={ form.autoresponder_body || '' }
-						onChange={ ( e ) => set( { autoresponder_body: e.target.value } ) } />
-				</label>
-			</section>
+			<NotificationsSection form={ form } set={ set } />
 
-			<section className="nf-settings__section">
-				<h2>{ __( 'CAPTCHA', 'neural-forms-lite' ) }</h2>
-				<label className="nf-settings__field">
-					<span>{ __( 'Provider', 'neural-forms-lite' ) }</span>
-					<select value={ form.captcha_provider || 'none' }
-						onChange={ ( e ) => set( { captcha_provider: e.target.value } ) }>
-						{ CAPTCHA_PROVIDERS.map( ( p ) => (
-							<option key={ p.value } value={ p.value }>{ p.label }</option>
-						) ) }
-					</select>
-				</label>
-				{ form.captcha_provider !== 'none' && (
-					<>
-						<label className="nf-settings__field">
-							<span>{ __( 'Site key', 'neural-forms-lite' ) }</span>
-							<input type="text" value={ form.captcha_site_key || '' }
-								onChange={ ( e ) => set( { captcha_site_key: e.target.value } ) } />
-						</label>
-						<label className="nf-settings__field">
-							<span>
-								{ __( 'Secret key', 'neural-forms-lite' ) }
-								{ form.captcha_secret_key_set && (
-									<em className="nf-settings__hint">{ __( ' (currently set - leave blank to keep)', 'neural-forms-lite' ) }</em>
-								) }
-							</span>
-							<input type="password" value={ captchaSecretKey }
-								onChange={ ( e ) => setCaptchaSecretKey( e.target.value ) }
-								placeholder={ form.captcha_secret_key_set ? '••••••••' : '' } />
-						</label>
-					</>
-				) }
-			</section>
+			<CaptchaSection
+				form={ form }
+				set={ set }
+				captchaSecretKey={ captchaSecretKey }
+				setCaptchaSecretKey={ setCaptchaSecretKey }
+			/>
 
-			<section className="nf-settings__section">
-				<h2>{ __( 'Neural Forms Cloud (AI)', 'neural-forms-lite' ) }</h2>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.cloud_ai_enabled }
-						onChange={ ( e ) => set( { cloud_ai_enabled: e.target.checked } ) } />
-					<span>{ __( 'Enable Cloud AI', 'neural-forms-lite' ) }</span>
-				</label>
-				<label className="nf-settings__field">
-					<span>
-						{ __( 'API key', 'neural-forms-lite' ) }
-						{ form.cloud_api_key_set && (
-							<em className="nf-settings__hint">{ __( ' (currently set - leave blank to keep)', 'neural-forms-lite' ) }</em>
-						) }
+			<GeneralPrivacySection form={ form } set={ set } />
+
+			{ /* Bottom-right save bar (matches the live UI's placement) */ }
+			<div className="neural-forms-settings__save-bar">
+				{ error && (
+					<span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--error">
+						{ error }
 					</span>
-					<input type="password" value={ cloudKey }
-						onChange={ ( e ) => setCloudKey( e.target.value ) }
-						placeholder={ form.cloud_api_key_set ? '••••••••' : '' } />
-				</label>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.ai_auto_process }
-						onChange={ ( e ) => set( { ai_auto_process: e.target.checked } ) } />
-					<span>{ __( 'Auto-process AI analysis on submission', 'neural-forms-lite' ) }</span>
-				</label>
-			</section>
-
-			<section className="nf-settings__section">
-				<h2>{ __( 'Spam detection', 'neural-forms-lite' ) }</h2>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.ai_spam_enabled }
-						onChange={ ( e ) => set( { ai_spam_enabled: e.target.checked } ) } />
-					<span>{ __( 'Use AI to detect spam submissions', 'neural-forms-lite' ) }</span>
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Mode', 'neural-forms-lite' ) }</span>
-					<select value={ form.ai_spam_mode || 'suggest' }
-						onChange={ ( e ) => set( { ai_spam_mode: e.target.value } ) }>
-						{ SPAM_MODES.map( ( m ) => (
-							<option key={ m.value } value={ m.value }>{ m.label }</option>
-						) ) }
-					</select>
-				</label>
-				<label className="nf-settings__field">
-					<span>{ __( 'Confidence threshold', 'neural-forms-lite' ) } ({ form.ai_spam_threshold ?? 85 })</span>
-					<input type="range" min="60" max="100" step="1"
-						value={ form.ai_spam_threshold ?? 85 }
-						onChange={ ( e ) => set( { ai_spam_threshold: parseInt( e.target.value, 10 ) } ) } />
-				</label>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.email_skip_spam_notifications }
-						onChange={ ( e ) => set( { email_skip_spam_notifications: e.target.checked } ) } />
-					<span>{ __( 'Skip admin emails for spam-flagged entries', 'neural-forms-lite' ) }</span>
-				</label>
-			</section>
-
-			<section className="nf-settings__section">
-				<h2>{ __( 'Privacy', 'neural-forms-lite' ) }</h2>
-				<label className="nf-settings__field nf-settings__field--inline">
-					<input type="checkbox" checked={ !! form.privacy_mode }
-						onChange={ ( e ) => set( { privacy_mode: e.target.checked } ) } />
-					<span>{ __( 'Privacy mode: skip storing IP and User-Agent on submissions', 'neural-forms-lite' ) }</span>
-				</label>
-			</section>
+				) }
+				<button
+					type="button"
+					className={
+						'neural-forms-settings__save-btn'
+						+ ( saved ? ' neural-forms-settings__save-btn--saved' : '' )
+					}
+					onClick={ save }
+					disabled={ saving }
+				>
+					{ saved
+						? __( 'Saved', 'neural-forms-lite' )
+						: ( saving
+							? __( 'Saving…', 'neural-forms-lite' )
+							: __( 'Save changes', 'neural-forms-lite' ) ) }
+				</button>
+			</div>
 		</div>
 	);
 }

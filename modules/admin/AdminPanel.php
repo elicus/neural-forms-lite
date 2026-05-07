@@ -479,9 +479,58 @@ class AdminPanel {
             $forms_split_enqueued = true;  // gate the default index.* path below
         }
 
+        // Settings screen split (Phase 3 of refactor/remove-protected-
+        // admin-bundle): when on ?page=neural-forms-settings AND
+        // build/settings.js exists, enqueue the per-screen settings
+        // bundle INSTEAD of build/index.js. Same pattern as forms +
+        // stats above — handle name is reused so wp_add_inline_*
+        // attachments and any future Settings-screen injectors keep
+        // working.
+        if (
+            ! $forms_split_enqueued
+            && self::get_current_screen() === 'settings'
+            && file_exists( $build_dir . 'settings.js' )
+        ) {
+            $asset_file = $build_dir . 'settings.asset.php';
+            $asset      = file_exists( $asset_file )
+                ? require $asset_file
+                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+
+            if ( ! is_array( $asset ) ) {
+                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+            }
+            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
+            $bust    = (string) filemtime( $build_dir . 'settings.js' );
+            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+            wp_enqueue_script(
+                'neural-forms-admin',  // shared handle so wp_add_inline_*
+                                       // attaches; no clash with other screens
+                                       // because each request enqueues only one
+                                       // bundle.
+                $build_url . 'settings.js',
+                $deps,
+                $version,
+                true
+            );
+
+            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+            if ( file_exists( $build_dir . 'settings.css' ) ) {
+                wp_enqueue_style(
+                    'neural-forms-admin',
+                    $build_url . 'settings.css',
+                    [ 'wp-components' ],
+                    (string) filemtime( $build_dir . 'settings.css' )
+                );
+            }
+
+            $forms_split_enqueued = true;  // gate the default index.* path below
+        }
+
         // Default path: rich 1.0.0 admin bundle (Entries inbox,
-        // Settings, Import — and any screen whose per-screen bundle
-        // above hasn't fired). Other screens migrate to their own
+        // Import — and any screen whose per-screen bundle above
+        // hasn't fired). Other screens migrate to their own
         // per-screen bundles in later phases of
         // refactor/remove-protected-admin-bundle.
         //
