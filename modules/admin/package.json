@@ -6,9 +6,7 @@
   "license": "GPL-2.0-or-later",
   "author": "Elicus",
   "scripts": {
-    "build": "node -e \"console.error('ERROR: Do not run npm run build for Neural Forms admin. Full admin source parity is not restored. Use npm run build:builder instead.'); process.exit(1);\"",
-    "build:full:unsafe": "wp-scripts build --webpack-src-dir=src --output-path=build",
-    "start": "wp-scripts start --webpack-src-dir=src --output-path=build",
+    "build": "npm run build:builder && npm run build:results && npm run build:blocks-extra && npm run build:forms && npm run build:entries && npm run build:settings && npm run build:stats && npm run build:import && npm run build:block",
     "build:builder": "wp-scripts build --config webpack.split.config.js --env screen=builder",
     "build:results": "wp-scripts build --config webpack.split.config.js --env screen=results",
     "build:blocks-extra": "wp-scripts build --config webpack.split.config.js --env screen=blocks-extra",
@@ -17,7 +15,7 @@
     "build:settings": "wp-scripts build --config webpack.split.config.js --env screen=settings",
     "build:stats": "wp-scripts build --config webpack.split.config.js --env screen=stats",
     "build:import": "wp-scripts build --config webpack.split.config.js --env screen=import",
-    "build:admin-shell": "wp-scripts build --config webpack.split.config.js --env screen=admin-shell",
+    "build:block": "wp-scripts build --config webpack.split.config.js --env screen=block",
     "lint:js": "wp-scripts lint-js src",
     "lint:css": "wp-scripts lint-style \"src/**/*.css\"",
     "format": "wp-scripts format src"

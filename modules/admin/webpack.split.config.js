@@ -69,8 +69,11 @@ const SCREENS = {
 	// `/migration/cf7/*` REST endpoints. Same enqueue pattern as the
 	// other split bundles — its handle aliases `neural-forms-admin`.
 	import:        'src/import-entry.js',
-	// Future screens (do NOT enable until their source is restored):
-	//   'admin-shell': 'src/admin-shell-entry.js',
+	// Gutenberg form-rendering block — registered via block.json,
+	// enqueued by frontend/BlockHandler.php as build/block.js.
+	// Carved out of the legacy `wp-scripts build` flow so the block
+	// stays rebuildable now that the protected admin bundle is gone.
+	block:         'src/block-index.js',
 };
 
 module.exports = ( env = {} ) => {
