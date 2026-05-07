@@ -1,0 +1,57 @@
+# Files / folders excluded from the wp.org distribution archive.
+# WordPress Plugin Check Tool also reads this file to scope its scans
+# to the files that actually ship — so the dev-only scaffolding here
+# does not generate noise in the review report.
+#
+# Keep this aligned with the zip-build exclusions in our local
+# packaging script.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+.github
+.distignore
+.editorconfig
+.DS_Store
+
+# IDE / editor
+.idea
+.vscode
+*.swp
+*.swo
+
+# Dev dependencies
+node_modules
+modules/admin/node_modules
+
+# Tests (PHPUnit-style + smoke harness)
+tests
+phpunit.xml
+phpunit.xml.dist
+
+# Build / static-analysis configs
+phpcs.xml
+phpcs.xml.dist
+phpstan.neon
+phpstan.neon.dist
+composer.json
+composer.lock
+package.json
+package-lock.json
+yarn.lock
+modules/admin/package.json
+modules/admin/package-lock.json
+modules/admin/webpack.config.js
+modules/admin/webpack.split.config.js
+modules/admin/.eslintrc
+modules/admin/.eslintrc.json
+modules/admin/.babelrc
+
+# Docs (architecture / contributor-facing only — not for end users)
+CLAUDE.md
+docs
+
+# Local zip artifacts
+*.zip
+*.log

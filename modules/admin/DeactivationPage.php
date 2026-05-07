@@ -264,6 +264,12 @@ class DeactivationPage {
 	public static function maybe_render_notice(): void {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 
+		// GET params here are read-only routing flags for which static
+		// admin notice to render. They don't mutate state, drive any DB
+		// write, or change permissions — the only producer is our own
+		// deactivation handler's redirect. Values are sanitize_key()-
+		// validated below; output is esc_html__()-escaped.
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
 		if ( $screen && $screen->id === 'plugins' && isset( $_GET['neural_forms_deactivated'] ) ) {
 			$state = sanitize_key( wp_unslash( $_GET['neural_forms_deactivated'] ) );
 			if ( $state === 'kept' ) {
@@ -282,5 +288,6 @@ class DeactivationPage {
 				. esc_html__( 'Please tick the confirmation checkbox before choosing to delete data on uninstall.', 'neural-forms-lite' )
 				. '</p></div>';
 		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 	}
 }

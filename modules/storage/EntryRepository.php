@@ -289,7 +289,12 @@ class EntryRepository {
 				// with a literal false predicate.
 				$scope_clause .= ' AND 0 = 1';
 			} else {
+				// `$placeholders` is a method-internal string of `%d`
+				// tokens; the values flow through prepare's variadic
+				// args. PCP's "UnfinishedPrepare" sniff doesn't model
+				// fragment-style clause builders.
 				$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 				$scope_clause .= $wpdb->prepare( " AND form_id IN ({$placeholders})", ...$ids );
 			}
 		}
@@ -300,6 +305,7 @@ class EntryRepository {
 			) ) );
 			if ( ! empty( $exclude ) ) {
 				$placeholders = implode( ', ', array_fill( 0, count( $exclude ), '%d' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 				$scope_clause .= $wpdb->prepare( " AND form_id NOT IN ({$placeholders})", ...$exclude );
 			}
 		}

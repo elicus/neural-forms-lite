@@ -248,6 +248,12 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 					(int) $code,
 					$category !== null ? esc_html( $category ) : null,
 					esc_html( $action ),
+					// $usage is a structured data array (credits_used,
+					// credits_remaining, credits_deducted) stored as a
+					// property for callers to read programmatically — not
+					// for direct output. The exception class never echoes
+					// it. phpcs can't see across the constructor boundary.
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 					$usage
 				);
 			}

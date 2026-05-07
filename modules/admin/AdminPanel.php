@@ -1376,13 +1376,16 @@ CSS;
                 'creating'     => __( 'Creating draft...',           'neural-forms-lite' ),
                 'createDraft'  => __( 'Create draft and edit',       'neural-forms-lite' ),
                 'editPrompt'   => __( 'Edit prompt',                 'neural-forms-lite' ),
+                /* translators: %d is the number of form fields the AI just generated, e.g. "12 fields generated". */
                 'fieldsCount'  => __( '%d fields generated',         'neural-forms-lite' ),
                 'genericError' => __( 'AI generation failed. Please try again.', 'neural-forms-lite' ),
                 'createError'  => __( 'Could not create the form. Please try again.', 'neural-forms-lite' ),
                 'safetyBlock'  => __( 'AI skipped this prompt because it appears unsafe.', 'neural-forms-lite' ),
                 'safetyDown'   => __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' ),
                 'noCharge'     => __( 'No credits were deducted.',   'neural-forms-lite' ),
+                /* translators: %s is the number of credits this AI call consumed, e.g. "0.30 credits used". */
                 'creditsUsed'  => __( '%s credits used',             'neural-forms-lite' ),
+                /* translators: %s is the number of credits remaining on the plan after the call, e.g. "· 1,993.70 remaining". */
                 'creditsLeft'  => __( '· %s remaining',              'neural-forms-lite' ),
             ],
         ] );
