@@ -628,10 +628,61 @@ class EntryRepository {
 			ARRAY_A
 		);
 
+		// Enrich each row with `has_reply` (1 when at least one outgoing
+		// message has been sent for this entry). A single small lookup
+		// against the messages table — kept out of the main SELECT so the
+		// row-level join cardinality stays clean and the prepare argument
+		// order doesn't get tangled. Used by the list UI to flip the
+		// status pill from "Read" to "Replied".
+		if ( $rows ) {
+			$entry_ids = array_map( static fn( $r ) => (int) $r['id'], $rows );
+			$replied   = self::entry_ids_with_outgoing_message( $entry_ids );
+			foreach ( $rows as &$r ) {
+				$r['has_reply'] = isset( $replied[ (int) $r['id'] ] ) ? 1 : 0;
+			}
+			unset( $r );
+		}
+
 		return [
 			'items' => array_map( [ self::class, 'decode' ], $rows ?: [] ),
 			'total' => $total,
 		];
+	}
+
+	/**
+	 * Return a set (id => true) of entry IDs that have at least one
+	 * outgoing message in the messages table. Cheaper than EXISTS()
+	 * subqueries in the main SELECT — single round-trip, no join
+	 * cardinality concerns.
+	 *
+	 * @param int[] $entry_ids
+	 * @return array<int,bool>
+	 */
+	private static function entry_ids_with_outgoing_message( array $entry_ids ): array {
+		global $wpdb;
+
+		$entry_ids = array_filter( array_map( 'intval', $entry_ids ), static fn( $id ) => $id > 0 );
+		if ( ! $entry_ids ) {
+			return [];
+		}
+
+		$messages_table = $wpdb->prefix . 'neural_forms_entry_messages';
+		$placeholders   = implode( ',', array_fill( 0, count( $entry_ids ), '%d' ) );
+		$args           = array_merge( [ $messages_table ], $entry_ids );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT entry_id FROM %i WHERE type = 'outgoing' AND entry_id IN ({$placeholders})",
+				...$args
+			)
+		);
+
+		$set = [];
+		foreach ( (array) $ids as $id ) {
+			$set[ (int) $id ] = true;
+		}
+		return $set;
 	}
 
 	// Export
@@ -871,6 +922,12 @@ class EntryRepository {
 		$row['ai_spam_confidence']   = isset( $row['ai_spam_confidence'] )   ? (int) $row['ai_spam_confidence']   : 0;
 		$row['ai_spam_reason']       = isset( $row['ai_spam_reason'] )       ? (string) $row['ai_spam_reason']    : '';
 		$row['ai_auto_spam_applied'] = isset( $row['ai_auto_spam_applied'] ) ? (int) $row['ai_auto_spam_applied'] : 0;
+
+		// has_reply is computed by list() via an EXISTS() subquery against
+		// the messages table. MySQL returns "1"/"0" strings; normalise to int
+		// so the JS can use a single truthy check. Absent on get() — there's
+		// a separate path that loads the full message thread for detail view.
+		$row['has_reply'] = isset( $row['has_reply'] ) ? (int) $row['has_reply'] : 0;
 
 		// form_name is present when called from list() (LEFT JOIN).
 		// Absent when called from get() (no JOIN) - normalise to null either way

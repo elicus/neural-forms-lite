@@ -77,12 +77,24 @@
 	margin-bottom: 24px;
 }
 
+.neural-forms-forms-list__copy {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
 .neural-forms-forms-list__title {
 	color: var( --f-gray-900 );
 	font-size: 22px;
 	font-weight: 600;
 	line-height: 1.3;
 	margin: 0;
+}
+
+.neural-forms-forms-list__subtitle {
+	color: var( --f-gray-500 );
+	font-size: 13px;
+	line-height: 1.5;
+	margin: 6px 0 0;
 }
 
 .neural-forms-forms-list__new-btn {

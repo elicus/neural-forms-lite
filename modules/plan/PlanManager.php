@@ -234,6 +234,54 @@ class PlanManager {
 		Config::set( 'cloud_plan', [] );
 	}
 
+	/**
+	 * True when the cached credit balance is at or below zero AND the cache
+	 * has been populated at least once (`fetched_at > 0`). Used as a local
+	 * pre-flight guard so the plugin doesn't burn cloud round-trips on calls
+	 * we already know will be rejected — the cloud is still the source of
+	 * truth and will hard-enforce via `quota_exceeded`.
+	 *
+	 * Fail-open before any sync (`fetched_at = 0`) so a fresh install whose
+	 * /v1/auth/me hasn't run yet doesn't get false-positive blocked.
+	 */
+	public static function is_credits_exhausted(): bool {
+		$plan = self::get_plan();
+		$fetched = (int) ( $plan['fetched_at'] ?? 0 );
+		if ( $fetched === 0 ) {
+			return false;
+		}
+		$credits = (float) ( $plan['balance']['credits'] ?? 0 );
+		return $credits <= 0.0;
+	}
+
+	/**
+	 * Update the cached `balance.credits` from a cloud-side usage payload.
+	 *
+	 * Every successful AI response carries:
+	 *   {
+	 *     "usage": {
+	 *       "credits_deducted":  bool,
+	 *       "credits_used":      float,
+	 *       "credits_remaining": float
+	 *     }
+	 *   }
+	 *
+	 * The plugin must not invent its own deduction math; we only mirror the
+	 * cloud's authoritative `credits_remaining` into the local cache so the
+	 * UI (Settings credits widget, pre-flight guard) stays in sync without
+	 * a round-trip to /v1/auth/me. No-op when the usage block is missing
+	 * or `credits_deducted` is false (e.g. SafetyGate refusal).
+	 */
+	public static function apply_usage( array $usage ): void {
+		if ( empty( $usage ) ) return;
+		if ( ! ( $usage['credits_deducted'] ?? false ) ) return;
+		if ( ! array_key_exists( 'credits_remaining', $usage ) ) return;
+
+		$plan = self::get_plan();
+		$plan['balance']['credits'] = max( 0.0, (float) $usage['credits_remaining'] );
+		Config::set( 'cloud_plan', $plan );
+	}
+
 	// Normalization
 
 	private static function normalize_response( array $body ): array {

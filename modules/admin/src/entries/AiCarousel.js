@@ -23,7 +23,7 @@
  *   busy          number | null — id of draft currently being finalized
  */
 
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useRef } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { KIND_ANALYZE, KIND_REANALYZE, KIND_REGENERATE, KIND_POLISH } from './constants';
 import { formatDate } from './helpers';
@@ -40,7 +40,15 @@ function bodyForKind( draft ) {
 	return draft.reply_draft || '';
 }
 
-export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
+export default function AiCarousel( {
+	drafts,
+	selectedId,
+	onFinalize,
+	busy,
+	generating,
+	generatingLabel,
+	freshKey,
+} ) {
 	const list = Array.isArray( drafts ) ? drafts : [];
 	const [ index, setIndex ] = useState( 0 );
 
@@ -50,6 +58,17 @@ export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
 		setIndex( Math.max( 0, list.length - 1 ) );
 	}, [ list.length ] );
 
+	// 2.5s mint pulse whenever freshKey bumps (regenerate or polish).
+	// First render is skipped so opening an entry doesn't fake-pulse.
+	const [ isFresh, setIsFresh ] = useState( false );
+	const firstRef = useRef( true );
+	useEffect( () => {
+		if ( firstRef.current ) { firstRef.current = false; return; }
+		setIsFresh( true );
+		const t = setTimeout( () => setIsFresh( false ), 2500 );
+		return () => clearTimeout( t );
+	}, [ freshKey ] );
+
 	if ( list.length === 0 ) return null;
 
 	const safeIndex = Math.min( index, list.length - 1 );
@@ -58,8 +77,20 @@ export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
 
 	const isSelected = selectedId === draft.id;
 
+	const sectionClass = 'neural-forms-entry-detail__ai-carousel'
+		+ ( generating ? ' is-loading' : '' )
+		+ ( isFresh && ! generating ? ' is-just-generated' : '' );
+
 	return (
-		<section className="neural-forms-entry-detail__ai-carousel">
+		<section className={ sectionClass }>
+			{ generating && (
+				<div className="neural-forms-entry-detail__ai-loading-overlay neural-forms-entry-detail__ai-loading-overlay--mint" role="status" aria-live="polite">
+					<span className="neural-forms-entry-detail__ai-loading-spinner" aria-hidden="true"></span>
+					<span className="neural-forms-entry-detail__ai-loading-label">
+						{ generatingLabel || __( 'Generating…', 'neural-forms-lite' ) }
+					</span>
+				</div>
+			) }
 			<header className="neural-forms-entry-detail__ai-carousel-header">
 				<h4 className="neural-forms-entry-detail__ai-carousel-kind">{ __( 'AI drafts', 'neural-forms-lite' ) }</h4>
 				<div className="neural-forms-entry-detail__ai-carousel-nav">
@@ -126,11 +157,11 @@ export default function AiCarousel( { drafts, selectedId, onFinalize, busy } ) {
 					type="button"
 					className="neural-forms-entries-btn neural-forms-entries-btn--primary"
 					onClick={ () => onFinalize( draft.id ) }
-					disabled={ isSelected || busy === draft.id }
+					disabled={ busy === draft.id }
 				>
 					{ busy === draft.id
 						? __( 'Applying...', 'neural-forms-lite' )
-						: ( isSelected ? __( 'In use', 'neural-forms-lite' ) : __( 'Use this draft', 'neural-forms-lite' ) )
+						: __( 'Use this draft', 'neural-forms-lite' )
 					}
 				</button>
 			</footer>

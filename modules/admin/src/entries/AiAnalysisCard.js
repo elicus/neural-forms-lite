@@ -23,6 +23,7 @@
  *   error          string — shown inline below the card
  */
 
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { ProSlot } from '../slot-registry';
 
@@ -33,9 +34,21 @@ const TIER_LABEL = {
 	premium:  'Premium',
 };
 
+const PRO_UPGRADE_URL = 'https://neuralforms.ai/pricing';
+
 function tierLabel( t ) {
 	const k = String( t || 'fast' ).toLowerCase();
 	return TIER_LABEL[ k ] || k;
+}
+
+function LockIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+			strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<rect x="4" y="11" width="16" height="10" rx="2" />
+			<path d="M8 11V8a4 4 0 0 1 8 0v3" />
+		</svg>
+	);
 }
 
 export default function AiAnalysisCard( {
@@ -44,9 +57,22 @@ export default function AiAnalysisCard( {
 	onReanalyze,
 	onRegenerate,
 	reanalyzing,
+	regenerating,
+	freshKey,
 	error,
 } ) {
 	if ( ! entry ) return null;
+
+	// Run a 2.5s "just analyzed" navy pulse whenever freshKey bumps.
+	// Skips the very first render so we don't pulse on entry open.
+	const [ isFresh, setIsFresh ] = useState( false );
+	const firstRef = useRef( true );
+	useEffect( () => {
+		if ( firstRef.current ) { firstRef.current = false; return; }
+		setIsFresh( true );
+		const t = setTimeout( () => setIsFresh( false ), 2500 );
+		return () => clearTimeout( t );
+	}, [ freshKey ] );
 
 	const summary    = entry.ai_summary  || '';
 	const category   = entry.ai_category || '';
@@ -61,9 +87,22 @@ export default function AiAnalysisCard( {
 	const hasAnalysis = !! ( summary || category || priority || score != null );
 
 	const canReanalyze = !! capabilities?.ai_reanalyze;
+	const [ showUpsell, setShowUpsell ] = useState( false );
+
+	const cardClass = 'neural-forms-entry-detail__ai-card'
+		+ ( reanalyzing ? ' is-loading' : '' )
+		+ ( isFresh && ! reanalyzing ? ' is-just-analyzed' : '' );
 
 	return (
-		<section className="neural-forms-entry-detail__ai-card">
+		<section className={ cardClass }>
+			{ reanalyzing && (
+				<div className="neural-forms-entry-detail__ai-loading-overlay" role="status" aria-live="polite">
+					<span className="neural-forms-entry-detail__ai-loading-spinner" aria-hidden="true"></span>
+					<span className="neural-forms-entry-detail__ai-loading-label">
+						{ __( 'Reanalyzing entry…', 'neural-forms-lite' ) }
+					</span>
+				</div>
+			) }
 			<header className="neural-forms-entry-detail__ai-card-header">
 				<h4 className="neural-forms-entry-detail__ai-card-title">{ __( 'AI Analysis', 'neural-forms-lite' ) }</h4>
 				<div className="neural-forms-entry-detail__ai-badges">
@@ -140,16 +179,68 @@ export default function AiAnalysisCard( {
 						} }
 					/>
 				) : (
+					<>
+						<button
+							type="button"
+							className="neural-forms-entry-detail__ai-rerun-btn"
+							onClick={ () => setShowUpsell( true ) }
+							aria-label={ __( 'Re-analyze with AI (Pro feature)', 'neural-forms-lite' ) }
+						>
+							<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
+								<LockIcon />
+							</span>
+							{ hasAnalysis
+								? __( 'Re-analyze with AI', 'neural-forms-lite' )
+								: __( 'Analyze with AI', 'neural-forms-lite' ) }
+						</button>
+						<button
+							type="button"
+							className="neural-forms-entry-detail__ai-rerun-btn"
+							onClick={ () => setShowUpsell( true ) }
+							aria-label={ __( 'Generate reply (Pro feature)', 'neural-forms-lite' ) }
+						>
+							<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
+								<LockIcon />
+							</span>
+							{ entry.ai_reply_draft
+								? __( 'Regenerate reply', 'neural-forms-lite' )
+								: __( 'Generate reply', 'neural-forms-lite' ) }
+						</button>
+					</>
+				) }
+			</footer>
+
+			{ ! canReanalyze && showUpsell && (
+				<aside className="neural-forms-entries-pro-notice" role="status">
+					<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
+						<LockIcon />
+					</span>
+					<div className="neural-forms-entries-pro-notice__body">
+						<p className="neural-forms-entries-pro-notice__title">
+							{ __( 'Upgrade to Pro to use AI', 'neural-forms-lite' ) }
+						</p>
+						<p className="neural-forms-entries-pro-notice__desc">
+							{ __( 'Re-analyze and generate replies are part of Neural Forms Pro.', 'neural-forms-lite' ) }
+						</p>
+					</div>
 					<a
-						className="neural-forms-entries-upsell-link"
-						href="https://neuralforms.ai/pro/"
+						className="neural-forms-entries-pro-notice__cta"
+						href={ PRO_UPGRADE_URL }
 						target="_blank"
 						rel="noreferrer"
 					>
-						{ __( 'Reanalyze (Pro)', 'neural-forms-lite' ) }
+						{ __( 'View pricing', 'neural-forms-lite' ) }
 					</a>
-				) }
-			</footer>
+					<button
+						type="button"
+						className="neural-forms-entries-pro-notice__close"
+						onClick={ () => setShowUpsell( false ) }
+						aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }
+					>
+						<span aria-hidden="true">×</span>
+					</button>
+				</aside>
+			) }
 		</section>
 	);
 }

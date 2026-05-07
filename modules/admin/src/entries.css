@@ -70,24 +70,55 @@
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
-	max-width: 1280px;
 	padding: 8px 4px 24px;
 }
 
+/* Hero card — mirrors the shared admin page-hero look used on
+ * Stats / Forms / Settings / Import / Analytics. White card with
+ * brand-navy title, slate-gray subtitle, soft shadow. The list-only
+ * controls (Export / sort / search) sit on the right via flex
+ * space-between; on narrow widths they wrap below. */
 .neural-forms-entries-header {
 	align-items: center;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 18px;
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.06 );
+	box-sizing: border-box;
 	display: flex;
 	flex-wrap: wrap;
-	gap: 16px;
+	gap: 24px;
 	justify-content: space-between;
+	margin-bottom: 8px;
+	padding: 24px 28px;
+}
+
+.neural-forms-entries-header-copy {
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
 .neural-forms-entries-title {
-	color: var( --f-gray-900 );
+	color: var( --f-blue-600 );
 	font-size: 22px;
-	font-weight: 600;
-	line-height: 1.3;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+	line-height: 1.2;
+	margin: 0 0 6px;
+}
+
+.neural-forms-entries-subtitle {
+	color: var( --f-gray-600 );
+	font-size: 13px;
+	line-height: 1.5;
 	margin: 0;
+}
+
+@media ( max-width: 900px ) {
+	.neural-forms-entries-header {
+		flex-direction: column;
+		align-items: stretch;
+	}
 }
 
 .neural-forms-entries-controls {
@@ -147,6 +178,73 @@
 .neural-forms-entries-btn--primary:hover:not(:disabled) {
 	background: var( --f-blue-700 );
 	border-color: var( --f-blue-700 );
+}
+
+/* ── Export CSV split dropdown ─────────────────────────────────── */
+.neural-forms-entries-export {
+	position: relative;
+}
+
+.neural-forms-entries-export__trigger {
+	align-items: center;
+	display: inline-flex;
+	gap: 8px;
+}
+
+.neural-forms-entries-export__icon {
+	align-items: center;
+	color: var( --f-gray-500 );
+	display: inline-flex;
+}
+
+.neural-forms-entries-export__chevron {
+	color: var( --f-gray-400 );
+	font-size: 10px;
+	margin-left: 2px;
+}
+
+.neural-forms-entries-export--open .neural-forms-entries-export__trigger {
+	background: var( --f-gray-50 );
+	border-color: var( --f-gray-300 );
+}
+
+.neural-forms-entries-export__menu {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-md );
+	box-shadow: var( --f-shadow-sm );
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	list-style: none;
+	margin: 4px 0 0;
+	min-width: 180px;
+	padding: 4px;
+	position: absolute;
+	right: 0;
+	top: 100%;
+	z-index: 20;
+}
+
+.neural-forms-entries-export__option {
+	background: transparent;
+	border: none;
+	border-radius: var( --f-radius-sm );
+	color: var( --f-gray-800 );
+	cursor: pointer;
+	display: block;
+	font-family: inherit;
+	font-size: 13px;
+	padding: 8px 12px;
+	text-align: left;
+	width: 100%;
+}
+
+.neural-forms-entries-export__option:hover,
+.neural-forms-entries-export__option:focus-visible {
+	background: var( --f-gray-50 );
+	color: var( --f-blue-600 );
+	outline: none;
 }
 
 .neural-forms-entries-error {
@@ -215,6 +313,36 @@
 	margin: 0 0 10px;
 	padding: 0 6px;
 	text-transform: uppercase;
+}
+
+.neural-forms-entries-sidebar__section-label--with-icon {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.neural-forms-entries-sidebar__section-icon {
+	align-items: center;
+	color: var( --f-gray-500 );
+	display: inline-flex;
+}
+
+.neural-forms-entries-sidebar__item-icon {
+	align-items: center;
+	color: var( --f-gray-400 );
+	display: inline-flex;
+	flex-shrink: 0;
+}
+
+.neural-forms-entries-sidebar__item:hover .neural-forms-entries-sidebar__item-icon,
+.neural-forms-entries-sidebar__sub-item:hover .neural-forms-entries-sidebar__item-icon,
+.neural-forms-entries-sidebar__form:hover .neural-forms-entries-sidebar__item-icon {
+	color: var( --f-gray-700 );
+}
+
+.neural-forms-entries-sidebar__item--active .neural-forms-entries-sidebar__item-icon,
+.neural-forms-entries-sidebar__sub-item--active .neural-forms-entries-sidebar__item-icon {
+	color: var( --f-blue-600 );
 }
 
 .neural-forms-entries-sidebar__list {
@@ -474,38 +602,61 @@
 	font-size: 11px;
 	font-weight: 600;
 	letter-spacing: 0.05em;
-	padding: 9px 12px;
+	padding: 14px 18px;
 	text-align: left;
 	text-transform: uppercase;
 }
 
+/* Read / unread visual hierarchy (Gmail-style):
+ *   - Read (default):    soft gray-50 tint, gray-600 text
+ *   - Unread:            white pop, bold weight, brand-navy form name
+ *   - Hover:             slightly darker gray-100
+ *   - Selected / open:   brand blue-50 (kept distinct from "read tint")
+ *
+ * Order matters — `.is-unread` is intentionally placed AFTER the
+ * default rule so its white background wins; hover/selected/open
+ * come next so they win over both. */
 .neural-forms-entries-row {
+	background: var( --f-gray-50 );
 	cursor: pointer;
 	transition: background var( --f-transition );
 }
 
-.neural-forms-entries-row:hover {
-	background: var( --f-gray-50 );
-}
-
-.neural-forms-entries-row.is-open {
-	background: var( --f-blue-50 );
-}
-
-.neural-forms-entries-row.is-selected {
-	background: var( --f-blue-50 );
-}
-
 .neural-forms-entries-row.is-unread {
+	background: #fff;
 	font-weight: 600;
 }
 
+.neural-forms-entries-row:hover {
+	background: var( --f-gray-100 );
+}
+
+.neural-forms-entries-row.is-unread:hover {
+	background: var( --f-gray-50 );
+}
+
+.neural-forms-entries-row.is-open,
+.neural-forms-entries-row.is-selected,
+.neural-forms-entries-row.is-unread.is-open,
+.neural-forms-entries-row.is-unread.is-selected {
+	background: var( --f-blue-50 );
+}
+
 .neural-forms-entries-row td {
+	background: inherit;
 	border-top: 1px solid var( --f-gray-100 );
-	color: var( --f-gray-700 );
-	font-size: 13px;
-	padding: 11px 12px;
+	color: var( --f-gray-600 );
+	font-size: 13.5px;
+	padding: 18px 18px;
 	vertical-align: middle;
+}
+
+.neural-forms-entries-row.is-unread td {
+	color: var( --f-gray-900 );
+}
+
+.neural-forms-entries-row.is-unread .neural-forms-entries-row__form {
+	color: var( --f-blue-600 );
 }
 
 .neural-forms-entries-col-check,
@@ -579,10 +730,22 @@
 
 .neural-forms-entries-pill--new      { background: var( --f-blue-50 );  color: var( --f-blue-600 ); }
 .neural-forms-entries-pill--read     { background: var( --f-gray-100 ); color: var( --f-gray-500 ); }
-.neural-forms-entries-pill--spam     { background: var( --f-red-50 );   color: var( --f-red-600 ); }
+/* Replied — brand mint accent. Light tint + dark mint text keeps it
+ * airy alongside the other pills (no border, same padding/radius). */
+.neural-forms-entries-pill--replied  { background: var( --f-green-50 );  color: #0f8f63; }
+/* Spam uses a deeper red tint than High-priority so the two don't
+ * read identically when both pills land in the same row. Same airy
+ * pill chrome — no border, same padding/radius. */
+.neural-forms-entries-pill--spam     { background: var( --f-red-200 );  color: #991b1b; }
 .neural-forms-entries-pill--trash    { background: var( --f-gray-100 ); color: var( --f-gray-500 ); }
-.neural-forms-entries-pill--high     { background: var( --f-amber-50 ); color: var( --f-amber-600 ); }
-.neural-forms-entries-pill--low      { background: var( --f-gray-100 ); color: var( --f-gray-500 ); }
+/* Priority pills — traffic-light scale, light tints (no border, same
+ * padding/radius as every other pill so the row stays airy):
+ *   Low    → gray  (recede; nothing urgent)
+ *   Medium → amber (caution; review soon)
+ *   High   → red   (urgent; action required)  */
+.neural-forms-entries-pill--low      { background: var( --f-gray-100 );  color: var( --f-gray-600 );  }
+.neural-forms-entries-pill--medium   { background: var( --f-amber-50 );  color: var( --f-amber-600 ); }
+.neural-forms-entries-pill--high     { background: var( --f-red-50 );    color: var( --f-red-600 );   }
 .neural-forms-entries-pill--neutral  { background: var( --f-gray-100 ); color: var( --f-gray-500 ); }
 .neural-forms-entries-pill--tier     { background: var( --f-blue-50 );  color: var( --f-blue-600 ); }
 
@@ -619,10 +782,19 @@
 	font-weight: 500;
 }
 
-.neural-forms-entries-detail-panel__title {
-	color: var( --f-gray-500 );
-	font-size: 12px;
-	font-variant-numeric: tabular-nums;
+.neural-forms-entries-detail-panel__actions {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.neural-forms-entries-detail-panel__action {
+	font-weight: 500;
+}
+
+.neural-forms-entries-detail-panel__action.is-starred {
+	color: var( --f-amber-600 );
 }
 
 /* ── Entry detail (right pane) ───────────────────────────────── */
@@ -656,27 +828,182 @@
 	justify-content: space-between;
 }
 
+.neural-forms-entry-detail__header--card {
+	align-items: flex-start;
+}
+
+.neural-forms-entry-detail__header-icon {
+	align-items: center;
+	background: var( --f-blue-50 );
+	border-radius: var( --f-radius-md );
+	color: var( --f-blue-600 );
+	display: flex;
+	flex: 0 0 auto;
+	height: 44px;
+	justify-content: center;
+	width: 44px;
+}
+
+.neural-forms-entry-detail__header-body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
 .neural-forms-entry-detail__title {
 	color: var( --f-gray-900 );
 	font-size: 18px;
 	font-weight: 600;
+	line-height: 1.3;
 	margin: 0 0 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .neural-forms-entry-detail__meta {
 	color: var( --f-gray-500 );
 	display: flex;
 	flex-wrap: wrap;
-	font-size: 12.5px;
+	font-size: 13px;
 	gap: 6px;
 	margin: 0;
+}
+
+.neural-forms-entry-detail__meta-id strong {
+	color: var( --f-gray-700 );
+	font-weight: 600;
+}
+
+.neural-forms-entry-detail__meta-sep {
+	color: var( --f-gray-300 );
+}
+
+.neural-forms-entry-detail__meta-ip {
+	font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+	font-size: 12.5px;
+}
+
+.neural-forms-entry-detail__source {
+	align-items: center;
+	display: flex;
+	gap: 6px;
+	margin: 8px 0 0;
+}
+
+.neural-forms-entry-detail__source-icon {
+	align-items: center;
+	color: var( --f-gray-400 );
+	display: inline-flex;
+}
+
+.neural-forms-entry-detail__source-link {
+	color: var( --f-blue-600 );
+	font-size: 13px;
+	text-decoration: none;
+	word-break: break-all;
+}
+
+.neural-forms-entry-detail__source-link:hover {
+	text-decoration: underline;
+}
+
+/* ── Detail: AI "needs reply" banner ─────────────────────────── */
+.neural-forms-entry-detail__needs-reply {
+	align-items: flex-start;
+	background: var( --f-blue-50 );
+	border: 1px solid var( --f-blue-100 );
+	border-radius: var( --f-radius-md );
+	display: flex;
+	gap: 12px;
+	padding: 14px 16px;
+	position: relative;
+}
+
+.neural-forms-entry-detail__needs-reply-icon {
+	align-items: center;
+	color: var( --f-blue-600 );
+	display: flex;
+	flex: 0 0 auto;
+	height: 24px;
+	justify-content: center;
+	width: 24px;
+}
+
+.neural-forms-entry-detail__needs-reply-body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.neural-forms-entry-detail__needs-reply-title {
+	color: var( --f-blue-600 );
+	font-size: 14px;
+	font-weight: 600;
+	margin: 0 0 8px;
+}
+
+.neural-forms-entry-detail__needs-reply-pill {
+	background: var( --f-gray-100 );
+	color: var( --f-gray-700 );
+	margin-bottom: 12px;
+}
+
+.neural-forms-entry-detail__needs-reply-actions {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.neural-forms-entry-detail__needs-reply-cta {
+	align-items: center;
+	display: inline-flex;
+	gap: 6px;
+}
+
+.neural-forms-entry-detail__needs-reply-cta-icon {
+	align-items: center;
+	display: inline-flex;
+}
+
+.neural-forms-entry-detail__needs-reply-dismiss {
+	background: transparent;
+	border: none;
+	color: var( --f-gray-500 );
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	padding: 0;
+}
+
+.neural-forms-entry-detail__needs-reply-dismiss:hover {
+	color: var( --f-gray-700 );
+	text-decoration: underline;
+}
+
+.neural-forms-entry-detail__needs-reply-close {
+	background: transparent;
+	border: none;
+	color: var( --f-gray-400 );
+	cursor: pointer;
+	font-size: 18px;
+	line-height: 1;
+	padding: 4px 6px;
+	position: absolute;
+	right: 8px;
+	top: 8px;
+}
+
+.neural-forms-entry-detail__needs-reply-close:hover {
+	color: var( --f-gray-700 );
 }
 
 /* ── Detail: AI card ─────────────────────────────────────────── */
 .neural-forms-entry-detail__ai-card,
 .neural-forms-entry-detail__ai-carousel,
 .neural-forms-entry-detail__data-card,
-.neural-forms-entry-detail__reply-card {
+.neural-forms-entry-detail__reply-card,
+.neural-forms-entry-detail__conversation {
 	background: var( --f-gray-50 );
 	border: 1px solid var( --f-gray-200 );
 	border-radius: var( --f-radius-lg );
@@ -693,7 +1020,8 @@
 
 .neural-forms-entry-detail__ai-card-title,
 .neural-forms-entry-detail__data-card-title,
-.neural-forms-entry-detail__reply-header {
+.neural-forms-entry-detail__reply-header,
+.neural-forms-entry-detail__conversation-title {
 	color: var( --f-gray-900 );
 	font-size: 13px;
 	font-weight: 600;
@@ -776,9 +1104,71 @@
 	border-top: 1px solid var( --f-gray-200 );
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	gap: 10px;
 	margin-top: 12px;
 	padding-top: 12px;
+}
+
+/* AI action buttons rendered into the EntryAiActions slot.
+ *
+ * Pro emits two `<button class="neural-forms-entry-detail__ai-rerun-btn">`
+ * elements inside `__ai-rerun-buttons`; Lite renders the same DOM as a
+ * fallback when `caps.ai_reanalyze` is false (clicks open the Pro page).
+ * The classes are the same in both cases so styling lives here, not in
+ * Pro. First button is Re-analyze (secondary look), second button is
+ * Generate reply (primary navy look) — order is fixed by the Pro fill
+ * and the Lite fallback. */
+.neural-forms-entry-detail__ai-rerun-btn,
+.neural-forms-entry-detail__polish-trigger {
+	align-items: center;
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-800 );
+	cursor: pointer;
+	display: inline-flex;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	gap: 6px;
+	line-height: 1;
+	padding: 8px 14px;
+	text-decoration: none;
+	transition: background var( --f-transition ), border-color var( --f-transition ), color var( --f-transition );
+}
+
+.neural-forms-entry-detail__ai-rerun-btn:hover:not(:disabled),
+.neural-forms-entry-detail__polish-trigger:hover:not(:disabled) {
+	background: var( --f-gray-50 );
+	border-color: var( --f-gray-300 );
+	color: var( --f-gray-900 );
+}
+
+.neural-forms-entry-detail__ai-rerun-btn:disabled,
+.neural-forms-entry-detail__polish-trigger:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+.neural-forms-entry-detail__ai-rerun-btn:focus-visible,
+.neural-forms-entry-detail__polish-trigger:focus-visible {
+	border-color: var( --f-blue-600 );
+	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.12 );
+	outline: none;
+}
+
+/* Generate / Regenerate reply — primary navy. Targets the second
+ * `__ai-rerun-btn` in the row, matching the Pro fill's button order. */
+.neural-forms-entry-detail__ai-rerun-buttons .neural-forms-entry-detail__ai-rerun-btn:nth-child(2) {
+	background: var( --f-blue-600 );
+	border-color: var( --f-blue-600 );
+	color: #fff;
+}
+
+.neural-forms-entry-detail__ai-rerun-buttons .neural-forms-entry-detail__ai-rerun-btn:nth-child(2):hover:not(:disabled) {
+	background: var( --f-blue-700 );
+	border-color: var( --f-blue-700 );
+	color: #fff;
 }
 
 /* ── Detail: AI carousel ─────────────────────────────────────── */
@@ -880,6 +1270,30 @@
 	font-weight: 500;
 }
 
+.neural-forms-entry-detail__reply-to--readonly {
+	background: var( --f-gray-50 );
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-md );
+	padding: 10px 14px;
+}
+
+.neural-forms-entry-detail__reply-to--readonly .neural-forms-entry-detail__reply-to-label {
+	color: var( --f-gray-400 );
+	flex: 0 0 auto;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.neural-forms-entry-detail__reply-to-value {
+	color: var( --f-gray-900 );
+	font-size: 13.5px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .neural-forms-entry-detail__reply-to-address,
 .neural-forms-entry-detail__reply-textarea {
 	background: #fff;
@@ -948,4 +1362,350 @@
 	.neural-forms-entries-row td:last-child {
 		padding-bottom: 12px;
 	}
+}
+
+/* ── Detail: conversation thread ─────────────────────────────── */
+.neural-forms-entry-detail__conversation-title {
+	margin-bottom: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var( --f-gray-200 );
+}
+
+.neural-forms-entry-detail__conversation-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.neural-forms-entry-detail__conversation-item {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-md );
+	padding: 12px 14px;
+}
+
+.neural-forms-entry-detail__conversation-item--outgoing {
+	background: var( --f-blue-50 );
+	border-color: var( --f-blue-100 );
+}
+
+.neural-forms-entry-detail__conversation-meta {
+	align-items: center;
+	color: var( --f-gray-500 );
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 12px;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.neural-forms-entry-detail__conversation-direction {
+	color: var( --f-gray-400 );
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.neural-forms-entry-detail__conversation-party {
+	color: var( --f-gray-700 );
+	font-weight: 500;
+}
+
+.neural-forms-entry-detail__conversation-time {
+	color: var( --f-gray-400 );
+	font-size: 12px;
+	margin-left: auto;
+}
+
+.neural-forms-entry-detail__conversation-subject {
+	color: var( --f-gray-900 );
+	font-size: 13px;
+	margin: 0 0 6px;
+}
+
+.neural-forms-entry-detail__conversation-body {
+	color: var( --f-gray-800 );
+	font-family: inherit;
+	font-size: 13.5px;
+	line-height: 1.55;
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* ── Detail: reply card header + sent confirmation ──────────── */
+.neural-forms-entry-detail__reply-card-header {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+
+.neural-forms-entry-detail__reply-sent {
+	align-items: center;
+	color: var( --f-green-600 );
+	display: flex;
+	font-size: 13.5px;
+	gap: 8px;
+	margin: 0 0 12px;
+}
+
+.neural-forms-entry-detail__reply-sent strong {
+	color: var( --f-green-600 );
+}
+
+.neural-forms-entry-detail__reply-sent-icon {
+	align-items: center;
+	display: inline-flex;
+}
+
+.neural-forms-entry-detail__reply-sent-close {
+	background: transparent;
+	border: none;
+	color: var( --f-gray-400 );
+	cursor: pointer;
+	font-size: 18px;
+	line-height: 1;
+	padding: 4px 6px;
+}
+
+.neural-forms-entry-detail__reply-sent-close:hover {
+	color: var( --f-gray-700 );
+}
+
+/* ── Pro upsell inline notice (shown after a Pro-locked click) ── */
+.neural-forms-entry-detail__ai-rerun-btn-lock,
+.neural-forms-entry-detail__polish-trigger-lock {
+	align-items: center;
+	display: inline-flex;
+	opacity: 0.75;
+}
+
+/* Pro upgrade notice — uses the brand cream + gold palette so it
+ * reads as a premium signal, distinct from the blue informational
+ * banners (e.g. "needs reply"). Lock + title stay brand navy. */
+.neural-forms-entries-pro-notice {
+	align-items: center;
+	background: #faf6ea;          /* cream — softened from brand #f4e4c1 */
+	border: 1px solid #e4c580;    /* gold — brand */
+	border-radius: var( --f-radius-md );
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-top: 12px;
+	padding: 12px 14px;
+}
+
+.neural-forms-entries-pro-notice__icon {
+	align-items: center;
+	color: var( --f-blue-600 );
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+
+.neural-forms-entries-pro-notice__body {
+	flex: 1 1 200px;
+	min-width: 0;
+}
+
+.neural-forms-entries-pro-notice__title {
+	color: var( --f-blue-600 );
+	font-size: 13.5px;
+	font-weight: 600;
+	margin: 0 0 2px;
+}
+
+.neural-forms-entries-pro-notice__desc {
+	color: var( --f-gray-600 );
+	font-size: 12.5px;
+	line-height: 1.4;
+	margin: 0;
+}
+
+.neural-forms-entries-pro-notice__cta {
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
+	border-radius: var( --f-radius-md );
+	color: #fff;
+	flex: 0 0 auto;
+	font-size: 13px;
+	font-weight: 500;
+	padding: 8px 14px;
+	text-decoration: none;
+	transition: background var( --f-transition ), border-color var( --f-transition ), box-shadow var( --f-transition );
+}
+
+.neural-forms-entries-pro-notice__cta:hover {
+	background: var( --f-blue-700 );
+	border-color: var( --f-blue-700 );
+	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.32 );  /* mint accent ring on hover */
+	color: #fff;
+}
+
+.neural-forms-entries-pro-notice__close {
+	background: transparent;
+	border: none;
+	color: var( --f-gray-500 );
+	cursor: pointer;
+	flex: 0 0 auto;
+	font-size: 18px;
+	line-height: 1;
+	padding: 4px 6px;
+}
+
+.neural-forms-entries-pro-notice__close:hover {
+	color: var( --f-gray-900 );
+}
+
+/* AI usage strip — confirmation feedback after a billable AI call.
+ * Light mint accent (brand) so it reads as a green-light, not warning.
+ * Sits inline under the relevant card; close × dismisses. */
+.neural-forms-entry-detail__ai-usage {
+	align-items: center;
+	background: var( --f-green-50 );
+	border-radius: var( --f-radius-md );
+	color: #0f8f63;
+	display: flex;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+	gap: 12px;
+	justify-content: space-between;
+	margin: 0;
+	padding: 10px 14px;
+}
+
+.neural-forms-entry-detail__ai-usage strong {
+	color: var( --f-blue-600 );
+	font-weight: 600;
+}
+
+.neural-forms-entry-detail__ai-usage-close {
+	background: transparent;
+	border: none;
+	color: var( --f-gray-500 );
+	cursor: pointer;
+	font-size: 18px;
+	line-height: 1;
+	padding: 0 4px;
+}
+
+.neural-forms-entry-detail__ai-usage-close:hover {
+	color: var( --f-gray-900 );
+}
+
+/* AI activity affordances — distinguish "reanalyze" (navy/analytical)
+ * from "generate / refine reply" (mint/generated). Each card gets two
+ * states:
+ *
+ *   .is-loading        spinner + label overlay while the cloud call is in flight
+ *   .is-just-analyzed  navy ring + soft glow for 2.5s after reanalyze success
+ *   .is-just-generated mint ring + soft glow for 2.5s after regenerate / refine success
+ *
+ * The overlay sits absolutely inside the card, so the card host needs
+ * position:relative — already present on __ai-card / __ai-carousel via
+ * their default flex/box layout (the rule below makes it explicit). */
+.neural-forms-entry-detail__ai-card,
+.neural-forms-entry-detail__ai-carousel {
+	position: relative;
+	overflow: hidden;
+	transition: box-shadow 240ms ease, border-color 240ms ease;
+}
+
+.neural-forms-entry-detail__ai-card.is-loading,
+.neural-forms-entry-detail__ai-carousel.is-loading {
+	min-height: 120px;
+}
+
+.neural-forms-entry-detail__ai-card.is-loading > *:not( .neural-forms-entry-detail__ai-loading-overlay ),
+.neural-forms-entry-detail__ai-carousel.is-loading > *:not( .neural-forms-entry-detail__ai-loading-overlay ) {
+	opacity: 0.35;
+	transition: opacity 200ms ease;
+}
+
+.neural-forms-entry-detail__ai-loading-overlay {
+	align-items: center;
+	background: rgba( 255, 255, 255, 0.78 );
+	backdrop-filter: blur( 2px );
+	bottom: 0;
+	color: var( --f-blue-600 );
+	display: flex;
+	gap: 12px;
+	justify-content: center;
+	left: 0;
+	position: absolute;
+	right: 0;
+	top: 0;
+	z-index: 5;
+	font-weight: 600;
+	font-size: 13.5px;
+	letter-spacing: 0.01em;
+}
+
+.neural-forms-entry-detail__ai-loading-overlay--mint {
+	color: #0f8f63;
+}
+
+.neural-forms-entry-detail__ai-loading-spinner {
+	width: 18px;
+	height: 18px;
+	border: 2px solid currentColor;
+	border-right-color: transparent;
+	border-radius: 50%;
+	display: inline-block;
+	animation: nfSpin 0.7s linear infinite;
+}
+
+@keyframes nfSpin {
+	to { transform: rotate( 360deg ); }
+}
+
+/* Navy "just analyzed" pulse — brand-blue ring, soft glow, fades out. */
+.neural-forms-entry-detail__ai-card.is-just-analyzed {
+	border-color: var( --f-blue-600 );
+	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.18 );
+	animation: nfPulseNavy 2500ms ease-out;
+}
+
+@keyframes nfPulseNavy {
+	0%   { box-shadow: 0 0 0 0    rgba( 8, 15, 91, 0.55 ); border-color: var( --f-blue-600 ); }
+	35%  { box-shadow: 0 0 0 14px rgba( 8, 15, 91, 0.00 ); border-color: var( --f-blue-600 ); }
+	100% { box-shadow: 0 0 0 3px  rgba( 8, 15, 91, 0.00 ); border-color: var( --f-gray-200 ); }
+}
+
+/* Mint "just generated" pulse — brand mint ring + glow. */
+.neural-forms-entry-detail__ai-carousel.is-just-generated {
+	border-color: var( --f-green-600 );
+	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.32 );
+	animation: nfPulseMint 2500ms ease-out;
+}
+
+@keyframes nfPulseMint {
+	0%   { box-shadow: 0 0 0 0    rgba( 21, 219, 149, 0.65 ); border-color: var( --f-green-600 ); }
+	35%  { box-shadow: 0 0 0 14px rgba( 21, 219, 149, 0.00 ); border-color: var( --f-green-600 ); }
+	100% { box-shadow: 0 0 0 3px  rgba( 21, 219, 149, 0.00 ); border-color: var( --f-gray-200 ); }
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.neural-forms-entry-detail__ai-loading-spinner { animation: none; }
+	.neural-forms-entry-detail__ai-card.is-just-analyzed,
+	.neural-forms-entry-detail__ai-carousel.is-just-generated,
+	.neural-forms-entry-detail__reply-textarea.is-just-generated { animation: none; }
+}
+
+/* Reply textarea — same mint family as the carousel pulse so the user
+ * recognizes "this content was just generated" wherever it lands. */
+.neural-forms-entry-detail__reply-textarea.is-loading {
+	background: var( --f-gray-50 );
+	color: var( --f-gray-500 );
+	cursor: progress;
+}
+
+.neural-forms-entry-detail__reply-textarea.is-just-generated {
+	border-color: var( --f-green-600 );
+	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.32 );
+	animation: nfPulseMint 2500ms ease-out;
 }

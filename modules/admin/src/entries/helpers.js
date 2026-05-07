@@ -103,6 +103,25 @@ export function errorMessage( err, fallback ) {
 }
 
 /**
+ * Pull the structured "credits exhausted" payload from a 402 response.
+ *
+ * Returns `{ message, upgradeUrl, balance }` when the REST error code is
+ * `credits_exhausted` (Lite/Pro pre-flight when local cache reports zero
+ * credits) — null otherwise. Callers render an inline "Buy credits" CTA
+ * pointing at upgradeUrl instead of the generic error toast.
+ */
+export function creditsExhaustedPayload( err ) {
+	if ( ! err || typeof err !== 'object' ) return null;
+	const code = err.code || err.data?.code;
+	if ( code !== 'credits_exhausted' ) return null;
+	return {
+		message:    err.message || '',
+		upgradeUrl: err.data?.upgrade_url || 'https://neuralforms.ai/pricing',
+		balance:    err.data?.balance || null,
+	};
+}
+
+/**
  * Pull the structured upgrade-modal payload from an upstream
  * CloudPlanException (feature_locked / quota_exceeded). Returns null
  * for ordinary errors so callers can fall back to a generic toast.

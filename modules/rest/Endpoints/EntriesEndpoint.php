@@ -8,6 +8,7 @@ namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Storage\EntryRepository;
 use NeuralForms\Storage\AIResponseRepository;
+use NeuralForms\Forms\FormRepository;
 use NeuralForms\AI\AIRepository;
 use NeuralForms\AI\AIQueueProcessor;
 use NeuralForms\AI\Exceptions\CloudPlanException;
@@ -353,6 +354,17 @@ class EntriesEndpoint {
 		$drafts = AIResponseRepository::list_for_entry( $id );
 		$entry['ai_responses'] = array_map( [ $this, 'shape_ai_response' ], $drafts );
 
+		// Detail UI renders the form name as the card title. EntryRepository::get()
+		// does not JOIN the forms table, so resolve the name here — one extra row
+		// fetch per detail open is cheap and removes the React-side dependency on
+		// the in-memory forms list (which may not be loaded on a deep-link visit).
+		if ( empty( $entry['form_name'] ) && ! empty( $entry['form_id'] ) ) {
+			$form = FormRepository::find( (int) $entry['form_id'] );
+			if ( $form && ! empty( $form['name'] ) ) {
+				$entry['form_name'] = (string) $form['name'];
+			}
+		}
+
 		return rest_ensure_response( $entry );
 	}
 
@@ -383,6 +395,11 @@ class EntriesEndpoint {
 		$plan_guard = $this->check_plan_feature( 'ai_reanalyze' );
 		if ( is_wp_error( $plan_guard ) ) return $plan_guard;
 
+		// Pre-flight credits guard — blocks the cloud round-trip when the
+		// cached balance is exhausted. Cloud's QuotaGuard hard-enforces too.
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) return $credits_guard;
+
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
@@ -398,7 +415,13 @@ class EntriesEndpoint {
 		// scheduled-event delay + WP-Cron pickup latency + UI poll cycle.
 		try {
 			$ai = AIQueueProcessor::run_inline_analyze( $id, (int) ( $entry['form_id'] ?? 0 ) );
-			return rest_ensure_response( [ 'entry_id' => $id, 'ai' => $ai ] );
+			return rest_ensure_response( [
+				'entry_id' => $id,
+				'ai'       => $ai,
+				// Cloud's user-facing usage block — frontend renders
+				// "Credits used: X · Remaining: Y" below the action.
+				'usage'    => AIQueueProcessor::last_inline_usage(),
+			] );
 		} catch ( CloudPlanException $e ) {
 			return new WP_Error(
 				'feature_locked',
@@ -441,6 +464,9 @@ class EntriesEndpoint {
 		$plan_guard = $this->check_plan_feature( 'ai_reply_regenerate' );
 		if ( is_wp_error( $plan_guard ) ) return $plan_guard;
 
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) return $credits_guard;
+
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
@@ -456,6 +482,7 @@ class EntriesEndpoint {
 			return rest_ensure_response( [
 				'entry_id'    => $id,
 				'reply_draft' => $reply,
+				'usage'       => AIQueueProcessor::last_inline_usage(),
 			] );
 		} catch ( CloudPlanException $e ) {
 			return new WP_Error(
@@ -501,6 +528,9 @@ class EntriesEndpoint {
 		$plan_guard = $this->check_plan_feature( 'ai_reply_polish' );
 		if ( is_wp_error( $plan_guard ) ) return $plan_guard;
 
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) return $credits_guard;
+
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
@@ -515,6 +545,9 @@ class EntriesEndpoint {
 		try {
 			$provider = \NeuralForms\AI\AiManager::resolve();
 			$result   = $provider->polish_reply( $text, $entry, $form );
+			// Mirror the cloud's authoritative `credits_remaining` into the
+			// local cache so the Settings credits widget refreshes immediately.
+			PlanManager::apply_usage( is_array( $result['usage'] ?? null ) ? $result['usage'] : [] );
 		} catch ( CloudPlanException $e ) {
 			return $this->plan_exception_to_error( $e, 'ai_reply_polish' );
 		} catch ( \Throwable $e ) {
@@ -536,7 +569,10 @@ class EntriesEndpoint {
 			'ai_provider'    => $provider->provider_id(),
 		] );
 
-		return rest_ensure_response( [ 'polished_reply' => $result['polished_reply'] ] );
+		return rest_ensure_response( [
+			'polished_reply' => $result['polished_reply'],
+			'usage'          => is_array( $result['usage'] ?? null ) ? $result['usage'] : [],
+		] );
 	}
 
 	/**
@@ -835,6 +871,32 @@ class EntriesEndpoint {
 		$data['feature'] = $feature;
 
 		return new WP_Error( $e->get_error_code(), $e->getMessage(), $data );
+	}
+
+	/**
+	 * Return WP_Error 402 when the cached cloud credit balance is at or
+	 * below zero, true otherwise. Soft pre-flight — the cloud is still the
+	 * source of truth and will hard-enforce via QuotaGuard, but checking
+	 * locally first avoids burning a network round-trip on calls we
+	 * already know will be rejected.
+	 *
+	 * Fails open if the plan cache has never been synced (`fetched_at = 0`)
+	 * so a fresh install isn't false-positive blocked.
+	 */
+	private function check_ai_credits() {
+		if ( ! PlanManager::is_credits_exhausted() ) {
+			return true;
+		}
+		$plan = PlanManager::get_plan();
+		return new WP_Error(
+			'credits_exhausted',
+			__( 'You have used all your AI credits. Buy more to continue.', 'neural-forms-lite' ),
+			[
+				'status'      => 402,
+				'balance'     => $plan['balance'],
+				'upgrade_url' => $plan['upgrade_url'] !== '' ? $plan['upgrade_url'] : PlanManager::DEFAULT_UPGRADE_URL,
+			]
+		);
 	}
 
 	/**

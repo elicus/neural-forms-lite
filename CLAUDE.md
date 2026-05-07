@@ -136,22 +136,6 @@ Tier values are persisted on `neural_forms_entries.ai_tier` (string, nullable)
 and surfaced in the entry detail UI so users can see which tier wrote a
 given analysis/reply.
 
-#### Click budget (plugin → cloud contract)
-
-To keep abuse + runaway clicks bounded, reanalyze / regenerate-reply /
-polish-reply endpoints all send `entry_id` in the POST body. The cloud
-uses `(site_id, entry_id)` as the rate-limit scope:
-
-- Window: 2 hours rolling
-- Soft limit: 5 clicks per window → subsequent clicks get tier clamped down to `balanced`
-- Cooldown: 10s between clicks (HTTP 429 + `retry_after` if violated)
-
-Implementation lives in `modules/ai/Providers/NeuralFormsCloudProvider.php`
-— both `regenerate_reply()` and `polish_reply()` now include `entry_id`
-in the POST payload. If you add a new click endpoint that consumes credits,
-you MUST send `entry_id` or it will fall back to a per-site bucket and
-share budget across every entry.
-
 #### Response carousel (AIResponseRepository)
 
 Every finalized AI response (analysis reply, regenerate, polish) writes

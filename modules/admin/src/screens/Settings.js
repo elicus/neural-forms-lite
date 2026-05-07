@@ -29,7 +29,7 @@
  * src/settings.css ships with the per-screen build/settings.* bundle.
  */
 
-import { useEffect, useState } from '@wordpress/element';
+import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import api from '../api';
 import { ProSlot } from '../slot-registry';
@@ -657,6 +657,21 @@ export default function Settings() {
 		return () => { cancelled = true; };
 	}, [] );
 
+	// Drives the header save-bar's three states (saved / dirty / saving).
+	// MUST live above the loading/error early returns so hooks fire in
+	// the same order on every render — otherwise React errors with
+	// "Rendered more hooks than during the previous render" the moment
+	// `form` flips from null to populated.
+	const isDirty = useMemo( () => {
+		if ( ! initial || ! form ) return false;
+		if ( cloudKey.trim() !== '' || captchaSecretKey.trim() !== '' ) return true;
+		for ( const k of Object.keys( form ) ) {
+			if ( k.endsWith( '_set' ) || k === 'cloud_plan' || k === 'cloud_signup_complete' ) continue;
+			if ( JSON.stringify( form[ k ] ) !== JSON.stringify( initial[ k ] ) ) return true;
+		}
+		return false;
+	}, [ form, initial, cloudKey, captchaSecretKey ] );
+
 	if ( loading ) {
 		return (
 			<div className="neural-forms-settings">
@@ -675,8 +690,19 @@ export default function Settings() {
 	}
 	if ( ! form ) return null;
 
-	const set = ( patch ) => {
-		setForm( { ...form, ...patch } );
+	// Accepts BOTH calling conventions:
+	//   set( { foo: 1, bar: 2 } )            — Lite's object-patch style
+	//   set( 'foo', 1 )                      — Pro fills' key/value style
+	// Pro's compiled bundle (e.g. SettingsSpamPanel) calls the second form,
+	// so without this adapter every change inside a Pro fill silently
+	// no-ops — that's why the Auto-move dropdown wouldn't stick and the
+	// Confidence threshold field stayed hidden.
+	const set = ( keyOrPatch, value ) => {
+		if ( keyOrPatch && typeof keyOrPatch === 'object' ) {
+			setForm( { ...form, ...keyOrPatch } );
+		} else if ( typeof keyOrPatch === 'string' ) {
+			setForm( { ...form, [ keyOrPatch ]: value } );
+		}
 		setSaved( false );
 	};
 
@@ -775,13 +801,23 @@ export default function Settings() {
 		setQueueState( { running: true, message: '', error: false } );
 		api( '/ai/process-queue', { method: 'POST' } )
 			.then( ( res ) => {
-				const processed = Number( res?.processed ?? 0 );
-				setQueueState( {
-					running: false, error: false,
-					message: processed > 0
-						? __( 'Processed ', 'neural-forms-lite' ) + processed + __( ' job(s).', 'neural-forms-lite' )
-						: __( 'Queue is empty.', 'neural-forms-lite' ),
-				} );
+				const summary = res && typeof res.summary === 'object' ? res.summary : null;
+				const jobsCharged = Number( summary?.jobs_charged ?? 0 );
+				let message;
+				if ( jobsCharged > 0 ) {
+					const used = Number( summary.credits_used ?? 0 ).toFixed( 2 );
+					const left = summary.credits_remaining != null
+						? Number( summary.credits_remaining ).toFixed( 2 )
+						: null;
+					message = jobsCharged + ' ' + __( 'job(s) processed.', 'neural-forms-lite' )
+						+ ' ' + __( 'Credits used:', 'neural-forms-lite' ) + ' ' + used;
+					if ( left !== null ) {
+						message += ' · ' + __( 'Remaining:', 'neural-forms-lite' ) + ' ' + left;
+					}
+				} else {
+					message = __( 'Queue is empty.', 'neural-forms-lite' );
+				}
+				setQueueState( { running: false, error: false, message } );
 			} )
 			.catch( ( err ) => {
 				setQueueState( {
@@ -812,8 +848,71 @@ export default function Settings() {
 			} );
 	};
 
+	const renderSaveBar = ( variant ) => {
+		// Three reactive states, same on top + bottom:
+		//   - just saved   → green "Saved! Your changes are live." + ✓ Saved pill
+		//   - dirty        → orange "Unsaved changes" + navy Save button
+		//   - saving       → "Saving…" disabled button
+		//   - idle         → ✓ Saved pill alone
+		// `variant` toggles `__save-bar--top` (compact, no flex-end pad)
+		// vs the default bottom-aligned bar.
+		const cls = 'neural-forms-settings__save-bar'
+			+ ( variant === 'top' ? ' neural-forms-settings__save-bar--top' : '' );
+		return (
+			<div className={ cls }>
+				{ saved && (
+					<span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--ok">
+						{ __( 'Saved! Your changes are live.', 'neural-forms-lite' ) }
+					</span>
+				) }
+				{ isDirty && ! saving && ! saved && (
+					<span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--dirty">
+						{ __( 'Unsaved changes', 'neural-forms-lite' ) }
+					</span>
+				) }
+				{ error && (
+					<span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--error">
+						{ error }
+					</span>
+				) }
+
+				{ ( isDirty || saving ) ? (
+					<button
+						type="button"
+						className="neural-forms-settings__save-btn"
+						onClick={ save }
+						disabled={ saving }
+					>
+						{ saving
+							? __( 'Saving…', 'neural-forms-lite' )
+							: __( 'Save settings', 'neural-forms-lite' ) }
+					</button>
+				) : (
+					<span
+						className="neural-forms-settings__save-btn neural-forms-settings__save-btn--saved"
+						aria-live="polite"
+					>
+						{ __( 'Saved', 'neural-forms-lite' ) }
+					</span>
+				) }
+			</div>
+		);
+	};
+
 	return (
 		<div className="neural-forms-settings">
+			<header className="neural-forms-settings__header">
+				<div className="neural-forms-settings__header-text">
+					<h1 className="neural-forms-settings__page-title">
+						{ __( 'Settings', 'neural-forms-lite' ) }
+					</h1>
+					<p className="neural-forms-settings__page-desc">
+						{ __( 'Configure AI, notifications, email, and privacy options for Neural Forms.', 'neural-forms-lite' ) }
+					</p>
+				</div>
+				{ renderSaveBar( 'top' ) }
+			</header>
+
 			<CloudAiSection
 				form={ form }
 				set={ set }
@@ -847,29 +946,10 @@ export default function Settings() {
 
 			<GeneralPrivacySection form={ form } set={ set } />
 
-			{ /* Bottom-right save bar (matches the live UI's placement) */ }
-			<div className="neural-forms-settings__save-bar">
-				{ error && (
-					<span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--error">
-						{ error }
-					</span>
-				) }
-				<button
-					type="button"
-					className={
-						'neural-forms-settings__save-btn'
-						+ ( saved ? ' neural-forms-settings__save-btn--saved' : '' )
-					}
-					onClick={ save }
-					disabled={ saving }
-				>
-					{ saved
-						? __( 'Saved', 'neural-forms-lite' )
-						: ( saving
-							? __( 'Saving…', 'neural-forms-lite' )
-							: __( 'Save changes', 'neural-forms-lite' ) ) }
-				</button>
-			</div>
+			{ /* Bottom-right save bar — same three states as the header so
+			     a long settings page never leaves the user scrolling back
+			     up to save. */ }
+			{ renderSaveBar( 'bottom' ) }
 		</div>
 	);
 }

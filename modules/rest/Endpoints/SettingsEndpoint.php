@@ -81,6 +81,18 @@ class SettingsEndpoint {
 	public function get_settings( WP_REST_Request $request ) {
 		$all = Config::all();
 
+		// Lazy-refresh the plan + balance snapshot from /v1/auth/me when the
+		// cached copy is older than 60s. Each AI call already mirrors the
+		// cloud's `usage.credits_remaining` into the local cache via
+		// PlanManager::apply_usage(), but a periodic round-trip catches the
+		// edge cases where:
+		//   - usage block was missing from a pre-fix cloud response
+		//   - the user topped up credits in another tab
+		//   - the plan changed (cancelled / renewed) outside this admin
+		// Soft-fail: any cloud error leaves the cached balance untouched so
+		// the Settings page still loads if the cloud is briefly unreachable.
+		$this->maybe_refresh_plan_cache();
+
 		// Derived signup-complete: sticky once the user has saved a key OR has
 		// previously revoked one. The revoke snapshot acts as a backfill marker
 		// for installs that connected before `cloud_signup_complete` existed -
@@ -124,6 +136,41 @@ class SettingsEndpoint {
 			// never hardcodes tier logic. See PlanManager for the shape.
 			'cloud_plan'             => PlanManager::public_payload(),
 		] );
+	}
+
+	/**
+	 * Lazy plan-cache refresh used at the top of get_settings(). Triggers a
+	 * /v1/auth/me round-trip when:
+	 *   - cloud is configured (api key + cloud_ai_enabled),
+	 *   - the cached plan is older than 60 seconds.
+	 *
+	 * Soft-fail by design: any exception (transport / auth / parse) is
+	 * swallowed so the Settings page still renders from the existing cache
+	 * if the cloud is briefly unreachable.
+	 */
+	private function maybe_refresh_plan_cache(): void {
+		if ( ! Config::get( 'cloud_ai_enabled' ) ) return;
+		if ( Config::get( 'cloud_api_key' ) === '' ) return;
+
+		$plan       = PlanManager::get_plan();
+		$fetched_at = (int) ( $plan['fetched_at'] ?? 0 );
+		if ( $fetched_at > 0 && ( time() - $fetched_at ) < 60 ) {
+			return;
+		}
+
+		try {
+			$provider = \NeuralForms\AI\AiManager::resolve();
+			$body     = $provider->fetch_account();
+			if ( is_array( $body ) ) {
+				PlanManager::store_from_response( $body );
+			}
+		} catch ( \Throwable $e ) {
+			Logger::file(
+				'plan_refresh',
+				'warn',
+				'Settings load: /v1/auth/me refresh failed - ' . $e->getMessage()
+			);
+		}
 	}
 
 	public function update_settings( WP_REST_Request $request ) {

@@ -39,6 +39,58 @@ class AIQueueProcessor {
 	const MAX_ATTEMPTS = 3;
 	const BATCH_SIZE   = 5;
 
+	/**
+	 * Usage block from the most recent inline AI call (run_inline_analyze
+	 * or run_inline_regenerate_reply). REST endpoints read this right after
+	 * the call to surface "Credits used: X · Remaining: Y" to the user.
+	 *
+	 * Contract — same shape the cloud emits in `usage`:
+	 *   [ 'credits_used' => float, 'credits_remaining' => float|null, 'credits_deducted' => bool ]
+	 */
+	private static array $last_inline_usage = [];
+
+	/**
+	 * Aggregated summary for the most recent run() batch. Reset at the
+	 * top of run(); accumulated as each job succeeds. ProcessQueueEndpoint
+	 * reads this so admins can see how many credits were spent draining
+	 * the queue (and what's left).
+	 */
+	private static array $last_batch_summary = [
+		'jobs_charged'      => 0,
+		'credits_used'      => 0.0,
+		'credits_remaining' => null,
+		'credits_deducted'  => false,
+	];
+
+	public static function last_inline_usage(): array {
+		return self::$last_inline_usage;
+	}
+
+	public static function last_batch_summary(): array {
+		return self::$last_batch_summary;
+	}
+
+	/**
+	 * Capture a single AI call's usage. Updates BOTH the inline snapshot
+	 * (so the next REST endpoint can read it) AND the running batch
+	 * aggregator (so process-queue can report totals). Always called after
+	 * PlanManager::apply_usage so the local credit cache stays consistent.
+	 */
+	private static function record_usage( array $usage ): void {
+		self::$last_inline_usage = $usage;
+		if ( empty( $usage ) ) return;
+		if ( ! ( $usage['credits_deducted'] ?? false ) ) return;
+
+		self::$last_batch_summary['jobs_charged']++;
+		self::$last_batch_summary['credits_used'] += (float) ( $usage['credits_used'] ?? 0 );
+		self::$last_batch_summary['credits_deducted'] = true;
+		if ( array_key_exists( 'credits_remaining', $usage ) ) {
+			self::$last_batch_summary['credits_remaining'] = $usage['credits_remaining'] === null
+				? null
+				: (float) $usage['credits_remaining'];
+		}
+	}
+
 	// Boot / schedule
 
 	public static function boot(): void {
@@ -78,6 +130,16 @@ class AIQueueProcessor {
 	// Cron worker
 
 	public static function run(): void {
+		// Reset the per-batch usage aggregator so ProcessQueueEndpoint can
+		// surface "X credits used · Y remaining" for THIS button click,
+		// independent of any prior cron tick.
+		self::$last_batch_summary = [
+			'jobs_charged'      => 0,
+			'credits_used'      => 0.0,
+			'credits_remaining' => null,
+			'credits_deducted'  => false,
+		];
+
 		// Cron fires unconditionally - these guards stop us from rotating
 		// queue rows into "running" state (and burning a provider call slot)
 		// when the user has either turned AI off or hasn't connected Cloud
@@ -96,6 +158,16 @@ class AIQueueProcessor {
 		// lets a later key entry pick up the backlog with no manual retry.
 		if ( Config::get( 'cloud_api_key' ) === '' ) {
 			Logger::file( 'ai_queue', 'info', 'Queue skipped: cloud_api_key is empty.' );
+			return;
+		}
+
+		// Hold queued jobs when the cloud credit balance is exhausted. The
+		// cloud's QuotaGuard would reject each attempt with quota_exceeded
+		// and burn an attempts counter; bailing here keeps jobs pending
+		// (they'll run on the next 5-minute tick once a top-up restores
+		// credits). Soft check — fail-open before the first /v1/auth/me sync.
+		if ( \NeuralForms\Plan\PlanManager::is_credits_exhausted() ) {
+			Logger::file( 'ai_queue', 'warn', 'Queue paused: AI credit balance is zero. Buy credits to resume processing.' );
 			return;
 		}
 
@@ -189,6 +261,9 @@ class AIQueueProcessor {
 			// normalized array ready to pass directly into AIRepository.
 			Logger::file( 'ai_queue', 'info', "Job {$job['id']}: calling provider->analyze() for entry {$entry_id}." );
 			$result = $provider->analyze( $entry, $form );
+			$usage = is_array( $result['usage'] ?? null ) ? $result['usage'] : [];
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
 			Logger::file( 'ai_queue', 'info', "Job {$job['id']}: analyze returned, saving.", [ 'category' => $result['category'] ?? '', 'priority' => $result['priority'] ?? '' ] );
 
 			// Queued jobs only originate from new-submission auto-processing
@@ -308,6 +383,9 @@ class AIQueueProcessor {
 
 			// Reply-only - never overwrites summary/category/priority/spam.
 			$result = $provider->regenerate_reply( $entry, $form );
+			$usage = is_array( $result['usage'] ?? null ) ? $result['usage'] : [];
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
 
 			$tier_used = isset( $result['tier_used'] ) ? (string) $result['tier_used'] : null;
 			AIRepository::update_reply_draft( $entry_id, (string) $result['reply_draft'], $tier_used );
@@ -632,6 +710,9 @@ class AIQueueProcessor {
 
 			Logger::file( 'ai_queue', 'info', "Inline analyze: entry {$entry_id}." );
 			$result = $provider->analyze( $entry, $form );
+			$usage = is_array( $result['usage'] ?? null ) ? $result['usage'] : [];
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
 
 			AIRepository::save_analysis( $entry_id, $result );
 
@@ -684,6 +765,9 @@ class AIQueueProcessor {
 
 			Logger::file( 'ai_queue', 'info', "Inline regenerate_reply: entry {$entry_id}." );
 			$result = $provider->regenerate_reply( $entry, $form );
+			$usage = is_array( $result['usage'] ?? null ) ? $result['usage'] : [];
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
 			$reply  = (string) ( $result['reply_draft'] ?? '' );
 			$tier_used = isset( $result['tier_used'] ) ? (string) $result['tier_used'] : null;
 

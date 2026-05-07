@@ -50,7 +50,7 @@ import EntryDetail     from './EntryDetail';
 import BulkToolbar     from './BulkToolbar';
 import useInboxKeyboard from './useInboxKeyboard';
 import { SYSTEM_VIEWS, SMART_FILTERS } from './constants';
-import { buildFieldLabels, errorMessage, planErrorPayload, safetyErrorPayload } from './helpers';
+import { buildFieldLabels, errorMessage, planErrorPayload, safetyErrorPayload, creditsExhaustedPayload } from './helpers';
 
 // Static lookup sets so URL → selection restoration is O(1) and
 // stays in sync with the sidebar's authoritative lists in constants.js.
@@ -72,6 +72,10 @@ const DEFAULT_SELECTION = {
  * everything else uses errorMessage's fallback.
  */
 function aiErrorMessage( err, fallback ) {
+	const credits = creditsExhaustedPayload( err );
+	if ( credits ) {
+		return credits.message || __( 'You have used all your AI credits. Buy more to continue.', 'neural-forms-lite' );
+	}
 	const safety = safetyErrorPayload( err );
 	if ( safety ) {
 		if ( safety.kind === 'unavailable' ) {
@@ -176,6 +180,52 @@ const VIEW_LABELS = {
 };
 const SMART_LABELS = { high_priority: 'High Priority', spam_suspected: 'Spam Suspected' };
 
+// Export date-range options. Labels are translated where rendered.
+const EXPORT_RANGES = [
+	{ id: 'all',          label: 'All time'      },
+	{ id: 'last_7_days',  label: 'Last 7 days'   },
+	{ id: 'last_30_days', label: 'Last 30 days'  },
+	{ id: 'this_month',   label: 'This month'    },
+	{ id: 'last_month',   label: 'Last month'    },
+];
+
+// Local-date YYYY-MM-DD (avoids the UTC off-by-one that toISOString gives
+// for users east of UTC).
+function ymd( d ) {
+	const y   = d.getFullYear();
+	const mo  = String( d.getMonth() + 1 ).padStart( 2, '0' );
+	const day = String( d.getDate() ).padStart( 2, '0' );
+	return `${ y }-${ mo }-${ day }`;
+}
+
+function rangeBounds( id ) {
+	const today = new Date();
+	switch ( id ) {
+		case 'last_7_days': {
+			const from = new Date( today );
+			from.setDate( from.getDate() - 6 ); // 7-day window inclusive of today
+			return { from: ymd( from ), to: ymd( today ) };
+		}
+		case 'last_30_days': {
+			const from = new Date( today );
+			from.setDate( from.getDate() - 29 );
+			return { from: ymd( from ), to: ymd( today ) };
+		}
+		case 'this_month': {
+			const from = new Date( today.getFullYear(), today.getMonth(), 1 );
+			return { from: ymd( from ), to: ymd( today ) };
+		}
+		case 'last_month': {
+			const from = new Date( today.getFullYear(), today.getMonth() - 1, 1 );
+			const to   = new Date( today.getFullYear(), today.getMonth(),     0 );
+			return { from: ymd( from ), to: ymd( to ) };
+		}
+		case 'all':
+		default:
+			return { from: '', to: '' };
+	}
+}
+
 function selectionTitle( sel, forms ) {
 	if ( ! sel ) return __( 'Inbox', 'neural-forms-lite' );
 	if ( sel.type === 'smart' ) {
@@ -218,6 +268,26 @@ export default function EntriesScreen() {
 
 	const [ exporting,    setExporting    ] = useState( false );
 	const [ exportError,  setExportError  ] = useState( '' );
+	const [ exportOpen,   setExportOpen   ] = useState( false );
+	const exportWrapRef = useRef( null );
+
+	// Close the export dropdown on outside-click and on Escape, mirroring
+	// WordPress's own admin-bar / row-actions menus.
+	useEffect( () => {
+		if ( ! exportOpen ) return undefined;
+		const onDocClick = ( ev ) => {
+			if ( exportWrapRef.current && ! exportWrapRef.current.contains( ev.target ) ) {
+				setExportOpen( false );
+			}
+		};
+		const onKey = ( ev ) => { if ( ev.key === 'Escape' ) setExportOpen( false ); };
+		document.addEventListener( 'mousedown', onDocClick );
+		document.addEventListener( 'keydown',  onKey );
+		return () => {
+			document.removeEventListener( 'mousedown', onDocClick );
+			document.removeEventListener( 'keydown',  onKey );
+		};
+	}, [ exportOpen ] );
 
 	const [ debouncedSearch, setDebouncedSearch ] = useState( '' );
 
@@ -226,6 +296,49 @@ export default function EntriesScreen() {
 	const [ composerBusy,   setComposerBusy   ] = useState( null );
 	const [ composerError,  setComposerError  ] = useState( '' );
 	const [ carouselBusy,   setCarouselBusy   ] = useState( null );
+
+	// Pro-only "out of credits" notice payload. Set when any AI call (analyze
+	// / regenerate / polish) fails with code `credits_exhausted`. Detail
+	// view renders an inline panel with a "Buy credits" CTA pointing at
+	// the cloud-supplied upgrade_url. Cleared when the user navigates to a
+	// different entry or dismisses the notice.
+	const [ creditsExhausted, setCreditsExhausted ] = useState( null );
+	useEffect( () => { setCreditsExhausted( null ); }, [ openEntryId ] );
+
+	// Last AI usage block — the cloud's `{credits_used, credits_remaining,
+	// credits_deducted}` payload from the most recent successful AI call.
+	// Surfaced inline below the action button as "Credits used: X · Remaining: Y"
+	// so users see exactly what each click cost. `lastAiUsageSource` routes
+	// the line to the right card:
+	//   'analyze' → under the AI Drafts carousel (reanalyze result)
+	//   'reply'   → under the reply composer (regenerate / refine result)
+	// so the metering sits right next to the content it just paid for.
+	const [ lastAiUsage,       setLastAiUsage       ] = useState( null );
+	const [ lastAiUsageSource, setLastAiUsageSource ] = useState( null );
+	useEffect( () => {
+		setLastAiUsage( null );
+		setLastAiUsageSource( null );
+	}, [ openEntryId ] );
+
+	// "Just updated" pulse counters. Each successful AI action bumps the
+	// matching counter; child components watch the prop and run a 2.5s
+	// highlight animation so users can see at a glance which card just
+	// changed (analysis vs. drafts) — solves the "what came from reanalyze
+	// vs. generate reply?" confusion. Brand mint for fresh drafts,
+	// brand navy for fresh analysis (per palette: navy = analytical,
+	// mint = generated content).
+	const [ analysisFreshKey, setAnalysisFreshKey ] = useState( 0 );
+	const [ draftFreshKey,    setDraftFreshKey    ] = useState( 0 );
+
+	// Bumped whenever the user picks a draft from the carousel; ReplyComposer
+	// listens to this signal and force-replaces its textarea body with the
+	// current `entry.ai_reply_draft`, overriding any local edits the user may
+	// have made. Without this, "Use this draft" is silently ignored once the
+	// user has typed in the textarea.
+	const [ replyResetSignal,    setReplyResetSignal    ] = useState( 0 );
+	// Bumped after a successful send so the conversation thread refetches
+	// /entries/{id}/messages without waiting for an entry refetch race.
+	const [ messagesRefreshSignal, setMessagesRefreshSignal ] = useState( 0 );
 
 	useEffect( () => {
 		const t = setTimeout( () => setDebouncedSearch( search.trim() ), 250 );
@@ -372,13 +485,29 @@ export default function EntriesScreen() {
 			if ( cancelled ) return;
 			setOpenEntry( res );
 			setOpenLoading( false );
+
+			// Auto-mark-read on open. Gmail-style: viewing the entry
+			// flips it to 'read' so the inbox accurately reflects what
+			// the user has and hasn't seen. Only fires when the loaded
+			// entry is still 'new' to avoid a write per refresh.
+			// Inlined here (instead of calling patchEntry) because
+			// patchEntry is declared further down and would be in TDZ
+			// if added to this effect's dep array.
+			if ( res && res.status === 'new' ) {
+				api( `/entries/${ res.id }`, { method: 'PATCH', data: { status: 'read' } } ).then( ( upd ) => {
+					if ( cancelled ) return;
+					setOpenEntry( ( prev ) => prev ? { ...prev, ...upd } : prev );
+					setEntries( ( prev ) => prev.map( ( e ) => e.id === res.id ? { ...e, ...upd } : e ) );
+					refetchCounts();
+				} ).catch( () => { /* non-critical; user can still mark read manually */ } );
+			}
 		} ).catch( ( err ) => {
 			if ( cancelled ) return;
 			setOpenError( errorMessage( err, __( 'Could not load entry.', 'neural-forms-lite' ) ) );
 			setOpenLoading( false );
 		} );
 		return () => { cancelled = true; };
-	}, [ openEntryId ] );
+	}, [ openEntryId, refetchCounts ] );
 
 	// Push entry_id onto the URL (preserving current scope's form_id /
 	// view for a shareable bookmark) and let the popstate-driven sync
@@ -439,6 +568,21 @@ export default function EntriesScreen() {
 		patchEntry( entry.id, { is_starred: next } ).catch( () => { /* surfaced via inline error */ } );
 	}, [ patchEntry ] );
 
+	// Detail-toolbar status mutations. Each returns a promise so callers
+	// can chain (e.g. "trash → close detail → return to list").
+	const setEntryStatus = useCallback(
+		( entry, status ) => patchEntry( entry.id, { status } ),
+		[ patchEntry ]
+	);
+	const markEntryRead   = useCallback( ( entry ) => setEntryStatus( entry, 'read'  ), [ setEntryStatus ] );
+	const markEntryUnread = useCallback( ( entry ) => setEntryStatus( entry, 'new'   ), [ setEntryStatus ] );
+	const markEntrySpam   = useCallback( ( entry ) => setEntryStatus( entry, 'spam'  ), [ setEntryStatus ] );
+	const markEntryTrash  = useCallback( ( entry ) => setEntryStatus( entry, 'trash' ), [ setEntryStatus ] );
+	const markEntryNeedsReply = useCallback(
+		( entry ) => patchEntry( entry.id, { needs_reply: 1 } ),
+		[ patchEntry ]
+	);
+
 	const dispatchBulk = useCallback( ( action ) => {
 		if ( selectedIds.size === 0 ) return Promise.resolve();
 		setBulkBusy( true );
@@ -467,14 +611,21 @@ export default function EntriesScreen() {
 		if ( ! openEntry ) return Promise.resolve();
 		setReanalyzing( true );
 		setReanalyzeError( '' );
-		return api( `/entries/${ openEntry.id }/reanalyze`, { method: 'POST' } ).then( () => {
+		return api( `/entries/${ openEntry.id }/reanalyze`, { method: 'POST' } ).then( ( res ) => {
 			setReanalyzing( false );
+			if ( res && res.usage ) {
+				setLastAiUsage( res.usage );
+				setLastAiUsageSource( 'analyze' );
+			}
+			setAnalysisFreshKey( ( k ) => k + 1 );
 			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
 				setOpenEntry( fresh );
 				setEntries( ( prev ) => prev.map( ( e ) => e.id === openEntry.id ? { ...e, ...fresh } : e ) );
 			} );
 		} ).catch( ( err ) => {
 			setReanalyzing( false );
+			const credits = creditsExhaustedPayload( err );
+			if ( credits ) setCreditsExhausted( credits );
 			setReanalyzeError( aiErrorMessage( err, __( 'Reanalyze failed.', 'neural-forms-lite' ) ) );
 		} );
 	}, [ openEntry ] );
@@ -485,12 +636,24 @@ export default function EntriesScreen() {
 		setComposerError( '' );
 		return api( `/entries/${ openEntry.id }/regenerate-reply`, { method: 'POST' } ).then( ( res ) => {
 			setComposerBusy( null );
+			if ( res && res.usage ) {
+				setLastAiUsage( res.usage );
+				// Generate reply lives in the AI Analysis card next to
+				// Reanalyze, so route its metering to the same slot —
+				// between the analysis card and the AI Drafts list —
+				// where the user clicked. Refine with AI keeps 'reply'
+				// because that button lives inside the reply composer.
+				setLastAiUsageSource( 'analyze' );
+			}
+			setDraftFreshKey( ( k ) => k + 1 );
 			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
 				setOpenEntry( fresh );
 				return res;
 			} );
 		} ).catch( ( err ) => {
 			setComposerBusy( null );
+			const credits = creditsExhaustedPayload( err );
+			if ( credits ) setCreditsExhausted( credits );
 			setComposerError( aiErrorMessage( err, __( 'Regenerate failed.', 'neural-forms-lite' ) ) );
 			throw err;
 		} );
@@ -502,10 +665,17 @@ export default function EntriesScreen() {
 		setComposerError( '' );
 		return api( `/entries/${ openEntry.id }/polish-reply`, { method: 'POST', data: { text } } ).then( ( res ) => {
 			setComposerBusy( null );
+			if ( res && res.usage ) {
+				setLastAiUsage( res.usage );
+				setLastAiUsageSource( 'reply' );
+			}
+			setDraftFreshKey( ( k ) => k + 1 );
 			api( `/entries/${ openEntry.id }` ).then( ( fresh ) => setOpenEntry( fresh ) ).catch( () => {} );
 			return res;
 		} ).catch( ( err ) => {
 			setComposerBusy( null );
+			const credits = creditsExhaustedPayload( err );
+			if ( credits ) setCreditsExhausted( credits );
 			setComposerError( aiErrorMessage( err, __( 'Polish failed.', 'neural-forms-lite' ) ) );
 			throw err;
 		} );
@@ -515,16 +685,22 @@ export default function EntriesScreen() {
 		if ( ! openEntry ) return Promise.reject();
 		setComposerBusy( 'send' );
 		setComposerError( '' );
-		return api( `/entries/${ openEntry.id }/reply`, { method: 'POST', data: payload } ).then( () => {
+		return api( `/entries/${ openEntry.id }/reply`, { method: 'POST', data: payload } ).then( ( res ) => {
 			setComposerBusy( null );
-			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
+			setMessagesRefreshSignal( ( s ) => s + 1 );
+			// Refetch entry to pick up needs_reply=0 / status flips. Don't
+			// block the resolved promise on it — the composer only needs
+			// the {sent, to} payload to render the success block.
+			api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
 				setOpenEntry( fresh );
 				setEntries( ( prev ) => prev.map( ( e ) => e.id === openEntry.id ? { ...e, status: fresh.status, needs_reply: fresh.needs_reply } : e ) );
 				refetchCounts();
-			} );
+			} ).catch( () => {} );
+			return res;
 		} ).catch( ( err ) => {
 			setComposerBusy( null );
 			setComposerError( errorMessage( err, __( 'Send failed.', 'neural-forms-lite' ) ) );
+			throw err;
 		} );
 	}, [ openEntry, refetchCounts ] );
 
@@ -533,19 +709,27 @@ export default function EntriesScreen() {
 		setCarouselBusy( draftId );
 		return api( `/entries/${ openEntry.id }/ai-responses/${ draftId }/finalize`, { method: 'POST' } ).then( () => {
 			setCarouselBusy( null );
-			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => setOpenEntry( fresh ) );
+			return api( `/entries/${ openEntry.id }` ).then( ( fresh ) => {
+				setOpenEntry( fresh );
+				// "Use this draft" is an explicit user intent — override any
+				// local body edits the user has made in the reply composer.
+				setReplyResetSignal( ( s ) => s + 1 );
+			} );
 		} ).catch( () => {
 			setCarouselBusy( null );
 		} );
 	}, [ openEntry ] );
 
-	const exportCsv = () => {
+	const exportCsv = ( rangeId = 'all' ) => {
 		setExporting( true );
 		setExportError( '' );
 
 		const params = selectionToQuery( selection );
 		params.set( 'sort_order', sortOrder );
 		if ( debouncedSearch ) params.set( 'search', debouncedSearch );
+		const { from, to } = rangeBounds( rangeId );
+		if ( from ) params.set( 'date_from', from );
+		if ( to   ) params.set( 'date_to',   to   );
 
 		apiFetch( {
 			path:  '/neural-forms/v1/entries/export?' + params.toString(),
@@ -604,18 +788,69 @@ export default function EntriesScreen() {
 	return (
 		<div className="neural-forms-entries-layout">
 			<header className="neural-forms-entries-header">
-				<h1 className="neural-forms-entries-title">{ title }</h1>
+				<div className="neural-forms-entries-header-copy">
+					<h1 className="neural-forms-entries-title">{ title }</h1>
+					<p className="neural-forms-entries-subtitle">
+						{ __( 'Track, reply to, and manage form submissions.', 'neural-forms-lite' ) }
+					</p>
+				</div>
 
+				{ /* Export / sort / search apply to the list view; on the
+				     single-entry detail page they're not actionable, so the
+				     whole controls block is hidden when an entry is open. */ }
+				{ openEntryId === 0 && (
 				<div className="neural-forms-entries-controls">
-					<button
-						type="button"
-						className="neural-forms-entries-btn"
-						onClick={ exportCsv }
-						disabled={ exporting }
-						title={ __( 'Export entries matching the current filter as CSV', 'neural-forms-lite' ) }
+					<div
+						className={
+							'neural-forms-entries-export'
+							+ ( exportOpen ? ' neural-forms-entries-export--open' : '' )
+						}
+						ref={ exportWrapRef }
 					>
-						{ exporting ? __( 'Exporting...', 'neural-forms-lite' ) : __( 'Export CSV', 'neural-forms-lite' ) }
-					</button>
+						<button
+							type="button"
+							className="neural-forms-entries-btn neural-forms-entries-export__trigger"
+							onClick={ () => setExportOpen( ( o ) => ! o ) }
+							disabled={ exporting }
+							aria-haspopup="menu"
+							aria-expanded={ exportOpen }
+							title={ __( 'Export entries matching the current filter as CSV', 'neural-forms-lite' ) }
+						>
+							<span className="neural-forms-entries-export__icon" aria-hidden="true">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+									strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M12 4v12" />
+									<polyline points="6 10 12 16 18 10" />
+									<line x1="4" y1="20" x2="20" y2="20" />
+								</svg>
+							</span>
+							{ exporting
+								? __( 'Exporting...', 'neural-forms-lite' )
+								: __( 'Export CSV', 'neural-forms-lite' ) }
+							<span className="neural-forms-entries-export__chevron" aria-hidden="true">
+								{ exportOpen ? '▴' : '▾' }
+							</span>
+						</button>
+						{ exportOpen && (
+							<ul className="neural-forms-entries-export__menu" role="menu">
+								{ EXPORT_RANGES.map( ( r ) => (
+									<li key={ r.id } role="none">
+										<button
+											type="button"
+											role="menuitem"
+											className="neural-forms-entries-export__option"
+											onClick={ () => {
+												setExportOpen( false );
+												exportCsv( r.id );
+											} }
+										>
+											{ __( r.label, 'neural-forms-lite' ) }
+										</button>
+									</li>
+								) ) }
+							</ul>
+						) }
+					</div>
 
 					<select
 						className="neural-forms-entries-sort"
@@ -636,6 +871,7 @@ export default function EntriesScreen() {
 						aria-label={ __( 'Search entries', 'neural-forms-lite' ) }
 					/>
 				</div>
+				) }
 			</header>
 
 			{ !! exportError && <p className="neural-forms-entries-error">{ exportError }</p> }
@@ -659,12 +895,19 @@ export default function EntriesScreen() {
 				<main className="neural-forms-entries-content">
 					{ openEntryId !== 0 ? (
 						<EntryDetailPanel
-							entryId={ openEntryId }
 							onBack={ closeDetail }
 							entry={ openEntry }
 							loading={ openLoading }
 							error={ openError }
 							capabilities={ capabilities }
+							// Backend now joins form_name into the detail
+							// response; this is a deep-link fallback for older
+							// installs whose API hasn't been re-deployed yet.
+							formNameFallback={
+								openEntry
+									? ( forms.find( ( f ) => f.id === openEntry.form_id )?.name || '' )
+									: ''
+							}
 							fieldLabels={
 								// `forms` is already in memory from /forms?per_page=200,
 								// and each row carries its `form_schema`. Rebuild the
@@ -685,7 +928,25 @@ export default function EntriesScreen() {
 							composerBusy={ composerBusy }
 							composerError={ composerError }
 							carouselBusy={ carouselBusy }
+							replyResetSignal={ replyResetSignal }
+							messagesRefreshSignal={ messagesRefreshSignal }
+							creditsExhausted={ creditsExhausted }
+							onDismissCreditsExhausted={ () => setCreditsExhausted( null ) }
+							lastAiUsage={ lastAiUsage }
+							lastAiUsageSource={ lastAiUsageSource }
+							onDismissLastAiUsage={ () => {
+								setLastAiUsage( null );
+								setLastAiUsageSource( null );
+							} }
+							analysisFreshKey={ analysisFreshKey }
+							draftFreshKey={ draftFreshKey }
 							onToggleStar={ () => openEntry && toggleStar( openEntry ) }
+							onMarkRead={ () => openEntry && markEntryRead( openEntry ) }
+							onMarkUnread={ () => openEntry && markEntryUnread( openEntry ) }
+							onMarkSpam={ () => openEntry && markEntrySpam( openEntry ) }
+							onMarkTrash={ () => openEntry && markEntryTrash( openEntry ).then( closeDetail ) }
+							onMarkRestore={ () => openEntry && markEntryRead( openEntry ) }
+							onMarkNeedsReply={ () => openEntry && markEntryNeedsReply( openEntry ) }
 						/>
 					) : (
 						<>
@@ -721,12 +982,26 @@ export default function EntriesScreen() {
 }
 
 /**
- * Right-pane wrapper for the detail view: a back button + the detail
- * card stack underneath. Pressing Escape (anywhere outside an input)
- * fires onBack so keyboard users can leave the detail without reaching
- * for the mouse.
+ * Right-pane wrapper for the detail view: a Gmail-style action toolbar
+ * (Back / Mark unread / Star / Reply / Spam / Trash) on top, then the
+ * EntryDetail card stack underneath. Pressing Escape (anywhere outside
+ * an input) fires onBack so keyboard users can leave the detail without
+ * reaching for the mouse.
+ *
+ * Toolbar action handlers are no-ops when the entry hasn't loaded yet
+ * (initial fetch in flight); buttons render disabled to match.
  */
-function EntryDetailPanel( { entryId, onBack, ...detailProps } ) {
+function EntryDetailPanel( {
+	onBack,
+	entry,
+	onToggleStar,
+	onMarkRead,
+	onMarkUnread,
+	onMarkSpam,
+	onMarkTrash,
+	onMarkRestore,
+	...detailProps
+} ) {
 	useEffect( () => {
 		const handler = ( e ) => {
 			if ( e.key !== 'Escape' ) return;
@@ -739,6 +1014,20 @@ function EntryDetailPanel( { entryId, onBack, ...detailProps } ) {
 		return () => window.removeEventListener( 'keydown', handler );
 	}, [ onBack ] );
 
+	const focusReplyComposer = () => {
+		const node = document.querySelector( '[data-nf-reply-textarea]' );
+		if ( node && typeof node.focus === 'function' ) {
+			node.focus();
+			node.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+		}
+	};
+
+	const isUnread   = !! entry && entry.status === 'new';
+	const isStarred  = !! entry && ( entry.is_starred === 1 || entry.is_starred === true );
+	const isSpam     = !! entry && entry.status === 'spam';
+	const isTrash    = !! entry && entry.status === 'trash';
+	const ready      = !! entry;
+
 	return (
 		<div className="neural-forms-entries-detail-panel">
 			<div className="neural-forms-entries-detail-panel__header">
@@ -750,11 +1039,67 @@ function EntryDetailPanel( { entryId, onBack, ...detailProps } ) {
 					<span aria-hidden="true">&larr;&nbsp;</span>
 					{ __( 'Back to entries', 'neural-forms-lite' ) }
 				</button>
-				<span className="neural-forms-entries-detail-panel__title">
-					{ __( 'Entry', 'neural-forms-lite' ) } #{ entryId }
-				</span>
+
+				<div className="neural-forms-entries-detail-panel__actions">
+					<button
+						type="button"
+						className="neural-forms-entries-btn neural-forms-entries-detail-panel__action"
+						onClick={ () => isUnread ? onMarkRead() : onMarkUnread() }
+						disabled={ ! ready }
+					>
+						{ isUnread
+							? __( 'Mark read', 'neural-forms-lite' )
+							: __( 'Mark unread', 'neural-forms-lite' ) }
+					</button>
+					<button
+						type="button"
+						className={
+							'neural-forms-entries-btn neural-forms-entries-detail-panel__action' +
+							( isStarred ? ' is-starred' : '' )
+						}
+						onClick={ onToggleStar }
+						disabled={ ! ready }
+					>
+						<span aria-hidden="true">{ isStarred ? '★' : '☆' }</span>{ ' ' }
+						{ isStarred
+							? __( 'Unstar', 'neural-forms-lite' )
+							: __( 'Star', 'neural-forms-lite' ) }
+					</button>
+					{ ! isSpam && ! isTrash && (
+						<button
+							type="button"
+							className="neural-forms-entries-btn neural-forms-entries-detail-panel__action"
+							onClick={ focusReplyComposer }
+							disabled={ ! ready }
+						>
+							{ __( 'Reply', 'neural-forms-lite' ) }
+						</button>
+					) }
+					{ ! isTrash && (
+						<button
+							type="button"
+							className="neural-forms-entries-btn neural-forms-entries-detail-panel__action"
+							onClick={ () => isSpam ? onMarkRestore() : onMarkSpam() }
+							disabled={ ! ready }
+						>
+							{ isSpam
+								? __( 'Not spam', 'neural-forms-lite' )
+								: __( 'Spam', 'neural-forms-lite' ) }
+						</button>
+					) }
+					<button
+						type="button"
+						className="neural-forms-entries-btn neural-forms-entries-detail-panel__action"
+						onClick={ () => isTrash ? onMarkRestore() : onMarkTrash() }
+						disabled={ ! ready }
+					>
+						{ isTrash
+							? __( 'Restore', 'neural-forms-lite' )
+							: __( 'Trash', 'neural-forms-lite' ) }
+					</button>
+				</div>
 			</div>
-			<EntryDetail { ...detailProps } />
+			<EntryDetail entry={ entry } onToggleStar={ onToggleStar } { ...detailProps } />
 		</div>
 	);
 }

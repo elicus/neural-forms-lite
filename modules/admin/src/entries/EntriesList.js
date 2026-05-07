@@ -22,12 +22,21 @@ function StatusPill( { entry } ) {
 	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
 	if ( entry.status === 'trash' ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--trash">{ __( 'Trash', 'neural-forms-lite' ) }</span>;
 	if ( entry.status === 'new'   ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--new">{ __( 'Unread', 'neural-forms-lite' ) }</span>;
+	// `has_reply` is populated by EntryRepository::list() — true when at
+	// least one outgoing message has been sent for this entry. Once a
+	// reply has gone out, the inbox row reads "Replied" instead of the
+	// generic "Read" so users can scan their follow-up state at a glance.
+	if ( entry.has_reply ) {
+		return <span className="neural-forms-entries-pill neural-forms-entries-pill--replied">{ __( 'Replied', 'neural-forms-lite' ) }</span>;
+	}
 	return <span className="neural-forms-entries-pill neural-forms-entries-pill--read">{ __( 'Read', 'neural-forms-lite' ) }</span>;
 }
 
 function PriorityPill( { p } ) {
-	if ( p === 'high' )   return <span className="neural-forms-entries-pill neural-forms-entries-pill--high">{ __( 'High', 'neural-forms-lite' ) }</span>;
-	if ( p === 'low'  )   return <span className="neural-forms-entries-pill neural-forms-entries-pill--low">{ __( 'Low', 'neural-forms-lite' ) }</span>;
+	const v = String( p || '' ).toLowerCase();
+	if ( v === 'high'   ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--high">{ __( 'High',   'neural-forms-lite' ) }</span>;
+	if ( v === 'medium' ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--medium">{ __( 'Medium', 'neural-forms-lite' ) }</span>;
+	if ( v === 'low'    ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--low">{ __( 'Low',    'neural-forms-lite' ) }</span>;
 	return null;
 }
 

@@ -96,6 +96,10 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		$result['ai_provider'] = $this->provider_id();
 		$result['ai_model']    = 'cloud';
 		$result['tier_used']   = $this->normalize_tier( $body['tier_used'] ?? null );
+		// Cloud's user-facing usage block — used by PlanManager::apply_usage
+		// to keep the local credit balance in sync with the authoritative
+		// cloud counter without an extra /v1/auth/me round-trip.
+		$result['usage']       = is_array( $body['usage'] ?? null ) ? $body['usage'] : [];
 
 		return $result;
 	}
@@ -122,8 +126,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	public function regenerate_reply( array $entry, array $form ): array {
 		$payload = [
 			'site_url' => site_url(),
-			// Required by the API's per-entry click budget (5 clicks / 2h).
-			// Without it the API collapses unrelated entries into one bucket.
+			// Sent for cloud-side request logging; not used to gate anything.
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
 			'entry'    => $this->format_entry( $entry ),
 			'form'     => $this->format_form( $form ),
@@ -139,6 +142,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		return [
 			'reply_draft' => sanitize_textarea_field( (string) ( $body['reply_draft'] ?? '' ) ),
 			'tier_used'   => $this->normalize_tier( $body['tier_used'] ?? null ),
+			'usage'       => is_array( $body['usage'] ?? null ) ? $body['usage'] : [],
 		];
 	}
 
@@ -160,11 +164,8 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	public function polish_reply( string $draft, array $entry, array $form ): array {
 		$payload = [
 			'text'     => $draft,
-			// Required by the API's per-entry click budget (5 clicks / 2h).
+			// Sent for cloud-side request logging; not used to gate anything.
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
-			// Per-installation discriminator - folded into the click-budget
-			// scope on the cloud so two installs sharing one API key with
-			// overlapping entry IDs don't share a budget.
 			'site_url' => site_url(),
 		];
 
@@ -178,6 +179,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		return [
 			'polished_reply' => sanitize_textarea_field( (string) ( $body['polished_reply'] ?? '' ) ),
 			'tier_used'      => $this->normalize_tier( $body['tier_used'] ?? null ),
+			'usage'          => is_array( $body['usage'] ?? null ) ? $body['usage'] : [],
 		];
 	}
 

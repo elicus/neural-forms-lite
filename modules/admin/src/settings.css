@@ -69,7 +69,12 @@
 
 /* ── Page container ─────────────────────────────────────────── */
 .neural-forms-settings {
-	max-width: 720px;
+	/* Matches Analytics' 960px so the section cards size to their
+	 * field grid (label + ~380px control) without leaving an awkward
+	 * empty band on the right of each row. Wider than the previous
+	 * 720px cap, so the page no longer feels squeezed against the
+	 * sidebar on a desktop viewport. */
+	max-width: 960px;
 }
 
 .neural-forms-settings__loading {
@@ -461,7 +466,14 @@
 	gap: 10px;
 }
 
-.neural-forms-settings__btn {
+.neural-forms-settings__btn,
+.neural-forms-settings__queue-btn {
+	/* `align-self: flex-start` keeps these buttons their natural width
+	 * when they sit as direct children of `__control` (display:flex,
+	 * flex-direction:column). Without it, the column's default
+	 * `align-items: stretch` makes the button span the entire grid
+	 * cell — that's the "full-width Send test email" bug. */
+	align-self: flex-start;
 	background: var( --f-gray-50 );
 	border: 1px solid var( --f-gray-200 );
 	border-radius: var( --f-radius-md );
@@ -473,6 +485,18 @@
 	line-height: 1;
 	padding: 9px 16px;
 	transition: background var( --f-transition ), border-color var( --f-transition ), color var( --f-transition );
+}
+
+.neural-forms-settings__btn:hover:not(:disabled),
+.neural-forms-settings__queue-btn:hover:not(:disabled) {
+	background: #fff;
+	border-color: var( --f-gray-300 );
+	color: var( --f-gray-900 );
+}
+
+.neural-forms-settings__queue-btn:disabled {
+	cursor: default;
+	opacity: 0.6;
 }
 
 .neural-forms-settings__btn:hover:not(:disabled) {
@@ -509,19 +533,89 @@
 .neural-forms-settings__queue-msg--ok    { color: var( --f-green-600 ); }
 .neural-forms-settings__queue-msg--error { color: var( --f-red-600 ); }
 
-/* ── Plan & Balance inset card ──────────────────────────────── */
-.neural-forms-settings__plan-card {
+/* ── Plan & Balance inset card + Pro site-profile (Business context) ──
+ *
+ * Both render inside a Field's 1fr cell and should look like the same
+ * inset surface — same chrome, same width — even though the
+ * site-profile card is rendered by Pro's compiled bundle (we own the
+ * `neural-forms-site-profile*` classes). Fills the cell instead of
+ * capping at 420px so the two stack equally on a 960px Settings page.
+ */
+.neural-forms-settings__plan-card,
+.neural-forms-site-profile {
 	background: var( --f-gray-50 );
 	border: 1px solid var( --f-gray-200 );
 	border-radius: var( --f-radius-lg );
-	max-width: 420px;
+	max-width: 100%;
 	padding: 14px 16px;
 }
 
-.neural-forms-settings__plan-row {
+/* Site-profile inner rows — label | value, same rhythm as __plan-row.
+ * 140px label column keeps "Industry / Summary / Topics" labels in the
+ * same column position as plan-card's "Plan / Available credits", so
+ * the two stacked cards read as a unified pair. */
+.neural-forms-site-profile__row {
+	align-items: baseline;
+	display: grid;
+	grid-template-columns: 140px 1fr;
+	gap: 12px;
+	padding: 4px 0;
+}
+
+.neural-forms-site-profile__row + .neural-forms-site-profile__row {
+	border-top: 1px solid var( --f-gray-200 );
+	margin-top: 4px;
+	padding-top: 8px;
+}
+
+.neural-forms-site-profile__label {
+	color: var( --f-gray-500 );
+	font-size: 13px;
+}
+
+.neural-forms-site-profile__value {
+	color: var( --f-gray-900 );
+	font-size: 13.5px;
+	line-height: 1.5;
+}
+
+.neural-forms-site-profile__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.neural-forms-site-profile__tag {
+	background: var( --f-gray-100 );
+	border-radius: var( --f-radius-full );
+	color: var( --f-gray-700 );
+	font-size: 12px;
+	padding: 3px 10px;
+}
+
+.neural-forms-site-profile__actions {
 	align-items: center;
 	display: flex;
-	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.neural-forms-site-profile__meta {
+	color: var( --f-gray-400 );
+	font-size: 11.5px;
+	line-height: 1.5;
+	margin-top: 8px;
+}
+
+/* Same grid as site-profile so the two cards read as siblings — labels
+ * align vertically across both cards on a wide screen, and the value
+ * column starts at the same x-offset. */
+.neural-forms-settings__plan-row {
+	align-items: baseline;
+	display: grid;
+	gap: 12px;
+	grid-template-columns: 140px 1fr;
 	padding: 4px 0;
 }
 
@@ -540,6 +634,7 @@
 	color: var( --f-gray-900 );
 	font-size: 13.5px;
 	font-weight: 600;
+	text-align: right;
 }
 
 .neural-forms-settings__plan-value--credits {

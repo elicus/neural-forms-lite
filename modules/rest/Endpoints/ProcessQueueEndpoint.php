@@ -45,7 +45,13 @@ class ProcessQueueEndpoint {
 
 		AIQueueProcessor::run();
 
-		return rest_ensure_response( [ 'processed' => true ] );
+		// Surface the aggregated usage so the Settings "Run queue now"
+		// button can display "Credits used: X · Remaining: Y" the same
+		// way the entry-detail AI actions do. Empty when no jobs ran.
+		return rest_ensure_response( [
+			'processed' => true,
+			'summary'   => AIQueueProcessor::last_batch_summary(),
+		] );
 	}
 
 	public function check_permission() {

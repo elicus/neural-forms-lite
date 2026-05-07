@@ -79,9 +79,14 @@ export default function Forms() {
 	return (
 		<div className="neural-forms-forms-list">
 			<header className="neural-forms-forms-list__header">
-				<h1 className="neural-forms-forms-list__title">
-					{ __( 'Forms', 'neural-forms-lite' ) }
-				</h1>
+				<div className="neural-forms-forms-list__copy">
+					<h1 className="neural-forms-forms-list__title">
+						{ __( 'Forms', 'neural-forms-lite' ) }
+					</h1>
+					<p className="neural-forms-forms-list__subtitle">
+						{ __( 'Create, manage, and publish your forms.', 'neural-forms-lite' ) }
+					</p>
+				</div>
 				<a
 					className="neural-forms-forms-list__new-btn"
 					href="?page=neural-forms&new=1"
@@ -178,11 +183,6 @@ function FormRow( { form } ) {
 				>
 					{ form.name || `#${ form.id }` }
 				</a>
-				{ form.slug && (
-					<code className="neural-forms-forms-list__form-slug">
-						{ form.slug }
-					</code>
-				) }
 			</td>
 
 			<td className="neural-forms-forms-list__cell neural-forms-forms-list__cell--status">
