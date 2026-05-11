@@ -146,6 +146,28 @@ function readOnlyRating( { field } ) {
 	);
 }
 
+function readOnlyMatrix( { field } ) {
+	// Commit 1: lightweight placeholder so a Matrix field can sit
+	// inside an existing form without crashing the builder. The full
+	// rows/columns grid + inspector arrive in Commit 2.
+	const settings = field.settings && typeof field.settings === 'object' ? field.settings : {};
+	const rowCount = Array.isArray( settings.rows ) ? settings.rows.length : 0;
+	const colCount = Array.isArray( settings.columns ) ? settings.columns.length : 0;
+	const selType  = settings.selection_type === 'checkbox' ? __( 'multi-select', 'neural-forms-lite' ) : __( 'single-select', 'neural-forms-lite' );
+	return (
+		<div className="nf-preview__matrix-placeholder">
+			<p className="nf-preview__hint">
+				{ __( 'Matrix field — preview coming soon.', 'neural-forms-lite' ) }
+			</p>
+			<p className="nf-preview__hint">
+				{ rowCount }{ ' ' }{ __( 'rows', 'neural-forms-lite' ) }{ ' · ' }
+				{ colCount }{ ' ' }{ __( 'columns', 'neural-forms-lite' ) }{ ' · ' }
+				{ selType }
+			</p>
+		</div>
+	);
+}
+
 function readOnlyHidden( { field } ) {
 	return (
 		<div className="nf-preview__hidden">
@@ -178,6 +200,7 @@ export default function FieldPreview( { field } ) {
 		case 'acceptance': return readOnlyAcceptance( { field } );
 		case 'range':      return readOnlyRange( { field } );
 		case 'rating':     return readOnlyRating( { field } );
+		case 'matrix':     return readOnlyMatrix( { field } );
 		case 'file':       return readOnlyFile( { field } );
 		case 'hidden':     return readOnlyHidden( { field } );
 		case 'text':

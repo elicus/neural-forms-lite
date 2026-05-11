@@ -41,12 +41,25 @@ const BASIC_TYPES = [
 	'date',
 	'acceptance',
 	'range',
-	'rating',
-	'poll',
-	'quiz_question',
 	'file',
 	'hidden',
 ];
+
+// Survey-style choice fields. Matrix is gated by the
+// `field_matrix` capability — Lite-only installs see it as a
+// locked chip; Pro flips the capability and it becomes draggable
+// like any other field.
+const SURVEY_TYPES = [
+	'rating',
+	'poll',
+	'quiz_question',
+	'matrix',
+];
+
+// Capability key (mirrors Capabilities::FIELD_MATRIX on the PHP
+// side). When `window.neuralFormsAdmin.plugin.capabilities[CAP]`
+// is false the chip renders disabled with a Pro badge.
+const MATRIX_CAP = 'field_matrix';
 
 // Conditional Logic is NOT in this list. It already shipped in
 // Neural Forms Lite v1.0.0 (frontend serialization in
@@ -55,6 +68,11 @@ const BASIC_TYPES = [
 // would be inaccurate and would block users from a feature they
 // already have.
 const LOCKED_FIELDS = [];
+
+function readCaps() {
+	if ( typeof window === 'undefined' ) return {};
+	return ( window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+}
 
 /**
  * Single draggable chip. Click → adds the field. Drag → top-level
@@ -89,8 +107,31 @@ function FieldChip( { type, label, onAddField } ) {
 	);
 }
 
+/**
+ * Read-only Pro chip. Shown for field types whose capability is
+ * locked in this install (e.g. Matrix when Pro is not active).
+ * Click is a no-op — drag handlers are intentionally omitted so
+ * the chip can never produce a schema mutation.
+ */
+function LockedProChip( { label } ) {
+	return (
+		<button
+			type="button"
+			className="nf-palette__chip nf-palette__chip--locked"
+			disabled
+			title={ __( 'Available in Neural Forms Pro', 'neural-forms-lite' ) }
+		>
+			<span className="nf-palette__chip-label">{ label }</span>
+			<span className="nf-palette__chip-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
+		</button>
+	);
+}
+
 export default function FieldPalette( { onAddField } ) {
-	const basics = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
+	const basics  = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
+	const surveys = FIELD_TYPES.filter( ( t ) => SURVEY_TYPES.includes( t.value ) );
+	const caps    = readCaps();
+	const matrixUnlocked = caps[ MATRIX_CAP ] === true;
 
 	return (
 		<>
@@ -108,6 +149,25 @@ export default function FieldPalette( { onAddField } ) {
 							onAddField={ onAddField }
 						/>
 					) ) }
+				</div>
+			</section>
+
+			<section className="nf-palette__section">
+				<h3 className="nf-palette__title">{ __( 'Survey Fields', 'neural-forms-lite' ) }</h3>
+				<div className="nf-palette__grid">
+					{ surveys.map( ( t ) => {
+						if ( t.value === 'matrix' && ! matrixUnlocked ) {
+							return <LockedProChip key={ t.value } label={ t.label } />;
+						}
+						return (
+							<FieldChip
+								key={ t.value }
+								type={ t.value }
+								label={ t.label }
+								onAddField={ onAddField }
+							/>
+						);
+					} ) }
 				</div>
 			</section>
 

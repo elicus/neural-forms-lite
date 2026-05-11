@@ -116,6 +116,19 @@ class FieldRegistry {
             'label'    => 'File Upload',
             'supports' => [ 'label', 'show_label', 'required', 'allowed_types', 'max_file_size', 'width' ],
         ],
+        // Matrix: survey-style row-by-column grid. Each row is a
+        // question, each column is a possible answer. Nested `settings`
+        // carries `selection_type` ('radio' = one column per row;
+        // 'checkbox' = many columns per row) plus the row/column lists
+        // (with `value` and optional `score` per column). Gated by
+        // Capabilities::FIELD_MATRIX so a Lite-only install sees Matrix
+        // as a locked Pro feature in the builder palette. The type
+        // stays REGISTERED even when locked — existing forms with
+        // Matrix open without schema-validation errors.
+        'matrix'   => [
+            'label'    => 'Matrix',
+            'supports' => [ 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width' ],
+        ],
     ];
 
     /**

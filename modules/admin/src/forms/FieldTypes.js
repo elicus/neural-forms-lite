@@ -20,6 +20,7 @@ export const FIELD_TYPES = [
 	{ value: 'checkboxes', label: 'Checkboxes'  },
 	{ value: 'range',      label: 'Range'       },
 	{ value: 'rating',        label: 'Rating'        },
+	{ value: 'matrix',        label: 'Matrix'        },
 	{ value: 'poll',          label: 'Poll'          },
 	{ value: 'quiz_question', label: 'Quiz Question' },
 	{ value: 'file',          label: 'File Upload'   },
@@ -87,6 +88,24 @@ export function newField( type, existingIds = [] ) {
 
 	if ( type === 'rating' ) {
 		base.stars = 5;
+	}
+
+	if ( type === 'matrix' ) {
+		base.label    = 'Matrix';
+		base.required = false;
+		base.settings = {
+			selection_type: 'radio',
+			rows: [
+				{ value: 'row_1', label: 'Row 1' },
+				{ value: 'row_2', label: 'Row 2' },
+				{ value: 'row_3', label: 'Row 3' },
+			],
+			columns: [
+				{ value: 'col_1', label: 'Option 1' },
+				{ value: 'col_2', label: 'Option 2' },
+				{ value: 'col_3', label: 'Option 3' },
+			],
+		};
 	}
 
 	if ( type === 'poll' ) {

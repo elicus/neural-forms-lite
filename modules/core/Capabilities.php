@@ -81,6 +81,25 @@ final class Capabilities {
     const POLL_QUIZ_UNLIMITED_SUBMISSIONS = 'poll_quiz_unlimited_submissions';
 
     /**
+     * FIELD_MATRIX (added 1.1.0): unlocks the survey-style Matrix field
+     * type — admins define rows + columns and pick a selection type
+     * (radio = one column per row; checkbox = many columns per row).
+     * Lite ships the entire Matrix engine (registry awareness, builder
+     * UI, frontend renderer, validator, entry display, AI generation
+     * support). Pro flips this filter to true and the field becomes
+     * fully usable; Lite-only installs see Matrix in the palette as a
+     * locked Pro upsell and the type cannot be added.
+     *
+     * Existing forms that already contain Matrix fields (Pro
+     * deactivated after creation) keep their schema intact — Lite
+     * never strips unknown fields. The field is rendered as an
+     * admin-visible "requires Pro" placeholder in the builder; on the
+     * frontend the renderer skips it gracefully so the rest of the
+     * form still works.
+     */
+    const FIELD_MATRIX = 'field_matrix';
+
+    /**
      * True when the given premium capability is unlocked in this install.
      *
      * @param string $cap One of the AI_* constants on this class.
@@ -111,6 +130,7 @@ final class Capabilities {
             self::AI_PROCESS_ENTRIES         => self::can( self::AI_PROCESS_ENTRIES ),
             self::PAGE_PERFORMANCE_ANALYTICS      => self::can( self::PAGE_PERFORMANCE_ANALYTICS ),
             self::POLL_QUIZ_UNLIMITED_SUBMISSIONS => self::can( self::POLL_QUIZ_UNLIMITED_SUBMISSIONS ),
+            self::FIELD_MATRIX                    => self::can( self::FIELD_MATRIX ),
         ];
     }
 
