@@ -184,6 +184,53 @@ class SubmissionValidator {
 		);
 	}
 
+	/**
+	 * Validate a single field/value pair in isolation. Used by the
+	 * Repeater branch to run per-iteration child validation without
+	 * having to re-walk the whole schema. Returns null on success,
+	 * or a single { code, message } error array on failure (matching
+	 * the per-field error shape `validate()` produces).
+	 *
+	 * Internal contract: this is the same pair of checks `validate()`
+	 * runs for every leaf field — required → absent? → type → hook —
+	 * but exposed so the repeater walker can recurse without
+	 * duplicating each per-type rule.
+	 *
+	 * @param array $field
+	 * @param mixed $value
+	 * @return array|null
+	 */
+	public static function validate_single_field( array $field, $value ): ?array {
+		$type = $field['type'] ?? 'text';
+		$check_value = self::maybe_trim( $value, $type );
+
+		$required_error = self::check_required( $field, $check_value );
+		if ( $required_error !== null ) {
+			return $required_error;
+		}
+
+		// Repeater values are arrays of iterations — `is_absent` is
+		// only meaningful for scalars. Allow the type check to run
+		// on the (possibly empty) array so its own count gate fires.
+		if ( $type !== 'repeater' && self::is_absent( $check_value ) ) {
+			return null;
+		}
+
+		$type_error = self::check_type( $field, $check_value );
+		if ( $type_error !== null ) {
+			return $type_error;
+		}
+
+		$hook_result = apply_filters( 'neural_forms_validate_submission_field', null, $field, $check_value );
+		if ( is_wp_error( $hook_result ) ) {
+			return [
+				'code'    => $hook_result->get_error_code(),
+				'message' => $hook_result->get_error_message(),
+			];
+		}
+		return null;
+	}
+
 	// Private helpers
 
 	/**
@@ -302,6 +349,30 @@ class SubmissionValidator {
 				}
 			}
 
+			return null;
+		}
+
+		if ( $type === 'repeater' ) {
+			// Required repeater: must carry at least min_items iterations
+			// AND at least one — a min=0 repeater that's also "required"
+			// still demands a single submitted iteration to satisfy the
+			// required-ness contract. The per-iteration child required
+			// checks run in check_type below.
+			$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+			$min      = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 1;
+			$rows     = is_array( $value ) ? array_values( $value ) : [];
+			$threshold = max( 1, $min );
+			if ( count( $rows ) < $threshold ) {
+				return [
+					'code'    => 'required',
+					/* translators: 1: field label, 2: minimum iteration count */
+					'message' => sprintf(
+						__( '%1$s needs at least %2$d item(s).', 'neural-forms-lite' ),
+						$label,
+						$threshold
+					),
+				];
+			}
 			return null;
 		}
 
@@ -588,6 +659,81 @@ class SubmissionValidator {
 			// absent (optional, no file uploaded) or a structured metadata array
 			// (uploaded successfully). No further format check needed.
 			case 'file':
+				break;
+
+			case 'repeater':
+				// Shape: numeric-keyed array of per-iteration children
+				// objects. The wire format (from form-submit.js's
+				// bracket-aware serializer) is
+				//     { repeater_id: { '0': { child_id: ... }, '1': {...} } }
+				// which PHP's json_decode delivers as a plain array.
+				//
+				// Rules:
+				//   - root must be an array.
+				//   - count <= max_items (hard cap re-enforced here in
+				//     case a tampered submission tries to overflow).
+				//   - per-iteration: each schema child template runs
+				//     through validate_single_field with the
+				//     iteration's value for that child id.
+				if ( ! is_array( $value ) ) {
+					return [
+						'code'    => 'invalid_repeater',
+						/* translators: %s: field label */
+						'message' => sprintf( __( '%s must be a list of items.', 'neural-forms-lite' ), $label ),
+					];
+				}
+				$settings_r   = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+				$max_items    = isset( $settings_r['max_items'] ) ? (int) $settings_r['max_items'] : 5;
+				if ( $max_items < 1 )  $max_items = 1;
+				if ( $max_items > 20 ) $max_items = 20;
+				$rows         = array_values( $value );
+				$row_count    = count( $rows );
+				if ( $row_count > $max_items ) {
+					return [
+						'code'    => 'invalid_repeater',
+						/* translators: 1: field label, 2: max iteration count */
+						'message' => sprintf(
+							__( '%1$s allows at most %2$d item(s).', 'neural-forms-lite' ),
+							$label,
+							$max_items
+						),
+					];
+				}
+				$children_schema = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+				foreach ( $rows as $row_idx => $row ) {
+					if ( ! is_array( $row ) ) {
+						// Tampered scalar inside an iteration slot.
+						return [
+							'code'    => 'invalid_repeater',
+							/* translators: 1: field label, 2: row index */
+							'message' => sprintf(
+								__( '%1$s item #%2$d is malformed.', 'neural-forms-lite' ),
+								$label,
+								(int) $row_idx + 1
+							),
+						];
+					}
+					foreach ( $children_schema as $child ) {
+						if ( ! is_array( $child ) || empty( $child['id'] ) ) continue;
+						$child_id    = (string) $child['id'];
+						$child_value = array_key_exists( $child_id, $row ) ? $row[ $child_id ] : null;
+						$child_err   = self::validate_single_field( $child, $child_value );
+						if ( $child_err !== null ) {
+							// Prefix the message with "Item N: " so the
+							// admin / visitor can locate which row failed.
+							return [
+								'code'    => $child_err['code'],
+								'message' => sprintf(
+									/* translators: 1: row index, 2: field label, 3: child error message */
+									__( '%1$s item #%2$d — %3$s', 'neural-forms-lite' ),
+									$label,
+									(int) $row_idx + 1,
+									$child_err['message']
+								),
+							];
+						}
+					}
+				}
 				break;
 
 			// text, textarea, phone, tel:

@@ -246,6 +246,19 @@ class SubmitEndpoint {
 				return $file_result;
 			}
 			$raw_body = $file_result;
+
+			// Nested file fields inside Repeater iterations. PHP's
+			// $_FILES parser emits a parallel-array shape for
+			// bracketed names (name="rid[idx][cid]"), so the flat
+			// loop above can't see them. This second pass walks every
+			// repeater + its file children and uploads each cell into
+			// $raw_body[rid][idx][cid] so the downstream sanitiser
+			// treats it like any other file value.
+			$nested_file_result = $this->process_repeater_file_fields( $schema_fields_pre, $raw_body );
+			if ( is_wp_error( $nested_file_result ) ) {
+				return $nested_file_result;
+			}
+			$raw_body = $nested_file_result;
 		}
 		// ' end file processing '
 
@@ -952,6 +965,17 @@ class SubmitEndpoint {
 				// remaining valid columns drop out of storage entirely.
 				return $this->sanitize_matrix( $value, $field );
 
+			case 'repeater':
+				// Stored shape mirrors what the validator accepted:
+				//   [ { child_id => value, ... }, { child_id => value, ... }, ... ]
+				// where each iteration carries every child template's
+				// value. Sanitizer dispatches per-child via
+				// sanitize_value (recursive) so file children carry
+				// their {filename,url,type,size} metadata through
+				// untouched and choice children get sanitize_text_field
+				// or array_map(sanitize_text_field) as usual.
+				return $this->sanitize_repeater( $value, $field );
+
 			// text, phone, tel, select:
 			// sanitize_text_field() strips tags, encodes HTML entities, trims.
 			// Select values are already validated against the allowed options list
@@ -1052,6 +1076,92 @@ class SubmitEndpoint {
 	}
 
 	/**
+	 * Normalize a repeater submission into the stored array-of-objects
+	 * shape:
+	 *
+	 *   [
+	 *     { child_id_1: <sanitized>, child_id_2: <sanitized>, ... },
+	 *     ...,
+	 *   ]
+	 *
+	 * Rules:
+	 *   - Unknown child keys in an iteration are dropped (walk the
+	 *     SCHEMA's children, not the submitted keys).
+	 *   - Iterations whose children all resolve to null / empty
+	 *     scalar / empty array are dropped UNLESS one of them is a
+	 *     file metadata array (we never throw away an uploaded file).
+	 *   - Each child runs through sanitize_value with the child's
+	 *     own schema so radio/checkboxes/file/etc. all dispatch via
+	 *     their existing sanitiser branches. Recursive dispatch is
+	 *     fine — repeater inside repeater is rejected at save time,
+	 *     so this terminates in one level.
+	 *
+	 * @param mixed $value
+	 * @param array $field Repeater schema field (carries children template).
+	 * @return array
+	 */
+	private function sanitize_repeater( $value, array $field ): array {
+		if ( ! is_array( $value ) ) {
+			return [];
+		}
+		$children_schema = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+		if ( empty( $children_schema ) ) {
+			return [];
+		}
+
+		$out = [];
+		foreach ( array_values( $value ) as $row ) {
+			if ( ! is_array( $row ) ) continue;
+			$cleaned = [];
+			$has_anything = false;
+			$has_file     = false;
+
+			foreach ( $children_schema as $child ) {
+				if ( ! is_array( $child ) || empty( $child['id'] ) ) continue;
+				$child_id    = (string) $child['id'];
+				$child_value = array_key_exists( $child_id, $row ) ? $row[ $child_id ] : null;
+
+				if ( $child_value === null ) {
+					// Optional child absent — skip.
+					continue;
+				}
+
+				$sanitized = $this->sanitize_value( $child_value, $child );
+
+				// "Has anything" detection: skip empty strings, empty
+				// arrays, and 0/0.0 numerics so a row full of
+				// uninteresting defaults still drops cleanly.
+				$is_empty = ( $sanitized === '' || $sanitized === null )
+					|| ( is_array( $sanitized ) && empty( $sanitized ) );
+
+				$is_file = (
+					is_array( $sanitized )
+					&& array_key_exists( 'filename', $sanitized )
+					&& array_key_exists( 'url', $sanitized )
+				);
+
+				if ( $is_file ) {
+					$has_file = true;
+				}
+				if ( ! $is_empty ) {
+					$has_anything = true;
+				}
+
+				$cleaned[ $child_id ] = $sanitized;
+			}
+
+			// Drop iterations whose children all came back empty —
+			// EXCEPT when one of them is a successfully-uploaded file.
+			// An uploaded file is a real artefact we must preserve.
+			if ( ! $has_anything && ! $has_file ) {
+				continue;
+			}
+			$out[] = $cleaned;
+		}
+		return $out;
+	}
+
+	/**
 	 * Normalize a checkbox value to integer 0 or 1.
 	 *
 	 * References SubmissionValidator::CHECKED_CHECKBOX_VALUES as the
@@ -1104,6 +1214,272 @@ class SubmitEndpoint {
 	 * @param array $raw_body       Current body params (text fields).
 	 * @return array|\WP_Error
 	 */
+	/**
+	 * Process file uploads nested inside Repeater iterations.
+	 *
+	 * Counterpart to process_file_fields() for the Repeater path. PHP's
+	 * $_FILES parser converts a bracketed `name="rid[0][resume]"` into
+	 * a parallel-array shape:
+	 *
+	 *   $_FILES['rid'] = [
+	 *     'name'     => [ 0 => [ 'resume' => 'cv.pdf' ] ],
+	 *     'type'     => [ 0 => [ 'resume' => 'application/pdf' ] ],
+	 *     'tmp_name' => [ 0 => [ 'resume' => '/tmp/...' ] ],
+	 *     'error'    => [ 0 => [ 'resume' => 0 ] ],
+	 *     'size'     => [ 0 => [ 'resume' => 12345 ] ],
+	 *   ];
+	 *
+	 * We reconstruct a flat file_info per cell, validate + upload it
+	 * via upload_file_cell(), then inject the metadata into
+	 * $raw_body[rid][idx][cid] so the validator + sanitizer treat it
+	 * like any other file value.
+	 *
+	 * @param array $schema_fields  Flattened schema field list.
+	 * @param array $raw_body       Submission body (mutated + returned).
+	 * @return array|\WP_Error
+	 */
+	private function process_repeater_file_fields( array $schema_fields, array $raw_body ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		if ( empty( $_FILES ) ) return $raw_body;
+
+		// Make sure WP upload functions are loaded — process_file_fields()
+		// already requires them in the flat path but if the flat loop
+		// returned early on the first iteration we may not have loaded
+		// them yet.
+		if ( ! function_exists( 'wp_handle_upload' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+		}
+
+		foreach ( $schema_fields as $field ) {
+			$field = (array) $field;
+			if ( ( $field['type'] ?? '' ) !== 'repeater' ) continue;
+			$repeater_id = (string) ( $field['id'] ?? '' );
+			if ( $repeater_id === '' ) continue;
+
+			$children = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+			$file_children = array_filter(
+				$children,
+				static function ( $c ) { return is_array( $c ) && ( $c['type'] ?? '' ) === 'file'; }
+			);
+			if ( empty( $file_children ) ) continue;
+
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			if ( ! isset( $_FILES[ $repeater_id ] ) || ! is_array( $_FILES[ $repeater_id ] ) ) {
+				continue;
+			}
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$files_root = $_FILES[ $repeater_id ];
+			if ( ! is_array( $files_root['name'] ?? null ) ) {
+				// Not the nested parallel-array shape — could be a flat
+				// file field whose id collides with the repeater id.
+				// Safer to skip the repeater path here than to misread.
+				continue;
+			}
+
+			foreach ( $file_children as $child ) {
+				$child = (array) $child;
+				$child_id = (string) ( $child['id'] ?? '' );
+				if ( $child_id === '' ) continue;
+
+				foreach ( $files_root['name'] as $idx => $children_names ) {
+					if ( ! is_array( $children_names ) || ! isset( $children_names[ $child_id ] ) ) {
+						continue;
+					}
+
+					$raw_name = $children_names[ $child_id ];
+					if ( ! is_string( $raw_name ) || $raw_name === '' ) {
+						continue;
+					}
+
+					// Reconstruct a flat file_info for this cell. Each
+					// of the parallel arrays may or may not have the
+					// matching path — guard each lookup.
+					$file_info = [
+						// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.NonceVerification.Missing
+						'name'     => sanitize_file_name( wp_unslash( $raw_name ) ),
+						'type'     => isset( $files_root['type'][ $idx ][ $child_id ] )
+							// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.NonceVerification.Missing
+							? sanitize_mime_type( wp_unslash( (string) $files_root['type'][ $idx ][ $child_id ] ) )
+							: '',
+						'tmp_name' => isset( $files_root['tmp_name'][ $idx ][ $child_id ] )
+							? (string) $files_root['tmp_name'][ $idx ][ $child_id ]
+							: '',
+						'error'    => isset( $files_root['error'][ $idx ][ $child_id ] )
+							? (int) $files_root['error'][ $idx ][ $child_id ]
+							: UPLOAD_ERR_NO_FILE,
+						'size'     => isset( $files_root['size'][ $idx ][ $child_id ] )
+							? (int) $files_root['size'][ $idx ][ $child_id ]
+							: 0,
+					];
+
+					if ( $file_info['error'] === UPLOAD_ERR_NO_FILE ) {
+						continue;
+					}
+					if ( $file_info['error'] !== UPLOAD_ERR_OK ) {
+						return new WP_Error(
+							'file_upload_error',
+							__( 'A file upload error occurred. Please try again.', 'neural-forms-lite' ),
+							[ 'status' => 400 ]
+						);
+					}
+
+					$path = $repeater_id . '[' . $idx . '][' . $child_id . ']';
+					$upload = $this->upload_file_cell( $file_info, $child, $path );
+					if ( is_wp_error( $upload ) ) {
+						return $upload;
+					}
+
+					// Inject into raw_body at the right nested path so
+					// sanitize_repeater finds it later.
+					if ( ! isset( $raw_body[ $repeater_id ] ) || ! is_array( $raw_body[ $repeater_id ] ) ) {
+						$raw_body[ $repeater_id ] = [];
+					}
+					if ( ! isset( $raw_body[ $repeater_id ][ $idx ] ) || ! is_array( $raw_body[ $repeater_id ][ $idx ] ) ) {
+						$raw_body[ $repeater_id ][ $idx ] = [];
+					}
+					$raw_body[ $repeater_id ][ $idx ][ $child_id ] = $upload;
+				}
+			}
+		}
+
+		return $raw_body;
+	}
+
+	/**
+	 * Validate + upload a single file cell. Extracted so both the flat
+	 * file path (process_file_fields) and the nested repeater path
+	 * (process_repeater_file_fields) share the same checks: size,
+	 * allowed-types via custom mime list, wp_handle_upload, and
+	 * attachment row creation. Returns the structured metadata array
+	 * on success or a WP_Error on failure.
+	 *
+	 * @param array  $file_info        Sanitised $_FILES cell.
+	 * @param array  $field            Child / leaf field schema
+	 *                                 (carries allowed_types,
+	 *                                 max_file_size, label).
+	 * @param string $error_field_path For repeater children this is
+	 *                                 `rid[idx][cid]`; for flat
+	 *                                 fields it is just the field id.
+	 * @return array|\WP_Error
+	 */
+	private function upload_file_cell( array $file_info, array $field, string $error_field_path ) {
+		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : [];
+		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
+			? (int) $field['max_file_size']
+			: 5;
+		$max_bytes = $max_mb * 1024 * 1024;
+
+		if ( $file_info['size'] > $max_bytes ) {
+			$label = trim( $field['label'] ?? '' ) !== '' ? trim( $field['label'] ) : ( (string) ( $field['id'] ?? 'file' ) );
+			return new WP_Error(
+				'invalid_submission',
+				__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+				[
+					'status' => 422,
+					'fields' => [
+						$error_field_path => [ [
+							'code'    => 'file_too_large',
+							'message' => sprintf(
+								/* translators: 1: field label  2: max size in MB */
+								__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
+								$label,
+								$max_mb
+							),
+						] ],
+					],
+				]
+			);
+		}
+
+		$upload_mimes = $this->build_allowed_mimes( $allowed_types );
+		$check       = wp_check_filetype_and_ext( $file_info['tmp_name'], $file_info['name'], $upload_mimes );
+		$actual_mime = $check['type'] ?: '';
+
+		if ( ! empty( $allowed_types ) ) {
+			$allowed_mimes = [];
+			foreach ( $allowed_types as $group ) {
+				if ( isset( self::ALLOWED_MIME_GROUPS[ $group ] ) ) {
+					$allowed_mimes = array_merge( $allowed_mimes, self::ALLOWED_MIME_GROUPS[ $group ] );
+				}
+			}
+			if ( ! in_array( $actual_mime, $allowed_mimes, true ) ) {
+				$label = trim( $field['label'] ?? '' ) !== '' ? trim( $field['label'] ) : ( (string) ( $field['id'] ?? 'file' ) );
+				return new WP_Error(
+					'invalid_submission',
+					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+					[
+						'status' => 422,
+						'fields' => [
+							$error_field_path => [ [
+								'code'    => 'invalid_file_type',
+								/* translators: %s: field label */
+								'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
+							] ],
+						],
+					]
+				);
+			}
+		}
+
+		$upload = wp_handle_upload(
+			$file_info,
+			[
+				'test_form'                => false,
+				'mimes'                    => $upload_mimes,
+				'unique_filename_callback' => [ self::class, 'randomize_upload_filename' ],
+			]
+		);
+		if ( isset( $upload['error'] ) ) {
+			Logger::file(
+				'upload',
+				'error',
+				sprintf( 'wp_handle_upload() failed for "%s": %s', $error_field_path, $upload['error'] )
+			);
+			return new WP_Error(
+				'file_upload_failed',
+				__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
+				[ 'status' => 500 ]
+			);
+		}
+
+		$attachment_id = wp_insert_attachment(
+			[
+				'post_mime_type' => $upload['type'],
+				'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
+				'post_content'   => '',
+				'post_status'    => 'inherit',
+			],
+			$upload['file']
+		);
+		if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+			$err_msg = is_wp_error( $attachment_id ) ? $attachment_id->get_error_message() : 'returned 0/false';
+			Logger::file(
+				'upload',
+				'error',
+				sprintf( 'wp_insert_attachment() failed for "%s": %s', $error_field_path, $err_msg )
+			);
+			return new WP_Error(
+				'file_upload_failed',
+				__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
+				[ 'status' => 500 ]
+			);
+		}
+
+		$attach_data = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
+		wp_update_attachment_metadata( $attachment_id, $attach_data );
+
+		return [
+			'attachment_id' => $attachment_id,
+			'url'           => $upload['url'],
+			'filename'      => sanitize_file_name( (string) $file_info['name'] ),
+			'mime_type'     => $upload['type'],
+			'size'          => (int) filesize( $upload['file'] ),
+		];
+	}
+
 	private function process_file_fields( array $schema_fields, array $raw_body ) {
 		// WordPress upload functions require this file to be loaded.
 		if ( ! function_exists( 'wp_handle_upload' ) ) {
