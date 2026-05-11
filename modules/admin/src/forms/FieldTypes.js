@@ -96,14 +96,14 @@ export function newField( type, existingIds = [] ) {
 		base.settings = {
 			selection_type: 'radio',
 			rows: [
-				{ value: 'row_1', label: 'Row 1' },
-				{ value: 'row_2', label: 'Row 2' },
-				{ value: 'row_3', label: 'Row 3' },
+				{ label: 'Row 1', value: 'row_1' },
+				{ label: 'Row 2', value: 'row_2' },
+				{ label: 'Row 3', value: 'row_3' },
 			],
 			columns: [
-				{ value: 'col_1', label: 'Option 1' },
-				{ value: 'col_2', label: 'Option 2' },
-				{ value: 'col_3', label: 'Option 3' },
+				{ label: 'Option 1', value: 'option_1', score: 1 },
+				{ label: 'Option 2', value: 'option_2', score: 2 },
+				{ label: 'Option 3', value: 'option_3', score: 3 },
 			],
 		};
 	}

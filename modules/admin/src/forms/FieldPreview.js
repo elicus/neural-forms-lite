@@ -147,23 +147,57 @@ function readOnlyRating( { field } ) {
 }
 
 function readOnlyMatrix( { field } ) {
-	// Commit 1: lightweight placeholder so a Matrix field can sit
-	// inside an existing form without crashing the builder. The full
-	// rows/columns grid + inspector arrive in Commit 2.
+	// Mini row-by-column grid mirroring what the frontend renderer
+	// will produce. Every input is disabled (the builder canvas is
+	// read-only — actual editing happens via the inspector). The
+	// outer wrapper carries the horizontal scroll so wide matrices
+	// stay inside the field card without overflowing the column.
 	const settings = field.settings && typeof field.settings === 'object' ? field.settings : {};
-	const rowCount = Array.isArray( settings.rows ) ? settings.rows.length : 0;
-	const colCount = Array.isArray( settings.columns ) ? settings.columns.length : 0;
-	const selType  = settings.selection_type === 'checkbox' ? __( 'multi-select', 'neural-forms-lite' ) : __( 'single-select', 'neural-forms-lite' );
+	const rows     = Array.isArray( settings.rows ) ? settings.rows : [];
+	const cols     = Array.isArray( settings.columns ) ? settings.columns : [];
+	const inputType = settings.selection_type === 'checkbox' ? 'checkbox' : 'radio';
+
+	if ( rows.length === 0 || cols.length === 0 ) {
+		return (
+			<p className="nf-preview__hint">
+				{ __( 'Add at least one row and one column in the inspector.', 'neural-forms-lite' ) }
+			</p>
+		);
+	}
+
 	return (
-		<div className="nf-preview__matrix-placeholder">
-			<p className="nf-preview__hint">
-				{ __( 'Matrix field — preview coming soon.', 'neural-forms-lite' ) }
-			</p>
-			<p className="nf-preview__hint">
-				{ rowCount }{ ' ' }{ __( 'rows', 'neural-forms-lite' ) }{ ' · ' }
-				{ colCount }{ ' ' }{ __( 'columns', 'neural-forms-lite' ) }{ ' · ' }
-				{ selType }
-			</p>
+		<div className="nf-preview__matrix-scroll">
+			<table className="nf-preview__matrix" aria-hidden="true">
+				<thead>
+					<tr>
+						<th className="nf-preview__matrix-corner" />
+						{ cols.map( ( c, ci ) => (
+							<th key={ ci } className="nf-preview__matrix-col">
+								{ ( c && c.label ) || ( c && c.value ) || '' }
+							</th>
+						) ) }
+					</tr>
+				</thead>
+				<tbody>
+					{ rows.map( ( r, ri ) => (
+						<tr key={ ri }>
+							<th className="nf-preview__matrix-row" scope="row">
+								{ ( r && r.label ) || ( r && r.value ) || '' }
+							</th>
+							{ cols.map( ( _c, ci ) => (
+								<td key={ ci } className="nf-preview__matrix-cell">
+									<input
+										type={ inputType }
+										disabled
+										tabIndex={ -1 }
+										aria-hidden="true"
+									/>
+								</td>
+							) ) }
+						</tr>
+					) ) }
+				</tbody>
+			</table>
 		</div>
 	);
 }

@@ -2119,6 +2119,108 @@
 	color: #b91c1c;
 }
 
+/* Matrix field — builder preview grid */
+
+#neural-forms-app .nf-preview__matrix-scroll {
+	max-width: 100%;
+	overflow-x: auto;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #fff;
+}
+
+#neural-forms-app .nf-preview__matrix {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 12px;
+	color: #1f2937;
+}
+
+#neural-forms-app .nf-preview__matrix th,
+#neural-forms-app .nf-preview__matrix td {
+	padding: 6px 10px;
+	border-bottom: 1px solid #f1f5f9;
+	text-align: center;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-preview__matrix tbody tr:last-child th,
+#neural-forms-app .nf-preview__matrix tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+#neural-forms-app .nf-preview__matrix-corner {
+	background: #f9fafb;
+}
+
+#neural-forms-app .nf-preview__matrix-col {
+	font-weight: 600;
+	color: #374151;
+	background: #f9fafb;
+}
+
+#neural-forms-app .nf-preview__matrix-row {
+	font-weight: 500;
+	text-align: left;
+	color: #374151;
+	background: #f9fafb;
+	position: sticky;
+	left: 0;
+	z-index: 1;
+}
+
+#neural-forms-app .nf-preview__matrix-cell input {
+	cursor: not-allowed;
+	accent-color: var( --nf-primary );
+}
+
+/* Matrix field — inspector controls */
+
+#neural-forms-app .nf-inspector__matrix {
+	margin-bottom: 14px;
+}
+
+#neural-forms-app .nf-inspector__matrix-group {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-inspector__matrix-row-row {
+	display: grid;
+	grid-template-columns: 1fr 100px auto;
+	gap: 6px;
+	margin-bottom: 6px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__matrix-col-row {
+	display: grid;
+	grid-template-columns: 1fr 100px 56px auto;
+	gap: 6px;
+	margin-bottom: 6px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__matrix-row-row > *,
+#neural-forms-app .nf-inspector__matrix-col-row > * {
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__matrix-row-row input[type="text"],
+#neural-forms-app .nf-inspector__matrix-col-row input[type="text"],
+#neural-forms-app .nf-inspector__matrix-score {
+	padding: 6px 8px;
+	font-size: 12px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+}
+
 /* Conditional Logic editor (real, not a placeholder) */
 
 #neural-forms-app .nf-inspector__cl {

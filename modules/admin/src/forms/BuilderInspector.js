@@ -297,6 +297,10 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				<PollResultsPanel formId={ formId } fieldId={ f.id } />
 			) }
 
+			{ f.type === 'matrix' && (
+				<MatrixSettingsBlock field={ f } onChange={ set } />
+			) }
+
 			{ f.type === 'rating' && (
 				<label className="nf-inspector__field">
 					<span className="nf-inspector__label">{ __( 'Number of stars', 'neural-forms-lite' ) }</span>
@@ -676,6 +680,181 @@ function QuizSettingsBlock( { field, onChange } ) {
 				<span>{ __( 'Randomize options', 'neural-forms-lite' ) }</span>
 			</label>
 		</>
+	);
+}
+
+/**
+ * Matrix-specific settings block.
+ *
+ * Edits the nested `field.settings` object:
+ *   - selection_type: "radio" (one per row) | "checkbox" (many per row)
+ *   - rows:    [{ label, value }, ...]
+ *   - columns: [{ label, value, score:int }, ...]
+ *
+ * Builder UI only — frontend rendering, validation, scoring and
+ * email/CSV display arrive in later Matrix commits. Score is
+ * persisted now so adding it later doesn't need a migration.
+ */
+function MatrixSettingsBlock( { field, onChange } ) {
+	const s = ( field && typeof field.settings === 'object' && field.settings !== null )
+		? field.settings
+		: {};
+
+	const selectionType = s.selection_type === 'checkbox' ? 'checkbox' : 'radio';
+	const rows = Array.isArray( s.rows ) ? s.rows : [];
+	const cols = Array.isArray( s.columns ) ? s.columns : [];
+
+	const writeSettings = ( patch ) => {
+		const next = {
+			selection_type: selectionType,
+			rows,
+			columns: cols,
+			...patch,
+		};
+		onChange( { settings: next } );
+	};
+
+	const setSelectionType = ( v ) => writeSettings( { selection_type: v === 'checkbox' ? 'checkbox' : 'radio' } );
+
+	// Rows --------------------------------------------------------------
+	const updateRow = ( idx, patch ) => {
+		const next = rows.slice();
+		next[ idx ] = { ...( next[ idx ] || {} ), ...patch };
+		writeSettings( { rows: next } );
+	};
+	const addRow = () => {
+		const n = rows.length + 1;
+		writeSettings( { rows: [ ...rows, { label: 'Row ' + n, value: 'row_' + n } ] } );
+	};
+	const removeRow = ( idx ) => {
+		const next = rows.slice();
+		next.splice( idx, 1 );
+		writeSettings( { rows: next } );
+	};
+
+	// Columns -----------------------------------------------------------
+	const updateCol = ( idx, patch ) => {
+		const next = cols.slice();
+		next[ idx ] = { ...( next[ idx ] || {} ), ...patch };
+		writeSettings( { columns: next } );
+	};
+	const addCol = () => {
+		const n = cols.length + 1;
+		writeSettings( {
+			columns: [
+				...cols,
+				{ label: 'Option ' + n, value: 'option_' + n, score: n },
+			],
+		} );
+	};
+	const removeCol = ( idx ) => {
+		const next = cols.slice();
+		next.splice( idx, 1 );
+		writeSettings( { columns: next } );
+	};
+
+	return (
+		<div className="nf-inspector__matrix">
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Selection type', 'neural-forms-lite' ) }</span>
+				<select
+					value={ selectionType }
+					onChange={ ( e ) => setSelectionType( e.target.value ) }
+				>
+					<option value="radio">{ __( 'Single choice per row (radio)', 'neural-forms-lite' ) }</option>
+					<option value="checkbox">{ __( 'Multiple choices per row (checkbox)', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			<div className="nf-inspector__matrix-group">
+				<span className="nf-inspector__label">{ __( 'Rows', 'neural-forms-lite' ) }</span>
+				{ rows.length === 0 && (
+					<p className="nf-inspector__empty">{ __( 'No rows yet.', 'neural-forms-lite' ) }</p>
+				) }
+				{ rows.map( ( row, i ) => (
+					<div className="nf-inspector__matrix-row-row" key={ i }>
+						<input
+							type="text"
+							className="nf-inspector__option-label"
+							value={ ( row && row.label ) || '' }
+							onChange={ ( e ) => updateRow( i, { label: e.target.value } ) }
+							placeholder={ __( 'Row label', 'neural-forms-lite' ) }
+						/>
+						<input
+							type="text"
+							className="nf-inspector__option-value"
+							value={ ( row && row.value ) || '' }
+							onChange={ ( e ) => updateRow( i, { value: e.target.value } ) }
+							placeholder={ __( 'row_value', 'neural-forms-lite' ) }
+						/>
+						<button
+							type="button"
+							className="nf-inspector__option-remove"
+							onClick={ () => removeRow( i ) }
+							aria-label={ __( 'Remove row', 'neural-forms-lite' ) }
+							title={ __( 'Remove row', 'neural-forms-lite' ) }
+						>×</button>
+					</div>
+				) ) }
+				<button
+					type="button"
+					className="neural-forms-btn"
+					onClick={ addRow }
+				>+ { __( 'Add row', 'neural-forms-lite' ) }</button>
+			</div>
+
+			<div className="nf-inspector__matrix-group">
+				<span className="nf-inspector__label">{ __( 'Columns', 'neural-forms-lite' ) }</span>
+				{ cols.length === 0 && (
+					<p className="nf-inspector__empty">{ __( 'No columns yet.', 'neural-forms-lite' ) }</p>
+				) }
+				{ cols.map( ( col, i ) => {
+					const scoreNum = Number( col && col.score );
+					const scoreVal = Number.isFinite( scoreNum ) ? scoreNum : 0;
+					return (
+						<div className="nf-inspector__matrix-col-row" key={ i }>
+							<input
+								type="text"
+								className="nf-inspector__option-label"
+								value={ ( col && col.label ) || '' }
+								onChange={ ( e ) => updateCol( i, { label: e.target.value } ) }
+								placeholder={ __( 'Column label', 'neural-forms-lite' ) }
+							/>
+							<input
+								type="text"
+								className="nf-inspector__option-value"
+								value={ ( col && col.value ) || '' }
+								onChange={ ( e ) => updateCol( i, { value: e.target.value } ) }
+								placeholder={ __( 'column_value', 'neural-forms-lite' ) }
+							/>
+							<input
+								type="number"
+								className="nf-inspector__matrix-score"
+								value={ scoreVal }
+								onChange={ ( e ) => {
+									const n = Number( e.target.value );
+									updateCol( i, { score: Number.isFinite( n ) ? n : 0 } );
+								} }
+								placeholder={ __( 'score', 'neural-forms-lite' ) }
+								title={ __( 'Score (optional)', 'neural-forms-lite' ) }
+							/>
+							<button
+								type="button"
+								className="nf-inspector__option-remove"
+								onClick={ () => removeCol( i ) }
+								aria-label={ __( 'Remove column', 'neural-forms-lite' ) }
+								title={ __( 'Remove column', 'neural-forms-lite' ) }
+							>×</button>
+						</div>
+					);
+				} ) }
+				<button
+					type="button"
+					className="neural-forms-btn"
+					onClick={ addCol }
+				>+ { __( 'Add column', 'neural-forms-lite' ) }</button>
+			</div>
+		</div>
 	);
 }
 
