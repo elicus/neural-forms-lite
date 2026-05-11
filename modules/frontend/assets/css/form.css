@@ -1334,3 +1334,117 @@
     border-bottom: 0;
     padding-bottom: 0;
 }
+
+/* ------------------------------------------------------------------ */
+/* Matrix field (frontend)                                            */
+/* ------------------------------------------------------------------ */
+/* Survey-style row-by-column grid. Renders responsively: a horizontal
+   scroll wraps the table so wide matrices never overflow the form
+   container on mobile. Distinct class prefix `.neural-forms-matrix`
+   so admin builder preview styles can never bleed in. */
+
+.neural-forms-matrix {
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.neural-forms-matrix__scroll {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fff;
+    /* iOS momentum scroll */
+    -webkit-overflow-scrolling: touch;
+}
+
+.neural-forms-matrix__table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+    color: #1f2937;
+}
+
+.neural-forms-matrix__table th,
+.neural-forms-matrix__table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.neural-forms-matrix__table tbody tr:last-child th,
+.neural-forms-matrix__table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.neural-forms-matrix__corner {
+    background: #f9fafb;
+}
+
+.neural-forms-matrix__col {
+    font-weight: 600;
+    color: #374151;
+    background: #f9fafb;
+    white-space: nowrap;
+}
+
+.neural-forms-matrix__row-label {
+    font-weight: 500;
+    text-align: left;
+    color: #374151;
+    background: #f9fafb;
+    white-space: nowrap;
+    /* Keep the row label visible while the user scrolls right on
+       narrow viewports. */
+    position: sticky;
+    left: 0;
+    z-index: 1;
+}
+
+.neural-forms-matrix__cell {
+    /* Comfortable click target without the cell collapsing too far on
+       narrow screens. */
+    min-width: 64px;
+}
+
+.neural-forms-matrix__cell-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+}
+
+.neural-forms-matrix__input {
+    cursor: pointer;
+    accent-color: #080f5b;
+}
+
+.neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell,
+.neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__row-label {
+    background: #fbfbfd;
+}
+
+.neural-forms-matrix__notice {
+    margin: 0;
+    padding: 10px 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    color: #92400e;
+    font-size: 13px;
+}
+
+@media ( max-width: 600px ) {
+    .neural-forms-matrix__table {
+        font-size: 13px;
+    }
+    .neural-forms-matrix__table th,
+    .neural-forms-matrix__table td {
+        padding: 8px 10px;
+    }
+}

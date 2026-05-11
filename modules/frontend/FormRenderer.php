@@ -1,6 +1,7 @@
 <?php
 namespace NeuralForms\Frontend;
 
+use NeuralForms\Core\Capabilities;
 use NeuralForms\Core\Config;
 use NeuralForms\Forms\FieldRegistry;
 use NeuralForms\Forms\FormRepository;
@@ -857,7 +858,7 @@ class FormRenderer {
 		if (
 			$show_label
 			&& $lbl !== ''
-			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question' ], true )
+			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix' ], true )
 		) {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
@@ -915,6 +916,9 @@ class FormRenderer {
 				break;
 			case 'quiz_question':
 				$input_html = static::render_quiz_question( $field, $input_id, $error_id );
+				break;
+			case 'matrix':
+				$input_html = static::render_matrix( $field, $input_id, $error_id, $form_id );
 				break;
 			case 'hidden':
 				$input_html = static::render_hidden( $field, $input_id );
@@ -1743,6 +1747,185 @@ class FormRenderer {
 		$html .= '<div class="neural-forms-form__quiz-feedback"'
 			. ' data-quiz-feedback="' . esc_attr( $field['id'] ) . '"'
 			. ' hidden></div>';
+
+		$html .= '</fieldset>';
+
+		return $html;
+	}
+
+	/**
+	 * Matrix field — survey-style row-by-column grid.
+	 *
+	 * Two selection modes:
+	 *   - radio:    one column per row.  Posted as $_POST[field_id][row_value] = "col_value".
+	 *   - checkbox: many columns per row. Posted as $_POST[field_id][row_value][] = ["a","b",...].
+	 *
+	 * The wire format intentionally nests under the field id so the existing
+	 * SubmitEndpoint::array_intersect_key( $raw_body, schema_ids ) gate keeps
+	 * working with no pipeline changes — Lite already treats per-field values
+	 * as either scalar or array (checkboxes do exactly this) and the matrix
+	 * just adds a second array level keyed by row.
+	 *
+	 * Pro-deactivated fallback:
+	 *   - If the FIELD_MATRIX capability is locked, no inputs are rendered. An
+	 *     admin viewer (manage_options) sees a one-line notice; public
+	 *     visitors see nothing at all. The rest of the form continues to
+	 *     render normally — the matrix field is silently skipped.
+	 *
+	 * Server-side validation lands in Matrix commit 4; for now `required` on
+	 * radio rows uses the first cell of each row group to ask the browser to
+	 * enforce one selection per row. Checkbox required is intentionally not
+	 * browser-enforced (the browser cannot express "at least one per row"
+	 * across a name array) and will be enforced server-side in commit 4.
+	 */
+	private static function render_matrix( array $field, string $input_id, string $error_id, int $form_id ): string {
+		// Pro-deactivated fallback. Stay silent for visitors so the rest of
+		// the form keeps working; show a one-line, admin-only notice so
+		// the site owner notices the missing field.
+		if ( ! Capabilities::can( Capabilities::FIELD_MATRIX ) ) {
+			if ( current_user_can( 'manage_options' ) ) {
+				return '<p class="neural-forms-matrix__notice" role="status">'
+					. esc_html__( 'Matrix field hidden — requires Neural Forms Pro. (Visible to administrators only.)', 'neural-forms-lite' )
+					. '</p>';
+			}
+			return '';
+		}
+
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$sel_type = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
+		$rows_raw = is_array( $settings['rows'] ?? null )    ? $settings['rows']    : [];
+		$cols_raw = is_array( $settings['columns'] ?? null ) ? $settings['columns'] : [];
+		$required = ! empty( $field['required'] );
+		$field_id = (string) $field['id'];
+
+		// Drop empty rows/columns. The builder allows partial state mid-edit;
+		// the renderer must never emit an input with no value / no name.
+		$rows = array_values( array_filter( $rows_raw, static function ( $r ) {
+			if ( ! is_array( $r ) ) {
+				return false;
+			}
+			$v = (string) ( $r['value'] ?? '' );
+			$l = (string) ( $r['label'] ?? '' );
+			return $v !== '' || $l !== '';
+		} ) );
+		$cols = array_values( array_filter( $cols_raw, static function ( $c ) {
+			if ( ! is_array( $c ) ) {
+				return false;
+			}
+			$v = (string) ( $c['value'] ?? '' );
+			$l = (string) ( $c['label'] ?? '' );
+			return $v !== '' || $l !== '';
+		} ) );
+
+		if ( empty( $rows ) || empty( $cols ) ) {
+			// Misconfigured matrix: render nothing rather than fatal. The
+			// inspector already nudges authors to add rows/cols.
+			return '';
+		}
+
+		$lbl        = (string) ( $field['label'] ?? '' );
+		$show_label = ! empty( $field['show_label'] );
+
+		$html = '<fieldset class="neural-forms-matrix" aria-describedby="' . esc_attr( $error_id ) . '">';
+
+		if ( $lbl !== '' ) {
+			$legend_class  = $show_label
+				? 'neural-forms-form__label neural-forms-form__label--block'
+				: 'screen-reader-text';
+			$required_mark = ( $show_label && $required )
+				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+				: '';
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+				. esc_html( $lbl )
+				. $required_mark
+				. '</legend>';
+		}
+
+		$html .= '<div class="neural-forms-matrix__scroll">';
+		$html .= '<table class="neural-forms-matrix__table">';
+
+		// Column header row.
+		$html .= '<thead><tr>';
+		$html .= '<th class="neural-forms-matrix__corner" scope="col"></th>';
+		foreach ( $cols as $col ) {
+			$col_label = (string) ( $col['label'] ?? '' );
+			if ( $col_label === '' ) {
+				$col_label = (string) ( $col['value'] ?? '' );
+			}
+			$html .= '<th class="neural-forms-matrix__col" scope="col">'
+				. esc_html( $col_label )
+				. '</th>';
+		}
+		$html .= '</tr></thead>';
+
+		// Body rows.
+		$html .= '<tbody>';
+		foreach ( $rows as $ri => $row ) {
+			$row_value = (string) ( $row['value'] ?? '' );
+			$row_label = (string) ( $row['label'] ?? '' );
+			if ( $row_value === '' ) {
+				$row_value = $row_label;
+			}
+			if ( $row_label === '' ) {
+				$row_label = $row_value;
+			}
+
+			$name = ( 'checkbox' === $sel_type )
+				? esc_attr( $field_id ) . '[' . esc_attr( $row_value ) . '][]'
+				: esc_attr( $field_id ) . '[' . esc_attr( $row_value ) . ']';
+
+			$html .= '<tr class="neural-forms-matrix__row">';
+			$html .= '<th class="neural-forms-matrix__row-label" scope="row">'
+				. esc_html( $row_label )
+				. '</th>';
+
+			foreach ( $cols as $ci => $col ) {
+				$col_value = (string) ( $col['value'] ?? '' );
+				$col_label = (string) ( $col['label'] ?? '' );
+				if ( $col_value === '' ) {
+					$col_value = $col_label;
+				}
+				if ( $col_label === '' ) {
+					$col_label = $col_value;
+				}
+
+				// Cell id: neural-forms-{form_id}-{field_id}-{row_value}-{col_value}.
+				// sanitize_html_class keeps the DOM id valid even when the
+				// row/column slug carries hyphens or mixed case.
+				$cell_id  = $input_id . '-' . sanitize_html_class( $row_value ) . '-' . sanitize_html_class( $col_value );
+				$aria_lbl = trim( $lbl . ' — ' . $row_label . ' — ' . $col_label );
+
+				// Required attribute strategy:
+				//   - radio:    mark first column in each row required so
+				//               the browser enforces "one per row" client-
+				//               side. The HTML radio group is row-scoped,
+				//               so marking one input requires the group.
+				//   - checkbox: not browser-enforceable across rows; left
+				//               for commit 4 server validation.
+				$req_attr = '';
+				if ( $required && 'radio' === $sel_type && 0 === $ci ) {
+					$req_attr = ' required aria-required="true"';
+				}
+
+				$html .= '<td class="neural-forms-matrix__cell">'
+					. '<label class="neural-forms-matrix__cell-label" for="' . esc_attr( $cell_id ) . '">'
+					. '<span class="screen-reader-text">' . esc_html( $aria_lbl ) . '</span>'
+					. '<input'
+					. ' type="' . esc_attr( $sel_type ) . '"'
+					. ' id="' . esc_attr( $cell_id ) . '"'
+					. ' name="' . $name . '"'
+					. ' value="' . esc_attr( $col_value ) . '"'
+					. ' class="neural-forms-matrix__input"'
+					. $req_attr
+					. '>'
+					. '</label>'
+					. '</td>';
+			}
+			$html .= '</tr>';
+		}
+		$html .= '</tbody>';
+		$html .= '</table>';
+		$html .= '</div>';
 
 		$html .= '</fieldset>';
 
