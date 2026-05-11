@@ -52,6 +52,7 @@
 		} );
 		initConditional( form );
 		initMultiStep( form );
+		initRepeaters( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
 		// step-driven mutations are captured. Must run before the first
 		// submit so the "always" restoration path has the original bars
@@ -61,6 +62,194 @@
 		// snapshot them anyway so the reset path is symmetric with
 		// poll's restore semantics.
 		snapshotQuizResults( form );
+	}
+
+	// Repeater add / remove + reindex
+
+	/**
+	 * Wire delegated click handlers for every repeater on the form.
+	 *
+	 * - Add: clone the <template> for the target repeater, substitute
+	 *   __INDEX__ / __INDEX_1__ across name / id / for /
+	 *   aria-describedby attributes, append to the <ol>.
+	 * - Remove: drop the parent <li>, then reindex the remaining
+	 *   items so name / id / "Item N" header stay contiguous.
+	 *
+	 * After every mutation, refresh the add + remove button
+	 * visibility against data-min / data-max.
+	 */
+	function initRepeaters( form ) {
+		var repeaters = form.querySelectorAll( '.neural-forms-repeater' );
+		for ( var i = 0; i < repeaters.length; i++ ) {
+			refreshRepeaterControls( repeaters[ i ] );
+		}
+
+		// Delegated click — survives DOM additions without re-binding.
+		form.addEventListener( 'click', function ( e ) {
+			var target = e.target;
+			if ( ! target || typeof target.closest !== 'function' ) return;
+			var addBtn    = target.closest( '[data-action="repeater-add"]' );
+			var removeBtn = target.closest( '[data-action="repeater-remove"]' );
+			if ( addBtn ) {
+				e.preventDefault();
+				handleRepeaterAdd( form, addBtn );
+				return;
+			}
+			if ( removeBtn ) {
+				e.preventDefault();
+				handleRepeaterRemove( form, removeBtn );
+			}
+		} );
+	}
+
+	function handleRepeaterAdd( form, addBtn ) {
+		var repeaterId = addBtn.getAttribute( 'data-target' );
+		if ( ! repeaterId ) return;
+		var repeater = form.querySelector(
+			'.neural-forms-repeater[data-neural-forms-repeater="' + cssEscapeValue( repeaterId ) + '"]'
+		);
+		if ( ! repeater ) return;
+		var list     = repeater.querySelector( '.neural-forms-repeater__list' );
+		var template = repeater.querySelector(
+			'template.neural-forms-repeater__template[data-template-for="' + cssEscapeValue( repeaterId ) + '"]'
+		);
+		if ( ! list || ! template || ! template.content ) return;
+
+		var max = parseInt( repeater.getAttribute( 'data-max' ) || '5', 10 ) || 5;
+		var current = list.querySelectorAll( '.neural-forms-repeater__item' ).length;
+		if ( current >= max ) return;
+
+		// Clone the template and stamp the new index across every name /
+		// id / for / aria-describedby template attribute.
+		var fragment = template.content.cloneNode( true );
+		stampRepeaterIndex( fragment, current );
+
+		list.appendChild( fragment );
+		refreshRepeaterControls( repeater );
+	}
+
+	function handleRepeaterRemove( form, removeBtn ) {
+		var item = removeBtn.closest( '.neural-forms-repeater__item' );
+		if ( ! item ) return;
+		var repeater = item.closest( '.neural-forms-repeater' );
+		if ( ! repeater ) return;
+		var list = repeater.querySelector( '.neural-forms-repeater__list' );
+		if ( ! list ) return;
+
+		var min = parseInt( repeater.getAttribute( 'data-min' ) || '1', 10 ) || 1;
+		var current = list.querySelectorAll( '.neural-forms-repeater__item' ).length;
+		// Allow removing down to 0 when min === 0; otherwise keep min.
+		if ( current <= Math.max( 1, min ) && current <= min ) return;
+		if ( min > 0 && current <= min ) return;
+
+		item.parentNode.removeChild( item );
+
+		// Reindex the survivors so name / id stay contiguous.
+		var items = list.querySelectorAll( '.neural-forms-repeater__item' );
+		for ( var i = 0; i < items.length; i++ ) {
+			stampRepeaterIndex( items[ i ], i );
+		}
+		refreshRepeaterControls( repeater );
+	}
+
+	/**
+	 * Rewrite every name / id / for / aria-describedby attribute in
+	 * a freshly-cloned template fragment (or an existing item being
+	 * reindexed) by substituting __INDEX__ with `index` across the
+	 * stored template attributes (data-name-template, data-id-template,
+	 * data-for-template, data-aria-describedby-template,
+	 * data-error-id-template).
+	 *
+	 * `index` is 0-based. The 1-based human number for the "Item N"
+	 * header gets stamped from `data-item-num-template` on the
+	 * containing fieldset.
+	 *
+	 * Accepts either a DocumentFragment (initial add) or an Element
+	 * (reindex pass).
+	 */
+	function stampRepeaterIndex( root, index ) {
+		var idxStr   = String( index );
+		var idxHuman = String( index + 1 );
+
+		// On a freshly cloned fragment the outermost element is the
+		// <li>; on a reindex we already have an Element. Both cases
+		// expose querySelectorAll so we can walk them uniformly.
+		var item = root.querySelector
+			? ( root.nodeType === 1 ? root : root.querySelector( '.neural-forms-repeater__item' ) )
+			: null;
+		if ( item && item.setAttribute ) {
+			item.setAttribute( 'data-index', idxStr );
+		}
+
+		// Header "Item N" label.
+		var headers = root.querySelectorAll
+			? root.querySelectorAll( '[data-item-num]' )
+			: [];
+		for ( var h = 0; h < headers.length; h++ ) {
+			var repeater = headers[ h ].closest( '.neural-forms-repeater' );
+			var tpl = repeater ? repeater.getAttribute( 'data-item-num-template' ) : null;
+			if ( tpl ) {
+				headers[ h ].textContent = tpl
+					.replace( /__INDEX_1__/g, idxHuman )
+					.replace( /__INDEX__/g, idxStr );
+			}
+		}
+
+		stampAttrFromTemplate( root, '[data-name-template]',                 'data-name-template',                 'name',             idxStr );
+		stampAttrFromTemplate( root, '[data-id-template]',                   'data-id-template',                   'id',               idxStr );
+		stampAttrFromTemplate( root, '[data-for-template]',                  'data-for-template',                  'for',              idxStr );
+		stampAttrFromTemplate( root, '[data-aria-describedby-template]',     'data-aria-describedby-template',     'aria-describedby', idxStr );
+		stampAttrFromTemplate( root, '[data-error-id-template]',             'data-error-id-template',             'id',               idxStr );
+	}
+
+	function stampAttrFromTemplate( root, selector, tplAttr, targetAttr, idxStr ) {
+		if ( ! root.querySelectorAll ) return;
+		var nodes = root.querySelectorAll( selector );
+		for ( var i = 0; i < nodes.length; i++ ) {
+			var tpl = nodes[ i ].getAttribute( tplAttr );
+			if ( tpl == null ) continue;
+			nodes[ i ].setAttribute( targetAttr, tpl.replace( /__INDEX__/g, idxStr ) );
+		}
+	}
+
+	/**
+	 * Show / hide the add + remove buttons based on the current
+	 * item count vs data-min / data-max.
+	 *   - add hidden when count >= max.
+	 *   - remove hidden on every item when count <= min (so the
+	 *     visitor can't drop below the required minimum).
+	 */
+	function refreshRepeaterControls( repeater ) {
+		var min = parseInt( repeater.getAttribute( 'data-min' ) || '1', 10 ) || 1;
+		var max = parseInt( repeater.getAttribute( 'data-max' ) || '5', 10 ) || 5;
+		var list  = repeater.querySelector( '.neural-forms-repeater__list' );
+		var items = list ? list.querySelectorAll( '.neural-forms-repeater__item' ) : [];
+		var count = items.length;
+
+		var addBtn = repeater.querySelector( '[data-action="repeater-add"]' );
+		if ( addBtn ) {
+			if ( count >= max ) addBtn.setAttribute( 'hidden', '' );
+			else                addBtn.removeAttribute( 'hidden' );
+		}
+		// Hide ALL remove buttons when at-or-below min (with the
+		// "at least 1 row" safety net when min === 0).
+		var atOrBelowMin = ( min > 0 ) ? count <= min : count <= 1;
+		for ( var i = 0; i < items.length; i++ ) {
+			var rm = items[ i ].querySelector( '[data-action="repeater-remove"]' );
+			if ( ! rm ) continue;
+			if ( atOrBelowMin ) rm.setAttribute( 'hidden', '' );
+			else                rm.removeAttribute( 'hidden' );
+		}
+	}
+
+	/**
+	 * Escape a value for use inside a CSS attribute selector. The
+	 * field id only contains [a-z0-9_], but defence in depth — escape
+	 * common selector specials so a future change in id allowlist
+	 * doesn't suddenly break the selector.
+	 */
+	function cssEscapeValue( v ) {
+		return String( v ).replace( /["\\]/g, '\\$&' );
 	}
 
 	// Submit handler

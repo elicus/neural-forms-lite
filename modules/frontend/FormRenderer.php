@@ -858,7 +858,7 @@ class FormRenderer {
 		if (
 			$show_label
 			&& $lbl !== ''
-			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix' ], true )
+			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true )
 		) {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
@@ -919,6 +919,9 @@ class FormRenderer {
 				break;
 			case 'matrix':
 				$input_html = static::render_matrix( $field, $input_id, $error_id, $form_id );
+				break;
+			case 'repeater':
+				$input_html = static::render_repeater( $field, $input_id, $error_id, $form_id );
 				break;
 			case 'hidden':
 				$input_html = static::render_hidden( $field, $input_id );
@@ -1929,6 +1932,370 @@ class FormRenderer {
 
 		$html .= '</fieldset>';
 
+		return $html;
+	}
+
+	/**
+	 * Repeater field — repeatable group of child fields.
+	 *
+	 * Wire format
+	 * - Each rendered iteration scopes its child inputs under
+	 *     <repeater_id>[<index>][<child_id>]
+	 *   and checkbox-array children under
+	 *     <repeater_id>[<index>][<child_id>][]
+	 *   so the existing SubmitEndpoint pipeline (array_intersect_key on
+	 *   the top-level repeater id; nested-array survives) accepts it
+	 *   without endpoint changes for the leaf-children path.
+	 * - File children render the same <input type="file"> markup as
+	 *   a regular file field. Server-side nested file processing (the
+	 *   $_FILES parallel-array shape PHP emits for bracketed file
+	 *   names) lands in Commit 4 — until that ships, repeater file
+	 *   children submit but get dropped on the server because
+	 *   process_file_fields() only indexes flat top-level ids.
+	 *
+	 * Initial item count
+	 *   max( 1, min_items ) iterations rendered server-side. The
+	 *   browser then lets the visitor add up to max_items more.
+	 *
+	 * Add / remove
+	 *   form-submit.js binds delegated click handlers on
+	 *   data-action="repeater-add" / data-action="repeater-remove".
+	 *   On add, the <template> below is cloned and __INDEX__ is
+	 *   substituted with the new iteration index. On remove, every
+	 *   remaining input is reindexed via its data-name-template
+	 *   and data-id-template so name + id stay contiguous and per-
+	 *   row radio groups stay independent.
+	 *
+	 * Pro-deactivated fallback
+	 *   When FIELD_REPEATER is locked, no inputs render. Admin
+	 *   viewers see a one-line "requires Neural Forms Pro" notice;
+	 *   public visitors see nothing. The rest of the form keeps
+	 *   working — the repeater field is silently skipped.
+	 */
+	private static function render_repeater( array $field, string $input_id, string $error_id, int $form_id ): string {
+		// Pro-deactivated fallback. Stay silent for visitors.
+		if ( ! Capabilities::can( Capabilities::FIELD_REPEATER ) ) {
+			if ( current_user_can( 'manage_options' ) ) {
+				return '<p class="neural-forms-repeater__notice" role="status">'
+					. esc_html__( 'Repeater field hidden — requires Neural Forms Pro. (Visible to administrators only.)', 'neural-forms-lite' )
+					. '</p>';
+			}
+			return '';
+		}
+
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$min      = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 1;
+		$max      = isset( $settings['max_items'] ) ? (int) $settings['max_items'] : 5;
+		$cols_in  = isset( $settings['columns'] )   ? (int) $settings['columns']   : 1;
+
+		if ( $min < 0 ) $min = 0;
+		if ( $max < 1 ) $max = 1;
+		if ( $max > 20 ) $max = 20;
+		if ( $max < $min ) $max = $min;
+		$columns  = ( $cols_in >= 1 && $cols_in <= 4 ) ? $cols_in : 1;
+
+		$add_label    = (string) ( $settings['add_button_label']    ?? '' );
+		$remove_label = (string) ( $settings['remove_button_label'] ?? '' );
+		if ( $add_label === '' )    $add_label    = __( 'Add item', 'neural-forms-lite' );
+		if ( $remove_label === '' ) $remove_label = __( 'Remove', 'neural-forms-lite' );
+
+		$children = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+		// Drop malformed / blocked children defensively — the schema
+		// validator already enforces this on save, but a manually-
+		// edited DB row could carry stale entries.
+		$children = array_values( array_filter( $children, static function ( $c ) {
+			return is_array( $c ) && ! empty( $c['id'] ) && ! empty( $c['type'] );
+		} ) );
+
+		if ( empty( $children ) ) {
+			// Repeater with no children template — render nothing useful.
+			if ( current_user_can( 'manage_options' ) ) {
+				return '<p class="neural-forms-repeater__notice" role="status">'
+					. esc_html__( 'Repeater has no child fields configured. (Visible to administrators only.)', 'neural-forms-lite' )
+					. '</p>';
+			}
+			return '';
+		}
+
+		$field_id      = (string) $field['id'];
+		$repeater_attr = esc_attr( $field_id );
+		$initial_count = max( 1, $min );
+		// Initial items capped at max_items so a misconfigured
+		// min_items > max_items can't render more than max.
+		if ( $initial_count > $max ) $initial_count = $max;
+
+		$lbl        = (string) ( $field['label'] ?? '' );
+		$show_label = ! empty( $field['show_label'] );
+		$required   = ! empty( $field['required'] );
+
+		$html  = '<fieldset class="neural-forms-repeater"'
+			. ' data-neural-forms-repeater="' . $repeater_attr . '"'
+			. ' data-min="' . esc_attr( (string) $min ) . '"'
+			. ' data-max="' . esc_attr( (string) $max ) . '"'
+			. ' data-columns="' . esc_attr( (string) $columns ) . '"'
+			. ' data-item-num-template="' . esc_attr__( 'Item __INDEX_1__', 'neural-forms-lite' ) . '"'
+			. ' aria-describedby="' . esc_attr( $error_id ) . '"'
+			. '>';
+
+		if ( $lbl !== '' ) {
+			$legend_class  = $show_label
+				? 'neural-forms-form__label neural-forms-form__label--block'
+				: 'screen-reader-text';
+			$required_mark = ( $show_label && $required )
+				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+				: '';
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+				. esc_html( $lbl )
+				. $required_mark
+				. '</legend>';
+		}
+
+		$html .= '<ol class="neural-forms-repeater__list">';
+		for ( $i = 0; $i < $initial_count; $i++ ) {
+			$html .= static::render_repeater_item( $field_id, $children, $i, $form_id, $columns, $remove_label, false );
+		}
+		$html .= '</ol>';
+
+		// The <template> carries the __INDEX__ placeholder. form-submit.js
+		// clones .content on Add and replaces __INDEX__ / __INDEX_1__
+		// (0-based numeric / 1-based human) with the new iteration index
+		// across every name= / id= / for= / data-* attribute.
+		$html .= '<template class="neural-forms-repeater__template"'
+			. ' data-template-for="' . $repeater_attr . '">';
+		$html .= static::render_repeater_item( $field_id, $children, '__INDEX__', $form_id, $columns, $remove_label, true );
+		$html .= '</template>';
+
+		// Add button — visibility toggled by JS against data-max vs.
+		// current list length.
+		$html .= '<button type="button"'
+			. ' class="neural-forms-repeater__add"'
+			. ' data-action="repeater-add"'
+			. ' data-target="' . $repeater_attr . '"'
+			. '>+ ' . esc_html( $add_label ) . '</button>';
+
+		$html .= '</fieldset>';
+
+		return $html;
+	}
+
+	/**
+	 * Render a single Repeater iteration <li>. Re-used for both the
+	 * server-rendered initial items and the hidden <template>: when
+	 * `$is_template === true` the index is the literal "__INDEX__"
+	 * placeholder string that form-submit.js substitutes on add.
+	 *
+	 * @param string     $repeater_id  Parent repeater field id.
+	 * @param array      $children     Children template list.
+	 * @param int|string $index        0-based index, OR "__INDEX__".
+	 * @param int        $form_id      Form id (used for scoped input id).
+	 * @param int        $columns      1..4 grid columns.
+	 * @param string     $remove_label Pre-i18n'd remove button label.
+	 * @param bool       $is_template  True when rendering the hidden template.
+	 */
+	private static function render_repeater_item(
+		string $repeater_id,
+		array $children,
+		$index,
+		int $form_id,
+		int $columns,
+		string $remove_label,
+		bool $is_template
+	): string {
+		// "__INDEX__" in the literal template; otherwise the 0-based
+		// numeric index. Used directly in name / id strings — both
+		// callers pre-sanitise via esc_attr().
+		$idx_str = (string) $index;
+		// 1-based human label for the "Item N" header. The template
+		// stores __INDEX_1__ so the JS substitutes (idx + 1) at
+		// runtime; for server-rendered items we compute it here.
+		$idx_human = $is_template ? '__INDEX_1__' : (string) ( ( (int) $index ) + 1 );
+
+		$html  = '<li class="neural-forms-repeater__item"'
+			. ' data-repeater-item';
+		if ( ! $is_template ) {
+			$html .= ' data-index="' . esc_attr( $idx_str ) . '"';
+		}
+		$html .= '>';
+
+		$html .= '<header class="neural-forms-repeater__item-head">';
+		$html .= '<span class="neural-forms-repeater__item-num" data-item-num>'
+			. /* translators: %s: 1-based iteration index */
+			esc_html( sprintf( __( 'Item %s', 'neural-forms-lite' ), $idx_human ) )
+			. '</span>';
+		$html .= '<button type="button"'
+			. ' class="neural-forms-repeater__remove"'
+			. ' data-action="repeater-remove"'
+			. ' data-target="' . esc_attr( $repeater_id ) . '"'
+			. '>' . esc_html( $remove_label ) . '</button>';
+		$html .= '</header>';
+
+		$html .= '<div class="neural-forms-repeater__grid neural-forms-repeater__grid--cols-'
+			. esc_attr( (string) $columns )
+			. '">';
+		foreach ( $children as $child ) {
+			$html .= static::render_repeater_child( $child, $repeater_id, $idx_str, $form_id );
+		}
+		$html .= '</div>';
+
+		$html .= '</li>';
+		return $html;
+	}
+
+	/**
+	 * Render one child field inside a Repeater iteration.
+	 *
+	 * The child's id is rewritten to the scoped bracketed name
+	 * (`<repeater_id>[<index>][<child_id>]`) and its scoped input id
+	 * is built as `neural-forms-{form_id}-{repeater_id}-{index}-{child_id}`.
+	 * Each input emitted by the per-type renderer carries an extra
+	 * data-name-template / data-id-template attribute (also injected
+	 * here) so the JS reindexer can rewrite them when the user adds
+	 * or removes an iteration. The data-* templates use the literal
+	 * "__INDEX__" placeholder so the JS string-replace is unambiguous.
+	 *
+	 * Children template-types that aren't in the v1 leaf whitelist
+	 * are silently skipped — FormValidator already enforces the
+	 * allowlist at save time, but this is defence-in-depth.
+	 */
+	private static function render_repeater_child( array $child, string $repeater_id, string $index, int $form_id ): string {
+		$child_id   = (string) ( $child['id']   ?? '' );
+		$child_type = (string) ( $child['type'] ?? '' );
+		if ( $child_id === '' || $child_type === '' ) return '';
+
+		// v1 leaf whitelist. Mirrors FormValidator::REPEATER_ALLOWED_CHILD_TYPES.
+		$allowed = [ 'text','email','phone','tel','number','url','textarea','select','radio','checkbox','checkboxes','date','file' ];
+		if ( ! in_array( $child_type, $allowed, true ) ) return '';
+
+		// Scoped wire names + ids.
+		$is_template_index = ( $index === '__INDEX__' );
+		$scoped_name       = $repeater_id . '[' . $index . '][' . $child_id . ']';
+		$scoped_input_id   = 'neural-forms-' . $form_id . '-' . $repeater_id . '-' . $index . '-' . $child_id;
+		$scoped_error_id   = $scoped_input_id . '-error';
+		// Template attributes for the JS reindexer — both use the
+		// literal __INDEX__ placeholder regardless of current index.
+		$name_tpl     = $repeater_id . '[__INDEX__][' . $child_id . ']';
+		$id_tpl       = 'neural-forms-' . $form_id . '-' . $repeater_id . '-__INDEX__-' . $child_id;
+		$error_id_tpl = $id_tpl . '-error';
+
+		// Build the inner input via the existing per-type renderer.
+		// Pass a CLONE of the child field with its id set to the
+		// scoped bracketed name; the renderers use $field['id'] for
+		// the input's `name` attribute and the supplied $input_id for
+		// the input's `id` attribute.
+		$scoped = $child;
+		$scoped['id']            = $scoped_name;
+		$scoped['placeholder']   = (string) ( $child['placeholder'] ?? '' );
+		// Per-iteration `name` for radio + checkboxes must include the
+		// row index so each iteration has its own radio group / array
+		// bucket. render_radio / render_checkboxes already build their
+		// `name` from $field['id'], so the scoped id above is enough.
+
+		switch ( $child_type ) {
+			case 'email':                 $inner = static::render_email(     $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'phone': case 'tel':     $inner = static::render_phone(     $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'url':                   $inner = static::render_url(       $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'number':                $inner = static::render_number(    $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'date':                  $inner = static::render_date(      $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'textarea':              $inner = static::render_textarea(  $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'select':                $inner = static::render_select(    $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'radio':                 $inner = static::render_radio(     $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'checkboxes':            $inner = static::render_checkboxes( $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'checkbox':              $inner = static::render_checkbox(  $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'file':                  $inner = static::render_file(      $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'text': default:         $inner = static::render_text(      $scoped, $scoped_input_id, $scoped_error_id ); break;
+		}
+
+		// Inject data-name-template / data-id-template on every named
+		// element in the rendered fragment so the JS reindexer can
+		// rewrite name + id deterministically. This is a post-process
+		// pass to avoid teaching every per-type renderer about
+		// repeater context.
+		$inner = static::inject_repeater_templates( $inner, $name_tpl, $id_tpl, $error_id_tpl );
+
+		// Label sits OUTSIDE the input so the visual hierarchy reads
+		// label-then-input, mirroring the standard render_field()
+		// shape. We can't reuse render_field directly because it adds
+		// a wrapper with the field id as data-attr — we want the
+		// scoped id instead.
+		$label = (string) ( $child['label'] ?? '' );
+		$req   = ! empty( $child['required'] );
+		$label_html = '';
+		if ( $label !== '' ) {
+			$req_mark = $req ? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>' : '';
+			// Match the parent form's label style.
+			$label_html = '<label class="neural-forms-form__label neural-forms-form__label--block" for="'
+				. esc_attr( $scoped_input_id ) . '">'
+				. esc_html( $label )
+				. $req_mark
+				. '</label>';
+		}
+
+		$wrap_class = 'neural-forms-form__field neural-forms-form__field--' . esc_attr( $child_type )
+			. ' neural-forms-repeater__child';
+
+		return '<div class="' . $wrap_class . '"'
+			. ' data-neural-forms-field-id="' . esc_attr( $child_id ) . '"'
+			. '>'
+			. $label_html
+			. $inner
+			. '<p class="neural-forms-form__field-error" id="' . esc_attr( $scoped_error_id ) . '"'
+			. ' data-error-id-template="' . esc_attr( $error_id_tpl ) . '"'
+			. ' role="alert" hidden></p>'
+			. '</div>';
+	}
+
+	/**
+	 * Stamp every named input + every for= attribute + every id=
+	 * attribute in the rendered child fragment with the matching
+	 * data-name-template / data-id-template / data-for-template so
+	 * the JS reindexer can rewrite them after add / remove without
+	 * having to parse the existing bracketed value.
+	 *
+	 * Simple string-replace pass — never touches HTML structure;
+	 * cheaper than running a DOM walker for what's typically 10–30
+	 * matches per repeater item.
+	 */
+	private static function inject_repeater_templates( string $html, string $name_tpl, string $id_tpl, string $error_id_tpl ): string {
+		// Inject the templates on every element that carries a `name`
+		// or `id`. We use a regex over the already-rendered HTML to
+		// avoid teaching every per-type renderer about repeater
+		// context. The regex is intentionally narrow (anchored on
+		// ` name="…"` / ` id="…"` / ` for="…"` patterns) so it can't
+		// accidentally hit content text.
+		$html = preg_replace_callback(
+			'/(\s)name="([^"]*)"/',
+			static function ( $m ) use ( $name_tpl ) {
+				return $m[1] . 'name="' . $m[2] . '" data-name-template="' . esc_attr( $name_tpl ) . '"';
+			},
+			$html
+		);
+		$html = preg_replace_callback(
+			'/(\s)id="([^"]*)"/',
+			static function ( $m ) use ( $id_tpl, $error_id_tpl ) {
+				// Discriminate between the input id and the error
+				// container id by inspecting the suffix.
+				$tpl = ( substr( $m[2], -6 ) === '-error' ) ? $error_id_tpl : $id_tpl;
+				return $m[1] . 'id="' . $m[2] . '" data-id-template="' . esc_attr( $tpl ) . '"';
+			},
+			$html
+		);
+		$html = preg_replace_callback(
+			'/(\s)for="([^"]*)"/',
+			static function ( $m ) use ( $id_tpl ) {
+				return $m[1] . 'for="' . $m[2] . '" data-for-template="' . esc_attr( $id_tpl ) . '"';
+			},
+			$html
+		);
+		// aria-describedby points at the error container id, which
+		// includes the iteration index — give it a template too so the
+		// reindexer keeps aria wiring in sync.
+		$html = preg_replace_callback(
+			'/(\s)aria-describedby="([^"]*)"/',
+			static function ( $m ) use ( $error_id_tpl ) {
+				return $m[1] . 'aria-describedby="' . $m[2] . '" data-aria-describedby-template="' . esc_attr( $error_id_tpl ) . '"';
+			},
+			$html
+		);
 		return $html;
 	}
 
