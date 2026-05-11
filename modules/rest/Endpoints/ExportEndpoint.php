@@ -3,6 +3,7 @@ namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\MatrixFormatter;
+use NeuralForms\Forms\RepeaterFormatter;
 use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
@@ -267,6 +268,23 @@ class ExportEndpoint {
 				if ( $type === 'file' ) {
 					$dynamic_cols[] = [ 'header' => $field_id . '_filename', 'source_id' => $field_id, 'part' => 'filename' ];
 					$dynamic_cols[] = [ 'header' => $field_id . '_url',      'source_id' => $field_id, 'part' => 'url'      ];
+				} elseif ( $type === 'repeater' ) {
+					// Repeater expands to one CSV column per
+					// (item_index, child) up to max_items. File children
+					// add two sub-columns (__filename + __url) — same
+					// convention as flat file fields. The exporter
+					// captures the child schema + part so build_row can
+					// resolve labels without re-fetching the form.
+					foreach ( RepeaterFormatter::csv_columns( $field ) as $rc ) {
+						$dynamic_cols[] = [
+							'header'     => $rc['header'],
+							'source_id'  => $field_id,
+							'part'       => 'repeater_cell',
+							'item_index' => $rc['item_index'],
+							'child'      => $rc['child'],
+							'cell_part'  => $rc['part'], // value | filename | url
+						];
+					}
 				} elseif ( $type === 'matrix' ) {
 					// Matrix expands to one CSV column per configured row.
 					// `field` is captured so build_row can map stored
@@ -360,6 +378,12 @@ class ExportEndpoint {
 				$row_val  = (string) ( $col['row_value'] ?? '' );
 				$rendered = MatrixFormatter::csv_row_value( $raw, $field, $row_val );
 				$row[]    = self::escape_csv_formula( $rendered );
+			} elseif ( $col['part'] === 'repeater_cell' ) {
+				$child      = is_array( $col['child'] ?? null ) ? $col['child'] : [];
+				$item_index = isset( $col['item_index'] ) ? (int) $col['item_index'] : 0;
+				$cell_part  = (string) ( $col['cell_part'] ?? 'value' );
+				$rendered   = RepeaterFormatter::csv_row_value( $raw, $item_index, $child, $cell_part );
+				$row[]      = self::escape_csv_formula( $rendered );
 			} else {
 				$row[] = $this->normalize_value( $raw );
 			}

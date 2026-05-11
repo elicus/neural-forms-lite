@@ -4,6 +4,7 @@ namespace NeuralForms\Notifications;
 use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
 use NeuralForms\Forms\MatrixFormatter;
+use NeuralForms\Forms\RepeaterFormatter;
 use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 
@@ -412,6 +413,38 @@ class NotificationService {
 			} elseif ( $field['type'] === 'file' ) {
 				// File fields store a metadata array - display the filename if available.
 				$value = is_array( $raw ) ? (string) ( $raw['filename'] ?? 'file' ) : '';
+			} elseif ( $field['type'] === 'repeater' ) {
+				// Repeater renders as a labelled block with one nested
+				// list per submitted iteration:
+				//
+				//   Team Members:
+				//     Item 1:
+				//       - Name: Arif
+				//       - Role: Developer
+				//     Item 2:
+				//       - Name: Sara
+				//       - Role: Designer
+				$items = RepeaterFormatter::format_value_lines( $raw, $field );
+				$rendered = [];
+				foreach ( $items as $item ) {
+					$child_lines = [];
+					foreach ( $item['child_lines'] as $cl ) {
+						if ( $cl['display'] === '' ) continue;
+						$child_lines[] = '    - ' . $cl['child_label'] . ': ' . $cl['display'];
+					}
+					if ( empty( $child_lines ) ) continue;
+					$rendered[] = '  ' . sprintf(
+						/* translators: %d: 1-based iteration number */
+						__( 'Item %d:', 'neural-forms-lite' ),
+						$item['item_index'] + 1
+					) . "\n" . implode( "\n", $child_lines );
+				}
+				if ( empty( $rendered ) ) {
+					$lines[] = $label . ':';
+				} else {
+					$lines[] = $label . ":\n" . implode( "\n", $rendered );
+				}
+				continue;
 			} elseif ( $field['type'] === 'matrix' ) {
 				// Matrix renders one line per configured row, indented under
 				// the field label so the visual hierarchy mirrors how a

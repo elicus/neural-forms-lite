@@ -41,7 +41,7 @@ import api from '../api';
 import AiAnalysisCard from './AiAnalysisCard';
 import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
-import { formatDate, formatMatrixValueLines } from './helpers';
+import { formatDate, formatMatrixValueLines, formatRepeaterValueLines } from './helpers';
 
 function StatusPill( { entry } ) {
 	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
@@ -508,6 +508,72 @@ export default function EntryDetail( {
 						{ rows.map( ( [ k, v ] ) => {
 							const label = ( fieldLabels && fieldLabels[ k ] ) || k;
 							const field = ( fieldSchemas && fieldSchemas[ k ] ) || null;
+
+							// Repeater: render per-iteration block of child label/value lines.
+							if ( field && field.type === 'repeater' ) {
+								const items = formatRepeaterValueLines( v, field );
+								const hasAny = items.length > 0 && items.some(
+									( it ) => it.childLines.some( ( cl ) => cl.display !== '' )
+								);
+								return (
+									<div
+										className="neural-forms-entry-detail__field-row neural-forms-entry-detail__field-row--repeater"
+										key={ k }
+									>
+										<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+										<dd className="neural-forms-entry-detail__field-value">
+											{ ! hasAny ? (
+												<span className="neural-forms-entry-detail__field-empty">
+													{ __( 'No items', 'neural-forms-lite' ) }
+												</span>
+											) : (
+												<ol className="neural-forms-entry-detail__repeater-list">
+													{ items.map( ( it ) => {
+														const visible = it.childLines.filter( ( cl ) => cl.display !== '' );
+														if ( visible.length === 0 ) return null;
+														return (
+															<li
+																className="neural-forms-entry-detail__repeater-item"
+																key={ it.itemIndex }
+															>
+																<div className="neural-forms-entry-detail__repeater-item-num">
+																	{ __( 'Item', 'neural-forms-lite' ) } { it.itemIndex + 1 }
+																</div>
+																<ul className="neural-forms-entry-detail__repeater-children">
+																	{ visible.map( ( cl ) => (
+																		<li
+																			className="neural-forms-entry-detail__repeater-child"
+																			key={ cl.childId }
+																		>
+																			<span className="neural-forms-entry-detail__repeater-child-label">
+																				{ cl.childLabel }:
+																			</span>{ ' ' }
+																			{ cl.childType === 'file' && cl.raw && cl.raw.url ? (
+																				<a
+																					className="neural-forms-entry-detail__repeater-child-value"
+																					href={ cl.raw.url }
+																					target="_blank"
+																					rel="noreferrer"
+																				>
+																					{ cl.display }
+																				</a>
+																			) : (
+																				<span className="neural-forms-entry-detail__repeater-child-value">
+																					{ cl.display }
+																				</span>
+																			) }
+																		</li>
+																	) ) }
+																</ul>
+															</li>
+														);
+													} ) }
+												</ol>
+											) }
+										</dd>
+									</div>
+								);
+							}
 
 							// Matrix: render row-by-row labelled selections.
 							if ( field && field.type === 'matrix' ) {

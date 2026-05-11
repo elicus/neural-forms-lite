@@ -81,6 +81,95 @@ export function buildFieldSchemaMap( form ) {
 }
 
 /**
+ * Map a stored Repeater value to a per-item list of { childLabel,
+ * childType, raw, display } lines. Mirrors PHP
+ * RepeaterFormatter::format_value_lines.
+ *
+ * Walks the SCHEMA's children template so unknown wire keys drop
+ * out naturally. Returns an empty list when the value isn't an
+ * array or when the schema has no children.
+ */
+export function formatRepeaterValueLines( value, field ) {
+	const out = [];
+	if ( ! field || typeof field !== 'object' ) return out;
+	const childrenSchema = Array.isArray( field.fields ) ? field.fields : [];
+	const items = Array.isArray( value ) ? value : [];
+	if ( childrenSchema.length === 0 ) return out;
+
+	for ( let i = 0; i < items.length; i++ ) {
+		const row = items[ i ];
+		if ( ! row || typeof row !== 'object' ) continue;
+		const childLines = [];
+		for ( const child of childrenSchema ) {
+			if ( ! child || typeof child !== 'object' || ! child.id ) continue;
+			const childId    = String( child.id );
+			const childType  = String( child.type || 'text' );
+			const childLabel = String( child.label || childId );
+			const raw        = ( childId in row ) ? row[ childId ] : null;
+			childLines.push( {
+				childId,
+				childLabel,
+				childType,
+				raw,
+				display: repeaterChildDisplay( child, raw ),
+			} );
+		}
+		out.push( { itemIndex: i, childLines } );
+	}
+	return out;
+}
+
+function repeaterChildDisplay( child, raw ) {
+	const type = String( child.type || 'text' );
+	if ( raw == null ) return '';
+
+	if ( type === 'radio' || type === 'select' ) {
+		const v = typeof raw === 'string' || typeof raw === 'number' ? String( raw ) : '';
+		if ( v === '' ) return '';
+		return repeaterOptionLabel( child, v );
+	}
+	if ( type === 'checkboxes' ) {
+		const arr = Array.isArray( raw ) ? raw : [];
+		const out = [];
+		for ( const v of arr ) {
+			if ( v == null ) continue;
+			const s = String( v );
+			if ( s === '' ) continue;
+			out.push( repeaterOptionLabel( child, s ) );
+		}
+		return out.join( ', ' );
+	}
+	if ( type === 'checkbox' || type === 'acceptance' ) {
+		const truthy = ( raw === 1 || raw === '1' || raw === true );
+		return truthy ? 'Yes' : 'No';
+	}
+	if ( type === 'file' ) {
+		if ( raw && typeof raw === 'object' && typeof raw.filename === 'string' ) {
+			return raw.filename;
+		}
+		return '';
+	}
+	if ( Array.isArray( raw ) ) {
+		return raw.filter( ( v ) => v != null && typeof v !== 'object' ).map( String ).join( ', ' );
+	}
+	return String( raw );
+}
+
+function repeaterOptionLabel( child, value ) {
+	const options = Array.isArray( child.options ) ? child.options : [];
+	for ( const opt of options ) {
+		if ( ! opt || typeof opt !== 'object' ) continue;
+		const ov = String( opt.value || '' );
+		const ol = String( opt.label || '' );
+		const eff = ov !== '' ? ov : ol;
+		if ( eff === value ) {
+			return ol !== '' ? ol : eff;
+		}
+	}
+	return value;
+}
+
+/**
  * Map a stored Matrix value to a list of { rowLabel, display } pairs
  * in schema-row order. Mirrors PHP MatrixFormatter::format_value_lines.
  *

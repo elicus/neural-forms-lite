@@ -1099,6 +1099,59 @@
 	font-style: italic;
 }
 
+/* Repeater entry-detail — stacked per-item card with child lines.
+   Matches the email + CSV display patterns (one item per row in the
+   ol, label/value pairs in a nested ul). */
+.neural-forms-entry-detail__repeater-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
+}
+
+.neural-forms-entry-detail__repeater-item {
+	border: 1px solid var( --f-gray-200 );
+	border-radius: 6px;
+	padding: 8px 10px;
+	background: #fff;
+}
+
+.neural-forms-entry-detail__repeater-item-num {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var( --f-gray-600 );
+	margin-bottom: 6px;
+}
+
+.neural-forms-entry-detail__repeater-children {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 3px;
+}
+
+.neural-forms-entry-detail__repeater-child {
+	font-size: 13px;
+}
+
+.neural-forms-entry-detail__repeater-child-label {
+	color: var( --f-gray-600 );
+	font-weight: 500;
+}
+
+.neural-forms-entry-detail__repeater-child-value {
+	color: var( --f-gray-800 );
+}
+
+.neural-forms-entry-detail__repeater-child-value[href] {
+	color: var( --f-primary, #080f5b );
+	text-decoration: underline;
+}
+
 .neural-forms-entry-detail__ai-spam {
 	align-items: center;
 	display: flex;
