@@ -56,10 +56,19 @@ const SURVEY_TYPES = [
 	'matrix',
 ];
 
-// Capability key (mirrors Capabilities::FIELD_MATRIX on the PHP
-// side). When `window.neuralFormsAdmin.plugin.capabilities[CAP]`
-// is false the chip renders disabled with a Pro badge.
-const MATRIX_CAP = 'field_matrix';
+// Advanced / Pro-only field types. Repeater is gated by
+// `field_repeater`; the chip renders locked unless Pro flips the
+// capability filter. The "Advanced" section is rendered below
+// Survey so Pro-only items stay visually grouped together.
+const ADVANCED_TYPES = [
+	'repeater',
+];
+
+// Capability keys mirror the PHP Capabilities:: constants. When
+// `window.neuralFormsAdmin.plugin.capabilities[CAP]` is false the
+// chip renders disabled with a Pro badge.
+const MATRIX_CAP   = 'field_matrix';
+const REPEATER_CAP = 'field_repeater';
 
 // Conditional Logic is NOT in this list. It already shipped in
 // Neural Forms Lite v1.0.0 (frontend serialization in
@@ -128,10 +137,12 @@ function LockedProChip( { label } ) {
 }
 
 export default function FieldPalette( { onAddField } ) {
-	const basics  = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
-	const surveys = FIELD_TYPES.filter( ( t ) => SURVEY_TYPES.includes( t.value ) );
-	const caps    = readCaps();
-	const matrixUnlocked = caps[ MATRIX_CAP ] === true;
+	const basics   = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
+	const surveys  = FIELD_TYPES.filter( ( t ) => SURVEY_TYPES.includes( t.value ) );
+	const advanced = FIELD_TYPES.filter( ( t ) => ADVANCED_TYPES.includes( t.value ) );
+	const caps     = readCaps();
+	const matrixUnlocked   = caps[ MATRIX_CAP ]   === true;
+	const repeaterUnlocked = caps[ REPEATER_CAP ] === true;
 
 	return (
 		<>
@@ -157,6 +168,25 @@ export default function FieldPalette( { onAddField } ) {
 				<div className="nf-palette__grid">
 					{ surveys.map( ( t ) => {
 						if ( t.value === 'matrix' && ! matrixUnlocked ) {
+							return <LockedProChip key={ t.value } label={ t.label } />;
+						}
+						return (
+							<FieldChip
+								key={ t.value }
+								type={ t.value }
+								label={ t.label }
+								onAddField={ onAddField }
+							/>
+						);
+					} ) }
+				</div>
+			</section>
+
+			<section className="nf-palette__section">
+				<h3 className="nf-palette__title">{ __( 'Advanced Fields', 'neural-forms-lite' ) }</h3>
+				<div className="nf-palette__grid">
+					{ advanced.map( ( t ) => {
+						if ( t.value === 'repeater' && ! repeaterUnlocked ) {
 							return <LockedProChip key={ t.value } label={ t.label } />;
 						}
 						return (

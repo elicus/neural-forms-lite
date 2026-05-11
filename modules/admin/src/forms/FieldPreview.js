@@ -202,6 +202,32 @@ function readOnlyMatrix( { field } ) {
 	);
 }
 
+function readOnlyRepeater( { field } ) {
+	// Commit 1: lightweight placeholder so a Repeater field can sit
+	// inside an existing form without crashing the builder. The full
+	// child-field DnD canvas + iteration preview arrive in Commit 2.
+	const settings = field.settings && typeof field.settings === 'object' ? field.settings : {};
+	const min      = Number( settings.min_items );
+	const max      = Number( settings.max_items );
+	const cols     = Number( settings.columns );
+	const minStr   = Number.isFinite( min ) ? min : 1;
+	const maxStr   = Number.isFinite( max ) ? max : 5;
+	const colStr   = Number.isFinite( cols ) && cols >= 1 && cols <= 4 ? cols : 1;
+	const children = Array.isArray( field.fields ) ? field.fields.length : 0;
+	return (
+		<div className="nf-preview__repeater-placeholder">
+			<p className="nf-preview__hint">
+				{ __( 'Repeater field — preview coming soon.', 'neural-forms-lite' ) }
+			</p>
+			<p className="nf-preview__hint">
+				{ children }{ ' ' }{ __( 'child fields', 'neural-forms-lite' ) }{ ' · ' }
+				{ minStr }–{ maxStr }{ ' ' }{ __( 'items', 'neural-forms-lite' ) }{ ' · ' }
+				{ colStr }{ ' ' }{ __( 'column(s)', 'neural-forms-lite' ) }
+			</p>
+		</div>
+	);
+}
+
 function readOnlyHidden( { field } ) {
 	return (
 		<div className="nf-preview__hidden">
@@ -235,6 +261,7 @@ export default function FieldPreview( { field } ) {
 		case 'range':      return readOnlyRange( { field } );
 		case 'rating':     return readOnlyRating( { field } );
 		case 'matrix':     return readOnlyMatrix( { field } );
+		case 'repeater':   return readOnlyRepeater( { field } );
 		case 'file':       return readOnlyFile( { field } );
 		case 'hidden':     return readOnlyHidden( { field } );
 		case 'text':

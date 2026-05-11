@@ -23,6 +23,7 @@ export const FIELD_TYPES = [
 	{ value: 'matrix',        label: 'Matrix'        },
 	{ value: 'poll',          label: 'Poll'          },
 	{ value: 'quiz_question', label: 'Quiz Question' },
+	{ value: 'repeater',      label: 'Repeater'      },
 	{ value: 'file',          label: 'File Upload'   },
 	{ value: 'hidden',        label: 'Hidden'        },
 ];
@@ -88,6 +89,24 @@ export function newField( type, existingIds = [] ) {
 
 	if ( type === 'rating' ) {
 		base.stars = 5;
+	}
+
+	if ( type === 'repeater' ) {
+		base.label    = 'Repeater';
+		base.required = false;
+		base.settings = {
+			min_items:           1,
+			max_items:           5,
+			columns:             1,
+			add_button_label:    'Add item',
+			remove_button_label: 'Remove',
+		};
+		// fields[] is the child-field TEMPLATE. Each rendered iteration
+		// on the frontend stamps these templates with a per-index id
+		// prefix. Starts empty so the inspector can guide the user to
+		// add their first child field; the full child DnD experience
+		// lands in Commit 2.
+		base.fields = [];
 	}
 
 	if ( type === 'matrix' ) {

@@ -129,6 +129,22 @@ class FieldRegistry {
             'label'    => 'Matrix',
             'supports' => [ 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width' ],
         ],
+        // Repeater: repeatable group of child fields. Nested `settings`
+        // carries min_items / max_items / columns / add_button_label /
+        // remove_button_label; nested `fields` carries the child-field
+        // TEMPLATE (each rendered iteration on the frontend stamps these
+        // templates with a per-index id prefix). Gated by
+        // Capabilities::FIELD_REPEATER so a Lite-only install sees
+        // Repeater as a locked Pro feature in the builder palette. The
+        // type stays REGISTERED even when locked — existing forms with
+        // a Repeater open without schema-validation errors. Nested
+        // repeater / matrix / row / step / section / poll / quiz_question
+        // are NOT allowed as children in v1; that whitelist is
+        // enforced in FormValidator + the cloud SchemaNormalizer.
+        'repeater' => [
+            'label'    => 'Repeater',
+            'supports' => [ 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width', 'fields' ],
+        ],
     ];
 
     /**

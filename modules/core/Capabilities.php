@@ -100,6 +100,31 @@ final class Capabilities {
     const FIELD_MATRIX = 'field_matrix';
 
     /**
+     * FIELD_REPEATER (added 1.1.0): unlocks the Repeater field type — a
+     * repeatable group of child fields used for "team members", "guests",
+     * "work experience", "documents", and similar list-shaped data.
+     * Whitelisted v1 child types are text / email / phone / number / url /
+     * textarea / select / radio / checkbox / checkboxes / date / file.
+     * Nested repeater / matrix / row / step / section / poll /
+     * quiz_question are explicitly NOT allowed inside a repeater in v1.
+     *
+     * Lite ships the entire Repeater engine (registry awareness, builder
+     * UI, frontend renderer, validator + nested-file uploader, entry
+     * display, AI generation support). Pro flips this filter to true and
+     * the field becomes fully usable; Lite-only installs see Repeater
+     * in the palette as a locked Pro upsell and the type cannot be
+     * added.
+     *
+     * Existing forms that already contain Repeater fields (Pro
+     * deactivated after creation) keep their schema intact — Lite
+     * never strips unknown fields. The field is rendered as an
+     * admin-visible "requires Pro" placeholder in the builder; on the
+     * frontend the renderer skips it gracefully so the rest of the
+     * form still works.
+     */
+    const FIELD_REPEATER = 'field_repeater';
+
+    /**
      * True when the given premium capability is unlocked in this install.
      *
      * @param string $cap One of the AI_* constants on this class.
@@ -131,6 +156,7 @@ final class Capabilities {
             self::PAGE_PERFORMANCE_ANALYTICS      => self::can( self::PAGE_PERFORMANCE_ANALYTICS ),
             self::POLL_QUIZ_UNLIMITED_SUBMISSIONS => self::can( self::POLL_QUIZ_UNLIMITED_SUBMISSIONS ),
             self::FIELD_MATRIX                    => self::can( self::FIELD_MATRIX ),
+            self::FIELD_REPEATER                  => self::can( self::FIELD_REPEATER ),
         ];
     }
 
