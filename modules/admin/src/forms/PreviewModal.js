@@ -132,6 +132,97 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
 .neural-forms-form__progress-bar-fill { height: 100%; background: #080f5b; }
 .neural-forms-form__progress-text { margin: 6px 0 0; color: #4b5563; font-size: 12px; font-weight: 500; }
 @media (max-width: 768px) { .neural-forms-form__row { grid-template-columns: 1fr !important; } }
+
+/* ----------------------------------------------------------------- */
+/* WordPress visually-hidden helper                                   */
+/* ----------------------------------------------------------------- */
+/* The form renderer adds a <span class="screen-reader-text"> inside */
+/* every matrix cell label so AT users hear                          */
+/*   "<field label> — <row label> — <column label>"                  */
+/* On a real WP page this class is hidden by the theme / core. The   */
+/* preview iframe is sandboxed and loads NO external stylesheet, so  */
+/* without this rule the accessibility text renders as visible body  */
+/* text and squeezes every matrix cell out of alignment.             */
+.screen-reader-text {
+  border: 0;
+  clip: rect(1px, 1px, 1px, 1px);
+  -webkit-clip-path: inset(50%);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  word-wrap: normal !important;
+}
+
+/* ----------------------------------------------------------------- */
+/* Matrix field (preview-iframe twin of frontend form.css)            */
+/* ----------------------------------------------------------------- */
+/* Kept in sync with modules/frontend/assets/css/form.css's          */
+/* .neural-forms-matrix block. We duplicate here intentionally       */
+/* because the iframe is sandbox="" and cannot pull form.css.        */
+.neural-forms-matrix { border: 0; padding: 0; margin: 0; }
+.neural-forms-matrix__scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+}
+.neural-forms-matrix__table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  color: #1f2937;
+}
+.neural-forms-matrix__table th,
+.neural-forms-matrix__table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: center;
+  vertical-align: middle;
+}
+.neural-forms-matrix__table tbody tr:last-child th,
+.neural-forms-matrix__table tbody tr:last-child td { border-bottom: 0; }
+.neural-forms-matrix__corner { background: #f9fafb; }
+.neural-forms-matrix__col {
+  font-weight: 600;
+  color: #374151;
+  background: #f9fafb;
+  white-space: nowrap;
+}
+.neural-forms-matrix__row-label {
+  font-weight: 500;
+  text-align: left;
+  color: #374151;
+  background: #f9fafb;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.neural-forms-matrix__cell { min-width: 64px; }
+.neural-forms-matrix__cell-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.neural-forms-matrix__input {
+  cursor: pointer;
+  accent-color: #080f5b;
+}
+@media ( max-width: 600px ) {
+  .neural-forms-matrix__table { font-size: 13px; }
+  .neural-forms-matrix__table th,
+  .neural-forms-matrix__table td { padding: 8px 10px; }
+}
 </style></head><body>${ html }</body></html>`;
 
 	return (
