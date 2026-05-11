@@ -73,7 +73,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		$payload = [
 			'site_url' => site_url(),
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
-			'entry'    => $this->format_entry( $entry ),
+			'entry'    => $this->format_entry( $entry, $form ),
 			'form'     => $this->format_form( $form ),
 		];
 
@@ -128,7 +128,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			'site_url' => site_url(),
 			// Sent for cloud-side request logging; not used to gate anything.
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
-			'entry'    => $this->format_entry( $entry ),
+			'entry'    => $this->format_entry( $entry, $form ),
 			'form'     => $this->format_form( $form ),
 		];
 
@@ -381,13 +381,147 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 	/**
 	 * Flatten an entry row to the shape the cloud API expects.
+	 *
+	 * For Matrix-typed fields we replace the raw stored value with a
+	 * structured envelope that carries the field label + row/column
+	 * schema + scores alongside the stored value. The cloud's
+	 * matrix-signals module detects the envelope (`_matrix: true`)
+	 * and uses it to:
+	 *   - render the field as readable text for the model instead of
+	 *     emitting an opaque JSON blob, and
+	 *   - extract a deterministic sentiment/priority hint to sanity-
+	 *     upgrade the model's classification when needed.
+	 *
+	 * Non-matrix fields pass through untouched so the wire shape for
+	 * every other field type stays the same.
 	 */
-	private function format_entry( array $entry ): array {
+	private function format_entry( array $entry, array $form = [] ): array {
+		$fields = is_array( $entry['data'] ?? null ) ? $entry['data'] : [];
+		if ( ! empty( $fields ) && ! empty( $form ) ) {
+			$fields = $this->enrich_matrix_fields( $fields, $form );
+		}
 		return [
 			'id'           => (int) ( $entry['id'] ?? 0 ),
-			'fields'       => $entry['data'] ?? [],
+			'fields'       => $fields,
 			'submitted_at' => (string) ( $entry['created_at'] ?? '' ),
 		];
+	}
+
+	/**
+	 * Walk the form schema and, for each field whose stored value is a
+	 * Matrix submission, wrap the value in a structured envelope so
+	 * the cloud can interpret it.
+	 *
+	 * The envelope shape (kept in sync with the cloud's
+	 * matrix-signals.ts MatrixFieldEnvelope interface) is:
+	 *
+	 *   {
+	 *     _matrix:        true,
+	 *     label:          string,
+	 *     selection_type: "radio" | "checkbox",
+	 *     rows:           [{ label, value }, ...],
+	 *     columns:        [{ label, value, score? }, ...],
+	 *     value:          <stored matrix value>,
+	 *   }
+	 *
+	 * Form schemas can carry fields nested under `step.fields` and
+	 * `row.columns[].fields`, so we recurse to find every leaf matrix
+	 * field. Fields with no entry value, or whose stored value is not
+	 * an array, are skipped (no envelope written).
+	 */
+	private function enrich_matrix_fields( array $fields, array $form ): array {
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
+		$nodes  = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
+		$out    = $fields;
+		$this->enrich_matrix_walk( $nodes, $out );
+		return $out;
+	}
+
+	/**
+	 * Recurse into a list of schema nodes (mix of leaf fields, rows,
+	 * sections, steps) and enrich any matrix field that has a stored
+	 * value on the entry.
+	 *
+	 * Mutates `$values` in place — this is the entry data map we're
+	 * about to send to the cloud, keyed on field id.
+	 */
+	private function enrich_matrix_walk( array $nodes, array &$values ): void {
+		foreach ( $nodes as $node ) {
+			if ( ! is_array( $node ) ) {
+				continue;
+			}
+			$type = (string) ( $node['type'] ?? '' );
+
+			// Layout containers — recurse into children.
+			if ( 'step' === $type || 'section' === $type ) {
+				$children = is_array( $node['fields'] ?? null ) ? $node['fields'] : [];
+				$this->enrich_matrix_walk( $children, $values );
+				continue;
+			}
+			if ( 'row' === $type ) {
+				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : [];
+				foreach ( $columns as $col ) {
+					if ( ! is_array( $col ) ) continue;
+					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+					$this->enrich_matrix_walk( $col_fields, $values );
+				}
+				continue;
+			}
+
+			if ( 'matrix' !== $type ) {
+				continue;
+			}
+
+			$field_id = (string) ( $node['id'] ?? '' );
+			if ( $field_id === '' || ! array_key_exists( $field_id, $values ) ) {
+				continue;
+			}
+			$stored = $values[ $field_id ];
+			if ( ! is_array( $stored ) ) {
+				// A scalar / null where an array was expected — leave alone
+				// so the cloud receives whatever the storage layer wrote.
+				continue;
+			}
+
+			$settings  = is_array( $node['settings'] ?? null ) ? $node['settings'] : [];
+			$selection = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
+
+			$rows = [];
+			foreach ( ( is_array( $settings['rows'] ?? null ) ? $settings['rows'] : [] ) as $row ) {
+				$row = (array) $row;
+				$rv  = (string) ( $row['value'] ?? '' );
+				$rl  = (string) ( $row['label'] ?? '' );
+				if ( $rv === '' && $rl === '' ) continue;
+				$rows[] = [
+					'label' => $rl !== '' ? $rl : $rv,
+					'value' => $rv !== '' ? $rv : $rl,
+				];
+			}
+			$columns = [];
+			foreach ( ( is_array( $settings['columns'] ?? null ) ? $settings['columns'] : [] ) as $col ) {
+				$col = (array) $col;
+				$cv  = (string) ( $col['value'] ?? '' );
+				$cl  = (string) ( $col['label'] ?? '' );
+				if ( $cv === '' && $cl === '' ) continue;
+				$entry = [
+					'label' => $cl !== '' ? $cl : $cv,
+					'value' => $cv !== '' ? $cv : $cl,
+				];
+				if ( isset( $col['score'] ) && is_numeric( $col['score'] ) ) {
+					$entry['score'] = (int) $col['score'];
+				}
+				$columns[] = $entry;
+			}
+
+			$values[ $field_id ] = [
+				'_matrix'        => true,
+				'label'          => (string) ( $node['label'] ?? '' ),
+				'selection_type' => $selection,
+				'rows'           => $rows,
+				'columns'        => $columns,
+				'value'          => $stored,
+			];
+		}
 	}
 
 	/**
