@@ -475,15 +475,102 @@
 	// Serialization
 
 	/**
-	 * Collect all named form controls into a plain { name: value } object.
+	 * Parse a bracketed input name into a path of segments.
 	 *
-	 * Type rules:
-	 *   checkbox  '->-> integer 1 (checked) or 0 (unchecked). Matches what
-	 *               SubmissionValidator::CHECKED_CHECKBOX_VALUES expects.
-	 *   radio     '->-> string value of the checked option only; absent if none
-	 *               checked, so the server's required check fires correctly.
-	 *   file      '->-> skipped - files are not sent via the JSON path.
-	 *   all other '->-> string .value property.
+	 * Examples:
+	 *   "email"             '->-> ["email"]
+	 *   "picks[]"           '->-> ["picks", ""]
+	 *   "matrix[purchase]"  '->-> ["matrix", "purchase"]
+	 *   "matrix[row][]"     '->-> ["matrix", "row", ""]
+	 *
+	 * An empty-string segment means "push onto an array at this level"
+	 * (matches how PHP parses `foo[]=1&foo[]=2` from a multipart body).
+	 *
+	 * Returns a single-element array for names without brackets, so
+	 * callers can treat every input the same way.
+	 *
+	 * @param  {string} name
+	 * @return {string[]}
+	 */
+	function parseBracketName( name ) {
+		var open = name.indexOf( '[' );
+		if ( open === -1 ) return [ name ];
+		var parts = [ name.slice( 0, open ) ];
+		var rest  = name.slice( open );
+		var re    = /\[([^\]]*)\]/g;
+		var m;
+		while ( ( m = re.exec( rest ) ) !== null ) {
+			parts.push( m[ 1 ] );
+		}
+		return parts;
+	}
+
+	/**
+	 * Write `value` into `target` at the given path of segments.
+	 *
+	 * Path semantics mirror PHP's bracket parser:
+	 *   - A trailing empty segment ("") means "this level is an array,
+	 *     push the value." Multiple inputs with the same array path
+	 *     accumulate into a single array on the target.
+	 *   - Any other segment is a string key into an object. Intermediate
+	 *     containers are auto-created as arrays or objects depending on
+	 *     whether the NEXT segment is the array marker.
+	 *
+	 * `opts.skipPush` initialises the container chain without pushing —
+	 * used so an "all-unchecked" checkbox group still produces an empty
+	 * array on the wire, preserving the pre-matrix serializer's behaviour.
+	 *
+	 * @param {Object|Array} target
+	 * @param {string[]}     path
+	 * @param {*}            value
+	 * @param {Object}       [opts]
+	 */
+	function setNestedValue( target, path, value, opts ) {
+		opts = opts || {};
+		var cur = target;
+		for ( var i = 0; i < path.length - 1; i++ ) {
+			var seg  = path[ i ];
+			var next = path[ i + 1 ];
+			var expectArray = next === '';
+			if ( cur[ seg ] === undefined || cur[ seg ] === null ) {
+				cur[ seg ] = expectArray ? [] : {};
+			}
+			cur = cur[ seg ];
+		}
+		var last = path[ path.length - 1 ];
+		if ( last === '' ) {
+			// Append to the array at the parent path.
+			if ( ! Array.isArray( cur ) ) return;
+			if ( opts.skipPush ) return;
+			cur.push( value );
+		} else {
+			cur[ last ] = value;
+		}
+	}
+
+	/**
+	 * Collect all named form controls into a nested JSON-friendly object
+	 * that matches what PHP's $_POST parser produces from the same
+	 * multipart submission.
+	 *
+	 * Bracket-aware so Matrix submissions and any future nested field
+	 * type serialise correctly on the JSON (no-files) path:
+	 *
+	 *   <input name="email">                              '->-> { email: "..." }
+	 *   <input name="picks[]" type="checkbox">             '->-> { picks: ["a","b"] }
+	 *   <input name="m[purchase]" type="radio">            '->-> { m: { purchase: "ok" } }
+	 *   <input name="m[purchase][]" type="checkbox">       '->-> { m: { purchase: ["a","b"] } }
+	 *
+	 * Type rules (unchanged from the pre-matrix serializer):
+	 *   checkbox single  '->-> integer 1 (checked) or 0 (unchecked). Matches
+	 *                       SubmissionValidator::CHECKED_CHECKBOX_VALUES.
+	 *   checkbox array   '->-> array of checked values; empty array when
+	 *                       none checked (matches the legacy serializer's
+	 *                       always-initialised behaviour).
+	 *   radio            '->-> value of the checked option only; absent when
+	 *                       none checked, so the server's required check fires.
+	 *   file             '->-> skipped — files only ride the multipart path.
+	 *   all other        '->-> .value as a string.
 	 *
 	 * The honeypot field (name="neural_forms_website") is included deliberately.
 	 * Real users leave it empty; bots that fill it trigger spam_detected 400
@@ -508,25 +595,28 @@
 				continue;
 			}
 
-			if ( el.type === 'checkbox' && el.name.slice( -2 ) === '[]' ) {
-				// Multi-option checkbox group (checkboxes type): collect checked values as array.
-				var arrName = el.name.slice( 0, -2 );
-				if ( ! data[ arrName ] ) {
-					data[ arrName ] = [];
-				}
+			var path        = parseBracketName( el.name );
+			var isArrayPath = path[ path.length - 1 ] === '';
+
+			if ( el.type === 'checkbox' && isArrayPath ) {
+				// Multi-option group OR matrix-checkbox cell. Pre-init the
+				// array on the FIRST encounter (skipPush) so groups whose
+				// every option is unchecked still send `[]` on the wire —
+				// matches the pre-matrix serializer's behaviour exactly.
+				setNestedValue( data, path, null, { skipPush: true } );
 				if ( el.checked ) {
-					data[ arrName ].push( el.value );
+					setNestedValue( data, path, el.value );
 				}
 			} else if ( el.type === 'checkbox' ) {
-				data[ el.name ] = el.checked ? 1 : 0;
+				setNestedValue( data, path, el.checked ? 1 : 0 );
 			} else if ( el.type === 'radio' ) {
 				// Write only when checked - leave the key absent for unchecked radios.
 				if ( el.checked ) {
-					data[ el.name ] = el.value;
+					setNestedValue( data, path, el.value );
 				}
 			} else {
 				// text, email, tel, number, textarea, select, hidden, ...
-				data[ el.name ] = el.value;
+				setNestedValue( data, path, el.value );
 			}
 		}
 

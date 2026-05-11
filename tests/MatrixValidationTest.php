@@ -188,6 +188,30 @@ function nf_sanitize_matrix( $value, array $field ): array {
 	return $method->invoke( $instance, $value, $field );
 }
 
+/**
+ * End-to-end pipeline reflector: drive `sanitize_fields()` directly
+ * with a schema + raw body, mirroring what SubmitEndpoint::submit()
+ * runs after array_intersect_key + capability strip + conditional
+ * strip + validator. Used to regress the front-end serializer bug
+ * where bracketed Matrix names were never decoded into a nested
+ * array on the wire — the post-fix shape MUST survive this path
+ * and produce non-empty stored data.
+ */
+function nf_run_sanitize_fields( array $schema_fields, array $raw_body ): array {
+	nf_load_sanitizer();
+	$class    = new \ReflectionClass( \NeuralForms\Rest\Endpoints\SubmitEndpoint::class );
+	$instance = $class->newInstanceWithoutConstructor();
+
+	// Step 6 in the real endpoint: intersect raw body keys with schema
+	// field ids. Anything outside the schema gets silently dropped.
+	$schema_ids = array_column( $schema_fields, 'id' );
+	$raw_data   = array_intersect_key( $raw_body, array_flip( $schema_ids ) );
+
+	$method = $class->getMethod( 'sanitize_fields' );
+	$method->setAccessible( true );
+	return $method->invoke( $instance, $schema_fields, $raw_data );
+}
+
 // ---------------------------------------------------------------------
 // Tests — validator
 // ---------------------------------------------------------------------
@@ -403,6 +427,97 @@ nf_test( 'capability_open_lets_matrix_validate_normally', function () {
 	nf_assert_same( true, $result, 'unlocked + valid submission should pass' );
 
 	unset( $GLOBALS['__nf_filters']['neural_forms_can_field_matrix'] );
+} );
+
+// ---------------------------------------------------------------------
+// Tests — end-to-end pipeline (regression for form-submit.js serializer)
+// ---------------------------------------------------------------------
+//
+// The 1.1.0-dev bug was: form-submit.js's serializeForm() flattened
+// `<input name="matrix[row]">` into the literal string key
+// `"matrix[row]"`. The endpoint's array_intersect_key step then
+// dropped every matrix key because none of them matched the schema
+// field id. Entries got inserted with empty `data`.
+//
+// Post-fix, serializeForm() emits `{ matrix: { row: "col" } }` and
+// the cases below assert that body shape flows through
+// array_intersect_key + sanitize_fields and produces non-empty
+// stored data.
+
+nf_test( 'pipeline: nested-body matrix payload survives sanitize_fields (radio)', function () {
+	$schema = [ nf_matrix_radio_field( false ) ];
+	$raw_body = [
+		// Shape produced by the post-fix serializeForm() for a Matrix
+		// radio field.
+		'satisfaction' => [
+			'purchase' => 'very_satisfied',
+			'service'  => 'satisfied',
+		],
+	];
+	$stored = nf_run_sanitize_fields( $schema, $raw_body );
+	nf_assert_true( array_key_exists( 'satisfaction', $stored ),
+		'matrix field id must survive array_intersect_key + sanitize_fields' );
+	nf_assert_same(
+		[ 'purchase' => 'very_satisfied', 'service' => 'satisfied' ],
+		$stored['satisfaction'],
+		'stored matrix data must equal the row→col map'
+	);
+} );
+
+nf_test( 'pipeline: nested-body matrix payload survives sanitize_fields (checkbox)', function () {
+	$schema = [ nf_matrix_checkbox_field( false ) ];
+	$raw_body = [
+		'features' => [
+			'purchase' => [ 'email', 'phone' ],
+			'service'  => [ 'chat' ],
+		],
+	];
+	$stored = nf_run_sanitize_fields( $schema, $raw_body );
+	nf_assert_true( array_key_exists( 'features', $stored ),
+		'checkbox matrix field id must survive array_intersect_key + sanitize_fields' );
+	nf_assert_same(
+		[
+			'purchase' => [ 'email', 'phone' ],
+			'service'  => [ 'chat' ],
+		],
+		$stored['features'],
+		'stored matrix data must equal the row→cols map'
+	);
+} );
+
+nf_test( 'pipeline: pre-fix flat-key body would drop matrix entirely (symptom of the bug)', function () {
+	// Documents the exact failure shape the front-end produced before
+	// the serializer fix. If this regresses (i.e. flat string keys
+	// start being accepted), it means someone re-introduced a path
+	// that decodes brackets on the server, which is not the
+	// architecture we want.
+	$schema = [ nf_matrix_radio_field( false ) ];
+	$raw_body = [
+		// Old, broken shape — literal "fieldId[row]" string keys.
+		'satisfaction[purchase]' => 'very_satisfied',
+		'satisfaction[service]'  => 'satisfied',
+	];
+	$stored = nf_run_sanitize_fields( $schema, $raw_body );
+	nf_assert_same( [], $stored,
+		'flat-key body must produce empty stored data (the symptom the JS fix removes)' );
+} );
+
+nf_test( 'pipeline: matrix payload coexists with non-matrix fields', function () {
+	$schema = [
+		[ 'id' => 'email', 'type' => 'email', 'label' => 'Email' ],
+		nf_matrix_radio_field( false ),
+	];
+	$raw_body = [
+		'email'        => 'a@b.com',
+		'satisfaction' => [ 'purchase' => 'satisfied' ],
+	];
+	$stored = nf_run_sanitize_fields( $schema, $raw_body );
+	nf_assert_same( 'a@b.com', $stored['email'] ?? null, 'sibling email field must be stored' );
+	nf_assert_same(
+		[ 'purchase' => 'satisfied' ],
+		$stored['satisfaction'] ?? null,
+		'partial matrix submission must also be stored'
+	);
 } );
 
 // ---------------------------------------------------------------------
