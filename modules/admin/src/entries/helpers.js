@@ -56,6 +56,89 @@ export function buildFieldLabels( form ) {
 	return map;
 }
 
+/**
+ * Build a `{ field_id: full_field_object }` map. The entry-detail
+ * Matrix renderer needs the field's settings.rows / settings.columns
+ * to resolve stored row/column values back to labels, so plain
+ * `fieldLabels` is not enough. Empty object when the schema is
+ * missing.
+ */
+export function buildFieldSchemaMap( form ) {
+	if ( ! form || typeof form !== 'object' ) return {};
+	const schema = form.form_schema && typeof form.form_schema === 'object'
+		? form.form_schema
+		: null;
+	if ( ! schema ) return {};
+	const fields = Array.isArray( schema.fields ) ? schema.fields : [];
+	const out    = [];
+	walkFields( fields, out );
+	const map = {};
+	for ( const f of out ) {
+		if ( ! f.id ) continue;
+		map[ String( f.id ) ] = f;
+	}
+	return map;
+}
+
+/**
+ * Map a stored Matrix value to a list of { rowLabel, display } pairs
+ * in schema-row order. Mirrors PHP MatrixFormatter::format_value_lines.
+ *
+ * For radio mode each `display` is a single column label; for checkbox
+ * mode it is the column labels joined with ", ". Rows whose stored
+ * value is absent/empty appear with display === '' so the renderer can
+ * decide how to show them (dash, "No answer", etc.).
+ */
+export function formatMatrixValueLines( value, field ) {
+	const out = [];
+	if ( ! field || typeof field !== 'object' ) return out;
+	const settings  = ( field.settings && typeof field.settings === 'object' ) ? field.settings : {};
+	const selection = settings.selection_type === 'checkbox' ? 'checkbox' : 'radio';
+	const rowsRaw   = Array.isArray( settings.rows ) ? settings.rows : [];
+	const colsRaw   = Array.isArray( settings.columns ) ? settings.columns : [];
+	const v         = ( value && typeof value === 'object' ) ? value : {};
+
+	const colLabels = {};
+	for ( const c of colsRaw ) {
+		if ( ! c || typeof c !== 'object' ) continue;
+		const cv = String( c.value || '' );
+		const cl = String( c.label || '' );
+		const eff = cv !== '' ? cv : cl;
+		if ( eff === '' ) continue;
+		colLabels[ eff ] = cl !== '' ? cl : eff;
+	}
+
+	for ( const r of rowsRaw ) {
+		if ( ! r || typeof r !== 'object' ) continue;
+		const rv = String( r.value || '' );
+		const rl = String( r.label || '' );
+		const rowValue = rv !== '' ? rv : rl;
+		if ( rowValue === '' ) continue;
+		const rowLabel = rl !== '' ? rl : rowValue;
+
+		const raw = v[ rowValue ];
+		let display = '';
+
+		if ( selection === 'checkbox' && Array.isArray( raw ) ) {
+			const picked = [];
+			for ( const x of raw ) {
+				if ( x == null ) continue;
+				const s = String( x );
+				if ( s === '' ) continue;
+				picked.push( colLabels[ s ] != null ? colLabels[ s ] : s );
+			}
+			display = picked.join( ', ' );
+		} else if ( selection === 'radio' && ( typeof raw === 'string' || typeof raw === 'number' ) ) {
+			const s = String( raw );
+			if ( s !== '' ) display = colLabels[ s ] != null ? colLabels[ s ] : s;
+		}
+
+		out.push( { rowValue, rowLabel, display } );
+	}
+
+	return out;
+}
+
 export function formatDate( s ) {
 	if ( ! s ) return '';
 	const d = new Date( s.replace( ' ', 'T' ) + 'Z' );

@@ -2,6 +2,7 @@
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\MatrixFormatter;
 use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
@@ -261,9 +262,25 @@ class ExportEndpoint {
 					continue;
 				}
 
-				if ( ( $field['type'] ?? '' ) === 'file' ) {
+				$type = (string) ( $field['type'] ?? '' );
+
+				if ( $type === 'file' ) {
 					$dynamic_cols[] = [ 'header' => $field_id . '_filename', 'source_id' => $field_id, 'part' => 'filename' ];
 					$dynamic_cols[] = [ 'header' => $field_id . '_url',      'source_id' => $field_id, 'part' => 'url'      ];
+				} elseif ( $type === 'matrix' ) {
+					// Matrix expands to one CSV column per configured row.
+					// `field` is captured so build_row can map stored
+					// column values back to labels without re-fetching
+					// the schema.
+					foreach ( MatrixFormatter::csv_columns( $field ) as $mc ) {
+						$dynamic_cols[] = [
+							'header'    => $mc['header'],
+							'source_id' => $field_id,
+							'part'      => 'matrix_row',
+							'row_value' => $mc['row_value'],
+							'field'     => $field,
+						];
+					}
 				} else {
 					$dynamic_cols[] = [ 'header' => $field_id, 'source_id' => $field_id, 'part' => null ];
 				}
@@ -338,6 +355,11 @@ class ExportEndpoint {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['filename'] ?? '' ) : '' );
 			} elseif ( $col['part'] === 'url' ) {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['url'] ?? '' ) : '' );
+			} elseif ( $col['part'] === 'matrix_row' ) {
+				$field    = is_array( $col['field'] ?? null ) ? $col['field'] : [];
+				$row_val  = (string) ( $col['row_value'] ?? '' );
+				$rendered = MatrixFormatter::csv_row_value( $raw, $field, $row_val );
+				$row[]    = self::escape_csv_formula( $rendered );
 			} else {
 				$row[] = $this->normalize_value( $raw );
 			}
@@ -379,8 +401,21 @@ class ExportEndpoint {
 				return '';
 			}
 
-			// Plain arrays (multi-select field values, etc.).
-			return implode( ', ', array_map( 'strval', $value ) );
+			// Nested arrays (e.g. matrix on the all-forms export path
+			// where the per-row sub-columns can't be built without
+			// schema). Flatten one level so the CSV stays string-only:
+			// scalars stringify directly; arrays-of-scalars join with
+			// commas. This is best-effort — per-form CSV expands matrix
+			// into proper sub-columns via the matrix_row case above.
+			$parts = [];
+			foreach ( $value as $v ) {
+				if ( is_scalar( $v ) ) {
+					$parts[] = (string) $v;
+				} elseif ( is_array( $v ) ) {
+					$parts[] = implode( ', ', array_map( 'strval', array_filter( $v, 'is_scalar' ) ) );
+				}
+			}
+			return implode( ', ', $parts );
 		}
 
 		return self::escape_csv_formula( (string) $value );

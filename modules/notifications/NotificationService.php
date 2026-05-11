@@ -3,6 +3,7 @@ namespace NeuralForms\Notifications;
 
 use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
+use NeuralForms\Forms\MatrixFormatter;
 use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 
@@ -411,6 +412,28 @@ class NotificationService {
 			} elseif ( $field['type'] === 'file' ) {
 				// File fields store a metadata array - display the filename if available.
 				$value = is_array( $raw ) ? (string) ( $raw['filename'] ?? 'file' ) : '';
+			} elseif ( $field['type'] === 'matrix' ) {
+				// Matrix renders one line per configured row, indented under
+				// the field label so the visual hierarchy mirrors how a
+				// respondent answered the survey:
+				//
+				//   Satisfaction:
+				//     - Purchase: Very Satisfied
+				//     - Service:  Satisfied
+				$matrix_lines = MatrixFormatter::format_value_lines( $raw, $field );
+				$rendered     = [];
+				foreach ( $matrix_lines as $ml ) {
+					if ( $ml['display'] === '' ) {
+						continue;
+					}
+					$rendered[] = '  - ' . $ml['row_label'] . ': ' . $ml['display'];
+				}
+				if ( empty( $rendered ) ) {
+					$lines[] = $label . ':';
+				} else {
+					$lines[] = $label . ":\n" . implode( "\n", $rendered );
+				}
+				continue;
 			} elseif ( is_array( $raw ) ) {
 				// Generic fallback for any other multi-value field type
 				// (select-multi, etc.) - join scalar leaves with commas.

@@ -41,7 +41,7 @@ import api from '../api';
 import AiAnalysisCard from './AiAnalysisCard';
 import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
-import { formatDate } from './helpers';
+import { formatDate, formatMatrixValueLines } from './helpers';
 
 function StatusPill( { entry } ) {
 	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
@@ -365,6 +365,7 @@ export default function EntryDetail( {
 	capabilities,
 	formNameFallback,
 	fieldLabels,
+	fieldSchemas,
 	onReanalyze,
 	reanalyzing,
 	reanalyzeError,
@@ -506,6 +507,45 @@ export default function EntryDetail( {
 					<dl className="neural-forms-entry-detail__fields">
 						{ rows.map( ( [ k, v ] ) => {
 							const label = ( fieldLabels && fieldLabels[ k ] ) || k;
+							const field = ( fieldSchemas && fieldSchemas[ k ] ) || null;
+
+							// Matrix: render row-by-row labelled selections.
+							if ( field && field.type === 'matrix' ) {
+								const matrixLines = formatMatrixValueLines( v, field );
+								const hasAny = matrixLines.some( ( ml ) => ml.display !== '' );
+								return (
+									<div
+										className="neural-forms-entry-detail__field-row neural-forms-entry-detail__field-row--matrix"
+										key={ k }
+									>
+										<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+										<dd className="neural-forms-entry-detail__field-value">
+											{ ! hasAny ? (
+												<span className="neural-forms-entry-detail__field-empty">
+													{ __( 'No answer', 'neural-forms-lite' ) }
+												</span>
+											) : (
+												<ul className="neural-forms-entry-detail__matrix-list">
+													{ matrixLines.map( ( ml ) => (
+														<li
+															className="neural-forms-entry-detail__matrix-line"
+															key={ ml.rowValue }
+														>
+															<span className="neural-forms-entry-detail__matrix-row-label">
+																{ ml.rowLabel }:
+															</span>
+															<span className="neural-forms-entry-detail__matrix-row-value">
+																{ ml.display || '—' }
+															</span>
+														</li>
+													) ) }
+												</ul>
+											) }
+										</dd>
+									</div>
+								);
+							}
+
 							return (
 								<div className="neural-forms-entry-detail__field-row" key={ k }>
 									<dt className="neural-forms-entry-detail__field-label">{ label }</dt>

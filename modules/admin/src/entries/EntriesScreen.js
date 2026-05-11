@@ -50,7 +50,7 @@ import EntryDetail     from './EntryDetail';
 import BulkToolbar     from './BulkToolbar';
 import useInboxKeyboard from './useInboxKeyboard';
 import { SYSTEM_VIEWS, SMART_FILTERS } from './constants';
-import { buildFieldLabels, errorMessage, planErrorPayload, safetyErrorPayload, creditsExhaustedPayload } from './helpers';
+import { buildFieldLabels, buildFieldSchemaMap, errorMessage, planErrorPayload, safetyErrorPayload, creditsExhaustedPayload } from './helpers';
 
 // Static lookup sets so URL → selection restoration is O(1) and
 // stays in sync with the sidebar's authoritative lists in constants.js.
@@ -914,6 +914,16 @@ export default function EntriesScreen() {
 								// label map only when the open entry's form changes.
 								openEntry
 									? buildFieldLabels(
+										forms.find( ( f ) => f.id === openEntry.form_id )
+									)
+									: {}
+							}
+							fieldSchemas={
+								// Matrix renderer needs settings.rows + settings.columns
+								// to resolve stored row/column values back to labels.
+								// Cheap — same `forms` array already in memory.
+								openEntry
+									? buildFieldSchemaMap(
 										forms.find( ( f ) => f.id === openEntry.form_id )
 									)
 									: {}
