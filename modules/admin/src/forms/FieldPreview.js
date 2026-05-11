@@ -203,27 +203,64 @@ function readOnlyMatrix( { field } ) {
 }
 
 function readOnlyRepeater( { field } ) {
-	// Commit 1: lightweight placeholder so a Repeater field can sit
-	// inside an existing form without crashing the builder. The full
-	// child-field DnD canvas + iteration preview arrive in Commit 2.
+	// Renders a single representative iteration of the repeater (the
+	// frontend renderer stamps min(min_items, 1) of these and lets the
+	// visitor add more up to max_items). The canvas preview is read-
+	// only so we deliberately render ONE iteration regardless of
+	// min_items — sizing the canvas to up to 20 dummy rows would
+	// drown out everything else in the builder.
 	const settings = field.settings && typeof field.settings === 'object' ? field.settings : {};
+	const cols     = Number( settings.columns );
+	const colsClamped = Number.isFinite( cols ) && cols >= 1 && cols <= 4 ? Math.round( cols ) : 1;
 	const min      = Number( settings.min_items );
 	const max      = Number( settings.max_items );
-	const cols     = Number( settings.columns );
 	const minStr   = Number.isFinite( min ) ? min : 1;
 	const maxStr   = Number.isFinite( max ) ? max : 5;
-	const colStr   = Number.isFinite( cols ) && cols >= 1 && cols <= 4 ? cols : 1;
-	const children = Array.isArray( field.fields ) ? field.fields.length : 0;
+	const addLabel = typeof settings.add_button_label === 'string' && settings.add_button_label !== ''
+		? settings.add_button_label
+		: __( 'Add item', 'neural-forms-lite' );
+	const removeLabel = typeof settings.remove_button_label === 'string' && settings.remove_button_label !== ''
+		? settings.remove_button_label
+		: __( 'Remove', 'neural-forms-lite' );
+	const children = Array.isArray( field.fields ) ? field.fields : [];
+
 	return (
-		<div className="nf-preview__repeater-placeholder">
-			<p className="nf-preview__hint">
-				{ __( 'Repeater field — preview coming soon.', 'neural-forms-lite' ) }
-			</p>
-			<p className="nf-preview__hint">
-				{ children }{ ' ' }{ __( 'child fields', 'neural-forms-lite' ) }{ ' · ' }
+		<div className="nf-preview__repeater">
+			<div className="nf-preview__repeater-meta">
+				{ children.length }{ ' ' }{ __( 'child fields', 'neural-forms-lite' ) }{ ' · ' }
 				{ minStr }–{ maxStr }{ ' ' }{ __( 'items', 'neural-forms-lite' ) }{ ' · ' }
-				{ colStr }{ ' ' }{ __( 'column(s)', 'neural-forms-lite' ) }
-			</p>
+				{ colsClamped }{ ' ' }{ __( 'column(s)', 'neural-forms-lite' ) }
+			</div>
+
+			{ children.length === 0 ? (
+				<p className="nf-preview__hint">
+					{ __( 'Add child fields in the inspector to populate this repeater.', 'neural-forms-lite' ) }
+				</p>
+			) : (
+				<div className="nf-preview__repeater-item">
+					<div className="nf-preview__repeater-item-head">
+						<span>{ __( 'Item 1', 'neural-forms-lite' ) }</span>
+						<span className="nf-preview__repeater-remove-hint">{ removeLabel }</span>
+					</div>
+					<div
+						className={ 'nf-preview__repeater-grid nf-preview__repeater-grid--cols-' + colsClamped }
+					>
+						{ children.map( ( child, i ) => (
+							<div className="nf-preview__repeater-child" key={ ( child && child.id ) || i }>
+								<div className="nf-preview__repeater-child-label">
+									{ ( child && child.label ) || ( child && child.id ) || '' }
+									{ child && child.required && (
+										<span className="nf-preview__repeater-child-required" aria-hidden="true"> *</span>
+									) }
+								</div>
+								<FieldPreview field={ child } />
+							</div>
+						) ) }
+					</div>
+				</div>
+			) }
+
+			<div className="nf-preview__repeater-add-hint" aria-hidden="true">+ { addLabel }</div>
 		</div>
 	);
 }

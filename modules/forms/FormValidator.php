@@ -445,6 +445,98 @@ class FormValidator {
             }
         }
 
+        // Repeater-specific: children template validation.
+        //
+        // The repeater's `fields` array carries TEMPLATE field schemas —
+        // not the actual rendered fields on the form. Each rendered
+        // iteration on the frontend stamps these templates with a
+        // per-index id prefix. We enforce three rules at save time:
+        //
+        //   1. Settings clamp: min_items >= 0, max_items >= min_items
+        //      and capped at REPEATER_MAX_ITEMS, columns in [1..4].
+        //   2. Child whitelist: only leaf field types from the safe
+        //      list (text/email/phone/number/url/textarea/select/radio/
+        //      checkbox/checkboxes/date/file). Nested repeater / matrix
+        //      / row / step / section / poll / quiz_question are
+        //      EXPLICITLY rejected — see REPEATER_BLOCKED_CHILD_TYPES.
+        //   3. Each child runs through validate_field with its own
+        //      id-uniqueness scope (child ids only need to be unique
+        //      WITHIN the repeater; they're separate from the top-level
+        //      id namespace because the rendered iteration prefixes
+        //      them).
+        if ( $field['type'] === 'repeater' ) {
+            $settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+            $min = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 0;
+            $max = isset( $settings['max_items'] ) ? (int) $settings['max_items'] : 5;
+            if ( $min < 0 ) {
+                return new \WP_Error(
+                    'invalid_form_data',
+                    sprintf( 'Repeater "%s" min_items cannot be negative.', $id ),
+                    [ 'status' => 422 ]
+                );
+            }
+            if ( $max > self::REPEATER_MAX_ITEMS ) {
+                return new \WP_Error(
+                    'invalid_form_data',
+                    sprintf( 'Repeater "%s" max_items cannot exceed %d.', $id, self::REPEATER_MAX_ITEMS ),
+                    [ 'status' => 422 ]
+                );
+            }
+            if ( $max > 0 && $max < $min ) {
+                return new \WP_Error(
+                    'invalid_form_data',
+                    sprintf( 'Repeater "%s" max_items (%d) must be greater than or equal to min_items (%d).', $id, $max, $min ),
+                    [ 'status' => 422 ]
+                );
+            }
+
+            $children = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+            $child_ids = [];
+            foreach ( $children as $child_index => $child ) {
+                if ( ! is_array( $child ) ) {
+                    return new \WP_Error(
+                        'invalid_form_data',
+                        sprintf( 'Repeater "%s" child at index %d is malformed.', $id, $child_index ),
+                        [ 'status' => 422 ]
+                    );
+                }
+                $child_type = (string) ( $child['type'] ?? '' );
+
+                if ( in_array( $child_type, self::REPEATER_BLOCKED_CHILD_TYPES, true ) ) {
+                    return new \WP_Error(
+                        'invalid_form_data',
+                        sprintf(
+                            'Repeater "%s" cannot contain "%s" (nested repeater / matrix / layout / poll / quiz fields are not allowed).',
+                            $id,
+                            $child_type
+                        ),
+                        [ 'status' => 422 ]
+                    );
+                }
+
+                if ( ! in_array( $child_type, self::REPEATER_ALLOWED_CHILD_TYPES, true ) ) {
+                    return new \WP_Error(
+                        'invalid_form_data',
+                        sprintf(
+                            'Repeater "%s" cannot contain "%s". Allowed child types: %s.',
+                            $id,
+                            $child_type !== '' ? $child_type : '(empty)',
+                            implode( ', ', self::REPEATER_ALLOWED_CHILD_TYPES )
+                        ),
+                        [ 'status' => 422 ]
+                    );
+                }
+
+                // Run the same per-field validation against an isolated
+                // id namespace — child ids only need to be unique within
+                // the repeater (rendered iterations prefix them).
+                $child_err = self::validate_field( $child, $child_ids, $path . '.fields[' . $child_index . ']' );
+                if ( is_wp_error( $child_err ) ) {
+                    return $child_err;
+                }
+            }
+        }
+
         // Extension hook. Fires after all core rules pass for this field.
         // Return null to pass, or a WP_Error to fail.
         $extra = apply_filters( 'neural_forms_validate_field', null, $field );
@@ -454,4 +546,52 @@ class FormValidator {
 
         return true;
     }
+
+    /**
+     * Child-type whitelist for the Repeater field. Kept in sync with
+     * the cloud SchemaNormalizer's matching list (commit 6 of the
+     * Repeater plan). v1 deliberately excludes hidden, range,
+     * acceptance, and rating; add them later only after their
+     * per-iteration rendering and validation have been thought
+     * through.
+     */
+    const REPEATER_ALLOWED_CHILD_TYPES = [
+        'text',
+        'email',
+        'phone',
+        'number',
+        'url',
+        'textarea',
+        'select',
+        'radio',
+        'checkbox',
+        'checkboxes',
+        'date',
+        'file',
+    ];
+
+    /**
+     * Child types explicitly REJECTED inside a Repeater. The negative
+     * list is checked BEFORE the positive allowlist so the error
+     * message can call out the specific reason — "no nested repeater"
+     * rather than the generic "type not in allowlist".
+     */
+    const REPEATER_BLOCKED_CHILD_TYPES = [
+        'repeater',      // no nested repeaters
+        'matrix',        // matrix-in-repeater is a v1 explicit exclusion
+        'row',           // layout containers don't make sense inside a leaf-shaped repeater iteration
+        'step',
+        'section',
+        'column',
+        'poll',          // public voting fields don't make sense in a repeated personal context
+        'quiz_question',
+    ];
+
+    /**
+     * Hard ceiling on repeater max_items. Matches the cloud
+     * SchemaNormalizer cap so AI-generated repeaters obey the same
+     * limit. Bumping this requires coordinated changes in the cloud
+     * + the CSV exporter's stable-column model.
+     */
+    const REPEATER_MAX_ITEMS = 20;
 }
