@@ -72,12 +72,32 @@ class PublicForms {
 	 * @internal  Public only because it is used as a hook callback.
 	 */
 	public static function register_assets(): void {
+		// Cache-buster strategy for the public-facing form assets:
+		//
+		// `NEURAL_FORMS_VERSION` is the canonical plugin version Pro
+		// reads for its dep check; it only changes at tagged releases.
+		// Between releases we still ship bug fixes to form.css and
+		// form-submit.js (e.g. the bracket-aware serializer that
+		// unblocks Matrix submissions). With a static version stamp
+		// browsers happily serve the cached old copy for weeks.
+		//
+		// Falling back to filemtime() of the actual file solves this:
+		// any on-disk change automatically produces a new ?ver= URL,
+		// so browsers see a fresh asset without forcing a hard reload.
+		// filemtime() returns false on read errors — in that case we
+		// drop back to NEURAL_FORMS_VERSION so the asset still loads
+		// (no version is worse than a static version for caches).
+		$css_path = NEURAL_FORMS_PATH . 'modules/frontend/assets/css/form.css';
+		$js_path  = NEURAL_FORMS_PATH . 'modules/frontend/assets/js/form-submit.js';
+		$css_ver  = file_exists( $css_path ) ? (string) filemtime( $css_path ) : NEURAL_FORMS_VERSION;
+		$js_ver   = file_exists( $js_path )  ? (string) filemtime( $js_path )  : NEURAL_FORMS_VERSION;
+
 		// ' Style '
 		wp_register_style(
 			'neural-forms-form',
 			NEURAL_FORMS_URL . 'modules/frontend/assets/css/form.css',
 			[],
-			NEURAL_FORMS_VERSION
+			$css_ver
 		);
 
 		// ' Script '
@@ -87,7 +107,7 @@ class PublicForms {
 			'neural-forms-form-submit',
 			NEURAL_FORMS_URL . 'modules/frontend/assets/js/form-submit.js',
 			[],
-			NEURAL_FORMS_VERSION,
+			$js_ver,
 			true
 		);
 
