@@ -2,6 +2,7 @@
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Captcha\CaptchaManager;
+use NeuralForms\Core\Capabilities;
 use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
 use NeuralForms\Forms\FormRepository;
@@ -291,6 +292,35 @@ class SubmitEndpoint {
 			if ( ! $_visible ) {
 				unset( $raw_data[ $_cl_field_id ] );
 			}
+		}
+
+		// ' Step 5b: Capability-locked field strip '
+		// Capability-gated field types (currently: matrix) are skipped by
+		// the renderer when locked, so the public form does not emit
+		// inputs for them. A tampered client could still POST data under
+		// the field id — strip it here so it never reaches validation or
+		// storage. Required-on-a-locked-field never fatals: the field is
+		// removed from BOTH $raw_data and the local $schema_fields copy
+		// used by the rest of this method, so the validator never sees
+		// the locked field and never produces a required error for it.
+		if ( ! Capabilities::can( Capabilities::FIELD_MATRIX ) ) {
+			$matrix_ids = [];
+			foreach ( $schema_fields as $_cap_field ) {
+				$_cap_field = (array) $_cap_field;
+				if ( ( $_cap_field['type'] ?? '' ) === 'matrix' && ! empty( $_cap_field['id'] ) ) {
+					$matrix_ids[] = (string) $_cap_field['id'];
+				}
+			}
+			foreach ( $matrix_ids as $_mid ) {
+				unset( $raw_data[ $_mid ] );
+			}
+			$schema_fields = array_values( array_filter(
+				$schema_fields,
+				static function ( $f ) {
+					$f = (array) $f;
+					return ( $f['type'] ?? '' ) !== 'matrix';
+				}
+			) );
 		}
 
 		// ' Step 5: Spam-check gate '
@@ -842,7 +872,7 @@ class SubmitEndpoint {
 				continue;
 			}
 
-			$sanitized[ $field_id ] = $this->sanitize_value( $value, $field['type'] ?? 'text' );
+			$sanitized[ $field_id ] = $this->sanitize_value( $value, $field );
 		}
 
 		return $sanitized;
@@ -861,11 +891,14 @@ class SubmitEndpoint {
 	 * - Uses floatval() to support decimal values. Integer-only enforcement
 	 *   can be added later via a field-level 'step' or 'integer_only' property.
 	 *
-	 * @param mixed  $value  Raw submitted value (validated, not null).
-	 * @param string $type   Field type from schema.
-	 * @return mixed         Sanitized value ready for JSON storage.
+	 * @param mixed $value Raw submitted value (validated, not null).
+	 * @param array $field Schema field (the type is read here; matrix also
+	 *                     reads nested settings to build the allowlist).
+	 * @return mixed       Sanitized value ready for JSON storage.
 	 */
-	private function sanitize_value( $value, string $type ) {
+	private function sanitize_value( $value, array $field ) {
+		$type = (string) ( $field['type'] ?? 'text' );
+
 		switch ( $type ) {
 
 			case 'email':
@@ -907,6 +940,18 @@ class SubmitEndpoint {
 			case 'file':
 				return is_array( $value ) ? $value : null;
 
+			case 'matrix':
+				// Stored shape mirrors what the validator accepted:
+				//   radio:    [ row_key => "col_value" ]
+				//   checkbox: [ row_key => [ "col_a", "col_b" ] ]
+				// Unknown row keys and unknown column values are dropped
+				// here as a defence-in-depth pass; the validator already
+				// rejected invalid columns in column-tampering cases, but
+				// unknown ROWS pass through validation silently so this
+				// pass is the one that actually strips them. Rows with no
+				// remaining valid columns drop out of storage entirely.
+				return $this->sanitize_matrix( $value, $field );
+
 			// text, phone, tel, select:
 			// sanitize_text_field() strips tags, encodes HTML entities, trims.
 			// Select values are already validated against the allowed options list
@@ -914,6 +959,96 @@ class SubmitEndpoint {
 			default:
 				return sanitize_text_field( (string) $value );
 		}
+	}
+
+	/**
+	 * Normalize a matrix submission into its stored shape.
+	 *
+	 * Reads the schema field's settings to build allowed-row and allowed-
+	 * column allowlists, then walks the submitted payload and emits only
+	 * the row→column combinations that match. Output:
+	 *
+	 *   radio:    [ row_key => "col_value" ]   (one column per row)
+	 *   checkbox: [ row_key => [ "col" ... ] ] (deduped, allowlisted)
+	 *
+	 * Rows that end up with no valid column data are omitted entirely so
+	 * the stored JSON stays compact and the entry detail UI can render
+	 * "row N: <value>" without nullish-guard noise.
+	 *
+	 * @param mixed $value Raw submitted value (already passed the validator).
+	 * @param array $field Schema field for the matrix.
+	 * @return array
+	 */
+	private function sanitize_matrix( $value, array $field ): array {
+		if ( ! is_array( $value ) ) {
+			return [];
+		}
+
+		$settings  = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$selection = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
+
+		// Build the allowlists locally (small, matrix-field-scoped) so
+		// the endpoint does not need to depend on the validator's private
+		// helpers. Same effective-value rule (value || label).
+		$allowed_rows = [];
+		foreach ( ( $settings['rows'] ?? [] ) as $row ) {
+			$row = (array) $row;
+			$v   = (string) ( $row['value'] ?? '' );
+			$l   = (string) ( $row['label'] ?? '' );
+			$eff = $v !== '' ? $v : $l;
+			if ( $eff !== '' ) {
+				$allowed_rows[ $eff ] = true;
+			}
+		}
+		$allowed_cols = [];
+		foreach ( ( $settings['columns'] ?? [] ) as $col ) {
+			$col = (array) $col;
+			$v   = (string) ( $col['value'] ?? '' );
+			$l   = (string) ( $col['label'] ?? '' );
+			$eff = $v !== '' ? $v : $l;
+			if ( $eff !== '' ) {
+				$allowed_cols[ $eff ] = true;
+			}
+		}
+
+		$out = [];
+		foreach ( $value as $row_key => $row_val ) {
+			$row_key_str = sanitize_text_field( (string) $row_key );
+			if ( ! isset( $allowed_rows[ $row_key_str ] ) ) {
+				continue;
+			}
+
+			if ( 'checkbox' === $selection ) {
+				if ( ! is_array( $row_val ) ) {
+					continue;
+				}
+				$picked = [];
+				foreach ( $row_val as $rv ) {
+					if ( ! is_scalar( $rv ) ) {
+						continue;
+					}
+					$rv_s = sanitize_text_field( (string) $rv );
+					if ( $rv_s === '' || ! isset( $allowed_cols[ $rv_s ] ) ) {
+						continue;
+					}
+					$picked[ $rv_s ] = true; // dedupe via key.
+				}
+				if ( ! empty( $picked ) ) {
+					$out[ $row_key_str ] = array_keys( $picked );
+				}
+			} else {
+				if ( is_array( $row_val ) || ! is_scalar( $row_val ) ) {
+					continue;
+				}
+				$row_val_str = sanitize_text_field( (string) $row_val );
+				if ( $row_val_str === '' || ! isset( $allowed_cols[ $row_val_str ] ) ) {
+					continue;
+				}
+				$out[ $row_key_str ] = $row_val_str;
+			}
+		}
+
+		return $out;
 	}
 
 	/**

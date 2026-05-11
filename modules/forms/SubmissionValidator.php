@@ -231,6 +231,80 @@ class SubmissionValidator {
 			return null;
 		}
 
+		if ( $type === 'matrix' ) {
+			// Required matrix: every configured row must carry a non-empty
+			// selection. Radio rows need a non-empty scalar string; checkbox
+			// rows need at least one non-empty array entry. Unknown row keys
+			// in the submitted payload are not counted toward coverage —
+			// they are silently ignored by check_type/sanitization.
+			$settings    = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+			$selection   = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
+			$allowed_rows = self::get_matrix_row_values( $field );
+
+			if ( empty( $allowed_rows ) ) {
+				// Matrix with zero configured rows can never accept input.
+				// Treat as required-failure rather than silently passing so
+				// authors notice the misconfiguration on first submission.
+				return [
+					'code'    => 'required',
+					/* translators: %s: field label */
+					'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
+				];
+			}
+
+			if ( ! is_array( $value ) ) {
+				return [
+					'code'    => 'required',
+					/* translators: %s: field label */
+					'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
+				];
+			}
+
+			// Required-check rule for matrix: a row is "missing" only if the
+			// key is absent, null, an empty string, or an empty array.
+			// Wrong-shape data (array under radio, scalar under checkbox)
+			// is left alone here so check_type can emit the more specific
+			// `invalid_matrix` error instead of a misleading `required`.
+			foreach ( $allowed_rows as $row_key ) {
+				if ( ! array_key_exists( $row_key, $value ) ) {
+					return [
+						'code'    => 'required',
+						/* translators: %s: field label */
+						'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
+					];
+				}
+				$row_val = $value[ $row_key ];
+
+				if ( $row_val === null || $row_val === '' ) {
+					return [
+						'code'    => 'required',
+						/* translators: %s: field label */
+						'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
+					];
+				}
+
+				// Checkbox-specific empty: array with no non-empty entries.
+				if ( 'checkbox' === $selection && is_array( $row_val ) ) {
+					$has_any = false;
+					foreach ( $row_val as $rv ) {
+						if ( is_scalar( $rv ) && (string) $rv !== '' ) {
+							$has_any = true;
+							break;
+						}
+					}
+					if ( ! $has_any ) {
+						return [
+							'code'    => 'required',
+							/* translators: %s: field label */
+							'message' => sprintf( __( 'Please select at least one option for each row in %s.', 'neural-forms-lite' ), $label ),
+						];
+					}
+				}
+			}
+
+			return null;
+		}
+
 		if ( $value === null || $value === '' ) {
 			return [
 				'code'    => 'required',
@@ -408,6 +482,106 @@ class SubmissionValidator {
 				}
 				break;
 
+			case 'matrix':
+				// Shape:
+				//   radio:    row_value => "column_value"
+				//   checkbox: row_value => ["col_a","col_b",...]
+				// The validator only rejects:
+				//   - non-array root value (e.g. someone POSTed a string)
+				//   - wrong inner shape for the configured selection mode
+				//     (array under radio, scalar under checkbox)
+				//   - column value not in the allowed columns allowlist
+				// Unknown row keys are silently ignored (per spec) — the
+				// sanitizer drops them before storage. Empty rows are
+				// already gated by check_required for required matrices.
+				if ( ! is_array( $value ) ) {
+					return [
+						'code'    => 'invalid_matrix',
+						/* translators: %s: field label */
+						'message' => sprintf( __( '%s must be a set of row selections.', 'neural-forms-lite' ), $label ),
+					];
+				}
+
+				$settings_m   = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+				$selection_m  = ( ( $settings_m['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
+				$allowed_rows = self::get_matrix_row_values( $field );
+				$allowed_cols = self::get_matrix_column_values( $field );
+
+				foreach ( $value as $row_key => $row_val ) {
+					$row_key_str = (string) $row_key;
+
+					// Unknown row → ignore (no error, no storage). Matches
+					// how other field allowlists silently drop unknowns.
+					if ( ! in_array( $row_key_str, $allowed_rows, true ) ) {
+						continue;
+					}
+
+					if ( 'checkbox' === $selection_m ) {
+						// Scalar under checkbox is an invalid shape. We do
+						// NOT silently promote it to a one-item array —
+						// that would mask client tampering.
+						if ( ! is_array( $row_val ) ) {
+							return [
+								'code'    => 'invalid_matrix',
+								/* translators: %s: field label */
+								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+							];
+						}
+						foreach ( $row_val as $rv ) {
+							if ( ! is_scalar( $rv ) ) {
+								return [
+									'code'    => 'invalid_matrix',
+									/* translators: %s: field label */
+									'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+								];
+							}
+							$rv_s = (string) $rv;
+							if ( $rv_s === '' ) {
+								continue;
+							}
+							if ( ! empty( $allowed_cols ) && ! in_array( $rv_s, $allowed_cols, true ) ) {
+								return [
+									'code'    => 'invalid_option',
+									/* translators: %s: field label */
+									'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+								];
+							}
+						}
+					} else {
+						// radio: array under radio is invalid.
+						if ( is_array( $row_val ) ) {
+							return [
+								'code'    => 'invalid_matrix',
+								/* translators: %s: field label */
+								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+							];
+						}
+						if ( $row_val === null ) {
+							// Optional matrix may carry null rows — ignore.
+							continue;
+						}
+						if ( ! is_scalar( $row_val ) ) {
+							return [
+								'code'    => 'invalid_matrix',
+								/* translators: %s: field label */
+								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+							];
+						}
+						$row_val_str = (string) $row_val;
+						if ( $row_val_str === '' ) {
+							continue;
+						}
+						if ( ! empty( $allowed_cols ) && ! in_array( $row_val_str, $allowed_cols, true ) ) {
+							return [
+								'code'    => 'invalid_option',
+								/* translators: %s: field label */
+								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+							];
+						}
+					}
+				}
+				break;
+
 			// file:
 			// Processed before this validator runs (process_file_fields in
 			// SubmitEndpoint). By the time we reach here, the value is either
@@ -531,6 +705,58 @@ class SubmissionValidator {
 		}
 
 		return $values;
+	}
+
+	/**
+	 * Allowed row values for a matrix field (read from settings.rows).
+	 *
+	 * Mirrors FormRenderer normalization: when a row's `value` is empty
+	 * the `label` is used as the effective value. Empty/empty entries
+	 * are skipped.
+	 *
+	 * @param array $field
+	 * @return string[]
+	 */
+	private static function get_matrix_row_values( array $field ): array {
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$rows     = is_array( $settings['rows'] ?? null ) ? $settings['rows'] : [];
+		$out      = [];
+		foreach ( $rows as $row ) {
+			$row = (array) $row;
+			$v   = (string) ( $row['value'] ?? '' );
+			$l   = (string) ( $row['label'] ?? '' );
+			$eff = $v !== '' ? $v : $l;
+			if ( $eff !== '' ) {
+				$out[] = $eff;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Allowed column values for a matrix field (read from settings.columns).
+	 *
+	 * Mirrors FormRenderer normalization: when a column's `value` is empty
+	 * the `label` is used as the effective value. Empty/empty entries
+	 * are skipped.
+	 *
+	 * @param array $field
+	 * @return string[]
+	 */
+	private static function get_matrix_column_values( array $field ): array {
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$cols     = is_array( $settings['columns'] ?? null ) ? $settings['columns'] : [];
+		$out      = [];
+		foreach ( $cols as $col ) {
+			$col = (array) $col;
+			$v   = (string) ( $col['value'] ?? '' );
+			$l   = (string) ( $col['label'] ?? '' );
+			$eff = $v !== '' ? $v : $l;
+			if ( $eff !== '' ) {
+				$out[] = $eff;
+			}
+		}
+		return $out;
 	}
 
 	/**
