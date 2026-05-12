@@ -120,9 +120,13 @@
 		if ( current >= max ) return;
 
 		// Clone the template and stamp the new index across every name /
-		// id / for / aria-describedby template attribute.
+		// id / for / aria-describedby template attribute. We pass the
+		// repeater element through explicitly because the cloned
+		// fragment isn't attached to the DOM yet — Element.closest()
+		// on a DocumentFragment child returns null, so the header
+		// reindex can't find data-item-num-template otherwise.
 		var fragment = template.content.cloneNode( true );
-		stampRepeaterIndex( fragment, current );
+		stampRepeaterIndex( fragment, current, repeater );
 
 		list.appendChild( fragment );
 		refreshRepeaterControls( repeater );
@@ -147,7 +151,7 @@
 		// Reindex the survivors so name / id stay contiguous.
 		var items = list.querySelectorAll( '.neural-forms-repeater__item' );
 		for ( var i = 0; i < items.length; i++ ) {
-			stampRepeaterIndex( items[ i ], i );
+			stampRepeaterIndex( items[ i ], i, repeater );
 		}
 		refreshRepeaterControls( repeater );
 	}
@@ -160,14 +164,19 @@
 	 * data-for-template, data-aria-describedby-template,
 	 * data-error-id-template).
 	 *
-	 * `index` is 0-based. The 1-based human number for the "Item N"
-	 * header gets stamped from `data-item-num-template` on the
+	 * `index` is 0-based. The 1-based human number for the visible
+	 * item label gets stamped from `data-item-num-template` on the
 	 * containing fieldset.
 	 *
 	 * Accepts either a DocumentFragment (initial add) or an Element
-	 * (reindex pass).
+	 * (reindex pass). The caller MUST pass `repeaterEl` because a
+	 * freshly-cloned DocumentFragment has no enclosing fieldset
+	 * (it isn't attached to the DOM yet), so Element.closest() from
+	 * inside the fragment cannot find data-item-num-template. We
+	 * accept the repeater element as a parameter rather than walking
+	 * up from the cloned header.
 	 */
-	function stampRepeaterIndex( root, index ) {
+	function stampRepeaterIndex( root, index, repeaterEl ) {
 		var idxStr   = String( index );
 		var idxHuman = String( index + 1 );
 
@@ -181,18 +190,28 @@
 			item.setAttribute( 'data-index', idxStr );
 		}
 
-		// Header "Item N" label.
+		// Visible item label (e.g. "1.", "2."). Template lives on the
+		// fieldset's data-item-num-template attribute; substitute
+		// __INDEX_1__ (1-based) and __INDEX__ (0-based) verbatim.
 		var headers = root.querySelectorAll
 			? root.querySelectorAll( '[data-item-num]' )
 			: [];
+		// Resolve the template ONCE — the repeater element is the
+		// same for every header inside the same fragment.
+		var headerTpl = repeaterEl ? repeaterEl.getAttribute( 'data-item-num-template' ) : null;
+		// Fallback: if no repeaterEl was passed (defensive), try to
+		// walk up from each header. Works for elements already in the
+		// DOM; returns null for fragment children.
 		for ( var h = 0; h < headers.length; h++ ) {
-			var repeater = headers[ h ].closest( '.neural-forms-repeater' );
-			var tpl = repeater ? repeater.getAttribute( 'data-item-num-template' ) : null;
-			if ( tpl ) {
-				headers[ h ].textContent = tpl
-					.replace( /__INDEX_1__/g, idxHuman )
-					.replace( /__INDEX__/g, idxStr );
+			var tpl = headerTpl;
+			if ( ! tpl ) {
+				var fallbackRepeater = headers[ h ].closest && headers[ h ].closest( '.neural-forms-repeater' );
+				tpl = fallbackRepeater ? fallbackRepeater.getAttribute( 'data-item-num-template' ) : null;
 			}
+			if ( ! tpl ) continue;
+			headers[ h ].textContent = tpl
+				.replace( /__INDEX_1__/g, idxHuman )
+				.replace( /__INDEX__/g, idxStr );
 		}
 
 		stampAttrFromTemplate( root, '[data-name-template]',                 'data-name-template',                 'name',             idxStr );

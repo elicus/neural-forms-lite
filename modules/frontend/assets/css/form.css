@@ -1489,11 +1489,13 @@
 }
 
 .neural-forms-repeater__item-num {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: #374151;
+    line-height: 1;
+    /* Numeric label only — no "Item " prefix, so we drop the
+       uppercase + letter-spacing styling that suited an English
+       label. */
 }
 
 .neural-forms-repeater__remove {

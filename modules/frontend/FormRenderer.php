@@ -2033,7 +2033,12 @@ class FormRenderer {
 			. ' data-min="' . esc_attr( (string) $min ) . '"'
 			. ' data-max="' . esc_attr( (string) $max ) . '"'
 			. ' data-columns="' . esc_attr( (string) $columns ) . '"'
-			. ' data-item-num-template="' . esc_attr__( 'Item __INDEX_1__', 'neural-forms-lite' ) . '"'
+			// Visible numbering pattern. The literal "__INDEX_1__"
+			// gets substituted by form-submit.js#stampRepeaterIndex
+			// with the 1-based human index on every add / remove.
+			// Server-rendered items get the substitution done in
+			// render_repeater_item below.
+			. ' data-item-num-template="' . esc_attr( '__INDEX_1__.' ) . '"'
 			. ' aria-describedby="' . esc_attr( $error_id ) . '"'
 			. '>';
 
@@ -2118,9 +2123,12 @@ class FormRenderer {
 		$html .= '>';
 
 		$html .= '<header class="neural-forms-repeater__item-head">';
+		// Visible numbering — just "1.", "2.", etc. The
+		// data-item-num attribute is the JS reindexer's hook; the
+		// template literal "__INDEX_1__" is left in place inside
+		// the hidden <template> below and substituted at clone time.
 		$html .= '<span class="neural-forms-repeater__item-num" data-item-num>'
-			. /* translators: %s: 1-based iteration index */
-			esc_html( sprintf( __( 'Item %s', 'neural-forms-lite' ), $idx_human ) )
+			. esc_html( $idx_human . '.' )
 			. '</span>';
 		$html .= '<button type="button"'
 			. ' class="neural-forms-repeater__remove"'
