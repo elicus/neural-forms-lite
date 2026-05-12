@@ -46,6 +46,17 @@ const PROVIDERS = [
 		blurb: __( 'Mirror entries into a linked Google Sheet so existing spreadsheet workflows keep working.', 'neural-forms-lite' ),
 		icon:  'G',
 	},
+	{
+		// 1.1.0 Zapier foundation. Pro registers a `zapier` provider
+		// behind the scenes (see neural-forms-pro/modules/integrations/),
+		// but the actual app + delivery is not live yet — the tab
+		// renders the same "Coming soon" card as the other providers
+		// while the foundation work matures.
+		id:    'zapier',
+		name:  'Zapier',
+		blurb: __( 'Connect Neural Forms with Zapier to send form submissions to thousands of apps.', 'neural-forms-lite' ),
+		icon:  'Z',
+	},
 ];
 
 // ─── Icons ──────────────────────────────────────────────────────
