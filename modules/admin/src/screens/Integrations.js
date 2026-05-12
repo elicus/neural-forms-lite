@@ -608,11 +608,442 @@ function ZapierPanel( { provider } ) {
 	);
 }
 
+// ─── Google Forms configure panel ───────────────────────────────
+
+/**
+ * State machine:
+ *   - loading       → initial status fetch
+ *   - no_creds      → site-level OAuth client_id / client_secret form
+ *   - disconnected  → "Connect Google Account" button
+ *   - connected     → forms list + import flow
+ *
+ * The OAuth handshake leaves the browser on
+ * /wp-admin/admin.php?page=neural-forms-integrations&nf_google=...
+ * On mount we read that flag, show the flash, and replaceState the
+ * URL clean so a refresh doesn't replay the banner.
+ *
+ * REST surface (admin-gated, capability-gated):
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/status
+ *   POST   /neural-forms-pro/v1/integrations/google-forms/settings
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/auth-url
+ *   POST   /neural-forms-pro/v1/integrations/google-forms/disconnect
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/forms
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/forms/{id}/preview
+ *   POST   /neural-forms-pro/v1/integrations/google-forms/forms/{id}/import
+ */
+
+function CopyableInput( { value, label } ) {
+	const [ copied, setCopied ] = useState( false );
+	const onCopy = useCallback( () => {
+		if ( ! navigator?.clipboard ) return;
+		navigator.clipboard.writeText( value ).then( () => {
+			setCopied( true );
+			setTimeout( () => setCopied( false ), 1500 );
+		} );
+	}, [ value ] );
+	return (
+		<div className="neural-forms-integrations__zap-field">
+			<label className="neural-forms-integrations__zap-label">{ label }</label>
+			<div className="neural-forms-integrations__gf-copy-row">
+				<input className="neural-forms-integrations__zap-input" type="text" value={ value } readOnly onFocus={ ( e ) => e.target.select() } />
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onCopy } disabled={ ! value }>
+					{ copied ? __( 'Copied!', 'neural-forms-lite' ) : __( 'Copy', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function GFCredsForm( { status, onSaved, onConnect, busy } ) {
+	const [ clientId,     setClientId ]     = useState( status?.client_id || '' );
+	const [ clientSecret, setClientSecret ] = useState( '' );
+	const [ saving,       setSaving ]       = useState( false );
+	const [ err,          setErr ]          = useState( '' );
+	const hasCreds = !! status?.has_client_creds;
+
+	const onSave = async ( ev ) => {
+		ev.preventDefault();
+		setSaving( true );
+		setErr( '' );
+		try {
+			const data = { client_id: clientId };
+			if ( clientSecret !== '' ) data.client_secret = clientSecret;
+			const next = await api( '/neural-forms-pro/v1/integrations/google-forms/settings', { method: 'POST', data } );
+			setClientSecret( '' );
+			onSaved( next );
+		} catch ( e ) {
+			setErr( errorMessage( e, __( 'Could not save credentials.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	return (
+		<form className="neural-forms-integrations__zap-form" onSubmit={ onSave }>
+			<header className="neural-forms-integrations__zap-form-header">
+				<h3 className="neural-forms-integrations__zap-form-title">
+					{ __( 'Google Cloud OAuth credentials', 'neural-forms-lite' ) }
+				</h3>
+				<p className="neural-forms-integrations__zap-form-help">
+					{ __( 'Create an OAuth client in Google Cloud Console → APIs & Services → Credentials. Use the redirect URI below verbatim, then paste the client ID and secret here.', 'neural-forms-lite' ) }
+				</p>
+			</header>
+
+			<CopyableInput value={ status?.redirect_uri || '' } label={ __( 'Authorised redirect URI (paste into Google Cloud)', 'neural-forms-lite' ) } />
+
+			<div className="neural-forms-integrations__zap-field">
+				<label className="neural-forms-integrations__zap-label" htmlFor="nf-gf-client-id">
+					{ __( 'Client ID', 'neural-forms-lite' ) }
+				</label>
+				<input
+					id="nf-gf-client-id"
+					type="text"
+					className="neural-forms-integrations__zap-input"
+					value={ clientId }
+					onChange={ ( e ) => setClientId( e.target.value ) }
+					placeholder="123-abc.apps.googleusercontent.com"
+					required
+				/>
+			</div>
+
+			<div className="neural-forms-integrations__zap-field">
+				<label className="neural-forms-integrations__zap-label" htmlFor="nf-gf-client-secret">
+					{ __( 'Client Secret', 'neural-forms-lite' ) }
+				</label>
+				<input
+					id="nf-gf-client-secret"
+					type="password"
+					className="neural-forms-integrations__zap-input"
+					value={ clientSecret }
+					onChange={ ( e ) => setClientSecret( e.target.value ) }
+					placeholder={ status?.client_secret_set ? '•••••••• (' + __( 'leave blank to keep existing', 'neural-forms-lite' ) + ')' : '' }
+				/>
+				<p className="neural-forms-integrations__zap-hint">
+					{ __( 'The secret is encrypted at rest and never displayed again.', 'neural-forms-lite' ) }
+				</p>
+			</div>
+
+			{ err && <div className="neural-forms-integrations__zap-error-banner" role="alert">{ err }</div> }
+
+			<div className="neural-forms-integrations__zap-form-actions">
+				<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving || ! clientId || ( ! hasCreds && ! clientSecret ) }>
+					{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save credentials', 'neural-forms-lite' ) }
+				</button>
+				{ hasCreds && (
+					<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onConnect } disabled={ busy }>
+						{ busy ? __( 'Connecting…', 'neural-forms-lite' ) : __( 'Connect Google Account', 'neural-forms-lite' ) }
+					</button>
+				) }
+			</div>
+		</form>
+	);
+}
+
+function GFFormsList( { forms, loading, error, onRefresh, onPreview, busyId } ) {
+	if ( loading ) return <p className="neural-forms-integrations__zap-loading">{ __( 'Loading Google Forms…', 'neural-forms-lite' ) }</p>;
+	if ( error )   return <div className="neural-forms-integrations__zap-error-banner" role="alert">{ error }</div>;
+	if ( ! forms || forms.length === 0 ) {
+		return (
+			<div className="neural-forms-integrations__zap-empty">
+				<h3 className="neural-forms-integrations__zap-empty-title">{ __( 'No Google Forms found', 'neural-forms-lite' ) }</h3>
+				<p className="neural-forms-integrations__zap-empty-desc">
+					{ __( 'Create a form at forms.google.com, then click Refresh.', 'neural-forms-lite' ) }
+				</p>
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onRefresh }>
+					{ __( 'Refresh forms', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		);
+	}
+	return (
+		<div className="neural-forms-integrations__zap-list-wrap">
+			<div className="neural-forms-integrations__zap-list-header">
+				<h3 className="neural-forms-integrations__zap-list-title">{ __( 'Your Google Forms', 'neural-forms-lite' ) }</h3>
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onRefresh }>{ __( 'Refresh', 'neural-forms-lite' ) }</button>
+			</div>
+			<ul className="neural-forms-integrations__zap-list">
+				{ forms.map( ( f ) => (
+					<li key={ f.id } className="neural-forms-integrations__zap-row">
+						<div className="neural-forms-integrations__zap-row-main">
+							<div className="neural-forms-integrations__zap-row-line1">
+								<strong>{ f.name || __( '(untitled)', 'neural-forms-lite' ) }</strong>
+								<code className="neural-forms-integrations__zap-url">{ f.id.slice( 0, 8 ) }…</code>
+							</div>
+							{ f.modified_time && (
+								<div className="neural-forms-integrations__zap-row-meta">
+									<span>{ __( 'Modified: ', 'neural-forms-lite' ) }{ f.modified_time }</span>
+								</div>
+							) }
+						</div>
+						<div className="neural-forms-integrations__zap-row-actions">
+							<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ () => onPreview( f ) } disabled={ busyId === f.id }>
+								{ busyId === f.id ? __( 'Loading…', 'neural-forms-lite' ) : __( 'Preview & Import', 'neural-forms-lite' ) }
+							</button>
+						</div>
+					</li>
+				) ) }
+			</ul>
+		</div>
+	);
+}
+
+function GFPreviewModal( { preview, onCancel, onImport, importing } ) {
+	if ( ! preview ) return null;
+	const { name, description, schema, warnings, summary } = preview;
+	const fields = schema?.fields || [];
+	return (
+		<div className="neural-forms-integrations__gf-modal" role="dialog" aria-modal="true" aria-label={ __( 'Preview Google Form import', 'neural-forms-lite' ) }>
+			<div className="neural-forms-integrations__gf-modal-body">
+				<header className="neural-forms-integrations__gf-modal-header">
+					<h3 className="neural-forms-integrations__zap-form-title">{ name || __( 'Imported form', 'neural-forms-lite' ) }</h3>
+					{ description && <p className="neural-forms-integrations__zap-form-help">{ description }</p> }
+				</header>
+
+				<div className="neural-forms-integrations__gf-modal-summary">
+					<span>{ sprintf( __( '%d fields mapped', 'neural-forms-lite' ), summary?.mapped_items || 0 ) }</span>
+					{ ( summary?.fallback_items || 0 ) > 0 && (
+						<span>{ sprintf( __( '%d fallback', 'neural-forms-lite' ), summary.fallback_items ) }</span>
+					) }
+					{ ( summary?.skipped_items || 0 ) > 0 && (
+						<span>{ sprintf( __( '%d skipped', 'neural-forms-lite' ), summary.skipped_items ) }</span>
+					) }
+				</div>
+
+				<div className="neural-forms-integrations__gf-modal-fields">
+					<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Fields', 'neural-forms-lite' ) }</h4>
+					<ul className="neural-forms-integrations__gf-modal-field-list">
+						{ fields.map( ( f, i ) => (
+							<li key={ i }>
+								<strong>{ f.label || f.id }</strong>
+								<span className="neural-forms-integrations__gf-modal-type">{ f.type }</span>
+								{ f.required && <span className="neural-forms-integrations__gf-modal-req">{ __( 'required', 'neural-forms-lite' ) }</span> }
+							</li>
+						) ) }
+					</ul>
+				</div>
+
+				{ warnings && warnings.length > 0 && (
+					<div className="neural-forms-integrations__gf-modal-warnings">
+						<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Warnings', 'neural-forms-lite' ) }</h4>
+						<ul>
+							{ warnings.map( ( w, i ) => (
+								<li key={ i } className={ 'neural-forms-integrations__gf-warning-' + ( w.kind || 'note' ) }>
+									<strong>{ w.field_title }:</strong> { w.message }
+								</li>
+							) ) }
+						</ul>
+					</div>
+				) }
+
+				<div className="neural-forms-integrations__zap-form-actions">
+					<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onImport } disabled={ importing || fields.length === 0 }>
+						{ importing ? __( 'Importing…', 'neural-forms-lite' ) : __( 'Import as Neural Form', 'neural-forms-lite' ) }
+					</button>
+					<button type="button" className="neural-forms-integrations__btn" onClick={ onCancel } disabled={ importing }>
+						{ __( 'Cancel', 'neural-forms-lite' ) }
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function GoogleFormsPanel( { provider } ) {
+	const [ loading,  setLoading ]  = useState( true );
+	const [ status,   setStatus ]   = useState( null );
+	const [ flash,    setFlash ]    = useState( null );
+	const [ forms,    setForms ]    = useState( [] );
+	const [ formsLoading, setFormsLoading ] = useState( false );
+	const [ formsError, setFormsError ] = useState( '' );
+	const [ connecting, setConnecting ] = useState( false );
+	const [ preview, setPreview ]   = useState( null );
+	const [ previewLoading, setPreviewLoading ] = useState( false );
+	const [ previewError, setPreviewError ] = useState( '' );
+	const [ busyFormId, setBusyFormId ] = useState( '' );
+	const [ importing, setImporting ] = useState( false );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/google-forms/status' );
+			setStatus( s );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load Google Forms status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const reloadForms = useCallback( async () => {
+		setFormsLoading( true );
+		setFormsError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/forms' );
+			setForms( Array.isArray( res?.forms ) ? res.forms : [] );
+		} catch ( e ) {
+			setFormsError( errorMessage( e, __( 'Could not load Google Forms.', 'neural-forms-lite' ) ) );
+		} finally {
+			setFormsLoading( false );
+		}
+	}, [] );
+
+	// First mount: read URL flag, fetch status.
+	useEffect( () => {
+		const url    = new URL( window.location.href );
+		const gFlag  = url.searchParams.get( 'nf_google' );
+		const reason = url.searchParams.get( 'reason' );
+		if ( gFlag === 'connected' ) {
+			setFlash( { kind: 'success', message: __( 'Google account connected.', 'neural-forms-lite' ) } );
+		} else if ( gFlag === 'error' ) {
+			setFlash( { kind: 'error', message: sprintf(
+				/* translators: %s: Google error code */
+				__( 'Google connection failed: %s', 'neural-forms-lite' ),
+				reason || __( 'unknown error', 'neural-forms-lite' )
+			) } );
+		}
+		if ( gFlag ) {
+			url.searchParams.delete( 'nf_google' );
+			url.searchParams.delete( 'reason' );
+			window.history.replaceState( null, '', url.toString() );
+		}
+		( async () => {
+			await reloadStatus();
+			setLoading( false );
+		} )();
+	}, [ reloadStatus ] );
+
+	// Auto-load forms when we transition to connected.
+	useEffect( () => {
+		if ( status?.connected && forms.length === 0 && ! formsLoading && formsError === '' ) {
+			reloadForms();
+		}
+	}, [ status?.connected ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const handleConnect = useCallback( async () => {
+		setConnecting( true );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/auth-url' );
+			if ( res?.url ) {
+				window.location.href = res.url;
+			} else {
+				throw new Error( __( 'Auth URL was not returned by the server.', 'neural-forms-lite' ) );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not start the Google connection flow.', 'neural-forms-lite' ) ) } );
+			setConnecting( false );
+		}
+	}, [] );
+
+	const handleDisconnect = useCallback( async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect Google? Your imported forms will keep working — only the live Google connection is removed.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/google-forms/disconnect', { method: 'POST' } );
+			setStatus( s );
+			setForms( [] );
+			setFlash( { kind: 'success', message: __( 'Google account disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const handlePreview = useCallback( async ( form ) => {
+		setBusyFormId( form.id );
+		setPreviewError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/forms/' + encodeURIComponent( form.id ) + '/preview' );
+			setPreview( res );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Preview failed.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setBusyFormId( '' );
+		}
+	}, [] );
+
+	const handleImport = useCallback( async () => {
+		if ( ! preview?.source?.google_form_id ) return;
+		setImporting( true );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/forms/' + encodeURIComponent( preview.source.google_form_id ) + '/import', { method: 'POST' } );
+			setPreview( null );
+			setFlash( { kind: 'success', message: sprintf(
+				/* translators: %s: imported form name */
+				__( 'Imported "%s" as a new Neural Form.', 'neural-forms-lite' ),
+				res?.name || ''
+			) } );
+		} catch ( e ) {
+			setPreviewError( errorMessage( e, __( 'Import failed.', 'neural-forms-lite' ) ) );
+		} finally {
+			setImporting( false );
+		}
+	}, [ preview ] );
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : status?.connected ? (
+				<>
+					<div className="neural-forms-integrations__gf-connected">
+						<div>
+							<strong>{ __( 'Connected as: ', 'neural-forms-lite' ) }</strong>
+							<span>{ status.account_email || __( 'your Google account', 'neural-forms-lite' ) }</span>
+						</div>
+						<div className="neural-forms-integrations__zap-row-actions">
+							<button type="button" className="neural-forms-integrations__btn" onClick={ reloadForms }>{ __( 'Refresh forms', 'neural-forms-lite' ) }</button>
+							<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect }>{ __( 'Disconnect', 'neural-forms-lite' ) }</button>
+						</div>
+					</div>
+					<GFFormsList forms={ forms } loading={ formsLoading } error={ formsError } onRefresh={ reloadForms } onPreview={ handlePreview } busyId={ busyFormId } />
+				</>
+			) : (
+				<GFCredsForm
+					status={ status }
+					onSaved={ ( s ) => { setStatus( s ); setFlash( { kind: 'success', message: __( 'Credentials saved.', 'neural-forms-lite' ) } ); } }
+					onConnect={ handleConnect }
+					busy={ connecting }
+				/>
+			) }
+
+			{ preview && (
+				<GFPreviewModal
+					preview={ preview }
+					onCancel={ () => setPreview( null ) }
+					onImport={ handleImport }
+					importing={ importing }
+				/>
+			) }
+			{ previewError && (
+				<div className="neural-forms-integrations__zap-error-banner" role="alert">{ previewError }</div>
+			) }
+		</div>
+	);
+}
+
 // ─── Tab body switcher ──────────────────────────────────────────
 
 function TabPanel( { provider } ) {
 	if ( provider.id === 'zapier' ) {
 		return <ZapierPanel provider={ provider } />;
+	}
+	if ( provider.id === 'google_forms' ) {
+		return <GoogleFormsPanel provider={ provider } />;
 	}
 	return <ComingSoonCard provider={ provider } />;
 }

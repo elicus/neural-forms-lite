@@ -691,6 +691,126 @@
 	gap: 8px;
 }
 
+/* ── Google Forms panel ─────────────────────────────────────── */
+
+.neural-forms-integrations__gf-copy-row {
+	display: flex;
+	gap: 8px;
+	align-items: stretch;
+}
+
+.neural-forms-integrations__gf-copy-row .neural-forms-integrations__zap-input {
+	flex: 1 1 auto;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+}
+
+.neural-forms-integrations__gf-connected {
+	align-items: center;
+	background: var( --f-blue-50 );
+	border: 1px solid var( --f-blue-100 );
+	border-radius: var( --f-radius-md );
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	justify-content: space-between;
+	margin-bottom: 16px;
+	padding: 12px 14px;
+}
+
+.neural-forms-integrations__gf-modal {
+	align-items: center;
+	background: rgba( 8, 15, 91, 0.55 );
+	display: flex;
+	inset: 0;
+	justify-content: center;
+	padding: 24px;
+	position: fixed;
+	z-index: 99999;
+}
+
+.neural-forms-integrations__gf-modal-body {
+	background: #fff;
+	border-radius: var( --f-radius-xl );
+	box-shadow: 0 16px 48px rgba( 0, 0, 0, 0.25 );
+	max-height: 90vh;
+	max-width: 680px;
+	overflow-y: auto;
+	padding: 24px 28px;
+	width: 100%;
+}
+
+.neural-forms-integrations__gf-modal-header {
+	border-bottom: 1px solid var( --f-gray-100 );
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+}
+
+.neural-forms-integrations__gf-modal-summary {
+	color: var( --f-gray-700 );
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 13px;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.neural-forms-integrations__gf-modal-fields {
+	margin-bottom: 18px;
+}
+
+.neural-forms-integrations__gf-modal-field-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.neural-forms-integrations__gf-modal-field-list li {
+	align-items: center;
+	border-bottom: 1px solid var( --f-gray-100 );
+	display: flex;
+	font-size: 13px;
+	gap: 10px;
+	padding-bottom: 6px;
+}
+
+.neural-forms-integrations__gf-modal-type {
+	background: var( --f-blue-50 );
+	border-radius: var( --f-radius-full );
+	color: var( --f-blue-700 );
+	font-size: 11px;
+	font-weight: 600;
+	padding: 2px 8px;
+	text-transform: lowercase;
+}
+
+.neural-forms-integrations__gf-modal-req {
+	color: #b91c1c;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.neural-forms-integrations__gf-modal-warnings {
+	background: #fefce8;
+	border: 1px solid #fde68a;
+	border-radius: var( --f-radius-md );
+	font-size: 12px;
+	margin-bottom: 18px;
+	padding: 10px 14px;
+}
+
+.neural-forms-integrations__gf-modal-warnings ul {
+	margin: 6px 0 0;
+	padding-left: 18px;
+}
+
+.neural-forms-integrations__gf-warning-skipped  { color: #6b7280; }
+.neural-forms-integrations__gf-warning-fallback { color: #d97706; }
+.neural-forms-integrations__gf-warning-note     { color: var( --f-blue-700 ); }
+
 /* ── Responsive: narrow viewport ────────────────────────────── */
 @media ( max-width: 600px ) {
 	.neural-forms-integrations__lock-card {
