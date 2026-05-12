@@ -3938,6 +3938,69 @@
 	font-style: italic;
 }
 
+/* Shared per-form Integrations form-field block (reused across
+ * HubSpot, Google Forms, WhatsApp subtabs). */
+#neural-forms-app .nf-form-settings__hs-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 14px;
+}
+
+#neural-forms-app .nf-form-settings__hs-input,
+#neural-forms-app .nf-form-settings__hs-textarea {
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	color: #111827;
+	font-family: inherit;
+	font-size: 13px;
+	padding: 8px 10px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#neural-forms-app .nf-form-settings__hs-textarea {
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	min-height: 88px;
+	resize: vertical;
+}
+
+#neural-forms-app .nf-form-settings__hs-input:focus-visible,
+#neural-forms-app .nf-form-settings__hs-textarea:focus-visible {
+	border-color: #5566bb;
+	box-shadow: 0 0 0 3px rgba(85, 102, 187, 0.15);
+	outline: none;
+}
+
+#neural-forms-app .nf-form-settings__hs-input:disabled,
+#neural-forms-app .nf-form-settings__hs-textarea:disabled {
+	background: #f9fafb;
+	color: #9ca3af;
+	cursor: not-allowed;
+}
+
+/* WhatsApp recommended-template preview card */
+#neural-forms-app .nf-form-settings__wa-preview {
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	margin-top: 6px;
+	padding: 12px 14px;
+}
+
+#neural-forms-app .nf-form-settings__wa-preview-body {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	color: #111827;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.55;
+	margin: 8px 0;
+	padding: 10px 12px;
+	white-space: pre-wrap;
+}
+
 @media (max-width: 720px) {
 	#neural-forms-app .nf-form-settings__hs-form-row {
 		flex-direction: column;

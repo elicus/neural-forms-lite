@@ -104,6 +104,55 @@ final class FormSettingsSanitizer {
 
 	const GF_VALID_MODES = [ 'imported_source', 'linked_source' ];
 
+	// ── WhatsApp per-form constants ────────────────────────────────
+
+	const WA_TEMPLATE_NAME_MAX     = 100;
+	const WA_RECIPIENT_MIN_DIGITS  = 7;
+	const WA_RECIPIENT_MAX_DIGITS  = 15;
+	const WA_RECIPIENTS_MAX        = 10;
+
+	const WA_TEMPLATE_NAME_PATTERN = '/^[A-Za-z0-9_\-]+$/';
+	const WA_TEMPLATE_LANG_PATTERN = '/^[a-z]{2,3}(?:_[A-Z]{2,3})?$/';
+
+	const WA_VALID_TRIGGERS = [
+		'entry_created',
+	];
+
+	/**
+	 * `send_when` accepted values. For v1 only `all_entries` actually
+	 * fires deliveries — the others are accepted for forward
+	 * compatibility (the future AI-analyzed lifecycle hook will
+	 * route those) but the UI surfaces them disabled with a
+	 * "Coming soon" hint. We accept stored values so an admin who
+	 * sets one early doesn't have it silently flipped to
+	 * all_entries on every save.
+	 */
+	const WA_VALID_SEND_WHEN = [
+		'all_entries',
+		'high_priority',
+		'needs_reply',
+		'spam_detected',
+		'not_spam',
+	];
+
+	/**
+	 * Global-connection / secret keys that MUST NEVER appear in
+	 * per-form WhatsApp settings. Belt-and-braces against client
+	 * payload tampering.
+	 */
+	const WA_FORBIDDEN_KEYS = [
+		'access_token', 'token', 'secret', 'client_secret',
+		'phone_number_id', 'waba_id', 'graph_version',
+	];
+
+	/**
+	 * Server-side telemetry — written by the future dispatcher
+	 * helper, never by clients.
+	 */
+	const WA_TELEMETRY_KEYS = [
+		'last_sent_at', 'last_error', 'last_status_code',
+	];
+
 	/**
 	 * Keys that MUST NEVER survive a client save. Belt-and-braces
 	 * against a copy-paste mistake or an attacker probing.
@@ -174,10 +223,159 @@ final class FormSettingsSanitizer {
 			}
 		}
 
+		if ( array_key_exists( 'whatsapp', $integrations ) ) {
+			$whatsapp = self::sanitize_whatsapp_settings( $integrations['whatsapp'] );
+			if ( ! empty( $whatsapp ) ) {
+				$out['whatsapp'] = $whatsapp;
+			}
+		}
+
 		// Future providers (Zapier per-form delivery / Mailchimp /
 		// Google Forms response sync) would slot in here.
 
 		return $out;
+	}
+
+	/**
+	 * Sanitize a single WhatsApp per-form config.
+	 *
+	 * Allowed keys (whitelist; anything else stripped):
+	 *   enabled            bool, default false
+	 *   recipients         array<string,digits-only>, max 10,
+	 *                       deduped, each entry 7..15 digits
+	 *   trigger            enum, currently only 'entry_created'
+	 *   template_name      safe string (alphanumeric + _ -), max 100
+	 *   template_language  BCP47-ish, default en_US
+	 *   send_when          enum (all_entries active in v1;
+	 *                       high_priority/needs_reply/spam_detected/
+	 *                       not_spam accepted but inactive until
+	 *                       AI-lifecycle hook lands)
+	 *   include_summary    bool, default true
+	 *
+	 * Stripped on every save:
+	 *   - global / secret keys (access_token / token / secret /
+	 *     client_secret / phone_number_id / waba_id / graph_version)
+	 *   - server-side telemetry (last_sent_at / last_error /
+	 *     last_status_code)
+	 *   - any other unknown key
+	 *
+	 * Returns [] when the resulting config has nothing useful so
+	 * the parent drops the key (no empty `{enabled:false}` rows).
+	 *
+	 * recipients input shapes accepted (per spec):
+	 *   - array of strings
+	 *   - single string with linebreaks / commas (parsed)
+	 *
+	 * @param mixed $whatsapp
+	 * @return array<string,mixed>
+	 */
+	public static function sanitize_whatsapp_settings( $whatsapp ): array {
+		if ( ! is_array( $whatsapp ) ) return [];
+
+		$enabled    = array_key_exists( 'enabled', $whatsapp ) ? (bool) $whatsapp['enabled'] : false;
+		$recipients = self::sanitize_whatsapp_recipients( $whatsapp['recipients'] ?? [] );
+
+		$trigger_raw = is_string( $whatsapp['trigger'] ?? null ) ? trim( (string) $whatsapp['trigger'] ) : '';
+		$trigger     = in_array( $trigger_raw, self::WA_VALID_TRIGGERS, true ) ? $trigger_raw : 'entry_created';
+
+		$template_name = self::sanitize_whatsapp_template_name( $whatsapp['template_name'] ?? '' );
+
+		$template_language = self::sanitize_whatsapp_template_language( $whatsapp['template_language'] ?? '' );
+
+		$send_when_raw = is_string( $whatsapp['send_when'] ?? null ) ? trim( (string) $whatsapp['send_when'] ) : '';
+		$send_when     = in_array( $send_when_raw, self::WA_VALID_SEND_WHEN, true ) ? $send_when_raw : 'all_entries';
+
+		// include_summary defaults to true (most admins want the
+		// templated summary). Only flips to false on explicit
+		// false-y input.
+		$include_summary = array_key_exists( 'include_summary', $whatsapp )
+			? (bool) $whatsapp['include_summary']
+			: true;
+
+		// Collapse-when-empty: disabled AND no recipients AND no
+		// template_name carries no information.
+		if (
+			! $enabled
+			&& empty( $recipients )
+			&& $template_name === ''
+		) {
+			return [];
+		}
+
+		return [
+			'enabled'           => $enabled,
+			'recipients'        => $recipients,
+			'trigger'           => $trigger,
+			'template_name'     => $template_name,
+			'template_language' => $template_language,
+			'send_when'         => $send_when,
+			'include_summary'   => $include_summary,
+		];
+	}
+
+	/**
+	 * Normalize the recipients input into a digits-only array.
+	 *
+	 * Accepts:
+	 *   - array<string>  (canonical UI shape)
+	 *   - string         (textarea with linebreak / comma separated
+	 *                     numbers — defensive in case a tampered
+	 *                     payload sends the textarea raw)
+	 *
+	 * Per number:
+	 *   - strip non-digits
+	 *   - require 7..15 digits (E.164 length bounds)
+	 *   - drop everything else
+	 *
+	 * The final list is deduped and capped at WA_RECIPIENTS_MAX so
+	 * a tampered payload can't ship a million-number array.
+	 *
+	 * @param mixed $raw
+	 * @return array<int,string>
+	 */
+	public static function sanitize_whatsapp_recipients( $raw ): array {
+		$rows = [];
+		if ( is_array( $raw ) ) {
+			foreach ( $raw as $r ) {
+				if ( is_scalar( $r ) ) $rows[] = (string) $r;
+			}
+		} elseif ( is_string( $raw ) ) {
+			$rows = preg_split( '/[\r\n,]+/', $raw );
+			$rows = is_array( $rows ) ? $rows : [];
+		}
+
+		$out  = [];
+		$seen = [];
+		foreach ( $rows as $r ) {
+			if ( ! is_string( $r ) ) continue;
+			$digits = preg_replace( '/[^0-9]/', '', $r );
+			if ( ! is_string( $digits ) || $digits === '' ) continue;
+			$len = strlen( $digits );
+			if ( $len < self::WA_RECIPIENT_MIN_DIGITS || $len > self::WA_RECIPIENT_MAX_DIGITS ) continue;
+			if ( isset( $seen[ $digits ] ) ) continue;
+			$seen[ $digits ] = true;
+			$out[] = $digits;
+			if ( count( $out ) >= self::WA_RECIPIENTS_MAX ) break;
+		}
+		return $out;
+	}
+
+	public static function sanitize_whatsapp_template_name( $raw ): string {
+		if ( ! is_string( $raw ) ) return '';
+		$raw = trim( $raw );
+		if ( $raw === '' ) return '';
+		if ( strlen( $raw ) > self::WA_TEMPLATE_NAME_MAX ) return '';
+		if ( ! preg_match( self::WA_TEMPLATE_NAME_PATTERN, $raw ) ) return '';
+		return $raw;
+	}
+
+	public static function sanitize_whatsapp_template_language( $raw ): string {
+		$default = 'en_US';
+		if ( ! is_string( $raw ) ) return $default;
+		$raw = trim( $raw );
+		if ( $raw === '' ) return $default;
+		if ( ! preg_match( self::WA_TEMPLATE_LANG_PATTERN, $raw ) ) return $default;
+		return $raw;
 	}
 
 	/**

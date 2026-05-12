@@ -597,6 +597,302 @@ nf_test( 'google_forms: malformed payload (string / null / int) drops gracefully
 	}
 } );
 
+// ────────── WhatsApp branch ──────────
+
+nf_test( 'whatsapp: clean config round-trips with all seven whitelisted keys', function () {
+	$in = [ 'integrations' => [ 'whatsapp' => [
+		'enabled'           => true,
+		'recipients'        => [ '919999999999', '918888888888' ],
+		'trigger'           => 'entry_created',
+		'template_name'     => 'neural_forms_entry_alert',
+		'template_language' => 'en_US',
+		'send_when'         => 'all_entries',
+		'include_summary'   => true,
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	$wa  = $out['integrations']['whatsapp'];
+	nf_assert_same( true,                            $wa['enabled'],           'enabled' );
+	nf_assert_same( [ '919999999999', '918888888888' ], $wa['recipients'],    'recipients round-trip' );
+	nf_assert_same( 'entry_created',                 $wa['trigger'],           'trigger' );
+	nf_assert_same( 'neural_forms_entry_alert',      $wa['template_name'],     'template_name' );
+	nf_assert_same( 'en_US',                         $wa['template_language'], 'template_language' );
+	nf_assert_same( 'all_entries',                   $wa['send_when'],         'send_when' );
+	nf_assert_same( true,                            $wa['include_summary'],   'include_summary' );
+} );
+
+nf_test( 'whatsapp: enabled coerces truthy/falsy/strings to bool', function () {
+	$cases = [
+		[ true,     true  ],
+		[ false,    false ],
+		[ 1,        true  ],
+		[ 0,        false ],
+		[ 'true',   true  ],
+		[ '',       false ],
+		[ null,     false ],
+	];
+	foreach ( $cases as [ $in, $expected ] ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+			'enabled'    => $in,
+			'recipients' => [ '919999999999' ], // keep non-empty so collapse doesn't fire
+		] ] ] );
+		nf_assert_same( $expected, $out['integrations']['whatsapp']['enabled'], 'enabled=' . var_export( $in, true ) );
+	}
+} );
+
+// ────────── Recipients normalisation ──────────
+
+nf_test( 'whatsapp: recipients accepts a textarea string with linebreaks', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => "+91 9999 9999 99\n+91-8888-888-888",
+	] ] ] );
+	nf_assert_same( [ '919999999999', '918888888888' ], $out['integrations']['whatsapp']['recipients'], 'textarea parsed into normalised array' );
+} );
+
+nf_test( 'whatsapp: recipients array normalises to digits-only strings', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '+91 (999) 999-9999', '918888888888' ],
+	] ] ] );
+	nf_assert_same( [ '919999999999', '918888888888' ], $out['integrations']['whatsapp']['recipients'], 'digits-only' );
+} );
+
+nf_test( 'whatsapp: recipients rejects out-of-bounds lengths (<7 or >15)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [
+			'12345',                  // 5 digits — too short
+			'1234567',                // 7 — OK (boundary)
+			'123456789012345',        // 15 — OK (boundary)
+			'1234567890123456789',    // 19 — too long
+			'+1 (555) 123-4567',      // 11 — OK
+		],
+	] ] ] );
+	$wa = $out['integrations']['whatsapp'];
+	nf_assert_same( 3, count( $wa['recipients'] ),               'only valid-length numbers survive' );
+	nf_assert_same( '1234567',         $wa['recipients'][0],     '7-digit boundary kept' );
+	nf_assert_same( '123456789012345', $wa['recipients'][1],     '15-digit boundary kept' );
+	nf_assert_same( '15551234567',     $wa['recipients'][2],     '+1 (555) 123-4567 normalised' );
+} );
+
+nf_test( 'whatsapp: recipients deduped after normalisation', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '+91 9999999999', '91-9999999999', '919999999999', '918888888888' ],
+	] ] ] );
+	nf_assert_same( [ '919999999999', '918888888888' ], $out['integrations']['whatsapp']['recipients'], 'three formats of same number → one' );
+} );
+
+nf_test( 'whatsapp: recipients capped at WA_RECIPIENTS_MAX (10)', function () {
+	$nums = [];
+	for ( $i = 0; $i < 25; $i++ ) {
+		// Different last digit so they don't dedupe.
+		$nums[] = '91' . str_pad( (string) $i, 10, '0', STR_PAD_LEFT );
+	}
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => $nums,
+	] ] ] );
+	nf_assert_same( FormSettingsSanitizer::WA_RECIPIENTS_MAX, count( $out['integrations']['whatsapp']['recipients'] ), 'capped at MAX' );
+} );
+
+nf_test( 'whatsapp: recipients comma-separated string also parsed', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => '+919999999999, +918888888888',
+	] ] ] );
+	nf_assert_same( 2, count( $out['integrations']['whatsapp']['recipients'] ), 'comma split' );
+} );
+
+// ────────── Enums ──────────
+
+nf_test( 'whatsapp: trigger invalid → entry_created default', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '919999999999' ],
+		'trigger'    => 'evil_trigger',
+	] ] ] );
+	nf_assert_same( 'entry_created', $out['integrations']['whatsapp']['trigger'], 'invalid → default' );
+} );
+
+nf_test( 'whatsapp: send_when accepts v1-active all_entries', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '919999999999' ],
+		'send_when'  => 'all_entries',
+	] ] ] );
+	nf_assert_same( 'all_entries', $out['integrations']['whatsapp']['send_when'], 'all_entries kept' );
+} );
+
+nf_test( 'whatsapp: send_when accepts forward-compat values (high_priority etc.) for future', function () {
+	foreach ( [ 'high_priority', 'needs_reply', 'spam_detected', 'not_spam' ] as $value ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+			'enabled'    => true,
+			'recipients' => [ '919999999999' ],
+			'send_when'  => $value,
+		] ] ] );
+		nf_assert_same( $value, $out['integrations']['whatsapp']['send_when'], "{$value} preserved for forward compatibility" );
+	}
+} );
+
+nf_test( 'whatsapp: send_when invalid → all_entries default', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '919999999999' ],
+		'send_when'  => 'evil_value',
+	] ] ] );
+	nf_assert_same( 'all_entries', $out['integrations']['whatsapp']['send_when'], 'invalid → default' );
+} );
+
+// ────────── Template name + language ──────────
+
+nf_test( 'whatsapp: template_name rejects unsafe chars', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'       => true,
+		'recipients'    => [ '919999999999' ],
+		'template_name' => 'has spaces!',
+	] ] ] );
+	nf_assert_same( '', $out['integrations']['whatsapp']['template_name'], 'unsafe chars → empty' );
+} );
+
+nf_test( 'whatsapp: template_name accepts standard form', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'       => true,
+		'recipients'    => [ '919999999999' ],
+		'template_name' => 'neural_forms_entry_alert',
+	] ] ] );
+	nf_assert_same( 'neural_forms_entry_alert', $out['integrations']['whatsapp']['template_name'], 'accepted' );
+} );
+
+nf_test( 'whatsapp: template_language invalid → en_US default', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'           => true,
+		'recipients'        => [ '919999999999' ],
+		'template_language' => 'invalid lang!',
+	] ] ] );
+	nf_assert_same( 'en_US', $out['integrations']['whatsapp']['template_language'], 'invalid → default' );
+} );
+
+nf_test( 'whatsapp: template_language accepts en / en_US / pt_BR shapes', function () {
+	foreach ( [ 'en', 'en_US', 'pt_BR' ] as $lang ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+			'enabled'           => true,
+			'recipients'        => [ '919999999999' ],
+			'template_language' => $lang,
+		] ] ] );
+		nf_assert_same( $lang, $out['integrations']['whatsapp']['template_language'], "{$lang} accepted" );
+	}
+} );
+
+// ────────── include_summary ──────────
+
+nf_test( 'whatsapp: include_summary defaults true when key absent', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '919999999999' ],
+	] ] ] );
+	nf_assert_same( true, $out['integrations']['whatsapp']['include_summary'], 'default true' );
+} );
+
+nf_test( 'whatsapp: include_summary coerces falsy to false', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'         => true,
+		'recipients'      => [ '919999999999' ],
+		'include_summary' => false,
+	] ] ] );
+	nf_assert_same( false, $out['integrations']['whatsapp']['include_summary'], 'false preserved' );
+} );
+
+// ────────── Forbidden / telemetry / unknown ──────────
+
+nf_test( 'whatsapp: global/secret keys stripped', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'         => true,
+		'recipients'      => [ '919999999999' ],
+		'access_token'    => 'EAAJevil',
+		'token'           => 'evil',
+		'secret'          => 'evil',
+		'client_secret'   => 'evil',
+		'phone_number_id' => '99999',
+		'waba_id'         => '99999',
+		'graph_version'   => 'v22.0',
+	] ] ] );
+	$wa = $out['integrations']['whatsapp'];
+	foreach ( FormSettingsSanitizer::WA_FORBIDDEN_KEYS as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $wa ), "{$k} must be stripped from per-form WhatsApp settings" );
+	}
+} );
+
+nf_test( 'whatsapp: telemetry keys stripped from client payload', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'           => true,
+		'recipients'        => [ '919999999999' ],
+		'last_sent_at'      => '2099-01-01 00:00:00',
+		'last_error'        => 'fake',
+		'last_status_code'  => 200,
+	] ] ] );
+	$wa = $out['integrations']['whatsapp'];
+	foreach ( FormSettingsSanitizer::WA_TELEMETRY_KEYS as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $wa ), "{$k} must be stripped" );
+	}
+} );
+
+nf_test( 'whatsapp: unknown extras stripped (exact whitelist)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => true,
+		'recipients' => [ '919999999999' ],
+		'random_extra' => 'no',
+		'object_extra' => [ 'nested' => 'data' ],
+	] ] ] );
+	$expected = [ 'enabled', 'recipients', 'trigger', 'template_name', 'template_language', 'send_when', 'include_summary' ];
+	sort( $expected );
+	$actual = array_keys( $out['integrations']['whatsapp'] );
+	sort( $actual );
+	nf_assert_same( $expected, $actual, 'whatsapp keys are exactly the whitelist' );
+} );
+
+// ────────── Collapse + coexist ──────────
+
+nf_test( 'whatsapp: empty disabled config collapses to no integrations', function () {
+	$out = FormSettingsSanitizer::sanitize( [
+		'on_success'   => [ 'mode' => 'message', 'message' => 'ok' ],
+		'integrations' => [ 'whatsapp' => [
+			'enabled'    => false,
+			'recipients' => [],
+		] ],
+	] );
+	nf_assert_true( ! array_key_exists( 'integrations', $out ), 'collapsed' );
+	nf_assert_same( 'message', $out['on_success']['mode'], 'unrelated settings untouched' );
+} );
+
+nf_test( 'whatsapp: disabled-with-recipients preserved (admin may toggle back on)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => [
+		'enabled'    => false,
+		'recipients' => [ '919999999999' ],
+	] ] ] );
+	nf_assert_true( array_key_exists( 'whatsapp', $out['integrations'] ), 'config retained' );
+	nf_assert_same( false, $out['integrations']['whatsapp']['enabled'], 'enabled remains false' );
+	nf_assert_same( 1, count( $out['integrations']['whatsapp']['recipients'] ), 'recipients preserved' );
+} );
+
+nf_test( 'whatsapp: coexists with hubspot AND google_forms in the same form', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [
+		'hubspot'      => [ 'enabled' => true, 'hubspot_form_id' => 'g', 'field_map' => [ 'email' => 'email_field' ] ],
+		'google_forms' => [ 'enabled' => true, 'mode' => 'imported_source', 'google_form_id' => 'gf-123' ],
+		'whatsapp'     => [ 'enabled' => true, 'recipients' => [ '919999999999' ] ],
+	] ] );
+	nf_assert_true( array_key_exists( 'hubspot',      $out['integrations'] ), 'hubspot kept' );
+	nf_assert_true( array_key_exists( 'google_forms', $out['integrations'] ), 'google_forms kept' );
+	nf_assert_true( array_key_exists( 'whatsapp',     $out['integrations'] ), 'whatsapp kept' );
+} );
+
+nf_test( 'whatsapp: malformed payload (string / null / int) drops gracefully', function () {
+	foreach ( [ 'evil', null, 42, true ] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'whatsapp' => $bad ] ] );
+		nf_assert_true( ! array_key_exists( 'integrations', $out ), 'malformed whatsapp drops: ' . var_export( $bad, true ) );
+	}
+} );
+
 foreach ( $cases as $case ) {
 	try { ( $case['fn'] )(); echo "PASS  " . $case['name'] . PHP_EOL; $passed++; }
 	catch ( \Throwable $e ) { echo "FAIL  " . $case['name'] . ' — ' . $e->getMessage() . PHP_EOL; $failed++; }

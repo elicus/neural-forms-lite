@@ -23,6 +23,7 @@ import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import HubSpotMappingPanel from './HubSpotMappingPanel';
 import GoogleFormsFormPanel from './GoogleFormsFormPanel';
+import WhatsAppFormPanel from './WhatsAppFormPanel';
 
 const PROVIDERS = [
 	{
@@ -34,6 +35,11 @@ const PROVIDERS = [
 		id:    'google_forms',
 		label: 'Google Forms',
 		icon:  'G',
+	},
+	{
+		id:    'whatsapp',
+		label: 'WhatsApp',
+		icon:  'W',
 	},
 ];
 
@@ -57,6 +63,17 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			imported_at:       '',
 			sync_responses:    false,
 		};
+	const whatsapp = ( integrations.whatsapp && typeof integrations.whatsapp === 'object' )
+		? integrations.whatsapp
+		: {
+			enabled:           false,
+			recipients:        [],
+			trigger:           'entry_created',
+			template_name:     'neural_forms_entry_alert',
+			template_language: 'en_US',
+			send_when:         'all_entries',
+			include_summary:   true,
+		};
 
 	const setHubspot = ( next ) => {
 		onChange( {
@@ -73,6 +90,15 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			integrations: {
 				...integrations,
 				google_forms: { ...googleForms, ...next },
+			},
+		} );
+	};
+	const setWhatsapp = ( next ) => {
+		onChange( {
+			...( settings || {} ),
+			integrations: {
+				...integrations,
+				whatsapp: { ...whatsapp, ...next },
 			},
 		} );
 	};
@@ -120,6 +146,13 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 					<GoogleFormsFormPanel
 						google={ googleForms }
 						onChange={ setGoogleForms }
+						capUnlocked={ capUnlocked }
+					/>
+				) }
+				{ active.id === 'whatsapp' && (
+					<WhatsAppFormPanel
+						whatsapp={ whatsapp }
+						onChange={ setWhatsapp }
 						capUnlocked={ capUnlocked }
 					/>
 				) }
