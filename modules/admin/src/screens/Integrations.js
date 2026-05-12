@@ -1036,6 +1036,309 @@ function GoogleFormsPanel( { provider } ) {
 	);
 }
 
+// ─── HubSpot global connection panel ─────────────────────────────
+
+/**
+ * State machine:
+ *   loading       → initial status fetch
+ *   disconnected  → token + portal id form
+ *   connected     → status card + Test / Update / Disconnect actions
+ *   editing       → connected install showing the credentials form
+ *                   so the admin can rotate the token
+ *
+ * REST surface consumed (Pro / C1):
+ *   GET    /neural-forms-pro/v1/integrations/hubspot/status
+ *   POST   /neural-forms-pro/v1/integrations/hubspot/settings
+ *   POST   /neural-forms-pro/v1/integrations/hubspot/test
+ *   POST   /neural-forms-pro/v1/integrations/hubspot/disconnect
+ *
+ * Token handling:
+ *   The token field is type=password. Once the user clicks Save,
+ *   the input state is cleared so the raw token only lives in
+ *   memory for the duration of the save request. The server-side
+ *   status response only ever surfaces `masked_token` (e.g.
+ *   "pat-****cdef") — never the raw value — so subsequent renders
+ *   show the mask. The Pro endpoint also follows the "empty token
+ *   in patch = keep existing" pattern, so an update-credentials
+ *   flow can leave the token field blank when the admin only
+ *   wants to fix the portal id.
+ */
+function HubSpotPanel( { provider } ) {
+	const [ loading,    setLoading ]    = useState( true );
+	const [ status,     setStatus ]     = useState( null );
+	const [ flash,      setFlash ]      = useState( null );
+	const [ editing,    setEditing ]    = useState( false );
+	const [ saving,     setSaving ]     = useState( false );
+	const [ testing,    setTesting ]    = useState( false );
+	const [ disconnecting, setDisconnecting ] = useState( false );
+
+	// Credentials form state — short-lived. Cleared on every save.
+	const [ token,   setToken ]   = useState( '' );
+	const [ portal,  setPortal ]  = useState( '' );
+	const [ saveError, setSaveError ] = useState( '' );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/hubspot/status' );
+			setStatus( s );
+			// Whenever we re-load fresh status, seed the portal field
+			// so the user can edit it without losing the displayed
+			// value. Token field stays empty.
+			setPortal( String( s?.portal_id || '' ) );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load HubSpot status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	useEffect( () => {
+		let cancelled = false;
+		( async () => {
+			await reloadStatus();
+			if ( ! cancelled ) setLoading( false );
+		} )();
+		return () => { cancelled = true; };
+	}, [ reloadStatus ] );
+
+	const connected = !! status?.connected;
+	const hasToken  = !! status?.has_token;
+	const showForm  = ! hasToken || editing;
+
+	const validate = () => {
+		const t = token.trim();
+		const p = portal.trim();
+		// On first save (no token on file yet) the token is required.
+		if ( ! hasToken && t === '' ) {
+			return __( 'HubSpot Private App Access Token is required.', 'neural-forms-lite' );
+		}
+		// Portal ID is required for the future submission-delivery
+		// path (C5). Enforce it now so admins don't end up in a
+		// half-configured state.
+		if ( p === '' ) {
+			return __( 'HubSpot Portal ID is required.', 'neural-forms-lite' );
+		}
+		if ( ! /^[0-9]+$/.test( p ) ) {
+			return __( 'HubSpot Portal ID must be a number.', 'neural-forms-lite' );
+		}
+		return '';
+	};
+
+	const handleSave = async ( ev ) => {
+		ev.preventDefault();
+		const err = validate();
+		if ( err ) { setSaveError( err ); return; }
+		setSaveError( '' );
+		setSaving( true );
+		try {
+			const data = { portal_id: portal.trim() };
+			// Empty token in patch = "keep existing token" (matches
+			// the Pro endpoint's UX contract from C1).
+			if ( token.trim() !== '' ) data.access_token = token.trim();
+			const next = await api( '/neural-forms-pro/v1/integrations/hubspot/settings', {
+				method: 'POST',
+				data,
+			} );
+			setStatus( next );
+			// Clear the raw token from JS memory the moment the
+			// save returns. Subsequent renders show only the
+			// server-returned masked_token.
+			setToken( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: hasToken
+				? __( 'HubSpot credentials updated. Click Test connection to verify.', 'neural-forms-lite' )
+				: __( 'HubSpot credentials saved. Click Test connection to verify.', 'neural-forms-lite' )
+			} );
+		} catch ( e ) {
+			setSaveError( errorMessage( e, __( 'Could not save HubSpot credentials.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	const handleTest = async () => {
+		setTesting( true );
+		setFlash( null );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/hubspot/test', { method: 'POST' } );
+			// The /test endpoint returns the structured result PLUS
+			// the latest status — apply both so the connected badge
+			// + last_checked_at refresh in one round-trip.
+			if ( res?.status ) setStatus( res.status );
+			if ( res?.success ) {
+				setFlash( { kind: 'success', message: __( 'HubSpot connection verified.', 'neural-forms-lite' ) } );
+			} else {
+				setFlash( {
+					kind: 'error',
+					message: sprintf(
+						/* translators: %s: error message */
+						__( 'HubSpot returned an error: %s', 'neural-forms-lite' ),
+						res?.error || __( 'unknown error', 'neural-forms-lite' )
+					),
+				} );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not test the HubSpot connection.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setTesting( false );
+		}
+	};
+
+	const handleDisconnect = async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect HubSpot? Per-form mappings will be preserved but submissions will stop reaching HubSpot until you reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setDisconnecting( true );
+		try {
+			const next = await api( '/neural-forms-pro/v1/integrations/hubspot/disconnect', { method: 'POST' } );
+			setStatus( next );
+			setToken( '' );
+			setPortal( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: __( 'HubSpot disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setDisconnecting( false );
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setEditing( false );
+		setToken( '' );
+		setPortal( String( status?.portal_id || '' ) );
+		setSaveError( '' );
+	};
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : showForm ? (
+				<form className="neural-forms-integrations__zap-form" onSubmit={ handleSave }>
+					<header className="neural-forms-integrations__zap-form-header">
+						<h3 className="neural-forms-integrations__zap-form-title">
+							{ hasToken ? __( 'Update HubSpot credentials', 'neural-forms-lite' ) : __( 'Connect HubSpot', 'neural-forms-lite' ) }
+						</h3>
+						<p className="neural-forms-integrations__zap-form-help">
+							{ __( 'Create a Private App in HubSpot → Settings → Integrations → Private Apps, grant the "forms" scope, then copy the Access Token here. The Portal ID (also called "Hub ID") appears at the top of any HubSpot screen URL.', 'neural-forms-lite' ) }
+						</p>
+					</header>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-hs-token">
+							{ __( 'Private App Access Token', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-hs-token"
+							type="password"
+							className="neural-forms-integrations__zap-input"
+							value={ token }
+							onChange={ ( e ) => setToken( e.target.value ) }
+							placeholder={ hasToken ? '••••••••••••' : 'pat-na1-...' }
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ hasToken
+								? __( 'Leave blank to keep the existing token. Enter a new value to rotate.', 'neural-forms-lite' )
+								: __( 'Required. The token is encrypted at rest and never displayed again.', 'neural-forms-lite' )
+							}
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-hs-portal">
+							{ __( 'Portal ID / Hub ID', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-hs-portal"
+							type="text"
+							inputMode="numeric"
+							className="neural-forms-integrations__zap-input"
+							value={ portal }
+							onChange={ ( e ) => setPortal( e.target.value ) }
+							placeholder="12345678"
+							autoComplete="off"
+						/>
+					</div>
+
+					{ saveError && (
+						<div className="neural-forms-integrations__zap-error-banner" role="alert">{ saveError }</div>
+					) }
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving }>
+							{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }
+						</button>
+						{ editing && (
+							<button type="button" className="neural-forms-integrations__btn" onClick={ handleCancelEdit } disabled={ saving }>
+								{ __( 'Cancel', 'neural-forms-lite' ) }
+							</button>
+						) }
+					</div>
+				</form>
+			) : (
+				<div className="neural-forms-integrations__hs-status">
+					<div className="neural-forms-integrations__hs-status-header">
+						<span className={ 'neural-forms-integrations__zap-status ' + ( connected ? 'is-active' : 'is-inactive' ) }>
+							{ connected ? __( 'Connected', 'neural-forms-lite' ) : __( 'Not verified', 'neural-forms-lite' ) }
+						</span>
+					</div>
+
+					<dl className="neural-forms-integrations__hs-status-grid">
+						<div>
+							<dt>{ __( 'Portal ID', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.portal_id || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Access Token', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.masked_token || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Last checked', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.last_checked_at || __( 'Never', 'neural-forms-lite' ) }</dd>
+						</div>
+						{ status.last_error && (
+							<div className="neural-forms-integrations__hs-status-error">
+								<dt>{ __( 'Last error', 'neural-forms-lite' ) }</dt>
+								<dd>{ status.last_error }</dd>
+							</div>
+						) }
+					</dl>
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ handleTest } disabled={ testing }>
+							{ testing ? __( 'Testing…', 'neural-forms-lite' ) : __( 'Test connection', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( true ); setToken( '' ); } }>
+							{ __( 'Update credentials', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect } disabled={ disconnecting }>
+							{ disconnecting ? __( 'Disconnecting…', 'neural-forms-lite' ) : __( 'Disconnect', 'neural-forms-lite' ) }
+						</button>
+					</div>
+				</div>
+			) }
+		</div>
+	);
+}
+
 // ─── Tab body switcher ──────────────────────────────────────────
 
 function TabPanel( { provider } ) {
@@ -1044,6 +1347,9 @@ function TabPanel( { provider } ) {
 	}
 	if ( provider.id === 'google_forms' ) {
 		return <GoogleFormsPanel provider={ provider } />;
+	}
+	if ( provider.id === 'hubspot' ) {
+		return <HubSpotPanel provider={ provider } />;
 	}
 	return <ComingSoonCard provider={ provider } />;
 }
