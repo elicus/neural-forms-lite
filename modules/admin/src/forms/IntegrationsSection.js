@@ -22,12 +22,18 @@
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import HubSpotMappingPanel from './HubSpotMappingPanel';
+import GoogleFormsFormPanel from './GoogleFormsFormPanel';
 
 const PROVIDERS = [
 	{
 		id:    'hubspot',
 		label: 'HubSpot',
 		icon:  'H',
+	},
+	{
+		id:    'google_forms',
+		label: 'Google Forms',
+		icon:  'G',
 	},
 ];
 
@@ -40,6 +46,17 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 	const hubspot = ( integrations.hubspot && typeof integrations.hubspot === 'object' )
 		? integrations.hubspot
 		: { enabled: false, hubspot_form_id: '', hubspot_form_name: '', field_map: {} };
+	const googleForms = ( integrations.google_forms && typeof integrations.google_forms === 'object' )
+		? integrations.google_forms
+		: {
+			enabled:           false,
+			mode:              '',
+			google_form_id:    '',
+			google_form_title: '',
+			google_form_url:   '',
+			imported_at:       '',
+			sync_responses:    false,
+		};
 
 	const setHubspot = ( next ) => {
 		onChange( {
@@ -47,6 +64,15 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			integrations: {
 				...integrations,
 				hubspot: { ...hubspot, ...next },
+			},
+		} );
+	};
+	const setGoogleForms = ( next ) => {
+		onChange( {
+			...( settings || {} ),
+			integrations: {
+				...integrations,
+				google_forms: { ...googleForms, ...next },
 			},
 		} );
 	};
@@ -87,6 +113,13 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 						fields={ fields }
 						hubspot={ hubspot }
 						onChange={ setHubspot }
+						capUnlocked={ capUnlocked }
+					/>
+				) }
+				{ active.id === 'google_forms' && (
+					<GoogleFormsFormPanel
+						google={ googleForms }
+						onChange={ setGoogleForms }
 						capUnlocked={ capUnlocked }
 					/>
 				) }

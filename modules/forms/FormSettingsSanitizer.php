@@ -60,6 +60,14 @@ final class FormSettingsSanitizer {
 	// HubSpot form IDs are GUID-shaped: alphanumeric + dashes (we also
 	// allow underscores defensively in case HubSpot ever extends it).
 	const HS_FORM_ID_PATTERN    = '/^[A-Za-z0-9_\-]+$/';
+	// Google form IDs are URL-safe base64 — alphanumeric + dash +
+	// underscore. Matches the pattern used elsewhere in the Pro
+	// Google Forms layer (GoogleFormsClient::is_valid_form_id).
+	const GF_FORM_ID_PATTERN    = '/^[A-Za-z0-9_\-]+$/';
+	// Google form URL must be the docs.google.com host. We don't
+	// require any specific path so both ../forms/d/{id}/edit and
+	// ../forms/d/e/{published-id}/viewform are accepted.
+	const GF_FORM_URL_HOST      = 'docs.google.com';
 	// HubSpot internal property names use snake_case mostly. Allow
 	// letters, digits, underscore, dot (some embedded-form properties),
 	// and dash (defensive).
@@ -71,6 +79,30 @@ final class FormSettingsSanitizer {
 	const HS_FORM_NAME_MAX  = 200;
 	const HS_FIELD_NAME_MAX = 200;
 	const NF_FIELD_ID_MAX   = 100;
+	const GF_FORM_TITLE_MAX = 200;
+	const GF_IMPORTED_AT_MAX = 40; // "YYYY-MM-DD HH:MM:SS" fits in 19; cap is generous
+
+	/**
+	 * Server-side dispatcher writes to settings.integrations.google_forms,
+	 * stripped from client payloads. Future telemetry (last_sync_at,
+	 * last_checked_at, last_error) will follow the same pattern.
+	 */
+	const GF_TELEMETRY_KEYS = [
+		'last_checked_at', 'last_sync_at', 'last_error',
+	];
+
+	/**
+	 * Tokens / secrets are NEVER stored in form.settings. The Google
+	 * Forms connection lives globally in
+	 * neural_forms_pro_google_forms_settings + ..._connection, never
+	 * per-form. If a tampered client payload includes any of these
+	 * keys under integrations.google_forms, strip them.
+	 */
+	const GF_FORBIDDEN_KEYS = [
+		'access_token', 'refresh_token', 'client_secret', 'token', 'secret',
+	];
+
+	const GF_VALID_MODES = [ 'imported_source', 'linked_source' ];
 
 	/**
 	 * Keys that MUST NEVER survive a client save. Belt-and-braces
@@ -135,10 +167,123 @@ final class FormSettingsSanitizer {
 			}
 		}
 
+		if ( array_key_exists( 'google_forms', $integrations ) ) {
+			$google = self::sanitize_google_forms_settings( $integrations['google_forms'] );
+			if ( ! empty( $google ) ) {
+				$out['google_forms'] = $google;
+			}
+		}
+
 		// Future providers (Zapier per-form delivery / Mailchimp /
 		// Google Forms response sync) would slot in here.
 
 		return $out;
+	}
+
+	/**
+	 * Sanitize a single Google Forms per-form config.
+	 *
+	 * Allowed keys (whitelist; anything else stripped):
+	 *   enabled           bool, default false
+	 *   mode              'imported_source' | 'linked_source'
+	 *   google_form_id    [A-Za-z0-9_-]+ (URL-safe base64). Path-
+	 *                      escape chars and control characters
+	 *                      rejected to empty.
+	 *   google_form_title sanitize_text_field + 200-char cap
+	 *   google_form_url   esc_url_raw + must be https + host
+	 *                      must be docs.google.com.
+	 *   imported_at       sanitize_text_field + 40-char cap.
+	 *   sync_responses    bool, default false (placeholder for the
+	 *                      future response-sync milestone; never
+	 *                      writable as true without server-side
+	 *                      coordination).
+	 *
+	 * Stripped on every save:
+	 *   - access_token / refresh_token / client_secret / token /
+	 *     secret  (per-form settings NEVER hold credentials)
+	 *   - last_checked_at / last_sync_at / last_error (server-only
+	 *     telemetry — written by future sync dispatcher, never
+	 *     by clients)
+	 *   - any other key
+	 *
+	 * Returns [] when the resulting config has nothing useful so
+	 * the parent drops the key (no empty `{enabled:false}` rows).
+	 *
+	 * @param mixed $google
+	 * @return array<string,mixed>
+	 */
+	public static function sanitize_google_forms_settings( $google ): array {
+		if ( ! is_array( $google ) ) return [];
+
+		$enabled = array_key_exists( 'enabled', $google ) ? (bool) $google['enabled'] : false;
+
+		$mode_raw = is_string( $google['mode'] ?? null ) ? trim( (string) $google['mode'] ) : '';
+		$mode     = in_array( $mode_raw, self::GF_VALID_MODES, true ) ? $mode_raw : '';
+
+		$form_id_raw = is_string( $google['google_form_id'] ?? null ) ? (string) $google['google_form_id'] : '';
+		$form_id     = self::sanitize_google_form_id( $form_id_raw );
+
+		$title_raw = is_string( $google['google_form_title'] ?? null ) ? (string) $google['google_form_title'] : '';
+		$title     = self::sanitize_short_text( $title_raw, self::GF_FORM_TITLE_MAX );
+
+		$url_raw = is_string( $google['google_form_url'] ?? null ) ? (string) $google['google_form_url'] : '';
+		$url     = self::sanitize_google_form_url( $url_raw );
+
+		$imported_raw = is_string( $google['imported_at'] ?? null ) ? (string) $google['imported_at'] : '';
+		$imported_at  = self::sanitize_short_text( $imported_raw, self::GF_IMPORTED_AT_MAX );
+
+		$sync_responses = ! empty( $google['sync_responses'] );
+
+		// Collapse-when-empty (same pattern as HubSpot): a row that
+		// carries no useful state drops out entirely.
+		if (
+			! $enabled
+			&& $mode      === ''
+			&& $form_id   === ''
+			&& $title     === ''
+			&& $url       === ''
+			&& $imported_at === ''
+			&& ! $sync_responses
+		) {
+			return [];
+		}
+
+		return [
+			'enabled'           => $enabled,
+			'mode'              => $mode,
+			'google_form_id'    => $form_id,
+			'google_form_title' => $title,
+			'google_form_url'   => $url,
+			'imported_at'       => $imported_at,
+			'sync_responses'    => $sync_responses,
+		];
+	}
+
+	/**
+	 * Same rules as the Pro-side GoogleFormsClient::is_valid_form_id
+	 * — alphanumeric + dash + underscore, no path escapes. Public
+	 * so tests can hit it directly.
+	 */
+	public static function sanitize_google_form_id( string $raw ): string {
+		$raw = trim( $raw );
+		if ( $raw === '' ) return '';
+		if ( preg_match( '/[\x00-\x1F\x7F]/', $raw ) ) return '';
+		if ( ! preg_match( self::GF_FORM_ID_PATTERN, $raw ) ) return '';
+		return $raw;
+	}
+
+	/**
+	 * Accepts only https URLs hosted at docs.google.com. Returns ''
+	 * for anything else — caller treats empty as "no link".
+	 */
+	public static function sanitize_google_form_url( string $raw ): string {
+		$clean = function_exists( 'esc_url_raw' ) ? esc_url_raw( $raw ) : trim( $raw );
+		if ( $clean === '' ) return '';
+		$scheme = strtolower( (string) ( function_exists( 'wp_parse_url' ) ? wp_parse_url( $clean, PHP_URL_SCHEME ) : parse_url( $clean, PHP_URL_SCHEME ) ) );
+		if ( $scheme !== 'https' ) return '';
+		$host = strtolower( (string) ( function_exists( 'wp_parse_url' ) ? wp_parse_url( $clean, PHP_URL_HOST ) : parse_url( $clean, PHP_URL_HOST ) ) );
+		if ( $host !== self::GF_FORM_URL_HOST ) return '';
+		return $clean;
 	}
 
 	/**

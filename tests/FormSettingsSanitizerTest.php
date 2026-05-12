@@ -48,6 +48,20 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 		return trim( $s );
 	}
 }
+if ( ! function_exists( 'esc_url_raw' ) ) {
+	function esc_url_raw( $url ) {
+		$url = trim( (string) $url );
+		if ( $url === '' ) return '';
+		$scheme = strtolower( (string) parse_url( $url, PHP_URL_SCHEME ) );
+		if ( $scheme === '' ) return '';
+		return $url;
+	}
+}
+if ( ! function_exists( 'wp_parse_url' ) ) {
+	function wp_parse_url( $url, $component = -1 ) {
+		return parse_url( (string) $url, $component );
+	}
+}
 
 $plugin_root = dirname( __DIR__ );
 require_once $plugin_root . '/modules/forms/FormSettingsSanitizer.php';
@@ -387,6 +401,200 @@ nf_test( 'malformed: hubspot value is null → drops gracefully', function () {
 nf_test( 'malformed: hubspot value is an int → drops gracefully', function () {
 	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'hubspot' => 42 ] ] );
 	nf_assert_true( ! array_key_exists( 'integrations', $out ), 'int hubspot → integrations dropped' );
+} );
+
+// ────────── Google Forms branch ──────────
+
+nf_test( 'google_forms: clean imported_source config round-trips', function () {
+	$in = [ 'integrations' => [ 'google_forms' => [
+		'enabled'           => true,
+		'mode'              => 'imported_source',
+		'google_form_id'    => '1AbCdEfG-_12345',
+		'google_form_title' => 'Customer Feedback',
+		'google_form_url'   => 'https://docs.google.com/forms/d/1AbCdEfG-_12345/edit',
+		'imported_at'       => '2026-05-13 10:30:00',
+		'sync_responses'    => false,
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	$gf  = $out['integrations']['google_forms'];
+	nf_assert_same( true,                $gf['enabled'],         'enabled' );
+	nf_assert_same( 'imported_source',   $gf['mode'],            'mode' );
+	nf_assert_same( '1AbCdEfG-_12345',   $gf['google_form_id'],  'form id round-trips' );
+	nf_assert_same( 'Customer Feedback', $gf['google_form_title'], 'title round-trips' );
+	nf_assert_same( 'https://docs.google.com/forms/d/1AbCdEfG-_12345/edit', $gf['google_form_url'], 'url round-trips' );
+	nf_assert_same( '2026-05-13 10:30:00', $gf['imported_at'],   'imported_at round-trips' );
+	nf_assert_same( false,               $gf['sync_responses'],  'sync_responses default false' );
+} );
+
+nf_test( 'google_forms: linked_source mode is accepted', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => true,
+		'mode'           => 'linked_source',
+		'google_form_id' => 'gf_abc_123',
+	] ] ] );
+	nf_assert_same( 'linked_source', $out['integrations']['google_forms']['mode'], 'linked_source accepted' );
+} );
+
+nf_test( 'google_forms: unknown mode → empty string (dropped, others preserved)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => true,
+		'mode'           => 'evil_mode',
+		'google_form_id' => 'gf_abc_123',
+	] ] ] );
+	nf_assert_same( '',           $out['integrations']['google_forms']['mode'],           'invalid mode → empty' );
+	nf_assert_same( 'gf_abc_123', $out['integrations']['google_forms']['google_form_id'], 'other fields preserved' );
+} );
+
+nf_test( 'google_forms: google_form_id path-escape stripped to empty', function () {
+	foreach ( [ '../etc', 'gf/x', 'gf?x', 'gf space', "gf\x00null" ] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+			'enabled'        => true,
+			'google_form_id' => $bad,
+		] ] ] );
+		nf_assert_same( '', $out['integrations']['google_forms']['google_form_id'], "rejects: " . var_export( $bad, true ) );
+	}
+} );
+
+nf_test( 'google_forms: google_form_url rejects non-docs.google.com hosts', function () {
+	foreach ( [
+		'https://attacker.example.com/forms/d/abc',
+		'http://docs.google.com/forms/d/abc',           // http, not https
+		'javascript:alert(1)',
+		'ftp://docs.google.com/x',
+	] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+			'enabled'         => true,
+			'google_form_url' => $bad,
+		] ] ] );
+		nf_assert_same( '', $out['integrations']['google_forms']['google_form_url'], "rejects: {$bad}" );
+	}
+} );
+
+nf_test( 'google_forms: google_form_url accepts canonical edit + viewform paths', function () {
+	foreach ( [
+		'https://docs.google.com/forms/d/1AbC-Def/edit',
+		'https://docs.google.com/forms/d/e/1FAIpQLSc-xyz/viewform',
+	] as $good ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+			'enabled'         => true,
+			'google_form_url' => $good,
+		] ] ] );
+		nf_assert_same( $good, $out['integrations']['google_forms']['google_form_url'], "accepts: {$good}" );
+	}
+} );
+
+nf_test( 'google_forms: google_form_title is HTML-stripped + length-capped', function () {
+	$long = str_repeat( 'x', 500 );
+	$out  = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'           => true,
+		// Plain-ASCII payload so the byte-vs-char comparison is
+		// unambiguous (the sanitiser caps by Unicode character
+		// count via mb_substr — a multi-byte char would push the
+		// byte length 1-2 over the char cap without breaking the
+		// contract).
+		'google_form_title' => '<script>alert(1)</script>Real Title - ' . $long,
+	] ] ] );
+	$title = $out['integrations']['google_forms']['google_form_title'];
+	nf_assert_true( strpos( $title, '<script>' ) === false, 'script tag stripped' );
+	$len = function_exists( 'mb_strlen' ) ? mb_strlen( $title ) : strlen( $title );
+	nf_assert_true( $len <= FormSettingsSanitizer::GF_FORM_TITLE_MAX, 'title length capped to GF_FORM_TITLE_MAX chars' );
+} );
+
+nf_test( 'google_forms: forbidden secret keys stripped', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => true,
+		'google_form_id' => 'gf-123',
+		'access_token'   => 'ya29.evil',
+		'refresh_token'  => '1//refresh-evil',
+		'client_secret'  => 'GOCSPX-evil',
+		'token'          => 'evil',
+		'secret'         => 'evil',
+	] ] ] );
+	$gf = $out['integrations']['google_forms'];
+	foreach ( FormSettingsSanitizer::GF_FORBIDDEN_KEYS as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $gf ), "{$k} must be stripped" );
+	}
+} );
+
+nf_test( 'google_forms: telemetry keys stripped from client payload', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'         => true,
+		'google_form_id'  => 'gf-123',
+		'last_checked_at' => '2099-01-01 00:00:00',
+		'last_sync_at'    => '2099-01-01 00:00:00',
+		'last_error'      => 'fake error',
+	] ] ] );
+	$gf = $out['integrations']['google_forms'];
+	foreach ( FormSettingsSanitizer::GF_TELEMETRY_KEYS as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $gf ), "{$k} must be stripped" );
+	}
+} );
+
+nf_test( 'google_forms: unknown extras stripped (exact whitelist)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => true,
+		'google_form_id' => 'gf-123',
+		'random_junk'    => 'no',
+		'extra_object'   => [ 'nested' => 'data' ],
+	] ] ] );
+	$expected = [ 'enabled', 'google_form_id', 'google_form_title', 'google_form_url', 'imported_at', 'mode', 'sync_responses' ];
+	sort( $expected );
+	$actual = array_keys( $out['integrations']['google_forms'] );
+	sort( $actual );
+	nf_assert_same( $expected, $actual, 'keys are exactly the whitelist' );
+} );
+
+nf_test( 'google_forms: collapse-when-empty drops the integrations key', function () {
+	$out = FormSettingsSanitizer::sanitize( [
+		'on_success'   => [ 'mode' => 'message', 'message' => 'ok' ],
+		'integrations' => [ 'google_forms' => [
+			'enabled' => false,
+			'mode'    => '',
+		] ],
+	] );
+	nf_assert_true( ! array_key_exists( 'integrations', $out ), 'empty google_forms collapses' );
+	nf_assert_same( 'message', $out['on_success']['mode'], 'unrelated settings untouched' );
+} );
+
+nf_test( 'google_forms: imported config survives even with enabled=false', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => false,
+		'mode'           => 'imported_source',
+		'google_form_id' => 'gf-123',
+		'imported_at'    => '2026-05-13 10:30:00',
+	] ] ] );
+	nf_assert_true( array_key_exists( 'google_forms', $out['integrations'] ), 'imported metadata preserved even when disabled' );
+} );
+
+nf_test( 'google_forms: both hubspot AND google_forms can coexist', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [
+		'hubspot'      => [ 'enabled' => true, 'hubspot_form_id' => 'g', 'field_map' => [ 'email' => 'email_field' ] ],
+		'google_forms' => [ 'enabled' => true, 'mode' => 'imported_source', 'google_form_id' => 'gf-123' ],
+	] ] );
+	nf_assert_true( array_key_exists( 'hubspot',      $out['integrations'] ), 'hubspot kept' );
+	nf_assert_true( array_key_exists( 'google_forms', $out['integrations'] ), 'google_forms kept' );
+} );
+
+nf_test( 'google_forms: sync_responses bool default false, never accepts truthy from arbitrary input', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => true,
+		'google_form_id' => 'gf-123',
+	] ] ] );
+	nf_assert_same( false, $out['integrations']['google_forms']['sync_responses'], 'default false' );
+
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => [
+		'enabled'        => true,
+		'google_form_id' => 'gf-123',
+		'sync_responses' => true,
+	] ] ] );
+	nf_assert_same( true, $out['integrations']['google_forms']['sync_responses'], 'client CAN set true (future: server-side dispatcher will gate)' );
+} );
+
+nf_test( 'google_forms: malformed payload (string / null / int) drops gracefully', function () {
+	foreach ( [ 'evil', null, 42, true ] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'google_forms' => $bad ] ] );
+		nf_assert_true( ! array_key_exists( 'integrations', $out ), 'malformed google_forms drops cleanly: ' . var_export( $bad, true ) );
+	}
 } );
 
 foreach ( $cases as $case ) {
