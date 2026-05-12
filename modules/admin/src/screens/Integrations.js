@@ -40,6 +40,16 @@ const UPGRADE_URL = 'https://neuralforms.ai/pricing';
 const ZAPIER_HOOK_HOST = 'hooks.zapier.com';
 const ZAPIER_EVENT     = 'form_submission_created';
 
+// The server-side host allowlist is filterable via
+// `neural_forms_pro_zapier_allowed_hosts` (default: just hooks.zapier.com).
+// Developers running dev-only QA may extend it to webhook.site / ngrok /
+// pipedream so they can verify the wire payload without paying for
+// Zapier Premium. Because the React layer cannot read that PHP filter
+// at runtime, the client guard intentionally only enforces "valid
+// https URL"; the REST endpoint returns a specific `not_zapier_host`
+// 422 with a user-readable message when the host is not allowed, which
+// the form surfaces in its inline error banner.
+
 const PROVIDERS = [
 	{
 		id:    'hubspot',
@@ -187,10 +197,19 @@ function maskWebhookUrl( url ) {
 	}
 }
 
+/**
+ * Client-side URL validation. Intentionally permissive on host —
+ * the server's host allowlist is filterable for development QA
+ * (see the ZAPIER_HOOK_HOST comment above), and the React layer
+ * can't read that filter at runtime. We enforce the two hard rules
+ * the user can definitely fix client-side (parses as a URL, uses
+ * https) and let the server return a specific 422 when the host
+ * is not on the production / extended allowlist.
+ */
 function isValidZapierUrl( url ) {
 	try {
 		const u = new URL( url );
-		return u.protocol === 'https:' && u.host === ZAPIER_HOOK_HOST;
+		return u.protocol === 'https:';
 	} catch ( e ) {
 		return false;
 	}
@@ -342,7 +361,7 @@ function ZapierForm( { initial, forms, onCancel, onSubmit, saving, error } ) {
 				/>
 				{ ! urlValid && (
 					<p className="neural-forms-integrations__zap-field-error">
-						{ __( 'URL must be an https://hooks.zapier.com/ Catch Hook URL.', 'neural-forms-lite' ) }
+						{ __( 'Webhook URL must be a valid https:// URL.', 'neural-forms-lite' ) }
 					</p>
 				) }
 			</div>
