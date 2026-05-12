@@ -807,6 +807,95 @@
 	padding-left: 18px;
 }
 
+/* ── WhatsApp: templates list ───────────────────────────────── */
+
+.neural-forms-integrations__wa-templates,
+.neural-forms-integrations__wa-templates-empty {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-lg );
+	margin-top: 4px;
+	padding: 16px 18px;
+}
+
+.neural-forms-integrations__wa-templates-empty p {
+	color: var( --f-gray-600 );
+	font-size: 13px;
+	line-height: 1.55;
+	margin: 8px 0;
+}
+
+.neural-forms-integrations__wa-templates-table {
+	border-collapse: collapse;
+	font-size: 13px;
+	margin-top: 8px;
+	width: 100%;
+}
+
+.neural-forms-integrations__wa-templates-table th {
+	background: var( --f-gray-50 );
+	border-bottom: 1px solid var( --f-gray-200 );
+	color: var( --f-gray-700 );
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	padding: 8px 10px;
+	text-align: left;
+	text-transform: uppercase;
+}
+
+.neural-forms-integrations__wa-templates-table td {
+	border-bottom: 1px solid var( --f-gray-100 );
+	color: var( --f-gray-800 );
+	padding: 10px;
+	vertical-align: middle;
+}
+
+.neural-forms-integrations__wa-templates-table code {
+	background: var( --f-gray-100 );
+	border-radius: var( --f-radius-sm );
+	color: var( --f-gray-900 );
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	padding: 2px 6px;
+}
+
+.neural-forms-integrations__wa-tpl-badge {
+	border-radius: var( --f-radius-full );
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	padding: 3px 9px;
+	text-transform: uppercase;
+}
+
+.neural-forms-integrations__wa-tpl-badge.is-approved {
+	background: var( --f-green-50 );
+	color: #045d3a;
+}
+.neural-forms-integrations__wa-tpl-badge.is-pending {
+	background: #fefce8;
+	color: #92400e;
+}
+.neural-forms-integrations__wa-tpl-badge.is-rejected {
+	background: #fef2f2;
+	color: #991b1b;
+}
+
+@media ( max-width: 600px ) {
+	.neural-forms-integrations__wa-templates-table thead { display: none; }
+	.neural-forms-integrations__wa-templates-table tr {
+		border-bottom: 1px solid var( --f-gray-200 );
+		display: block;
+		padding: 10px 0;
+	}
+	.neural-forms-integrations__wa-templates-table td {
+		border: none;
+		display: block;
+		padding: 4px 0;
+	}
+}
+
 /* ── Google Forms: credentials-saved card (state 2) ─────────── */
 
 .neural-forms-integrations__gf-saved {

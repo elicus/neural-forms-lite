@@ -1444,6 +1444,550 @@ function HubSpotPanel( { provider } ) {
 
 // ─── Tab body switcher ──────────────────────────────────────────
 
+// ─── WhatsApp global connection panel ────────────────────────────
+
+/**
+ * State machine:
+ *   loading       → initial status fetch
+ *   disconnected  → credentials form (Save settings only;
+ *                   Test connection lives on the status card)
+ *   editing       → connected install showing the form again so
+ *                   the admin can rotate the token
+ *   configured    → status grid + Test/Update/Disconnect actions
+ *                   + templates list (auto-loaded once)
+ *
+ * REST surface (Pro / C1):
+ *   GET    /neural-forms-pro/v1/integrations/whatsapp/status
+ *   POST   /neural-forms-pro/v1/integrations/whatsapp/settings
+ *   POST   /neural-forms-pro/v1/integrations/whatsapp/test
+ *   POST   /neural-forms-pro/v1/integrations/whatsapp/disconnect
+ *   GET    /neural-forms-pro/v1/integrations/whatsapp/templates
+ *
+ * Token handling:
+ *   The token input is type=password. After Save resolves we
+ *   immediately setToken('') so the raw value only lives in JS
+ *   memory for the lifetime of the save request. The server-side
+ *   status response never returns the raw access_token — only
+ *   `masked_token` + `has_token: bool` — so subsequent renders
+ *   show the mask. Backend supports "empty token in patch = keep
+ *   existing" so the update-credentials flow allows leaving the
+ *   token field blank when only changing other fields.
+ *
+ * Backend "Test connection" contract (C1):
+ *   POST /test ONLY validates the (token, phone_number_id) pair —
+ *   it does NOT send a template message. The button label
+ *   reflects that ("Test connection", not "Send test message").
+ *   A separate explicit "Send test template" action is a future
+ *   addition once delivery wiring lands.
+ */
+function WhatsAppPanel( { provider } ) {
+	const [ loading, setLoading ] = useState( true );
+	const [ status,  setStatus ]  = useState( null );
+	const [ flash,   setFlash ]   = useState( null );
+	const [ editing, setEditing ] = useState( false );
+
+	const [ saving,        setSaving ]        = useState( false );
+	const [ testing,       setTesting ]       = useState( false );
+	const [ disconnecting, setDisconnecting ] = useState( false );
+
+	const [ templates,        setTemplates ]        = useState( [] );
+	const [ templatesLoading, setTemplatesLoading ] = useState( false );
+	const [ templatesError,   setTemplatesError ]   = useState( '' );
+	const [ templatesLoaded,  setTemplatesLoaded ]  = useState( false );
+
+	// Credentials form state — short-lived.
+	const [ token,         setToken ]         = useState( '' );
+	const [ phoneId,       setPhoneId ]       = useState( '' );
+	const [ wabaId,        setWabaId ]        = useState( '' );
+	const [ graphVersion,  setGraphVersion ]  = useState( 'v22.0' );
+	const [ recipient,     setRecipient ]     = useState( '' );
+	const [ templateName,  setTemplateName ]  = useState( 'neural_forms_entry_alert' );
+	const [ templateLang,  setTemplateLang ]  = useState( 'en_US' );
+	const [ saveError,     setSaveError ]     = useState( '' );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/whatsapp/status' );
+			setStatus( s );
+			// Seed the form fields from the server-side status when
+			// it loads so the Update-credentials path doesn't have
+			// to re-collect every field. The token field stays empty.
+			setPhoneId(      String( s?.phone_number_id        || '' ) );
+			setWabaId(       String( s?.waba_id                || '' ) );
+			setGraphVersion( String( s?.graph_version          || 'v22.0' ) );
+			setTemplateName( String( s?.default_template_name  || 'neural_forms_entry_alert' ) );
+			setTemplateLang( String( s?.template_language      || 'en_US' ) );
+			// default_recipient comes back MASKED (+91******9999).
+			// Don't seed it into the input — admins would otherwise
+			// edit a masked value and accidentally save the stars.
+			setRecipient( '' );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load WhatsApp status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const reloadTemplates = useCallback( async ( { silent = false } = {} ) => {
+		setTemplatesLoading( true );
+		if ( ! silent ) setTemplatesError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/whatsapp/templates' );
+			setTemplates( Array.isArray( res?.templates ) ? res.templates : [] );
+			setTemplatesError( '' );
+		} catch ( e ) {
+			setTemplates( [] );
+			setTemplatesError( errorMessage( e, __( 'Could not load WhatsApp templates.', 'neural-forms-lite' ) ) );
+		} finally {
+			setTemplatesLoading( false );
+			setTemplatesLoaded( true );
+		}
+	}, [] );
+
+	useEffect( () => {
+		let cancelled = false;
+		( async () => {
+			await reloadStatus();
+			if ( ! cancelled ) setLoading( false );
+		} )();
+		return () => { cancelled = true; };
+	}, [ reloadStatus ] );
+
+	// Auto-load templates once we know the connection is configured.
+	useEffect( () => {
+		if ( status?.has_token && ! templatesLoaded && ! templatesLoading ) {
+			reloadTemplates( { silent: true } );
+		}
+	}, [ status?.has_token ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const hasToken      = !! status?.has_token;
+	const showForm      = ! hasToken || editing;
+
+	const validate = () => {
+		if ( ! hasToken && token.trim() === '' ) {
+			return __( 'Access Token is required on first save.', 'neural-forms-lite' );
+		}
+		const phone = phoneId.trim();
+		if ( phone === '' || ! /^[0-9]+$/.test( phone ) ) {
+			return __( 'Phone Number ID is required and must be numeric.', 'neural-forms-lite' );
+		}
+		const waba = wabaId.trim();
+		if ( waba === '' || ! /^[0-9]+$/.test( waba ) ) {
+			return __( 'WhatsApp Business Account ID is required and must be numeric.', 'neural-forms-lite' );
+		}
+		const gv = graphVersion.trim();
+		if ( gv !== '' && ! /^v\d+\.\d+$/.test( gv ) ) {
+			return __( 'Graph API version must look like v22.0.', 'neural-forms-lite' );
+		}
+		if ( recipient.trim() !== '' ) {
+			const digits = recipient.replace( /[^0-9]/g, '' );
+			if ( digits.length < 7 || digits.length > 15 ) {
+				return __( 'Default Test Recipient must contain 7–15 digits.', 'neural-forms-lite' );
+			}
+		}
+		return '';
+	};
+
+	const handleSave = async ( ev ) => {
+		ev.preventDefault();
+		const err = validate();
+		if ( err ) { setSaveError( err ); return; }
+		setSaveError( '' );
+		setSaving( true );
+		try {
+			const data = {
+				phone_number_id:       phoneId.trim(),
+				waba_id:               wabaId.trim(),
+				graph_version:         graphVersion.trim() || 'v22.0',
+				default_recipient:     recipient.trim(),
+				default_template_name: templateName.trim(),
+				template_language:     templateLang.trim() || 'en_US',
+			};
+			if ( token.trim() !== '' ) data.access_token = token.trim();
+			const next = await api( '/neural-forms-pro/v1/integrations/whatsapp/settings', {
+				method: 'POST',
+				data,
+			} );
+			setStatus( next );
+			// Clear raw token from memory immediately.
+			setToken( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: hasToken
+				? __( 'WhatsApp credentials updated. Click Test connection to verify.', 'neural-forms-lite' )
+				: __( 'WhatsApp credentials saved. Click Test connection to verify.', 'neural-forms-lite' )
+			} );
+			// Refresh templates list against the new WABA id.
+			setTemplatesLoaded( false );
+		} catch ( e ) {
+			setSaveError( errorMessage( e, __( 'Could not save WhatsApp settings.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	const handleTest = async () => {
+		setTesting( true );
+		setFlash( null );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/whatsapp/test', { method: 'POST' } );
+			if ( res?.status ) setStatus( res.status );
+			if ( res?.success ) {
+				setFlash( { kind: 'success', message: __( 'WhatsApp connection verified.', 'neural-forms-lite' ) } );
+			} else {
+				setFlash( {
+					kind:    'error',
+					message: sprintf(
+						/* translators: %s: error message */
+						__( 'WhatsApp returned an error: %s', 'neural-forms-lite' ),
+						res?.error || __( 'unknown error', 'neural-forms-lite' )
+					),
+				} );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not test the WhatsApp connection.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setTesting( false );
+		}
+	};
+
+	const handleDisconnect = async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect WhatsApp? Stored credentials will be removed and notifications will stop until you reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setDisconnecting( true );
+		try {
+			const next = await api( '/neural-forms-pro/v1/integrations/whatsapp/disconnect', { method: 'POST' } );
+			setStatus( next );
+			setToken( '' );
+			setEditing( false );
+			setTemplates( [] );
+			setTemplatesLoaded( false );
+			setFlash( { kind: 'success', message: __( 'WhatsApp disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setDisconnecting( false );
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setEditing( false );
+		setToken( '' );
+		setSaveError( '' );
+		// Re-seed form fields from latest known status so any
+		// in-progress edits are discarded.
+		setPhoneId(      String( status?.phone_number_id       || '' ) );
+		setWabaId(       String( status?.waba_id               || '' ) );
+		setGraphVersion( String( status?.graph_version         || 'v22.0' ) );
+		setRecipient( '' );
+		setTemplateName( String( status?.default_template_name || 'neural_forms_entry_alert' ) );
+		setTemplateLang( String( status?.template_language     || 'en_US' ) );
+	};
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : showForm ? (
+				<form className="neural-forms-integrations__zap-form" onSubmit={ handleSave }>
+					<header className="neural-forms-integrations__zap-form-header">
+						<h3 className="neural-forms-integrations__zap-form-title">
+							{ hasToken ? __( 'Update WhatsApp settings', 'neural-forms-lite' ) : __( 'Connect WhatsApp', 'neural-forms-lite' ) }
+						</h3>
+						<p className="neural-forms-integrations__zap-form-help">
+							{ __( 'Use a permanent / System User access token from Meta Business Manager. WhatsApp template messages require approved templates — create one in Meta Business Manager → WhatsApp Manager → Templates before saving.', 'neural-forms-lite' ) }
+						</p>
+					</header>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-token">
+							{ __( 'Access Token', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-token"
+							type="password"
+							className="neural-forms-integrations__zap-input"
+							value={ token }
+							onChange={ ( e ) => setToken( e.target.value ) }
+							placeholder={ hasToken ? '••••••••••••' : 'EAAJ...' }
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ hasToken
+								? __( 'Leave blank to keep the existing token. Enter a new value to rotate.', 'neural-forms-lite' )
+								: __( 'Required. The token is encrypted at rest and never displayed again.', 'neural-forms-lite' )
+							}
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-phone-id">
+							{ __( 'Phone Number ID', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-phone-id"
+							type="text"
+							inputMode="numeric"
+							className="neural-forms-integrations__zap-input"
+							value={ phoneId }
+							onChange={ ( e ) => setPhoneId( e.target.value ) }
+							placeholder="123456789012345"
+							autoComplete="off"
+						/>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-waba-id">
+							{ __( 'WhatsApp Business Account ID', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-waba-id"
+							type="text"
+							inputMode="numeric"
+							className="neural-forms-integrations__zap-input"
+							value={ wabaId }
+							onChange={ ( e ) => setWabaId( e.target.value ) }
+							placeholder="987654321098765"
+							autoComplete="off"
+						/>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-graph-version">
+							{ __( 'Graph API Version', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-graph-version"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ graphVersion }
+							onChange={ ( e ) => setGraphVersion( e.target.value ) }
+							placeholder="v22.0"
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Default v22.0. Update only if Meta has paused your account on a specific version.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-recipient">
+							{ __( 'Default Test Recipient', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-recipient"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ recipient }
+							onChange={ ( e ) => setRecipient( e.target.value ) }
+							placeholder={ hasToken ? ( status?.default_recipient || '+91 99999 99999' ) : '+91 99999 99999' }
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Optional. Used by the future "Send test template" action. Stored digits-only and masked in the status card.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-tpl-name">
+							{ __( 'Default Template Name', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-tpl-name"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ templateName }
+							onChange={ ( e ) => setTemplateName( e.target.value ) }
+							placeholder="neural_forms_entry_alert"
+							autoComplete="off"
+						/>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-tpl-lang">
+							{ __( 'Template Language', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-tpl-lang"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ templateLang }
+							onChange={ ( e ) => setTemplateLang( e.target.value ) }
+							placeholder="en_US"
+							autoComplete="off"
+						/>
+					</div>
+
+					{ saveError && (
+						<div className="neural-forms-integrations__zap-error-banner" role="alert">{ saveError }</div>
+					) }
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving }>
+							{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }
+						</button>
+						{ editing && (
+							<button type="button" className="neural-forms-integrations__btn" onClick={ handleCancelEdit } disabled={ saving }>
+								{ __( 'Cancel', 'neural-forms-lite' ) }
+							</button>
+						) }
+					</div>
+				</form>
+			) : (
+				<div className="neural-forms-integrations__hs-status">
+					<div className="neural-forms-integrations__hs-status-header">
+						<span className={ 'neural-forms-integrations__zap-status ' + ( status?.connected ? 'is-active' : 'is-inactive' ) }>
+							{ status?.connected ? __( 'Connected', 'neural-forms-lite' ) : __( 'Configured — not verified', 'neural-forms-lite' ) }
+						</span>
+					</div>
+
+					<dl className="neural-forms-integrations__hs-status-grid">
+						<div>
+							<dt>{ __( 'Phone Number ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.phone_number_id || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'WABA ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.waba_id || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Graph API Version', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.graph_version || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Access Token', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.masked_token || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Default Recipient', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.default_recipient || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Default Template', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.default_template_name || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Template Language', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.template_language || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Last checked', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.last_checked_at || __( 'Never', 'neural-forms-lite' ) }</dd>
+						</div>
+						{ status.last_error && (
+							<div className="neural-forms-integrations__hs-status-error">
+								<dt>{ __( 'Last error', 'neural-forms-lite' ) }</dt>
+								<dd>{ status.last_error }</dd>
+							</div>
+						) }
+					</dl>
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ handleTest } disabled={ testing }>
+							{ testing ? __( 'Testing…', 'neural-forms-lite' ) : __( 'Test connection', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( true ); setToken( '' ); } }>
+							{ __( 'Update settings', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => reloadTemplates() } disabled={ templatesLoading }>
+							{ templatesLoading ? __( 'Refreshing…', 'neural-forms-lite' ) : __( 'Refresh templates', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect } disabled={ disconnecting }>
+							{ disconnecting ? __( 'Disconnecting…', 'neural-forms-lite' ) : __( 'Disconnect', 'neural-forms-lite' ) }
+						</button>
+					</div>
+
+					<WhatsAppTemplatesCard
+						templates={ templates }
+						loading={ templatesLoading }
+						error={ templatesError }
+						loaded={ templatesLoaded }
+					/>
+				</div>
+			) }
+		</div>
+	);
+}
+
+function WhatsAppTemplatesCard( { templates, loading, error, loaded } ) {
+	if ( loading ) {
+		return <p className="neural-forms-integrations__zap-loading">{ __( 'Loading templates…', 'neural-forms-lite' ) }</p>;
+	}
+	if ( error ) {
+		return <div className="neural-forms-integrations__zap-error-banner" role="alert">{ error }</div>;
+	}
+	if ( ! loaded ) return null;
+	if ( ! templates || templates.length === 0 ) {
+		return (
+			<div className="neural-forms-integrations__wa-templates-empty">
+				<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Templates', 'neural-forms-lite' ) }</h4>
+				<p>{ __( 'No templates found. Create and approve a WhatsApp template in Meta Business Manager → WhatsApp Manager → Templates before sending notifications.', 'neural-forms-lite' ) }</p>
+				<p className="neural-forms-integrations__zap-hint">
+					{ __( 'Recommended template:', 'neural-forms-lite' ) }
+				</p>
+				<ul className="neural-forms-integrations__zap-hint" style={ { marginLeft: '18px' } }>
+					<li>{ __( 'Name: neural_forms_entry_alert', 'neural-forms-lite' ) }</li>
+					<li>{ __( 'Category: UTILITY', 'neural-forms-lite' ) }</li>
+					<li>{ __( 'Body: New Neural Forms entry received. Form: {{1}} Submitter: {{2}} Priority: {{3}} View entry: {{4}}', 'neural-forms-lite' ) }</li>
+				</ul>
+			</div>
+		);
+	}
+	return (
+		<div className="neural-forms-integrations__wa-templates">
+			<h4 className="neural-forms-integrations__zap-list-title">
+				{ sprintf( __( 'Templates (%d)', 'neural-forms-lite' ), templates.length ) }
+			</h4>
+			<table className="neural-forms-integrations__wa-templates-table">
+				<thead>
+					<tr>
+						<th>{ __( 'Name', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Language', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Status', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Category', 'neural-forms-lite' ) }</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ templates.map( ( t, i ) => {
+						const status = String( t.status || '' ).toUpperCase();
+						const badgeClass = status === 'APPROVED'
+							? 'is-approved'
+							: ( status === 'REJECTED' ? 'is-rejected' : 'is-pending' );
+						return (
+							<tr key={ ( t.name || '' ) + ':' + ( t.language || '' ) + ':' + i }>
+								<td><code>{ t.name }</code></td>
+								<td>{ t.language || '—' }</td>
+								<td>
+									<span className={ 'neural-forms-integrations__wa-tpl-badge ' + badgeClass }>{ status || '—' }</span>
+								</td>
+								<td>{ t.category || '—' }</td>
+							</tr>
+						);
+					} ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+// ─── Tab body switcher ──────────────────────────────────────────
+
 function TabPanel( { provider } ) {
 	if ( provider.id === 'zapier' ) {
 		return <ZapierPanel provider={ provider } />;
@@ -1453,6 +1997,9 @@ function TabPanel( { provider } ) {
 	}
 	if ( provider.id === 'hubspot' ) {
 		return <HubSpotPanel provider={ provider } />;
+	}
+	if ( provider.id === 'whatsapp' ) {
+		return <WhatsAppPanel provider={ provider } />;
 	}
 	return <ComingSoonCard provider={ provider } />;
 }
