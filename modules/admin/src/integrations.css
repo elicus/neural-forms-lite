@@ -388,6 +388,309 @@
 	margin: 0;
 }
 
+/* ── Zapier configure panel ─────────────────────────────────── */
+
+.neural-forms-integrations__zap-loading {
+	color: var( --f-gray-500 );
+	font-size: 13px;
+	margin: 12px 0;
+}
+
+.neural-forms-integrations__zap-flash {
+	align-items: center;
+	border: 1px solid;
+	border-radius: var( --f-radius-md );
+	display: flex;
+	font-size: 13px;
+	gap: 8px;
+	justify-content: space-between;
+	margin: 0 0 16px;
+	padding: 10px 14px;
+}
+
+.neural-forms-integrations__zap-flash--success {
+	background: var( --f-green-50 );
+	border-color: var( --f-green-200 );
+	color: #045d3a;
+}
+
+.neural-forms-integrations__zap-flash--error {
+	background: #fef2f2;
+	border-color: #fca5a5;
+	color: #991b1b;
+}
+
+.neural-forms-integrations__zap-flash-close {
+	background: transparent;
+	border: none;
+	color: inherit;
+	cursor: pointer;
+	font-size: 18px;
+	font-weight: 700;
+	line-height: 1;
+	padding: 0 4px;
+}
+
+/* Empty state */
+.neural-forms-integrations__zap-empty {
+	background: var( --f-blue-50 );
+	border: 1px dashed var( --f-blue-200 );
+	border-radius: var( --f-radius-lg );
+	padding: 22px;
+	text-align: center;
+}
+
+.neural-forms-integrations__zap-empty-title {
+	color: var( --f-blue-700 );
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0 0 6px;
+}
+
+.neural-forms-integrations__zap-empty-desc {
+	color: var( --f-gray-700 );
+	font-size: 13px;
+	line-height: 1.55;
+	margin: 0 0 16px;
+}
+
+/* Buttons */
+.neural-forms-integrations__btn {
+	background: #fff;
+	border: 1px solid var( --f-gray-300 );
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-800 );
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1;
+	padding: 8px 14px;
+	transition: background var( --f-transition ), border-color var( --f-transition );
+}
+
+.neural-forms-integrations__btn:hover:not(:disabled) {
+	background: var( --f-gray-50 );
+	border-color: var( --f-gray-400 );
+}
+
+.neural-forms-integrations__btn:focus-visible {
+	outline: 2px solid var( --f-blue-400 );
+	outline-offset: 2px;
+}
+
+.neural-forms-integrations__btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.neural-forms-integrations__btn--primary {
+	background: var( --f-blue-600 );
+	border-color: var( --f-blue-600 );
+	color: #fff;
+}
+
+.neural-forms-integrations__btn--primary:hover:not(:disabled) {
+	background: var( --f-blue-500 );
+	border-color: var( --f-blue-500 );
+}
+
+.neural-forms-integrations__btn--danger {
+	color: #b91c1c;
+}
+
+.neural-forms-integrations__btn--danger:hover:not(:disabled) {
+	background: #fef2f2;
+	border-color: #fca5a5;
+}
+
+/* List */
+.neural-forms-integrations__zap-list-wrap {
+	margin-top: 4px;
+}
+
+.neural-forms-integrations__zap-list-header {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+.neural-forms-integrations__zap-list-title {
+	color: var( --f-gray-900 );
+	font-size: 14px;
+	font-weight: 600;
+	margin: 0;
+}
+
+.neural-forms-integrations__zap-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.neural-forms-integrations__zap-row {
+	align-items: flex-start;
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-md );
+	display: flex;
+	gap: 16px;
+	justify-content: space-between;
+	padding: 14px 16px;
+}
+
+.neural-forms-integrations__zap-row-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.neural-forms-integrations__zap-row-line1 {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.neural-forms-integrations__zap-url {
+	background: var( --f-gray-100 );
+	border-radius: var( --f-radius-sm );
+	color: var( --f-gray-800 );
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	padding: 3px 7px;
+}
+
+.neural-forms-integrations__zap-status {
+	border-radius: var( --f-radius-full );
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	padding: 3px 9px;
+	text-transform: uppercase;
+}
+
+.neural-forms-integrations__zap-status.is-active {
+	background: var( --f-green-50 );
+	color: #045d3a;
+}
+
+.neural-forms-integrations__zap-status.is-inactive {
+	background: var( --f-gray-100 );
+	color: var( --f-gray-600 );
+}
+
+.neural-forms-integrations__zap-row-meta {
+	color: var( --f-gray-600 );
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 12px;
+	gap: 12px;
+}
+
+.neural-forms-integrations__zap-error {
+	color: #991b1b;
+	font-size: 12px;
+	margin: 6px 0 0;
+}
+
+.neural-forms-integrations__zap-row-actions {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* Form */
+.neural-forms-integrations__zap-form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.neural-forms-integrations__zap-form-header {
+	border-bottom: 1px solid var( --f-gray-100 );
+	padding-bottom: 12px;
+}
+
+.neural-forms-integrations__zap-form-title {
+	color: var( --f-gray-900 );
+	font-size: 15px;
+	font-weight: 600;
+	margin: 0 0 4px;
+}
+
+.neural-forms-integrations__zap-form-help {
+	color: var( --f-gray-600 );
+	font-size: 12px;
+	margin: 0;
+}
+
+.neural-forms-integrations__zap-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.neural-forms-integrations__zap-label {
+	color: var( --f-gray-800 );
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.neural-forms-integrations__zap-input,
+.neural-forms-integrations__zap-select {
+	background: #fff;
+	border: 1px solid var( --f-gray-300 );
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-900 );
+	font-family: inherit;
+	font-size: 13px;
+	padding: 8px 10px;
+	transition: border-color var( --f-transition ), box-shadow var( --f-transition );
+}
+
+.neural-forms-integrations__zap-input:focus-visible,
+.neural-forms-integrations__zap-select:focus-visible {
+	border-color: var( --f-blue-400 );
+	box-shadow: 0 0 0 3px rgba( 85, 102, 187, 0.15 );
+	outline: none;
+}
+
+.neural-forms-integrations__zap-input.is-invalid {
+	border-color: #fca5a5;
+}
+
+.neural-forms-integrations__zap-field-error {
+	color: #b91c1c;
+	font-size: 12px;
+	margin: 0;
+}
+
+.neural-forms-integrations__zap-hint {
+	color: var( --f-gray-500 );
+	font-size: 12px;
+	margin: 0;
+}
+
+.neural-forms-integrations__zap-error-banner {
+	background: #fef2f2;
+	border: 1px solid #fca5a5;
+	border-radius: var( --f-radius-md );
+	color: #991b1b;
+	font-size: 13px;
+	padding: 10px 14px;
+}
+
+.neural-forms-integrations__zap-form-actions {
+	display: flex;
+	gap: 8px;
+}
+
 /* ── Responsive: narrow viewport ────────────────────────────── */
 @media ( max-width: 600px ) {
 	.neural-forms-integrations__lock-card {
@@ -406,5 +709,13 @@
 
 	.neural-forms-integrations__tab {
 		padding: 9px 12px;
+	}
+
+	.neural-forms-integrations__zap-row {
+		flex-direction: column;
+	}
+
+	.neural-forms-integrations__zap-row-actions {
+		width: 100%;
 	}
 }
