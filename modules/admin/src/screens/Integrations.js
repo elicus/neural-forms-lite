@@ -72,7 +72,7 @@ const PROVIDERS = [
 	{
 		id:    'google_forms',
 		name:  __( 'Google Forms', 'neural-forms-lite' ),
-		blurb: __( 'Mirror entries into a linked Google Sheet so existing spreadsheet workflows keep working.', 'neural-forms-lite' ),
+		blurb: __( 'Connect Google Forms to import form structures into Neural Forms.', 'neural-forms-lite' ),
 		icon:  'G',
 	},
 	{
@@ -654,7 +654,20 @@ function CopyableInput( { value, label } ) {
 	);
 }
 
-function GFCredsForm( { status, onSaved, onConnect, busy } ) {
+/**
+ * State 1 (no creds) AND state 2 edit mode: the Client ID + Secret form.
+ *
+ * Renders ONLY the form, never the Connect button — the parent panel
+ * decides whether to show the Connect button (state 2) or the
+ * forms-list (state 3). Splitting concerns makes the three states
+ * visually distinct: state 1 is "enter creds", state 2 is "you have
+ * creds, click Connect", state 3 is "fully connected".
+ *
+ * `onCancel` is only relevant when re-opening the form from state 2
+ * to update credentials; state 1 hides it (no prior state to return
+ * to).
+ */
+function GFCredsForm( { status, onSaved, onCancel } ) {
 	const [ clientId,     setClientId ]     = useState( status?.client_id || '' );
 	const [ clientSecret, setClientSecret ] = useState( '' );
 	const [ saving,       setSaving ]       = useState( false );
@@ -682,10 +695,13 @@ function GFCredsForm( { status, onSaved, onConnect, busy } ) {
 		<form className="neural-forms-integrations__zap-form" onSubmit={ onSave }>
 			<header className="neural-forms-integrations__zap-form-header">
 				<h3 className="neural-forms-integrations__zap-form-title">
-					{ __( 'Google Cloud OAuth credentials', 'neural-forms-lite' ) }
+					{ hasCreds
+						? __( 'Update Google Cloud OAuth credentials', 'neural-forms-lite' )
+						: __( 'Google Cloud OAuth credentials', 'neural-forms-lite' )
+					}
 				</h3>
 				<p className="neural-forms-integrations__zap-form-help">
-					{ __( 'Create an OAuth client in Google Cloud Console → APIs & Services → Credentials. Use the redirect URI below verbatim, then paste the client ID and secret here.', 'neural-forms-lite' ) }
+					{ __( 'Create an OAuth client in Google Cloud Console → APIs & services → Credentials. Use the redirect URI below verbatim, then paste the client ID and secret here.', 'neural-forms-lite' ) }
 				</p>
 			</header>
 
@@ -716,7 +732,7 @@ function GFCredsForm( { status, onSaved, onConnect, busy } ) {
 					className="neural-forms-integrations__zap-input"
 					value={ clientSecret }
 					onChange={ ( e ) => setClientSecret( e.target.value ) }
-					placeholder={ status?.client_secret_set ? '•••••••• (' + __( 'leave blank to keep existing', 'neural-forms-lite' ) + ')' : '' }
+					placeholder={ hasCreds ? '•••••••• (' + __( 'leave blank to keep existing', 'neural-forms-lite' ) + ')' : '' }
 				/>
 				<p className="neural-forms-integrations__zap-hint">
 					{ __( 'The secret is encrypted at rest and never displayed again.', 'neural-forms-lite' ) }
@@ -729,13 +745,57 @@ function GFCredsForm( { status, onSaved, onConnect, busy } ) {
 				<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving || ! clientId || ( ! hasCreds && ! clientSecret ) }>
 					{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save credentials', 'neural-forms-lite' ) }
 				</button>
-				{ hasCreds && (
-					<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onConnect } disabled={ busy }>
-						{ busy ? __( 'Connecting…', 'neural-forms-lite' ) : __( 'Connect Google Account', 'neural-forms-lite' ) }
+				{ onCancel && (
+					<button type="button" className="neural-forms-integrations__btn" onClick={ onCancel } disabled={ saving }>
+						{ __( 'Cancel', 'neural-forms-lite' ) }
 					</button>
 				) }
 			</div>
 		</form>
+	);
+}
+
+/**
+ * State 2: Client ID + Secret saved, OAuth handshake not yet
+ * completed. Shows the new "Connect Google Account" CTA + edit /
+ * clear options. The credentials FORM is intentionally hidden in
+ * this state so the next action is unambiguous.
+ */
+function GFCredsSavedCard( { status, onConnect, onEdit, onClear, connecting, clearing } ) {
+	return (
+		<div className="neural-forms-integrations__gf-saved">
+			<div className="neural-forms-integrations__gf-saved-body">
+				<span className="neural-forms-integrations__zap-status is-active">
+					{ __( 'Credentials saved', 'neural-forms-lite' ) }
+				</span>
+				<p className="neural-forms-integrations__zap-form-help">
+					{ __( 'Your Google Cloud OAuth credentials are stored. Click Connect Google Account to authorise Neural Forms to read your Google Forms.', 'neural-forms-lite' ) }
+				</p>
+				{ status?.client_id && (
+					<dl className="neural-forms-integrations__gf-saved-grid">
+						<div>
+							<dt>{ __( 'Client ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.client_id }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Client Secret', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.client_secret_set ? __( 'Stored (never displayed)', 'neural-forms-lite' ) : __( 'Not set', 'neural-forms-lite' ) }</dd>
+						</div>
+					</dl>
+				) }
+			</div>
+			<div className="neural-forms-integrations__zap-form-actions">
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onConnect } disabled={ connecting }>
+					{ connecting ? __( 'Connecting…', 'neural-forms-lite' ) : __( 'Connect Google Account', 'neural-forms-lite' ) }
+				</button>
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onEdit } disabled={ connecting || clearing }>
+					{ __( 'Update credentials', 'neural-forms-lite' ) }
+				</button>
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ onClear } disabled={ connecting || clearing }>
+					{ clearing ? __( 'Clearing…', 'neural-forms-lite' ) : __( 'Clear credentials', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		</div>
 	);
 }
 
@@ -856,6 +916,10 @@ function GoogleFormsPanel( { provider } ) {
 	const [ formsLoading, setFormsLoading ] = useState( false );
 	const [ formsError, setFormsError ] = useState( '' );
 	const [ connecting, setConnecting ] = useState( false );
+	const [ clearing,   setClearing ]   = useState( false );
+	// "editing" controls the state-2 → state-1 toggle when the user
+	// clicks "Update credentials" from the credentials-saved card.
+	const [ editing,    setEditing ]    = useState( false );
 	const [ preview, setPreview ]   = useState( null );
 	const [ previewLoading, setPreviewLoading ] = useState( false );
 	const [ previewError, setPreviewError ] = useState( '' );
@@ -946,6 +1010,31 @@ function GoogleFormsPanel( { provider } ) {
 		}
 	}, [] );
 
+	const handleClearCreds = useCallback( async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Clear saved OAuth credentials? You\'ll need to enter your Client ID and Secret again to reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setClearing( true );
+		try {
+			// `clear_client_secret: true` is the dedicated flag in the
+			// Pro /settings endpoint (C1) for wiping the stored secret.
+			// We also blank the client_id explicitly so the saved card
+			// disappears.
+			const next = await api( '/neural-forms-pro/v1/integrations/google-forms/settings', {
+				method: 'POST',
+				data:   { client_id: '', clear_client_secret: true },
+			} );
+			setStatus( next );
+			setEditing( false );
+			setFlash( { kind: 'success', message: __( 'Google credentials cleared.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not clear credentials.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setClearing( false );
+		}
+	}, [] );
+
 	const handlePreview = useCallback( async ( form ) => {
 		setBusyFormId( form.id );
 		setPreviewError( '' );
@@ -996,6 +1085,12 @@ function GoogleFormsPanel( { provider } ) {
 				</div>
 			) }
 
+			{ /* Three explicit states:
+			    *   loading      → spinner
+			    *   connected    → forms list + Refresh + Disconnect
+			    *   has creds    → GFCredsSavedCard (state 2): Connect / Update / Clear
+			    *   no creds OR editing → GFCredsForm (state 1)
+			    */ }
 			{ loading ? (
 				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
 			) : status?.connected ? (
@@ -1012,12 +1107,20 @@ function GoogleFormsPanel( { provider } ) {
 					</div>
 					<GFFormsList forms={ forms } loading={ formsLoading } error={ formsError } onRefresh={ reloadForms } onPreview={ handlePreview } busyId={ busyFormId } />
 				</>
+			) : status?.has_client_creds && ! editing ? (
+				<GFCredsSavedCard
+					status={ status }
+					onConnect={ handleConnect }
+					onEdit={ () => setEditing( true ) }
+					onClear={ handleClearCreds }
+					connecting={ connecting }
+					clearing={ clearing }
+				/>
 			) : (
 				<GFCredsForm
 					status={ status }
-					onSaved={ ( s ) => { setStatus( s ); setFlash( { kind: 'success', message: __( 'Credentials saved.', 'neural-forms-lite' ) } ); } }
-					onConnect={ handleConnect }
-					busy={ connecting }
+					onSaved={ ( s ) => { setStatus( s ); setEditing( false ); setFlash( { kind: 'success', message: __( 'Credentials saved.', 'neural-forms-lite' ) } ); } }
+					onCancel={ editing ? () => setEditing( false ) : null }
 				/>
 			) }
 

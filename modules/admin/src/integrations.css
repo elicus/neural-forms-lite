@@ -807,6 +807,66 @@
 	padding-left: 18px;
 }
 
+/* ── Google Forms: credentials-saved card (state 2) ─────────── */
+
+.neural-forms-integrations__gf-saved {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-lg );
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 18px 20px;
+}
+
+.neural-forms-integrations__gf-saved-body {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.neural-forms-integrations__gf-saved-grid {
+	background: var( --f-blue-50 );
+	border: 1px solid var( --f-blue-100 );
+	border-radius: var( --f-radius-md );
+	display: grid;
+	gap: 12px 20px;
+	grid-template-columns: repeat( auto-fit, minmax( 220px, 1fr ) );
+	margin: 0;
+	padding: 12px 14px;
+}
+
+.neural-forms-integrations__gf-saved-grid > div {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.neural-forms-integrations__gf-saved-grid dt {
+	color: var( --f-gray-500 );
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	margin: 0;
+	text-transform: uppercase;
+}
+
+.neural-forms-integrations__gf-saved-grid dd {
+	color: var( --f-gray-900 );
+	font-size: 12px;
+	margin: 0;
+	word-break: break-all;
+}
+
+.neural-forms-integrations__gf-saved-grid dd code {
+	background: var( --f-gray-100 );
+	border-radius: var( --f-radius-sm );
+	color: var( --f-gray-800 );
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 11px;
+	padding: 2px 5px;
+}
+
 .neural-forms-integrations__gf-warning-skipped  { color: #6b7280; }
 .neural-forms-integrations__gf-warning-fallback { color: #d97706; }
 .neural-forms-integrations__gf-warning-note     { color: var( --f-blue-700 ); }
