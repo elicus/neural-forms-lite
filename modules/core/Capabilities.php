@@ -125,6 +125,22 @@ final class Capabilities {
     const FIELD_REPEATER = 'field_repeater';
 
     /**
+     * INTEGRATIONS (added 1.1.0): unlocks the Integrations admin
+     * page (HubSpot, WhatsApp, Mailchimp, Google Forms, etc.). Lite
+     * ships the page shell (menu entry, React screen, capability
+     * snapshot); the page renders in a locked Pro-upsell state when
+     * this cap is false. Pro flips the filter true so the provider
+     * tabs become live.
+     *
+     * No provider configuration is implemented yet on either side —
+     * each tab still shows a "Coming soon" card while the providers
+     * are being wired up. The capability is registered now so the
+     * Lite-vs-Pro UX gating is in place before the first provider
+     * ships.
+     */
+    const INTEGRATIONS = 'integrations';
+
+    /**
      * True when the given premium capability is unlocked in this install.
      *
      * @param string $cap One of the AI_* constants on this class.
@@ -157,6 +173,7 @@ final class Capabilities {
             self::POLL_QUIZ_UNLIMITED_SUBMISSIONS => self::can( self::POLL_QUIZ_UNLIMITED_SUBMISSIONS ),
             self::FIELD_MATRIX                    => self::can( self::FIELD_MATRIX ),
             self::FIELD_REPEATER                  => self::can( self::FIELD_REPEATER ),
+            self::INTEGRATIONS                    => self::can( self::INTEGRATIONS ),
         ];
     }
 

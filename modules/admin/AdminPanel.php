@@ -22,12 +22,18 @@ class AdminPanel {
      * The first entry is also the default - no magic string needed anywhere.
      */
     const SCREENS = [
-        'neural-forms'           => 'forms',
-        'neural-forms-entries'   => 'entries',
-        'neural-forms-stats'     => 'stats',
-        'neural-forms-settings'  => 'settings',
-        'neural-forms-migration' => 'migration',
-        'neural-forms-results'   => 'results',
+        'neural-forms'              => 'forms',
+        'neural-forms-entries'      => 'entries',
+        'neural-forms-stats'        => 'stats',
+        'neural-forms-settings'     => 'settings',
+        'neural-forms-migration'    => 'migration',
+        'neural-forms-results'      => 'results',
+        // 1.1.0: Integrations page (HubSpot / WhatsApp / Mailchimp /
+        // Google Forms / …). Lite ships the shell + a locked Pro
+        // upsell card; Pro flips Capabilities::INTEGRATIONS true to
+        // unlock the provider tabs (which still show "Coming soon"
+        // until the actual provider work ships).
+        'neural-forms-integrations' => 'integrations',
     ];
 
     public static function boot(): void {
@@ -137,6 +143,19 @@ class AdminPanel {
             __( 'Settings', 'neural-forms-lite' ),
             NEURAL_FORMS_CAP_MANAGE_FORMS,
             'neural-forms-settings',
+            [ self::class, 'render_page' ]
+        );
+
+        // Integrations (1.1.0). Lite always shows the menu entry; the
+        // page renders in a locked Pro-upsell state when
+        // Capabilities::INTEGRATIONS is false (default in Lite). Pro
+        // flips the filter and the provider tabs become live.
+        add_submenu_page(
+            'neural-forms',
+            __( 'Integrations - Neural Forms', 'neural-forms-lite' ),
+            __( 'Integrations', 'neural-forms-lite' ),
+            NEURAL_FORMS_CAP_MANAGE_FORMS,
+            'neural-forms-integrations',
             [ self::class, 'render_page' ]
         );
 
@@ -539,6 +558,49 @@ class AdminPanel {
                 );
             }
 
+        }
+
+        // Integrations screen — enqueue build/integrations.js +
+        // build/integrations.css on ?page=neural-forms-integrations.
+        // Mirrors the settings / stats / forms / import per-screen
+        // pattern. The React screen reads
+        // window.neuralFormsAdmin.plugin.capabilities.integrations
+        // (localized below via script_data) to choose between the
+        // locked Pro-upsell card (Lite) and the provider tabs (Pro).
+        if (
+            self::get_current_screen() === 'integrations'
+            && file_exists( $build_dir . 'integrations.js' )
+        ) {
+            $asset_file = $build_dir . 'integrations.asset.php';
+            $asset      = file_exists( $asset_file )
+                ? require $asset_file
+                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+
+            if ( ! is_array( $asset ) ) {
+                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+            }
+            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
+            $bust    = (string) filemtime( $build_dir . 'integrations.js' );
+            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+            wp_enqueue_script(
+                'neural-forms-admin',
+                $build_url . 'integrations.js',
+                $deps,
+                $version,
+                true
+            );
+
+            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+            if ( file_exists( $build_dir . 'integrations.css' ) ) {
+                wp_enqueue_style(
+                    'neural-forms-admin',
+                    $build_url . 'integrations.css',
+                    [ 'wp-components' ],
+                    (string) filemtime( $build_dir . 'integrations.css' )
+                );
+            }
         }
 
         // Page-header unifier — ships every per-screen split bundle the

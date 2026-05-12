@@ -69,6 +69,13 @@ const SCREENS = {
 	// `/migration/cf7/*` REST endpoints. Same enqueue pattern as the
 	// other split bundles — its handle aliases `neural-forms-admin`.
 	import:        'src/import-entry.js',
+	// 1.1.0: Pro-locked Integrations admin page (HubSpot, WhatsApp,
+	// Mailchimp, Google Forms). Lite ships the page shell + capability
+	// snapshot — the page renders a single Pro-upsell card when
+	// Capabilities::INTEGRATIONS is false, and a four-tab "Coming soon"
+	// layout when Pro flips it true. No provider wiring yet on either
+	// side — the capability gates the UX while providers are built.
+	integrations:  'src/integrations-entry.js',
 	// Gutenberg form-rendering block — registered via block.json,
 	// enqueued by frontend/BlockHandler.php as build/block.js.
 	// Carved out of the legacy `wp-scripts build` flow so the block
