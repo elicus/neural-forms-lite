@@ -767,6 +767,7 @@ export default function Builder( { formId, isNew } ) {
 						onChange={ setSettings }
 						formSchemaSettings={ formSchemaSettings }
 						onChangeFormSchemaSettings={ setFormSchemaSettings }
+						fields={ fields }
 						detectedType={ ( () => {
 							// Inline form-type detection mirroring the
 							// PHP-side FormTypeDetector / blocks/shared/formType.js.

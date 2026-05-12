@@ -36,6 +36,7 @@
 
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
+import IntegrationsSection from './IntegrationsSection';
 
 const BASE_SECTIONS = [
 	{ id: 'process_with_ai', label: 'Process with AI', hint: 'Decide how Neural Forms uses AI for this form.' },
@@ -43,6 +44,7 @@ const BASE_SECTIONS = [
 	{ id: 'notifications', label: 'Notifications', hint: 'Choose who hears about new submissions.' },
 	{ id: 'on_success',   label: 'On success',   hint: 'What submitters see after a successful submit.' },
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
+	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
 ];
 
 /**
@@ -139,6 +141,7 @@ export default function FormSettings( {
 	onChangeFormSchemaSettings,
 	hasQuiz,
 	detectedType,
+	fields,
 } ) {
 	const SECTIONS = hasQuiz ? [ ...BASE_SECTIONS, QUIZ_SECTION ] : BASE_SECTIONS;
 
@@ -396,6 +399,16 @@ export default function FormSettings( {
 									/>
 								</label>
 							) }
+						</div>
+					) }
+
+					{ section === 'integrations' && (
+						<div className="nf-form-settings__body">
+							<IntegrationsSection
+								settings={ s }
+								onChange={ onChange }
+								fields={ fields || [] }
+							/>
 						</div>
 					) }
 
