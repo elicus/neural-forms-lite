@@ -34,28 +34,43 @@ export const HS_PHONE    = 'phone';
 export const HS_EMAIL    = 'email';
 
 // Neural Forms field types we allow as mapping TARGETS. Excludes
-// layout containers (row/section/step), complex inputs that v1 can't
-// safely serialize for HubSpot (matrix/repeater/file), and form-
-// machinery types (poll/quiz_question/acceptance) — per the spec.
+// layout containers (row/section/step) and form-machinery types
+// (poll/quiz_question) — per the spec.
 //
 // `hidden` is permitted: hidden fields can carry referrer / UTM /
 // page metadata and routing those into HubSpot is exactly the use
 // case a per-form mapping serves.
+//
+// `file` is permitted: HubSpot file properties accept a STRING
+// value (URL or filename) — the public submissions endpoint does
+// not handle multipart, so we ship the file's URL/filename via
+// HubSpotSubmissionPayloadBuilder::coerce_file (see C5). The
+// payload builder NEVER ships the server filesystem path — only
+// the user-facing url + filename keys from the entry's file
+// metadata blob.
 const SUPPORTED_NF_TYPES = new Set( [
 	'text', 'textarea', 'email', 'phone', 'tel', 'url',
 	'number', 'range', 'date',
 	'select', 'radio', 'checkbox', 'checkboxes',
 	'hidden',
 	'rating',
+	'file',
 ] );
 
 // Excluded layout / container / complex types — keep this list
 // separate (rather than just "not in supported") so a new NF type
 // added to the registry doesn't silently start appearing in the
 // HubSpot mapping dropdown without an explicit decision.
+//
+// matrix / repeater are intentionally NOT in supported: their
+// per-row / per-item structure has no useful HubSpot target in v1.
+// The payload builder DOES coerce them into readable strings if
+// they ever reach delivery, but the dropdown hides them so admins
+// don't end up mapping a survey grid into a HubSpot enumeration
+// field by accident.
 const EXCLUDED_NF_TYPES = new Set( [
 	'row', 'section', 'step',
-	'matrix', 'repeater', 'file',
+	'matrix', 'repeater',
 	'poll', 'quiz_question',
 ] );
 
@@ -181,8 +196,14 @@ function orderPreferenceFor( fieldType, dataType ) {
 			// select / radio / hidden. Allow text as last-resort.
 			return [ 'select', 'radio', 'text', 'hidden' ];
 		case 'file':
-			// File transfer is out of v1 scope. Text-like only.
-			return [ 'text', 'textarea', 'hidden' ];
+			// HubSpot file properties accept a string value (URL).
+			// NF file is the best match — the delivery builder
+			// turns the stored { filename, url } metadata into
+			// "filename (url)" before shipping. Text-like fields
+			// are the fallback for admins who'd rather pre-format
+			// the value themselves (e.g. a hidden field carrying
+			// a pre-uploaded CDN URL).
+			return [ 'file', 'url', 'text', 'textarea', 'hidden' ];
 	}
 	// Fall back on the data type when fieldType is unknown.
 	if ( dataType === 'enumeration' ) {
@@ -207,8 +228,10 @@ function orderPreferenceFor( fieldType, dataType ) {
  *                           to first_name / last_name
  *       phone/mobile      → first NF phone/tel field
  *       message/comment   → first NF textarea field
- *       company           → first NF text field whose label contains "company"
+ *       company           → first NF text field whose label containing "company"
  *       website/url       → first NF url field
+ *       file/upload/attachment/resume/document/cv
+ *                         → first NF file field, else NF url field
  *   - The same NF field may map to AT MOST ONE HubSpot field. Once
  *     a NF field is "claimed", subsequent HubSpot matches fall back
  *     to other candidates.
@@ -293,6 +316,18 @@ export function autoMapHubSpotFields( hubspotFields, nfFields, existing = {} ) {
 			pick = pickFirstByType( [ 'textarea' ] );
 		} else if ( fieldType === 'select' || fieldType === 'radio' || String( hs?.type ).toLowerCase() === 'enumeration' ) {
 			pick = pickFirstByType( [ 'select', 'radio' ] );
+		} else if (
+			fieldType === 'file'
+			|| /(^|_)(file|upload|attachment|resume|document|cv)($|_)/.test( norm )
+		) {
+			// HubSpot file properties accept a URL string. NF file
+			// is the natural target — the delivery builder packages
+			// the entry's stored { filename, url } as "filename
+			// (url)" so HubSpot stores a usable contact-property
+			// value. We also fall back to a URL-typed NF field for
+			// admins who pre-host their files.
+			pick = pickFirstByType( [ 'file' ] )
+				|| pickFirstByType( [ 'url' ] );
 		}
 
 		if ( pick ) {

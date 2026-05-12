@@ -327,6 +327,15 @@ function MappingTable( { hubspotFields, hubspotFieldsLoading, hubspotFieldsError
 					{ hubspotFields.map( ( hs ) => {
 						const compatible = compatibleNfFieldsForHubSpot( hs, nfFields );
 						const current    = String( fieldMap[ hs.name ] || '' );
+						// Inline note for file targets — HubSpot's public
+						// submissions endpoint doesn't accept multipart
+						// uploads, so the delivery builder ships the
+						// stored file's URL + filename as a string. Make
+						// that obvious to admins so they don't expect a
+						// binary upload.
+						const isFileTarget   = ( hs.field_type || '' ).toLowerCase() === 'file';
+						const mappedNfField  = current !== '' ? nfFields.find( ( f ) => f.id === current ) : null;
+						const showFileNote   = isFileTarget && mappedNfField && String( mappedNfField.type ) === 'file';
 						return (
 							<tr key={ hs.name }>
 								<td>
@@ -358,6 +367,11 @@ function MappingTable( { hubspotFields, hubspotFieldsLoading, hubspotFieldsError
 											</option>
 										) ) }
 									</select>
+									{ showFileNote && (
+										<p className="nf-form-settings__hs-cell-sub nf-form-settings__hs-file-note">
+											{ __( 'HubSpot will receive the file\'s URL and filename. The file itself is not re-uploaded to HubSpot.', 'neural-forms-lite' ) }
+										</p>
+									) }
 								</td>
 							</tr>
 						);
