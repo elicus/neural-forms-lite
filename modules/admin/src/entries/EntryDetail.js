@@ -193,7 +193,65 @@ function shouldSuggestReply( entry ) {
  * `refreshSignal` bumps so a freshly-sent reply lands without a page
  * reload.
  */
-function Conversation( { entry, fieldLabels, refreshSignal } ) {
+/**
+ * Render a single (field_id, value) pair into the readable text used
+ * in the conversation's submission bubble. Repeater + Matrix get
+ * structured multi-line output so admins never see raw JSON in the
+ * conversation; everything else falls through to scalar / joined-
+ * array text.
+ *
+ * Pure — no React, no side effects. Module-local so the Conversation
+ * component and its tests can share it.
+ */
+function formatEntryFieldForConversation( fieldId, value, fieldLabels, fieldSchemas ) {
+	const label = ( fieldLabels && fieldLabels[ fieldId ] ) || fieldId;
+	const field = ( fieldSchemas && fieldSchemas[ fieldId ] ) || null;
+
+	if ( field && field.type === 'repeater' ) {
+		const items = formatRepeaterValueLines( value, field );
+		const blocks = items.map( ( it ) => {
+			const visible = it.childLines.filter( ( cl ) => cl.display !== '' );
+			if ( visible.length === 0 ) return '';
+			const lines = visible.map( ( cl ) => `  - ${ cl.childLabel }: ${ cl.display }` );
+			return `Item ${ it.itemIndex + 1 }\n${ lines.join( '\n' ) }`;
+		} ).filter( Boolean );
+		if ( blocks.length === 0 ) return `${ label }: —`;
+		return `${ label }:\n${ blocks.join( '\n\n' ) }`;
+	}
+
+	if ( field && field.type === 'matrix' ) {
+		const matrixLines = formatMatrixValueLines( value, field );
+		const visible = matrixLines.filter( ( ml ) => ml.display !== '' );
+		if ( visible.length === 0 ) return `${ label }: —`;
+		const lines = visible.map( ( ml ) => `  - ${ ml.rowLabel }: ${ ml.display }` );
+		return `${ label }:\n${ lines.join( '\n' ) }`;
+	}
+
+	if ( typeof value === 'string' ) {
+		return `${ label }: ${ value }`;
+	}
+	if ( value == null || value === '' ) {
+		return `${ label }: `;
+	}
+	if ( Array.isArray( value ) ) {
+		const flat = value.filter( ( v ) => v != null && typeof v !== 'object' ).map( String ).join( ', ' );
+		return `${ label }: ${ flat }`;
+	}
+	if ( value && typeof value === 'object' && typeof value.filename === 'string' ) {
+		// File metadata object — show the filename.
+		return `${ label }: ${ value.filename }`;
+	}
+	// Genuinely unknown shape — fall back to a flat key=value join so
+	// the bubble never contains a literal `{` / `[` character.
+	const parts = [];
+	for ( const [ k, v ] of Object.entries( value ) ) {
+		if ( v == null || typeof v === 'object' ) continue;
+		parts.push( `${ k }: ${ v }` );
+	}
+	return `${ label }: ${ parts.join( ', ' ) }`;
+}
+
+function Conversation( { entry, fieldLabels, fieldSchemas, refreshSignal } ) {
 	const [ messages, setMessages ] = useState( [] );
 	const [ loading,  setLoading  ] = useState( false );
 	const [ error,    setError    ] = useState( '' );
@@ -223,12 +281,11 @@ function Conversation( { entry, fieldLabels, refreshSignal } ) {
 	const submissionBubble = ( () => {
 		const data = entry?.data && typeof entry.data === 'object' ? entry.data : {};
 		const lines = Object.entries( data ).map( ( [ k, v ] ) => {
-			// Prefer the form-schema label (same map used by the
-			// Submitted Fields card) so the conversation reads
-			// "Full name: Arif" instead of "full_name_ou8d: Arif".
-			const label = ( fieldLabels && fieldLabels[ k ] ) || k;
-			const value = typeof v === 'string' ? v : ( v == null ? '' : JSON.stringify( v ) );
-			return `${ label }: ${ value }`;
+			// Structured field types (repeater, matrix) go through
+			// dedicated formatters so the bubble never contains raw
+			// JSON. Everything else falls back to the scalar / joined
+			// shape that worked before commit 5.
+			return formatEntryFieldForConversation( k, v, fieldLabels, fieldSchemas );
 		} );
 		const sender = ( () => {
 			for ( const v of Object.values( data ) ) {
@@ -662,6 +719,7 @@ export default function EntryDetail( {
 			<Conversation
 				entry={ entry }
 				fieldLabels={ fieldLabels }
+				fieldSchemas={ fieldSchemas }
 				refreshSignal={ messagesRefreshSignal }
 			/>
 

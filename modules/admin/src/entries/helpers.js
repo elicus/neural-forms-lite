@@ -13,6 +13,20 @@ function walkFields( fields, out ) {
 	if ( ! Array.isArray( fields ) ) return;
 	for ( const f of fields ) {
 		if ( ! f || typeof f !== 'object' ) continue;
+		// Repeater is a LEAF field that happens to carry its child
+		// templates under `f.fields`. The wire shape stores it under
+		// its OWN top-level id (entry.data[repeater_id] = […items]),
+		// so we must emit the repeater itself and NOT recurse into
+		// the children template (those are rendered per iteration
+		// with prefixed ids on the wire — not addressable as their
+		// raw ids here). Without this branch the walker treats the
+		// repeater as a layout container and the entry-detail
+		// formatter never finds the parent schema, falling back to
+		// JSON.stringify().
+		if ( f.type === 'repeater' ) {
+			if ( f.id ) out.push( f );
+			continue;
+		}
 		// Container nodes (row, column, step) carry their children
 		// in a nested `fields` array; recurse but don't emit them.
 		if ( Array.isArray( f.fields ) ) {
