@@ -249,17 +249,123 @@ export function formatDate( s ) {
 	return d.toLocaleString();
 }
 
+/**
+ * Build the short Preview column text from an entry's `preview`
+ * payload (the first three entry-data values the server slices off).
+ *
+ * The endpoint has no schema awareness — preview values arrive in
+ * their stored shape: scalars for text-like fields, arrays of
+ * strings for checkbox groups, parallel-keyed objects for matrix,
+ * arrays of objects for repeater, file metadata objects for file
+ * uploads. The previous implementation called Array.prototype.join
+ * on a repeater value, which invoked each item object's default
+ * .toString() and produced "[object Object], [object Object]".
+ *
+ * This helper now routes every value through a recursive
+ * stringifier that:
+ *   - flattens arrays of objects (repeater) into "item summary;
+ *     item summary; +N more" where each item summary is the first
+ *     two non-empty scalar values joined with " · ".
+ *   - extracts the filename from a file metadata object.
+ *   - emits up to two scalar values from a plain object (matrix /
+ *     any other future field type) joined with " · ".
+ *   - never returns "[object Object]" or a raw "{" / "[" character.
+ *
+ * No schema is required — the function is purely structural — so
+ * the list endpoint stays unaware of field types. Output is capped
+ * at 200 chars to fit the table cell.
+ *
+ * @param {Object} preview
+ * @returns {string}
+ */
 export function previewSummary( preview ) {
 	if ( ! preview || typeof preview !== 'object' ) return '';
 	const parts = [];
 	for ( const v of Object.values( preview ) ) {
-		if ( v == null ) continue;
-		if ( typeof v === 'string' ) parts.push( v );
-		else if ( typeof v === 'number' || typeof v === 'boolean' ) parts.push( String( v ) );
-		else if ( Array.isArray( v ) ) parts.push( v.join( ', ' ) );
+		const formatted = formatPreviewValue( v );
+		if ( formatted === '' ) continue;
+		parts.push( formatted );
 		if ( parts.length >= 2 ) break;
 	}
 	return parts.join( ' · ' ).slice( 0, 200 );
+}
+
+/**
+ * Top-level stringifier for one preview value. Handles the
+ * structured shapes the entries pipeline stores (file metadata,
+ * matrix rows, repeater iteration lists) plus the legacy scalars.
+ */
+function formatPreviewValue( v ) {
+	if ( v == null ) return '';
+	if ( typeof v === 'string' )  return v;
+	if ( typeof v === 'number' )  return String( v );
+	if ( typeof v === 'boolean' ) return v ? '1' : '0';
+
+	if ( Array.isArray( v ) ) {
+		// Empty array (checkboxes group with no picks, etc.).
+		if ( v.length === 0 ) return '';
+		// Array of scalars (legacy checkboxes / matrix-checkbox row
+		// when not nested through the object layer). Join with the
+		// pre-existing comma+space convention.
+		if ( v.every( ( x ) => x == null || typeof x !== 'object' ) ) {
+			return v.filter( ( x ) => x != null && x !== '' ).map( String ).join( ', ' );
+		}
+		// Array of objects (Repeater iterations). Summarise each item
+		// (first two non-empty scalar values per object) and join
+		// with "; ". Truncate to 2 items + "+N more" so the table
+		// cell doesn't overflow.
+		const summaries = [];
+		for ( const item of v ) {
+			const s = formatPreviewObject( item );
+			if ( s !== '' ) summaries.push( s );
+		}
+		if ( summaries.length === 0 ) return '';
+		const MAX = 2;
+		const head = summaries.slice( 0, MAX ).join( '; ' );
+		const rest = summaries.length - MAX;
+		return rest > 0 ? `${ head }; +${ rest } more` : head;
+	}
+
+	if ( typeof v === 'object' ) {
+		// File metadata short-circuit — these objects carry a
+		// `filename` string that's the natural preview surface.
+		if ( typeof v.filename === 'string' && v.filename !== '' ) {
+			return v.filename;
+		}
+		// Matrix row→col map OR any other plain object: pull the
+		// first non-empty scalar values out.
+		return formatPreviewObject( v );
+	}
+
+	return '';
+}
+
+/**
+ * Summarise a single object value (one repeater iteration, one
+ * matrix row map, etc.) by collecting up to two non-empty scalar
+ * values joined with " · ". Recursive arrays / file metadata
+ * nested inside the object are flattened to a single string before
+ * being considered.
+ */
+function formatPreviewObject( obj ) {
+	if ( ! obj || typeof obj !== 'object' || Array.isArray( obj ) ) return '';
+	const scalars = [];
+	for ( const val of Object.values( obj ) ) {
+		if ( val == null || val === '' ) continue;
+		let piece = '';
+		if ( typeof val === 'string' )       piece = val;
+		else if ( typeof val === 'number' || typeof val === 'boolean' ) piece = String( val );
+		else if ( Array.isArray( val ) ) {
+			piece = val.filter( ( x ) => x != null && typeof x !== 'object' && x !== '' ).map( String ).join( ', ' );
+		}
+		else if ( typeof val === 'object' && typeof val.filename === 'string' && val.filename !== '' ) {
+			piece = val.filename;
+		}
+		if ( piece === '' ) continue;
+		scalars.push( piece );
+		if ( scalars.length >= 2 ) break;
+	}
+	return scalars.join( ' · ' );
 }
 
 export function pickSubmitterEmail( preview, data ) {
