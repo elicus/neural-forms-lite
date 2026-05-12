@@ -3,6 +3,7 @@ namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Core\Logger;
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\FormSettingsSanitizer;
 use NeuralForms\Forms\FormTypeDetector;
 use NeuralForms\Forms\FormValidator;
 use NeuralForms\Storage\EntryRepository;
@@ -266,12 +267,20 @@ class FormsEndpoint {
             return $validation;
         }
 
+        // Defensive sanitisation pass on the `settings` blob —
+        // strips per-form HubSpot mapping junk a tampered REST
+        // payload might try to write (forbidden token keys, fake
+        // delivery telemetry, malformed form IDs, etc.). Other
+        // top-level settings round-trip unchanged. See
+        // FormSettingsSanitizer for the contract.
+        $clean_settings = FormSettingsSanitizer::sanitize( $request->get_param( 'settings' ) ?? [] );
+
         $id = FormRepository::create( [
             'name'        => $name,
             'slug'        => $slug,
             'description' => $request->get_param( 'description' ),
             'form_schema' => $schema,
-            'settings'    => $request->get_param( 'settings' ) ?? [],
+            'settings'    => $clean_settings,
             'status'      => $request->get_param( 'status' ) ?? 'active',
         ] );
 
@@ -338,13 +347,21 @@ class FormsEndpoint {
             }
         }
 
+        // Settings is opt-in on update — only sanitise + persist
+        // when the caller actually sent the key (a missing settings
+        // param must NOT clobber the stored row with an empty []).
+        $settings_param = $request->get_param( 'settings' );
+        $clean_settings = $settings_param !== null
+            ? FormSettingsSanitizer::sanitize( $settings_param )
+            : null;
+
         // Use array_key_exists so an explicit null description clears the field.
         $data = array_filter(
             [
                 'name'        => $request->get_param( 'name' ),
                 'slug'        => $request->get_param( 'slug' ),
                 'form_schema' => $schema,
-                'settings'    => $request->get_param( 'settings' ),
+                'settings'    => $clean_settings,
                 'status'      => $request->get_param( 'status' ),
             ],
             fn( $v ) => $v !== null
