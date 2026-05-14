@@ -3870,6 +3870,54 @@
 	font-weight: 600;
 }
 
+#neural-forms-app .nf-form-settings__zap-hook-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	list-style: none;
+	margin: 6px 0 0 0;
+	padding: 0;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-item {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-item.is-inactive {
+	background: #f9fafb;
+	opacity: 0.65;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-row {
+	align-items: flex-start;
+	cursor: pointer;
+	display: flex;
+	gap: 10px;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-row input[type="checkbox"] {
+	margin-top: 3px;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-meta code {
+	background: #f3f4f6;
+	border-radius: 4px;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+	padding: 1px 6px;
+}
+
 #neural-forms-app .nf-form-settings__hs-file-note {
 	background: #fefce8;
 	border: 1px solid #fde68a;

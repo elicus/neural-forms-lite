@@ -1155,6 +1155,145 @@ nf_test( 'mailchimp: coexists with hubspot / whatsapp / google_forms without cro
 	}
 } );
 
+// ────────── Zapier branch ──────────
+
+nf_test( 'zapier: clean config round-trips with all whitelisted keys', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'                 => true,
+		'webhook_ids'             => [ 1, 5, 9 ],
+		'send_when'               => 'all_entries',
+		'include_fields_readable' => true,
+		'include_raw_fields'      => false,
+		'include_source'          => true,
+	] ] ] );
+	$z = $out['integrations']['zapier'];
+	nf_assert_same( true,        $z['enabled'],                 'enabled' );
+	nf_assert_same( [ 1, 5, 9 ], $z['webhook_ids'],             'webhook_ids preserved' );
+	nf_assert_same( 'all_entries', $z['send_when'],             'send_when' );
+	nf_assert_same( true,        $z['include_fields_readable'], 'readable on' );
+	nf_assert_same( false,       $z['include_raw_fields'],      'raw off' );
+	nf_assert_same( true,        $z['include_source'],          'source on' );
+} );
+
+nf_test( 'zapier: webhook_ids casts numeric strings, deduplicates, rejects <= 0', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'     => true,
+		'webhook_ids' => [ '1', 1, '2', 2, 0, -3, 'abc', 4 ],
+	] ] ] );
+	nf_assert_same( [ 1, 2, 4 ], $out['integrations']['zapier']['webhook_ids'], 'normalised + deduped' );
+} );
+
+nf_test( 'zapier: webhook_ids capped at ZAP_WEBHOOK_IDS_MAX (10)', function () {
+	$big = range( 1, 30 );
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'     => true,
+		'webhook_ids' => $big,
+	] ] ] );
+	nf_assert_same( 10, count( $out['integrations']['zapier']['webhook_ids'] ), 'capped at 10' );
+} );
+
+nf_test( 'zapier: target_url / webhook_url / url STRIPPED', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'     => true,
+		'webhook_ids' => [ 1 ],
+		'target_url'  => 'https://hooks.zapier.com/abc/123',
+		'webhook_url' => 'https://example.com/leak',
+		'url'         => 'https://example.com/leak',
+	] ] ] );
+	$z = $out['integrations']['zapier'];
+	foreach ( [ 'target_url', 'webhook_url', 'url' ] as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $z ), $k . ' stripped' );
+	}
+} );
+
+nf_test( 'zapier: secret / token / client_secret STRIPPED', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'       => true,
+		'webhook_ids'   => [ 1 ],
+		'secret'        => 'leak',
+		'token'         => 'leak',
+		'client_secret' => 'leak',
+	] ] ] );
+	$z = $out['integrations']['zapier'];
+	foreach ( [ 'secret', 'token', 'client_secret' ] as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $z ), $k . ' stripped' );
+	}
+} );
+
+nf_test( 'zapier: telemetry keys (last_sent_at / last_status_code / last_error) STRIPPED', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'          => true,
+		'webhook_ids'      => [ 1 ],
+		'last_sent_at'     => '2026-01-01 00:00:00',
+		'last_status_code' => 200,
+		'last_error'       => 'should be wiped',
+	] ] ] );
+	$z = $out['integrations']['zapier'];
+	foreach ( [ 'last_sent_at', 'last_status_code', 'last_error' ] as $k ) {
+		nf_assert_true( ! array_key_exists( $k, $z ), $k . ' stripped' );
+	}
+} );
+
+nf_test( 'zapier: unknown keys stripped', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'     => true,
+		'webhook_ids' => [ 1 ],
+		'weird_field' => 'tampered',
+		'__proto__'   => 'js-thing',
+	] ] ] );
+	$z = $out['integrations']['zapier'];
+	nf_assert_true( ! array_key_exists( 'weird_field', $z ), 'unknown key stripped' );
+	nf_assert_true( ! array_key_exists( '__proto__',   $z ), '__proto__ stripped' );
+} );
+
+nf_test( 'zapier: send_when invalid → all_entries fallback', function () {
+	foreach ( [ 'bogus', '', 'forever', 'high_priority' ] as $send ) {
+		$expected = $send === 'high_priority' ? 'high_priority' : 'all_entries';
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+			'enabled'     => true,
+			'webhook_ids' => [ 1 ],
+			'send_when'   => $send,
+		] ] ] );
+		nf_assert_same( $expected, $out['integrations']['zapier']['send_when'], 'send_when mapped: ' . var_export( $send, true ) );
+	}
+} );
+
+nf_test( 'zapier: collapses empty config (disabled + no webhooks + defaults) → integrations dropped', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled' => false,
+	] ] ] );
+	nf_assert_true( ! array_key_exists( 'integrations', $out ), 'empty zapier dropped' );
+} );
+
+nf_test( 'zapier: disabled BUT with webhook_ids → preserved (admins can pre-pick)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => [
+		'enabled'     => false,
+		'webhook_ids' => [ 7 ],
+	] ] ] );
+	nf_assert_true( array_key_exists( 'zapier', $out['integrations'] ), 'disabled-with-ids kept' );
+	nf_assert_same( [ 7 ], $out['integrations']['zapier']['webhook_ids'], 'webhook_ids preserved' );
+} );
+
+nf_test( 'zapier: malformed top-level (string / null / int) drops gracefully', function () {
+	foreach ( [ 'evil', null, 42, true ] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'zapier' => $bad ] ] );
+		nf_assert_true( ! array_key_exists( 'integrations', $out ), 'malformed zapier drops: ' . var_export( $bad, true ) );
+	}
+} );
+
+nf_test( 'zapier: coexists with every other provider without crosstalk', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [
+		'hubspot'      => [ 'enabled' => true, 'hubspot_form_id' => 'guid', 'field_map' => [ 'email' => 'email_f1' ] ],
+		'google_forms' => [ 'enabled' => true, 'mode' => 'imported_source', 'google_form_id' => 'GFID-abc' ],
+		'whatsapp'     => [ 'enabled' => true, 'recipients' => [ '919999999999' ], 'template_name' => 'tpl' ],
+		'mailchimp'    => [ 'enabled' => true, 'audience_id' => 'abc123', 'email_field' => 'email_f1' ],
+		'zapier'       => [ 'enabled' => true, 'webhook_ids' => [ 1, 2 ] ],
+	] ] );
+	foreach ( [ 'hubspot', 'google_forms', 'whatsapp', 'mailchimp', 'zapier' ] as $p ) {
+		nf_assert_true( array_key_exists( $p, $out['integrations'] ), $p . ' present' );
+	}
+} );
+
 foreach ( $cases as $case ) {
 	try { ( $case['fn'] )(); echo "PASS  " . $case['name'] . PHP_EOL; $passed++; }
 	catch ( \Throwable $e ) { echo "FAIL  " . $case['name'] . ' — ' . $e->getMessage() . PHP_EOL; $failed++; }

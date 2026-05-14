@@ -153,6 +153,48 @@ final class FormSettingsSanitizer {
 		'last_sent_at', 'last_error', 'last_status_code',
 	];
 
+	// ── Zapier per-form constants ──────────────────────────────────
+
+	const ZAP_WEBHOOK_IDS_MAX = 10;
+
+	/**
+	 * `send_when` values accepted for Zapier form-level settings. We
+	 * intentionally accept the full WhatsApp-style enum so admins
+	 * who configure forward-looking values aren't silently downgraded
+	 * to all_entries on every save. v1 delivery only acts on
+	 * all_entries; the AI-conditional triggers will activate once
+	 * the existing `neural_forms_entry_analysis_completed` hook is
+	 * wired into the Zapier dispatcher.
+	 */
+	const ZAP_VALID_SEND_WHEN = [
+		'all_entries',
+		'high_priority',
+		'needs_reply',
+		'spam_detected',
+		'not_spam',
+	];
+
+	/**
+	 * Global-connection / secret keys that MUST NEVER appear in
+	 * per-form Zapier settings. The webhook URL itself is the bearer
+	 * token for an unauthenticated Catch Hook target — duplicating
+	 * it into form.settings would multiply the leak surface for no
+	 * gain. The form references hooks by id only.
+	 */
+	const ZAP_FORBIDDEN_KEYS = [
+		'target_url', 'webhook_url', 'url',
+		'secret', 'token', 'client_secret',
+	];
+
+	/**
+	 * Server-side telemetry — written by WebhookRepository::record_delivery
+	 * against the global webhook row, never by clients on the form
+	 * settings blob.
+	 */
+	const ZAP_TELEMETRY_KEYS = [
+		'last_sent_at', 'last_error', 'last_status_code',
+	];
+
 	// ── Mailchimp per-form constants ───────────────────────────────
 
 	const MC_AUDIENCE_ID_PATTERN   = '/^[A-Za-z0-9]{1,32}$/';
@@ -267,8 +309,15 @@ final class FormSettingsSanitizer {
 			}
 		}
 
-		// Future providers (Zapier per-form delivery / Google Forms
-		// response sync) would slot in here.
+		if ( array_key_exists( 'zapier', $integrations ) ) {
+			$zapier = self::sanitize_zapier_settings( $integrations['zapier'] );
+			if ( ! empty( $zapier ) ) {
+				$out['zapier'] = $zapier;
+			}
+		}
+
+		// Future providers (Google Forms response sync …) would slot
+		// in here.
 
 		return $out;
 	}
@@ -591,6 +640,117 @@ final class FormSettingsSanitizer {
 			$field_id = self::sanitize_mailchimp_field_id( is_scalar( $v ) ? (string) $v : '' );
 			if ( $field_id === '' ) continue;
 			$out[ $key ] = $field_id;
+		}
+		return $out;
+	}
+
+	/**
+	 * Sanitize a single Zapier per-form config.
+	 *
+	 * Per-form Zapier settings are an OVERRIDE on top of the global
+	 * Zapier webhooks (which live in Pro's
+	 * `neural_forms_pro_integrations_webhooks` option, keyed by
+	 * provider + form_id + event). The presence of a Zapier sub-blob
+	 * on a form means "ignore the find_active() default selection
+	 * for this form — use my explicit webhook_ids instead". Absence
+	 * means "deliver using the existing find_active() behavior
+	 * (all-forms hooks + form-scoped hooks)".
+	 *
+	 * Allowed keys (whitelist; anything else stripped):
+	 *   enabled                  bool, default false
+	 *   webhook_ids              array<int>, ≤ 10 entries, deduped,
+	 *                             every id ≥ 1
+	 *   send_when                enum (only all_entries fires in v1;
+	 *                             other values accepted for forward
+	 *                             compatibility with the AI-analysis
+	 *                             hook)
+	 *   include_fields_readable  bool, default true
+	 *   include_raw_fields       bool, default true
+	 *   include_source           bool, default true
+	 *
+	 * Stripped on every save:
+	 *   - target_url / webhook_url / url (webhook URLs live globally
+	 *     only; per-form settings reference hooks by id)
+	 *   - secret / token / client_secret
+	 *   - last_sent_at / last_status_code / last_error (telemetry
+	 *     lives on the global webhook row, not the form)
+	 *   - any other unknown key
+	 *
+	 * Returns [] when the resulting config carries no useful
+	 * information so the parent drops the key (no empty
+	 * `{enabled:false}` rows). A disabled-with-mapping config IS
+	 * preserved so admins can pre-pick hooks then flip the switch
+	 * on later — matches the Mailchimp / WhatsApp behaviour.
+	 *
+	 * @param mixed $zapier
+	 * @return array<string,mixed>
+	 */
+	public static function sanitize_zapier_settings( $zapier ): array {
+		if ( ! is_array( $zapier ) ) return [];
+
+		$enabled = array_key_exists( 'enabled', $zapier ) ? (bool) $zapier['enabled'] : false;
+
+		$webhook_ids = self::sanitize_zapier_webhook_ids( $zapier['webhook_ids'] ?? [] );
+
+		$send_when_raw = is_string( $zapier['send_when'] ?? null ) ? trim( (string) $zapier['send_when'] ) : '';
+		$send_when     = in_array( $send_when_raw, self::ZAP_VALID_SEND_WHEN, true ) ? $send_when_raw : 'all_entries';
+
+		// Payload toggles default to true (admins generally want the
+		// full payload when they hook Zapier in). Only an explicit
+		// false flips them off.
+		$incl_readable = array_key_exists( 'include_fields_readable', $zapier ) ? (bool) $zapier['include_fields_readable'] : true;
+		$incl_raw      = array_key_exists( 'include_raw_fields',      $zapier ) ? (bool) $zapier['include_raw_fields']      : true;
+		$incl_source   = array_key_exists( 'include_source',          $zapier ) ? (bool) $zapier['include_source']          : true;
+
+		// Collapse-when-empty: disabled AND no webhooks selected AND
+		// default payload toggles carries no information.
+		if (
+			! $enabled
+			&& empty( $webhook_ids )
+			&& $incl_readable && $incl_raw && $incl_source
+			&& $send_when === 'all_entries'
+		) {
+			return [];
+		}
+
+		return [
+			'enabled'                 => $enabled,
+			'webhook_ids'             => $webhook_ids,
+			'send_when'               => $send_when,
+			'include_fields_readable' => $incl_readable,
+			'include_raw_fields'      => $incl_raw,
+			'include_source'          => $incl_source,
+		];
+	}
+
+	/**
+	 * Normalise the webhook_ids input into a deduped int array.
+	 *
+	 * Accepts:
+	 *   - array<int|numeric-string> (canonical UI shape)
+	 *
+	 * Per id:
+	 *   - cast to int, require ≥ 1
+	 *
+	 * The final list is deduped (a hook id can only be selected
+	 * once per form) and capped at ZAP_WEBHOOK_IDS_MAX so a tampered
+	 * payload can't ship a million-entry array.
+	 *
+	 * @param mixed $raw
+	 * @return array<int,int>
+	 */
+	public static function sanitize_zapier_webhook_ids( $raw ): array {
+		if ( ! is_array( $raw ) ) return [];
+		$out  = [];
+		$seen = [];
+		foreach ( $raw as $v ) {
+			if ( ! is_scalar( $v ) ) continue;
+			$id = (int) $v;
+			if ( $id <= 0 ) continue;
+			if ( isset( $seen[ $id ] ) ) continue;
+			$seen[ $id ] = true;
+			$out[] = $id;
+			if ( count( $out ) >= self::ZAP_WEBHOOK_IDS_MAX ) break;
 		}
 		return $out;
 	}

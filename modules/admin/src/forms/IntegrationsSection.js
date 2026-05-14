@@ -26,6 +26,7 @@ import HubSpotMappingPanel from './HubSpotMappingPanel';
 import GoogleFormsFormPanel from './GoogleFormsFormPanel';
 import WhatsAppFormPanel from './WhatsAppFormPanel';
 import MailchimpFormPanel from './MailchimpFormPanel';
+import ZapierFormPanel from './ZapierFormPanel';
 
 const PROVIDERS = [
 	{
@@ -47,6 +48,11 @@ const PROVIDERS = [
 		id:    'mailchimp',
 		label: 'Mailchimp',
 		icon:  'M',
+	},
+	{
+		id:    'zapier',
+		label: 'Zapier',
+		icon:  'Z',
 	},
 ];
 
@@ -93,6 +99,16 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			tags:            [],
 			merge_map:       {},
 		};
+	const zapier = ( integrations.zapier && typeof integrations.zapier === 'object' )
+		? integrations.zapier
+		: {
+			enabled:                 false,
+			webhook_ids:             [],
+			send_when:               'all_entries',
+			include_fields_readable: true,
+			include_raw_fields:      true,
+			include_source:          true,
+		};
 
 	const setHubspot = ( next ) => {
 		onChange( {
@@ -127,6 +143,15 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			integrations: {
 				...integrations,
 				mailchimp: { ...mailchimp, ...next },
+			},
+		} );
+	};
+	const setZapier = ( next ) => {
+		onChange( {
+			...( settings || {} ),
+			integrations: {
+				...integrations,
+				zapier: { ...zapier, ...next },
 			},
 		} );
 	};
@@ -190,6 +215,13 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 						mailchimp={ mailchimp }
 						onChange={ setMailchimp }
 						fields={ fields }
+						capUnlocked={ capUnlocked }
+					/>
+				) }
+				{ active.id === 'zapier' && (
+					<ZapierFormPanel
+						zapier={ zapier }
+						onChange={ setZapier }
 						capUnlocked={ capUnlocked }
 					/>
 				) }
