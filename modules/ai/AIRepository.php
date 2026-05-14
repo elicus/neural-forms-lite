@@ -111,6 +111,10 @@ class AIRepository {
 			[ '%d' ]
 		);
 
+		if ( $updated !== false ) {
+			self::fire_analysis_completed( $entry_id, $result );
+		}
+
 		return $updated !== false;
 	}
 
@@ -141,7 +145,41 @@ class AIRepository {
 			[ '%d' ]
 		);
 
+		if ( $updated !== false ) {
+			self::fire_analysis_completed( $entry_id, $result );
+		}
+
 		return $updated !== false;
+	}
+
+	/**
+	 * Fire the `neural_forms_entry_analysis_completed` action so
+	 * downstream consumers (WhatsApp dispatcher conditional triggers,
+	 * future integrations) can react to a finished AI pass.
+	 *
+	 * Looks up form_id from the entry row so callers don't have to
+	 * thread it through every save call site. Silently no-ops if the
+	 * entry can't be resolved (already a logical impossibility post-
+	 * update, but defensive).
+	 *
+	 * Args fired:
+	 *   - int   $entry_id
+	 *   - int   $form_id
+	 *   - array $analysis  The raw analysis result (summary, category,
+	 *                       priority, is_spam, spam_confidence, etc.).
+	 *
+	 * Stable contract — renaming or changing the arg order is a
+	 * breaking change for Pro's WhatsAppDispatcher::on_entry_analysis_completed.
+	 */
+	private static function fire_analysis_completed( int $entry_id, array $result ): void {
+		if ( $entry_id <= 0 ) return;
+		if ( ! class_exists( '\\NeuralForms\\Storage\\EntryRepository' ) ) return;
+		$entry = \NeuralForms\Storage\EntryRepository::get( $entry_id );
+		if ( ! is_array( $entry ) ) return;
+		$form_id = (int) ( $entry['form_id'] ?? 0 );
+		if ( $form_id <= 0 ) return;
+
+		do_action( 'neural_forms_entry_analysis_completed', $entry_id, $form_id, $result );
 	}
 
 	/**

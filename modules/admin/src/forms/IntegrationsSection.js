@@ -182,6 +182,7 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 						whatsapp={ whatsapp }
 						onChange={ setWhatsapp }
 						capUnlocked={ capUnlocked }
+						formSettings={ settings }
 					/>
 				) }
 				{ active.id === 'mailchimp' && (

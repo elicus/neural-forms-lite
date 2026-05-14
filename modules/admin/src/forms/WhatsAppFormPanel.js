@@ -101,14 +101,14 @@ function parseRecipientsText( text ) {
 }
 
 const SEND_WHEN_OPTIONS = [
-	{ value: 'all_entries',    label: 'All entries',                  comingSoon: false },
-	{ value: 'high_priority',  label: 'High priority — Coming soon',  comingSoon: true  },
-	{ value: 'needs_reply',    label: 'Needs reply — Coming soon',    comingSoon: true  },
-	{ value: 'spam_detected',  label: 'Spam detected — Coming soon',  comingSoon: true  },
-	{ value: 'not_spam',       label: 'Not spam — Coming soon',       comingSoon: true  },
+	{ value: 'all_entries',   label: 'All entries',   needsAi: false },
+	{ value: 'high_priority', label: 'High priority', needsAi: true  },
+	{ value: 'needs_reply',   label: 'Needs reply',   needsAi: true  },
+	{ value: 'spam_detected', label: 'Spam detected', needsAi: true  },
+	{ value: 'not_spam',      label: 'Not spam',      needsAi: false },
 ];
 
-export default function WhatsAppFormPanel( { whatsapp, onChange, capUnlocked } ) {
+export default function WhatsAppFormPanel( { whatsapp, onChange, capUnlocked, formSettings } ) {
 	const [ statusLoading, setStatusLoading ] = useState( true );
 	const [ status, setStatus ]               = useState( null );
 	const [ statusError, setStatusError ]     = useState( '' );
@@ -237,6 +237,12 @@ export default function WhatsAppFormPanel( { whatsapp, onChange, capUnlocked } )
 	// ── State C: WhatsApp configured globally → full settings UI ──────
 	const enabled = !! whatsapp?.enabled;
 
+	// `send_when` derived state used by the dropdown + inline warning.
+	const currentSendWhen    = String( whatsapp?.send_when || 'all_entries' );
+	const currentSendOption  = SEND_WHEN_OPTIONS.find( ( o ) => o.value === currentSendWhen );
+	const aiDependentSelected = !! currentSendOption?.needsAi;
+	const autoAiEnabled      = String( formSettings?.process_with_ai?.mode || '' ) === 'every_entry';
+
 	return (
 		<div className="nf-form-settings__hs-panel">
 			<div className="nf-form-settings__hs-header">
@@ -299,17 +305,22 @@ export default function WhatsAppFormPanel( { whatsapp, onChange, capUnlocked } )
 					<select
 						id="nf-wa-send-when"
 						className="nf-form-settings__hs-select"
-						value={ String( whatsapp?.send_when || 'all_entries' ) }
+						value={ currentSendWhen }
 						onChange={ ( e ) => setWhatsappPatch( { send_when: e.target.value } ) }
 						disabled={ ! enabled }
 					>
 						{ SEND_WHEN_OPTIONS.map( ( opt ) => (
-							<option key={ opt.value } value={ opt.value } disabled={ opt.comingSoon }>{ opt.label }</option>
+							<option key={ opt.value } value={ opt.value }>{ opt.label }</option>
 						) ) }
 					</select>
 					<p className="nf-form-settings__hs-cell-sub">
-						{ __( 'For v1 only "All entries" triggers deliveries. The AI-priority options activate once the analyzed-entry hook ships.', 'neural-forms-lite' ) }
+						{ __( 'Choose which entries should trigger WhatsApp notifications. AI-based conditions (high priority, needs reply, spam detected) require entry analysis — if analysis is not available for this form, those conditions will not fire.', 'neural-forms-lite' ) }
 					</p>
+					{ aiDependentSelected && ! autoAiEnabled && (
+						<p className="nf-form-settings__hs-cell-sub nf-form-settings__hs-required">
+							{ __( 'Enable "Process every entry" under Process with AI for this form so this condition can be evaluated.', 'neural-forms-lite' ) }
+						</p>
+					) }
 				</div>
 
 				<div className="nf-form-settings__hs-field">
