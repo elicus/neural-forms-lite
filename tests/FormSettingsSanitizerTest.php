@@ -893,6 +893,268 @@ nf_test( 'whatsapp: malformed payload (string / null / int) drops gracefully', f
 	}
 } );
 
+// ────────── Mailchimp branch ──────────
+
+nf_test( 'mailchimp: clean config round-trips with all eight whitelisted keys', function () {
+	$in = [ 'integrations' => [ 'mailchimp' => [
+		'enabled'         => true,
+		'audience_id'     => 'abc123XYZ',
+		'audience_name'   => 'Newsletter Audience',
+		'email_field'     => 'email_abc123',
+		'status'          => 'pending',
+		'update_existing' => false,
+		'tags'            => [ 'Website Lead', 'NF' ],
+		'merge_map'       => [
+			'FNAME' => 'first_name_field',
+			'LNAME' => 'last_name_field',
+			'PHONE' => 'phone_field',
+		],
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	$mc  = $out['integrations']['mailchimp'];
+	nf_assert_same( true,                  $mc['enabled'],         'enabled' );
+	nf_assert_same( 'abc123XYZ',           $mc['audience_id'],     'audience_id' );
+	nf_assert_same( 'Newsletter Audience', $mc['audience_name'],   'audience_name' );
+	nf_assert_same( 'email_abc123',        $mc['email_field'],     'email_field' );
+	nf_assert_same( 'pending',             $mc['status'],          'status' );
+	nf_assert_same( false,                 $mc['update_existing'], 'update_existing' );
+	nf_assert_same( [ 'Website Lead', 'NF' ], $mc['tags'],         'tags' );
+	nf_assert_same( 3, count( $mc['merge_map'] ), 'merge_map preserved' );
+	nf_assert_same( 'first_name_field', $mc['merge_map']['FNAME'], 'FNAME mapped' );
+} );
+
+nf_test( 'mailchimp: api_key / token / secret / server_prefix STRIPPED', function () {
+	$in = [ 'integrations' => [ 'mailchimp' => [
+		'enabled'       => true,
+		'audience_id'   => 'abc123',
+		'email_field'   => 'email_f1',
+		'api_key'       => 'xyz-us21',
+		'key'           => 'leak',
+		'token'         => 'leak',
+		'secret'        => 'leak',
+		'client_secret' => 'leak',
+		'server_prefix' => 'us21',
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	$mc  = $out['integrations']['mailchimp'];
+	foreach ( [ 'api_key', 'key', 'token', 'secret', 'client_secret', 'server_prefix' ] as $forbidden ) {
+		nf_assert_true( ! array_key_exists( $forbidden, $mc ), $forbidden . ' stripped' );
+	}
+} );
+
+nf_test( 'mailchimp: telemetry keys (last_sent_at / last_error / last_status_code) STRIPPED', function () {
+	$in = [ 'integrations' => [ 'mailchimp' => [
+		'enabled'          => true,
+		'audience_id'      => 'abc123',
+		'email_field'      => 'email_f1',
+		'last_sent_at'     => '2026-01-01 00:00:00',
+		'last_status_code' => 200,
+		'last_error'       => 'should be wiped',
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	$mc  = $out['integrations']['mailchimp'];
+	foreach ( [ 'last_sent_at', 'last_status_code', 'last_error' ] as $tk ) {
+		nf_assert_true( ! array_key_exists( $tk, $mc ), $tk . ' stripped' );
+	}
+} );
+
+nf_test( 'mailchimp: status invalid → "subscribed" fallback', function () {
+	$in = [ 'integrations' => [ 'mailchimp' => [
+		'enabled'     => true,
+		'audience_id' => 'abc123',
+		'email_field' => 'email_f1',
+		'status'      => 'unsubscribed',  // not allowed
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	nf_assert_same( 'subscribed', $out['integrations']['mailchimp']['status'], 'fallback applied' );
+} );
+
+nf_test( 'mailchimp: status accepts subscribed and pending case-insensitively', function () {
+	foreach ( [ 'SUBSCRIBED' => 'subscribed', 'Pending' => 'pending', 'pending' => 'pending' ] as $in_status => $expected ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+			'enabled'     => true,
+			'audience_id' => 'abc123',
+			'email_field' => 'email_f1',
+			'status'      => $in_status,
+		] ] ] );
+		nf_assert_same( $expected, $out['integrations']['mailchimp']['status'], "case-folded {$in_status}" );
+	}
+} );
+
+nf_test( 'mailchimp: audience_id rejected when not alphanumeric (path-escape etc.)', function () {
+	foreach ( [ '../etc', 'has space', 'aud!', str_repeat( 'a', 33 ), '' ] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+			'enabled'     => true,
+			'audience_id' => $bad,
+			'email_field' => 'email_f1',
+		] ] ] );
+		// Either the whole row collapses (when nothing else is set) or
+		// audience_id sanitises to empty — never the raw value.
+		if ( array_key_exists( 'mailchimp', $out['integrations'] ?? [] ) ) {
+			nf_assert_same( '', $out['integrations']['mailchimp']['audience_id'], 'unsafe audience_id rejected: ' . var_export( $bad, true ) );
+		}
+	}
+} );
+
+nf_test( 'mailchimp: email_field accepts canonical NF id, rejects invalid chars', function () {
+	$ok  = FormSettingsSanitizer::sanitize_mailchimp_field_id( 'email_abc123' );
+	nf_assert_same( 'email_abc123', $ok, 'canonical id accepted' );
+	foreach ( [ 'a b', 'foo!', '../bar', '', str_repeat( 'x', 130 ) ] as $bad ) {
+		nf_assert_same( '', FormSettingsSanitizer::sanitize_mailchimp_field_id( $bad ), 'rejected: ' . var_export( $bad, true ) );
+	}
+} );
+
+nf_test( 'mailchimp: audience_name trimmed + length-capped at 200', function () {
+	$long = str_repeat( 'X', 500 );
+	$in   = [ 'integrations' => [ 'mailchimp' => [
+		'enabled'       => true,
+		'audience_id'   => 'abc123',
+		'email_field'   => 'email_f1',
+		'audience_name' => $long,
+	] ] ];
+	$name = FormSettingsSanitizer::sanitize( $in )['integrations']['mailchimp']['audience_name'];
+	$len  = function_exists( 'mb_strlen' ) ? mb_strlen( $name ) : strlen( $name );
+	nf_assert_same( 200, $len, 'name capped at 200' );
+} );
+
+nf_test( 'mailchimp: tags sanitized + de-duped (case-insensitive) + capped at 20', function () {
+	$big = [];
+	for ( $i = 0; $i < 30; $i++ ) $big[] = 'Tag' . $i;
+	$big[] = 'Lead'; $big[] = 'lead'; $big[] = 'LEAD';      // dedupes
+	$big[] = "Bad\x00chars\x01here";                          // control chars stripped
+	$big[] = str_repeat( 'Z', 200 );                          // length-capped to 100
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+		'enabled'     => true,
+		'audience_id' => 'abc123',
+		'email_field' => 'email_f1',
+		'tags'        => $big,
+	] ] ] );
+	$tags = $out['integrations']['mailchimp']['tags'];
+	nf_assert_same( 20, count( $tags ), 'capped at 20' );
+	$lc = array_map( 'strtolower', $tags );
+	nf_assert_same( count( $lc ), count( array_unique( $lc ) ), 'no case-insensitive duplicates' );
+} );
+
+nf_test( 'mailchimp: merge_map drops invalid keys + sanitises values', function () {
+	$in = [ 'integrations' => [ 'mailchimp' => [
+		'enabled'     => true,
+		'audience_id' => 'abc123',
+		'email_field' => 'email_f1',
+		'merge_map'   => [
+			'FNAME'   => 'first_name_field',
+			'lname'   => 'lower_case_key',   // case-folded to uppercase → accepted
+			'BAD-KEY' => 'should_be_dropped', // hyphen not allowed in tag
+			''        => 'empty_key_skipped',
+			'EMAIL'   => 'reserved_dropped',  // EMAIL handled by email_field
+			'TOOLONGTAGNAME' => 'over_10_chars',
+			'PHONE'   => 'phone field',       // space rejects value → key dropped
+			'COMPANY' => 'company_field',
+		],
+	] ] ];
+	$out = FormSettingsSanitizer::sanitize( $in );
+	$map = $out['integrations']['mailchimp']['merge_map'];
+	nf_assert_same( 3, count( $map ), 'only valid pairs survive' );
+	nf_assert_same( 'first_name_field', $map['FNAME'],   'FNAME mapped' );
+	nf_assert_same( 'lower_case_key',   $map['LNAME'],   'LNAME from case-folded "lname"' );
+	nf_assert_same( 'company_field',    $map['COMPANY'], 'COMPANY mapped' );
+	nf_assert_true( ! array_key_exists( 'BAD-KEY', $map ),       'invalid tag dropped' );
+	nf_assert_true( ! array_key_exists( 'EMAIL',   $map ),       'reserved EMAIL dropped' );
+	nf_assert_true( ! array_key_exists( 'PHONE',   $map ),       'invalid value dropped its pair' );
+	nf_assert_true( ! array_key_exists( 'TOOLONGTAGNAME', $map ), 'tag > 10 chars dropped' );
+} );
+
+nf_test( 'mailchimp: update_existing defaults to true when key absent', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+		'enabled'     => true,
+		'audience_id' => 'abc123',
+		'email_field' => 'email_f1',
+	] ] ] );
+	nf_assert_same( true, $out['integrations']['mailchimp']['update_existing'], 'default true' );
+} );
+
+nf_test( 'mailchimp: enabled coerces truthy / falsy / strings to bool', function () {
+	foreach ( [
+		[ 'in' => true,    'out' => true  ],
+		[ 'in' => 1,       'out' => true  ],
+		[ 'in' => '1',     'out' => true  ],
+		[ 'in' => 'yes',   'out' => true  ],
+		[ 'in' => false,   'out' => false ],
+		[ 'in' => 0,       'out' => false ],
+		[ 'in' => '',      'out' => false ],
+		[ 'in' => null,    'out' => false ],
+	] as $case ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+			'enabled'     => $case['in'],
+			'audience_id' => 'abc123',
+			'email_field' => 'email_f1',
+		] ] ] );
+		nf_assert_same( $case['out'], $out['integrations']['mailchimp']['enabled'], 'enabled coercion ' . var_export( $case['in'], true ) );
+	}
+} );
+
+nf_test( 'mailchimp: collapses empty config (disabled + no audience + no mapping) → integrations dropped', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+		'enabled' => false,
+	] ] ] );
+	nf_assert_true( ! array_key_exists( 'integrations', $out ), 'empty mailchimp dropped' );
+} );
+
+nf_test( 'mailchimp: disabled BUT with mapping → preserved (admins can pre-configure)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+		'enabled'     => false,
+		'audience_id' => 'abc123',
+		'email_field' => 'email_f1',
+		'merge_map'   => [ 'FNAME' => 'first_name_field' ],
+	] ] ] );
+	nf_assert_true( array_key_exists( 'mailchimp', $out['integrations'] ), 'disabled-with-mapping kept' );
+	nf_assert_same( 'abc123',           $out['integrations']['mailchimp']['audience_id'], 'audience_id preserved' );
+	nf_assert_same( 1, count( $out['integrations']['mailchimp']['merge_map'] ), 'mapping preserved' );
+} );
+
+nf_test( 'mailchimp: unknown keys silently dropped (FORBIDDEN + arbitrary)', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+		'enabled'           => true,
+		'audience_id'       => 'abc123',
+		'email_field'       => 'email_f1',
+		'weird_extra_field' => 'tampered',
+		'__proto__'         => 'js-thing',
+	] ] ] );
+	$mc = $out['integrations']['mailchimp'];
+	nf_assert_true( ! array_key_exists( 'weird_extra_field', $mc ), 'unknown key stripped' );
+	nf_assert_true( ! array_key_exists( '__proto__',         $mc ), '__proto__ stripped' );
+} );
+
+nf_test( 'mailchimp: tags / merge_map non-array input → empty', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => [
+		'enabled'     => true,
+		'audience_id' => 'abc123',
+		'email_field' => 'email_f1',
+		'tags'        => 'not-an-array',
+		'merge_map'   => 'also-not-an-array',
+	] ] ] );
+	nf_assert_same( [], $out['integrations']['mailchimp']['tags'],      'string tags → []' );
+	nf_assert_same( [], $out['integrations']['mailchimp']['merge_map'], 'string merge_map → []' );
+} );
+
+nf_test( 'mailchimp: malformed top-level (string / null / int) drops gracefully', function () {
+	foreach ( [ 'evil', null, 42, true ] as $bad ) {
+		$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [ 'mailchimp' => $bad ] ] );
+		nf_assert_true( ! array_key_exists( 'integrations', $out ), 'malformed mailchimp drops: ' . var_export( $bad, true ) );
+	}
+} );
+
+nf_test( 'mailchimp: coexists with hubspot / whatsapp / google_forms without crosstalk', function () {
+	$out = FormSettingsSanitizer::sanitize( [ 'integrations' => [
+		'hubspot'      => [ 'enabled' => true, 'hubspot_form_id' => 'guid', 'field_map' => [ 'email' => 'email_f1' ] ],
+		'google_forms' => [ 'enabled' => true, 'mode' => 'imported_source', 'google_form_id' => 'GFID-abc' ],
+		'whatsapp'     => [ 'enabled' => true, 'recipients' => [ '919999999999' ], 'template_name' => 'tpl' ],
+		'mailchimp'    => [ 'enabled' => true, 'audience_id' => 'abc123', 'email_field' => 'email_f1' ],
+	] ] );
+	foreach ( [ 'hubspot', 'google_forms', 'whatsapp', 'mailchimp' ] as $p ) {
+		nf_assert_true( array_key_exists( $p, $out['integrations'] ), $p . ' present' );
+	}
+} );
+
 foreach ( $cases as $case ) {
 	try { ( $case['fn'] )(); echo "PASS  " . $case['name'] . PHP_EOL; $passed++; }
 	catch ( \Throwable $e ) { echo "FAIL  " . $case['name'] . ' — ' . $e->getMessage() . PHP_EOL; $failed++; }

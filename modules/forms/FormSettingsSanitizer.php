@@ -153,6 +153,36 @@ final class FormSettingsSanitizer {
 		'last_sent_at', 'last_error', 'last_status_code',
 	];
 
+	// ── Mailchimp per-form constants ───────────────────────────────
+
+	const MC_AUDIENCE_ID_PATTERN   = '/^[A-Za-z0-9]{1,32}$/';
+	const MC_FIELD_ID_PATTERN      = '/^[A-Za-z0-9_-]{1,128}$/';
+	const MC_MERGE_TAG_PATTERN     = '/^[A-Z0-9_]{1,10}$/';
+	const MC_AUDIENCE_NAME_MAX     = 200;
+	const MC_TAG_MAX_LENGTH        = 100;
+	const MC_TAGS_MAX_COUNT        = 20;
+
+	const MC_VALID_STATUS = [ 'subscribed', 'pending' ];
+
+	/**
+	 * Global-connection / secret keys that MUST NEVER appear in
+	 * per-form Mailchimp settings. The API key + server prefix live
+	 * globally in neural_forms_pro_mailchimp_settings; tampered client
+	 * payloads that try to bleed any of these into a form row are
+	 * stripped.
+	 */
+	const MC_FORBIDDEN_KEYS = [
+		'api_key', 'key', 'token', 'secret', 'client_secret', 'server_prefix',
+	];
+
+	/**
+	 * Server-side telemetry — written by C4's dispatcher helper,
+	 * never by clients.
+	 */
+	const MC_TELEMETRY_KEYS = [
+		'last_sent_at', 'last_error', 'last_status_code',
+	];
+
 	/**
 	 * Keys that MUST NEVER survive a client save. Belt-and-braces
 	 * against a copy-paste mistake or an attacker probing.
@@ -230,8 +260,15 @@ final class FormSettingsSanitizer {
 			}
 		}
 
-		// Future providers (Zapier per-form delivery / Mailchimp /
-		// Google Forms response sync) would slot in here.
+		if ( array_key_exists( 'mailchimp', $integrations ) ) {
+			$mailchimp = self::sanitize_mailchimp_settings( $integrations['mailchimp'] );
+			if ( ! empty( $mailchimp ) ) {
+				$out['mailchimp'] = $mailchimp;
+			}
+		}
+
+		// Future providers (Zapier per-form delivery / Google Forms
+		// response sync) would slot in here.
 
 		return $out;
 	}
@@ -376,6 +413,186 @@ final class FormSettingsSanitizer {
 		if ( $raw === '' ) return $default;
 		if ( ! preg_match( self::WA_TEMPLATE_LANG_PATTERN, $raw ) ) return $default;
 		return $raw;
+	}
+
+	/**
+	 * Sanitize a single Mailchimp per-form config.
+	 *
+	 * Allowed keys (whitelist; anything else stripped):
+	 *   enabled         bool, default false
+	 *   audience_id     [A-Za-z0-9]{1,32} — Mailchimp list id slug
+	 *   audience_name   sanitized text, ≤ 200 chars (display label
+	 *                    cached client-side from the audiences list)
+	 *   email_field     [A-Za-z0-9_-]{1,128} — Neural Forms field id
+	 *                    of the email field that drives the subscriber
+	 *                    address
+	 *   status          'subscribed' | 'pending' (per-form override
+	 *                    of the global default)
+	 *   update_existing bool, default true (PUT semantics with
+	 *                    status_if_new — see C4 dispatcher)
+	 *   tags            array<string>, ≤ 20 entries, dedupe + control-
+	 *                    char strip + 100-char cap per tag
+	 *   merge_map       object<MAILCHIMP_MERGE_TAG, NF_FIELD_ID>
+	 *                    keys match [A-Z0-9_]{1,10}; values match the
+	 *                    NF field id pattern. EMAIL is sanitized OUT
+	 *                    of merge_map (the dedicated email_field key
+	 *                    drives the email_address) — see C4 docs.
+	 *
+	 * Stripped on every save:
+	 *   - global / secret keys (api_key / key / token / secret /
+	 *     client_secret / server_prefix)
+	 *   - server-side telemetry (last_sent_at / last_error /
+	 *     last_status_code)
+	 *   - any other unknown key
+	 *
+	 * Returns [] when the resulting config carries no useful
+	 * information so the parent drops the key (no empty
+	 * `{enabled:false}` rows). A disabled-but-with-mapping config IS
+	 * preserved so admins can pre-configure mapping then flip the
+	 * switch on later.
+	 *
+	 * @param mixed $mailchimp
+	 * @return array<string,mixed>
+	 */
+	public static function sanitize_mailchimp_settings( $mailchimp ): array {
+		if ( ! is_array( $mailchimp ) ) return [];
+
+		$enabled       = array_key_exists( 'enabled', $mailchimp ) ? (bool) $mailchimp['enabled'] : false;
+		$audience_id   = self::sanitize_mailchimp_audience_id(   $mailchimp['audience_id']   ?? '' );
+		$audience_name = self::sanitize_mailchimp_audience_name( $mailchimp['audience_name'] ?? '' );
+		$email_field   = self::sanitize_mailchimp_field_id(      $mailchimp['email_field']   ?? '' );
+
+		$status_raw = is_string( $mailchimp['status'] ?? null ) ? strtolower( trim( (string) $mailchimp['status'] ) ) : '';
+		$status     = in_array( $status_raw, self::MC_VALID_STATUS, true ) ? $status_raw : 'subscribed';
+
+		// update_existing defaults to true (most admins want
+		// "add-or-update" semantics; the false case is a niche
+		// "create new subscribers only" workflow).
+		$update_existing = array_key_exists( 'update_existing', $mailchimp )
+			? (bool) $mailchimp['update_existing']
+			: true;
+
+		$tags      = self::sanitize_mailchimp_tags(      $mailchimp['tags']      ?? [] );
+		$merge_map = self::sanitize_mailchimp_merge_map( $mailchimp['merge_map'] ?? [] );
+
+		// Collapse-when-empty: disabled AND no audience_id AND no
+		// email_field AND no mapping carries no information.
+		if (
+			! $enabled
+			&& $audience_id === ''
+			&& $email_field === ''
+			&& empty( $tags )
+			&& empty( $merge_map )
+		) {
+			return [];
+		}
+
+		return [
+			'enabled'         => $enabled,
+			'audience_id'     => $audience_id,
+			'audience_name'   => $audience_name,
+			'email_field'     => $email_field,
+			'status'          => $status,
+			'update_existing' => $update_existing,
+			'tags'            => $tags,
+			'merge_map'       => $merge_map,
+		];
+	}
+
+	public static function sanitize_mailchimp_audience_id( $raw ): string {
+		if ( ! is_string( $raw ) ) return '';
+		$raw = trim( $raw );
+		if ( $raw === '' ) return '';
+		if ( ! preg_match( self::MC_AUDIENCE_ID_PATTERN, $raw ) ) return '';
+		return $raw;
+	}
+
+	public static function sanitize_mailchimp_audience_name( $raw ): string {
+		if ( ! is_string( $raw ) ) return '';
+		// Strip control chars; rely on sanitize_text_field for the rest.
+		$raw = preg_replace( '/[\x00-\x1F\x7F]/u', '', $raw );
+		$raw = function_exists( 'sanitize_text_field' ) ? sanitize_text_field( $raw ) : trim( (string) $raw );
+		if ( $raw === '' ) return '';
+		if ( function_exists( 'mb_strlen' ) && mb_strlen( $raw ) > self::MC_AUDIENCE_NAME_MAX ) {
+			$raw = function_exists( 'mb_substr' ) ? mb_substr( $raw, 0, self::MC_AUDIENCE_NAME_MAX ) : substr( $raw, 0, self::MC_AUDIENCE_NAME_MAX );
+		} elseif ( strlen( $raw ) > self::MC_AUDIENCE_NAME_MAX ) {
+			$raw = substr( $raw, 0, self::MC_AUDIENCE_NAME_MAX );
+		}
+		return $raw;
+	}
+
+	/**
+	 * Generic Neural Forms field-id sanitizer used by Mailchimp's
+	 * email_field + merge_map values. Field ids in the canonical
+	 * schema look like `email_abc123`, `tx_q1`, etc. — alphanumeric
+	 * + underscores + hyphens, length-capped. Public so any future
+	 * provider can reuse the same shape.
+	 */
+	public static function sanitize_mailchimp_field_id( $raw ): string {
+		if ( ! is_string( $raw ) ) return '';
+		$raw = trim( $raw );
+		if ( $raw === '' ) return '';
+		if ( ! preg_match( self::MC_FIELD_ID_PATTERN, $raw ) ) return '';
+		return $raw;
+	}
+
+	/**
+	 * Mailchimp tags: array of short strings. Trim, strip control
+	 * chars, length-cap each, dedupe case-insensitively (Mailchimp
+	 * itself dedupes that way), cap the array at MC_TAGS_MAX_COUNT.
+	 *
+	 * @param mixed $raw
+	 * @return array<int,string>
+	 */
+	public static function sanitize_mailchimp_tags( $raw ): array {
+		if ( ! is_array( $raw ) ) return [];
+		$out  = [];
+		$seen = [];
+		foreach ( $raw as $tag ) {
+			if ( ! is_string( $tag ) ) continue;
+			$tag = trim( preg_replace( '/[\x00-\x1F\x7F]/u', '', $tag ) ?? '' );
+			if ( $tag === '' ) continue;
+			if ( strlen( $tag ) > self::MC_TAG_MAX_LENGTH ) {
+				$tag = substr( $tag, 0, self::MC_TAG_MAX_LENGTH );
+			}
+			$key = strtolower( $tag );
+			if ( isset( $seen[ $key ] ) ) continue;
+			$seen[ $key ] = true;
+			$out[] = $tag;
+			if ( count( $out ) >= self::MC_TAGS_MAX_COUNT ) break;
+		}
+		return $out;
+	}
+
+	/**
+	 * Mailchimp merge_map: object of MERGE_TAG → field_id.
+	 *
+	 * Per Mailchimp's API conventions, merge tags are uppercase
+	 * alphanumeric + underscore (FNAME, LNAME, PHONE, etc.), capped
+	 * at 10 chars. We reject anything else as the key. Values are
+	 * Neural Forms field ids and must match MC_FIELD_ID_PATTERN.
+	 *
+	 * The reserved `EMAIL` tag is dropped — the email address is
+	 * driven by the dedicated `email_field` key, not by merge_map.
+	 * Including EMAIL in merge_map would let an admin point two
+	 * fields at the same surface and produce confusing semantics.
+	 *
+	 * @param mixed $raw
+	 * @return array<string,string>
+	 */
+	public static function sanitize_mailchimp_merge_map( $raw ): array {
+		if ( ! is_array( $raw ) ) return [];
+		$out = [];
+		foreach ( $raw as $k => $v ) {
+			if ( ! is_string( $k ) ) continue;
+			$key = strtoupper( trim( $k ) );
+			if ( $key === '' || $key === 'EMAIL' ) continue;
+			if ( ! preg_match( self::MC_MERGE_TAG_PATTERN, $key ) ) continue;
+			$field_id = self::sanitize_mailchimp_field_id( is_scalar( $v ) ? (string) $v : '' );
+			if ( $field_id === '' ) continue;
+			$out[ $key ] = $field_id;
+		}
+		return $out;
 	}
 
 	/**

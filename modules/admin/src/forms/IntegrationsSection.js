@@ -2,21 +2,22 @@
  * Builder Settings → Integrations section.
  *
  * Wraps the per-provider mapping panels behind a sub-tablist.
- * Today only HubSpot is wired; the tab structure is in place so
- * future providers (Zapier per-form delivery, Mailchimp, Google
- * Forms response sync, …) can land without restructuring.
+ * Currently four providers are wired: HubSpot, Google Forms,
+ * WhatsApp, Mailchimp. Future providers (Zapier per-form delivery,
+ * Google Forms response sync, …) can slot in without restructuring.
  *
  * State plumbing:
  *   - `settings`    Top-level form.settings blob (read).
  *   - `onChange`    Mutator that threads back to the builder's
  *                   normal save flow. We never POST from here.
  *   - `fields`      The form's flat schema (form.form_schema.fields).
- *                   Required so HubSpot's mapping dropdown can
- *                   populate with the form's own input fields.
+ *                   Each provider panel that needs to populate a
+ *                   mapping dropdown reads from this.
  *
- * The HubSpot panel reads + writes only
- * settings.integrations.hubspot. Other integrations would mount
- * sibling subtabs and target settings.integrations.<provider>.
+ * Each provider panel reads + writes only its own slice of
+ * settings.integrations.<provider>. The FormSettingsSanitizer (Lite)
+ * whitelists per-provider shapes and strips global / secret /
+ * telemetry keys on every save.
  */
 
 import { useState } from '@wordpress/element';
@@ -24,6 +25,7 @@ import { __ } from '@wordpress/i18n';
 import HubSpotMappingPanel from './HubSpotMappingPanel';
 import GoogleFormsFormPanel from './GoogleFormsFormPanel';
 import WhatsAppFormPanel from './WhatsAppFormPanel';
+import MailchimpFormPanel from './MailchimpFormPanel';
 
 const PROVIDERS = [
 	{
@@ -40,6 +42,11 @@ const PROVIDERS = [
 		id:    'whatsapp',
 		label: 'WhatsApp',
 		icon:  'W',
+	},
+	{
+		id:    'mailchimp',
+		label: 'Mailchimp',
+		icon:  'M',
 	},
 ];
 
@@ -74,6 +81,18 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			send_when:         'all_entries',
 			include_summary:   true,
 		};
+	const mailchimp = ( integrations.mailchimp && typeof integrations.mailchimp === 'object' )
+		? integrations.mailchimp
+		: {
+			enabled:         false,
+			audience_id:     '',
+			audience_name:   '',
+			email_field:     '',
+			status:          'subscribed',
+			update_existing: true,
+			tags:            [],
+			merge_map:       {},
+		};
 
 	const setHubspot = ( next ) => {
 		onChange( {
@@ -99,6 +118,15 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 			integrations: {
 				...integrations,
 				whatsapp: { ...whatsapp, ...next },
+			},
+		} );
+	};
+	const setMailchimp = ( next ) => {
+		onChange( {
+			...( settings || {} ),
+			integrations: {
+				...integrations,
+				mailchimp: { ...mailchimp, ...next },
 			},
 		} );
 	};
@@ -153,6 +181,14 @@ export default function IntegrationsSection( { settings, onChange, fields } ) {
 					<WhatsAppFormPanel
 						whatsapp={ whatsapp }
 						onChange={ setWhatsapp }
+						capUnlocked={ capUnlocked }
+					/>
+				) }
+				{ active.id === 'mailchimp' && (
+					<MailchimpFormPanel
+						mailchimp={ mailchimp }
+						onChange={ setMailchimp }
+						fields={ fields }
 						capUnlocked={ capUnlocked }
 					/>
 				) }
