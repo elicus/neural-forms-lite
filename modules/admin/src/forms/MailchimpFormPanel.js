@@ -42,6 +42,8 @@ import api from '../api';
 import {
 	compatibleNfFieldsForMailchimp,
 	autoMapMailchimpMergeFields,
+	autoMapMailchimpEmailField,
+	isFullNameField,
 } from './mailchimpAutoMap';
 
 function integrationsPageHref() {
@@ -258,9 +260,27 @@ export default function MailchimpFormPanel( { mailchimp, onChange, fields, capUn
 	};
 
 	const handleAutoMap = () => {
-		const proposed = autoMapMailchimpMergeFields( mergeFields, nfFields, mergeMap );
-		setMailchimpPatch( { merge_map: proposed } );
+		// Auto-map covers BOTH the dedicated email_field surface and
+		// the merge-tag mapping table. We never overwrite a field the
+		// admin has already chosen — both branches preserve existing
+		// values.
+		const patch = {
+			merge_map: autoMapMailchimpMergeFields( mergeFields, nfFields, mergeMap ),
+		};
+		if ( emailFieldId === '' ) {
+			const proposedEmail = autoMapMailchimpEmailField( nfFields );
+			if ( proposedEmail ) patch.email_field = proposedEmail;
+		}
+		setMailchimpPatch( patch );
 	};
+
+	// Inline hint: did the auto-map (or a manual choice) end up
+	// pointing FNAME at a "Full Name"-shaped field? In that case the
+	// Mailchimp First Name column receives the whole submitted name,
+	// which is acceptable in v1 but worth surfacing.
+	const fnameFieldId = String( mergeMap.FNAME || '' );
+	const fnameField   = fnameFieldId !== '' ? nfFields.find( ( f ) => f.id === fnameFieldId ) : null;
+	const fnameIsFullName = isFullNameField( fnameField );
 
 	return (
 		<div className="nf-form-settings__hs-panel">
@@ -326,10 +346,13 @@ export default function MailchimpFormPanel( { mailchimp, onChange, fields, capUn
 					</button>
 				</div>
 
-				{/* Email field picker */}
+				{/* Mailchimp Email Address — handled SEPARATELY from
+				    merge fields because Mailchimp treats email_address
+				    as the audience's primary key, not as a regular
+				    merge tag. The mapping table below skips EMAIL. */}
 				<div className="nf-form-settings__hs-field">
 					<label htmlFor="nf-mc-email-field" className="nf-form-settings__hs-label">
-						{ __( 'Email field', 'neural-forms-lite' ) }
+						{ __( 'Mailchimp Email Address', 'neural-forms-lite' ) }
 					</label>
 					<select
 						id="nf-mc-email-field"
@@ -345,6 +368,9 @@ export default function MailchimpFormPanel( { mailchimp, onChange, fields, capUn
 							</option>
 						) ) }
 					</select>
+					<p className="nf-form-settings__hs-cell-sub">
+						{ __( 'This maps to the subscriber\'s primary Email Address in Mailchimp. It is handled separately from merge fields.', 'neural-forms-lite' ) }
+					</p>
 					{ emailNfFields.length === 0 && (
 						<p className="nf-form-settings__hs-cell-sub">
 							{ __( 'Add an email field to this form to enable Mailchimp sync.', 'neural-forms-lite' ) }
@@ -419,6 +445,7 @@ export default function MailchimpFormPanel( { mailchimp, onChange, fields, capUn
 					onMappingChange={ handleMergeMappingChange }
 					onAutoMap={ handleAutoMap }
 					requiredMissing={ requiredMissing }
+					fnameIsFullName={ fnameIsFullName }
 				/>
 			</div>
 		</div>
@@ -435,6 +462,7 @@ function MailchimpMappingTable( {
 	onMappingChange,
 	onAutoMap,
 	requiredMissing,
+	fnameIsFullName,
 } ) {
 	if ( ! audienceId ) {
 		return (
@@ -467,6 +495,10 @@ function MailchimpMappingTable( {
 
 	return (
 		<div className="nf-form-settings__hs-mapping">
+			<p className="nf-form-settings__hs-cell-sub" style={ { marginTop: '8px' } }>
+				{ __( 'Email Address is mapped above. The table below maps Mailchimp merge fields like First Name, Last Name, Phone, and Address.', 'neural-forms-lite' ) }
+			</p>
+
 			<div className="nf-form-settings__hs-mapping-header">
 				<h4 className="nf-form-settings__hs-mapping-title">{ __( 'Merge field mapping', 'neural-forms-lite' ) }</h4>
 				<button type="button" className="nf-form-settings__hs-btn nf-form-settings__hs-btn--primary" onClick={ onAutoMap }>
@@ -483,6 +515,12 @@ function MailchimpMappingTable( {
 						) ) }
 					</ul>
 				</div>
+			) }
+
+			{ fnameIsFullName && (
+				<p className="nf-form-settings__hs-cell-sub">
+					{ __( 'Full Name will be sent as First Name. Add separate First Name / Last Name fields if you want cleaner Mailchimp contact data.', 'neural-forms-lite' ) }
+				</p>
 			) }
 
 			<table className="nf-form-settings__hs-table">
