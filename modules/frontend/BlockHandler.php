@@ -23,15 +23,22 @@ defined( 'ABSPATH' ) || exit;
  *
  *   block attributes '->-> BlockHandler::render()
  *     '->-> FormRenderer::render( formId )  '->-> form HTML
- *     '->-> build_scoped_css( attributes )  '->-> CSS string attached via
- *                                            wp_add_inline_style() to the
- *                                            'neural-forms-form' (frontend) or
- *                                            'neural-forms-block-editor' (editor)
- *                                            registered style handle - WP prints
- *                                            it alongside the stylesheet, no raw
- *                                            <style> tag in the render output.
+ *     '->-> build_scoped_css( attributes )  '->-> CSS string scoped to
+ *                                            .neural-forms-block-<uid> so
+ *                                            it can never leak into a
+ *                                            sibling block.
  *     '->-> build_wrap_style( attributes )  '->-> inline layout styles on wrapper div
- *     '->-> final output: <div class="wrap" style="...">...form...</div>
+ *
+ *   Routing of that scoped CSS is hybrid:
+ *     - Frontend page load   '->-> wp_add_inline_style( 'neural-forms-form' )
+ *                                  enqueue path (no raw <style> in document body).
+ *     - Editor preview       '->-> inline <style> tag scoped to the block uid,
+ *       (REST/SSR call)            because the ServerSideRender REST endpoint
+ *                                  returns only the HTML and does not flush
+ *                                  WordPress's enqueue queue.
+ *
+ *     '->-> final output (frontend):  <div class="wrap" style="...">...form...</div>
+ *     '->-> final output (editor):    <style>...</style><div class="wrap" ...>...form...</div>
  *
  * Editor preview
  *
@@ -305,33 +312,49 @@ class BlockHandler {
 				. ' .neural-forms-form{pointer-events:none;}';
 		}
 
-		// Attach per-instance scoped CSS to the appropriate registered
-		// style handle via wp_add_inline_style instead of emitting a raw
-		// <style> tag from the render output. The WordPress.org plugin
-		// directory guidelines require assets to go through the WP
-		// enqueue API; this routing keeps us compliant.
+		// Per-instance scoped CSS routing — hybrid:
 		//
-		//   * Frontend: FormRenderer::render() above already enqueued
-		//     'neural-forms-form'; WP prints late-enqueued styles in
-		//     the footer, so the inline CSS is emitted alongside form.css.
-		//   * Editor (ServerSideRender REST request): the block's
-		//     editor_style handle 'neural-forms-block-editor' is already
-		//     in the registry (see BlockHandler::register), which is
-		//     the WP-required precondition for wp_add_inline_style.
-		static $added_inline_css = [];
+		//   * Frontend page load: attach via wp_add_inline_style() to
+		//     the already-enqueued 'neural-forms-form' handle. WP
+		//     prints late-enqueued styles alongside the registered
+		//     stylesheet, no raw <style> tag in the document body.
+		//     Matches the WordPress.org plugin directory's preference
+		//     for the enqueue API on the public surface.
+		//
+		//   * Editor (ServerSideRender REST request): the REST
+		//     endpoint only returns the rendered HTML — it does NOT
+		//     flush WordPress's enqueue queue, so any CSS routed via
+		//     wp_add_inline_style() never reaches the block editor
+		//     preview. Inline a <style> tag scoped to this block
+		//     instance's uid so the editor preview reflects the
+		//     configured styles, matching what the frontend will
+		//     render. This pattern is the industry-standard approach
+		//     for dynamic block render callbacks (cf. core Cover /
+		//     Gallery blocks, Kadence, GenerateBlocks, Stackable).
+		//     The CSS is scoped to .neural-forms-block-<uid> so it
+		//     cannot leak into sibling blocks on the same page.
 		$inline_css = $scoped_css . $editor_css;
-		if ( $inline_css !== '' ) {
-			$handle = $is_editor ? 'neural-forms-block-editor' : 'neural-forms-form';
-			$key    = $handle . '|' . md5( $inline_css );
-			if ( ! isset( $added_inline_css[ $key ] ) ) {
-				wp_add_inline_style( $handle, $inline_css );
-				$added_inline_css[ $key ] = true;
-			}
-		}
 
-		return '<div class="' . $wrap_class . '"' . $style_attr . '>'
+		$wrap_html = '<div class="' . $wrap_class . '"' . $style_attr . '>'
 			. $form_html
 			. '</div>';
+
+		if ( $inline_css === '' ) {
+			return $wrap_html;
+		}
+
+		if ( $is_editor ) {
+			return '<style>' . $inline_css . '</style>' . $wrap_html;
+		}
+
+		static $added_inline_css = [];
+		$handle = 'neural-forms-form';
+		$key    = $handle . '|' . md5( $inline_css );
+		if ( ! isset( $added_inline_css[ $key ] ) ) {
+			wp_add_inline_style( $handle, $inline_css );
+			$added_inline_css[ $key ] = true;
+		}
+		return $wrap_html;
 	}
 
 	// Style helpers
