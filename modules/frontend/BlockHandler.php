@@ -62,11 +62,10 @@ class BlockHandler {
 	 */
 	public static function boot(): void {
 		add_action( 'init', [ static::class, 'register' ] );
-		// Suppress E_DEPRECATED during REST API requests so that
-		// deprecated notices from WP core (e.g. null passed to
-		// strpos / str_replace in functions.php) cannot corrupt the
-		// JSON response body that the editor's ServerSideRender
-		// expects, regardless of WP_DEBUG_DISPLAY setting.
+		// Suppress E_DEPRECATED during REST API requests so that deprecated
+		// notices from WP core (e.g. null passed to strpos/str_replace in
+		// functions.php) cannot corrupt the JSON response body that
+		// ServerSideRender expects, regardless of WP_DEBUG_DISPLAY setting.
 		add_action( 'rest_api_init', static function () {
 			error_reporting( error_reporting() & ~E_DEPRECATED );
 		}, 1 );
@@ -143,11 +142,8 @@ class BlockHandler {
 			? require $asset_file
 			: [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
 
-		// Ensure neural-forms-block (the protected block.js bundle that
-		// registers neural-forms/form) loads BEFORE this bundle so the
-		// design-extras script can unregisterBlockType('neural-forms/form')
-		// + re-register with the extended attributes. wp-dom-ready is
-		// also required by the editor-extras client code.
+		// Ensure neural-forms-block (protected block.js, registers neural-forms/form)
+		// loads before this bundle so unregisterBlockType('neural-forms/form') works.
 		$deps = $asset['dependencies'];
 		if ( ! in_array( 'neural-forms-block', $deps, true ) ) {
 			$deps[] = 'neural-forms-block';
@@ -234,6 +230,10 @@ class BlockHandler {
 	 */
 	public static function render( array $attributes ): string {
 		$form_id   = (int) ( $attributes['formId'] ?? 0 );
+		// Narrower than `REST_REQUEST` alone — only true when WordPress
+		// thinks we're inside an admin request (i.e. the block editor's
+		// ServerSideRender call), so that frontend REST callers can't
+		// flip the form into editor preview mode by accident.
 		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && is_admin();
 
 		if ( $form_id < 1 ) {
@@ -305,18 +305,19 @@ class BlockHandler {
 				. ' .neural-forms-form{pointer-events:none;}';
 		}
 
-		// Attach per-instance scoped CSS to the appropriate registered style
-		// handle via wp_add_inline_style instead of emitting a raw <style> tag
-		// from the render output (WordPress.org plugin guidelines: assets must
-		// go through the WP enqueue API).
+		// Attach per-instance scoped CSS to the appropriate registered
+		// style handle via wp_add_inline_style instead of emitting a raw
+		// <style> tag from the render output. The WordPress.org plugin
+		// directory guidelines require assets to go through the WP
+		// enqueue API; this routing keeps us compliant.
 		//
-		//   * Frontend: FormRenderer::render() has already enqueued
-		//     'neural-forms-form' above; WP prints late-enqueued styles in the
-		//     footer, so the inline CSS is emitted alongside form.css.
-		//   * Editor (ServerSideRender REST request): the block's editor_style
-		//     handle 'neural-forms-block-editor' is already in the registry
-		//     (see BlockHandler::register), which is the WP-required precondition
-		//     for wp_add_inline_style.
+		//   * Frontend: FormRenderer::render() above already enqueued
+		//     'neural-forms-form'; WP prints late-enqueued styles in
+		//     the footer, so the inline CSS is emitted alongside form.css.
+		//   * Editor (ServerSideRender REST request): the block's
+		//     editor_style handle 'neural-forms-block-editor' is already
+		//     in the registry (see BlockHandler::register), which is
+		//     the WP-required precondition for wp_add_inline_style.
 		static $added_inline_css = [];
 		$inline_css = $scoped_css . $editor_css;
 		if ( $inline_css !== '' ) {
@@ -353,7 +354,7 @@ class BlockHandler {
 			'btnRadiusTL', 'btnRadiusTR', 'btnRadiusBR', 'btnRadiusBL',
 			'btnBorderColor', 'btnBorderWidth', 'btnBorderStyle',
 			'btnFontSize', 'btnFontFamily',
-			'btnFontWeight', 'btnLetterSpacing', 'btnTextDecoration', 'btnTextTransform', 'btnLineHeight',
+			'btnFontWeight', 'btnFontStyle', 'btnLetterSpacing', 'btnTextDecoration', 'btnTextTransform', 'btnLineHeight',
 			'btnPaddingTop', 'btnPaddingRight', 'btnPaddingBottom', 'btnPaddingLeft',
 			'btnHoverBg', 'btnHoverColor', 'btnHoverBorderColor',
 			'btnTransitionDuration', 'btnTransitionEasing',
@@ -364,30 +365,100 @@ class BlockHandler {
 			'fieldBorderRadiusTL', 'fieldBorderRadiusTR', 'fieldBorderRadiusBR', 'fieldBorderRadiusBL',
 			'fieldTextColor', 'fieldFocusTextColor',
 			'fieldFocusBorderColor',
-			'fieldFontSize', 'fieldFontFamily', 'fieldFontWeight', 'fieldLetterSpacing',
+			'fieldFontSize', 'fieldFontFamily', 'fieldFontWeight', 'fieldFontStyle', 'fieldLetterSpacing',
 			'fieldTextDecoration', 'fieldTextTransform', 'fieldLineHeight',
 			'fieldTextAlign',
 			'fieldPaddingTop', 'fieldPaddingRight', 'fieldPaddingBottom', 'fieldPaddingLeft',
 			'fieldGap',
-			'fieldErrorBg', 'fieldErrorTextColor', 'fieldErrorBorderColor',
 			'fieldErrorMsgColor', 'fieldErrorMsgFontSize',
-			'successMsgBg', 'successMsgColor', 'successMsgBorderColor',
+			'successMsgBg', 'successMsgColor',
 			'successMsgPaddingTop', 'successMsgPaddingRight', 'successMsgPaddingBottom', 'successMsgPaddingLeft',
-			'errorMsgBg', 'errorMsgColor', 'errorMsgBorderColor',
+			'errorMsgBg', 'errorMsgColor',
 			'errorMsgPaddingTop', 'errorMsgPaddingRight', 'errorMsgPaddingBottom', 'errorMsgPaddingLeft',
-			'checkboxSize', 'checkboxCheckedColor', 'selectArrowColor',
-			'fileBg', 'fileColor', 'fileBorderColor',
+			// Radio field
+			'radioOptionsDirection', 'radioOptionsGap',
+			'radioOptionSize',
+			'radioOptionBg', 'radioOptionHoverBg', 'radioOptionCheckedBg',
+			'radioOptionBorderColor', 'radioOptionBorderWidth', 'radioOptionBorderStyle', 'radioOptionBorderRadius',
+			'radioOptionPaddingTop', 'radioOptionPaddingRight', 'radioOptionPaddingBottom', 'radioOptionPaddingLeft',
+			'radioAccentColor', 'radioLabelGap',
+			'radioOptionColor', 'radioOptionFontSize', 'radioOptionFontWeight',
+			// Checkbox group field
+			'cbGroupDirection',
+			'cbGroupSize', 'cbGroupBg', 'cbGroupCheckedBg',
+			'cbGroupBorderColor', 'cbGroupBorderWidth', 'cbGroupBorderRadius',
+			'cbGroupLabelColor', 'cbGroupLabelFontSize', 'cbGroupLabelFontWeight',
+			'cbGroupGap', 'cbGroupItemGap',
+			// Rating field
+			'ratingStarSize', 'ratingStarGap', 'ratingEmptyColor', 'ratingFilledColor', 'ratingHoverColor',
+			// File input field
+			'fileInputBg', 'fileInputBorderColor', 'fileInputBorderWidth', 'fileInputBorderStyle', 'fileInputBorderRadius',
+			'fileInputColor', 'fileInputFontSize',
+			'fileInputPaddingTop', 'fileInputPaddingRight', 'fileInputPaddingBottom', 'fileInputPaddingLeft',
+			// File browse button
+			'fileBtnBg', 'fileBtnHoverBg', 'fileBtnColor', 'fileBtnFontSize', 'fileBtnFontWeight',
+			'fileBtnPaddingTop', 'fileBtnPaddingRight', 'fileBtnPaddingBottom', 'fileBtnPaddingLeft',
+			'fileBtnBorderColor', 'fileBtnBorderWidth', 'fileBtnBorderStyle', 'fileBtnBorderRadius',
 			'titleAlign', 'titleColor', 'titleFontFamily',
-			'titleFontSize', 'titleFontWeight', 'titleLetterSpacing',
+			'titleFontSize', 'titleFontWeight', 'titleFontStyle', 'titleLetterSpacing',
 			'titleTextDecoration', 'titleTextTransform', 'titleLineHeight',
 			'titlePaddingTop', 'titlePaddingRight', 'titlePaddingBottom', 'titlePaddingLeft',
 			'titleMarginTop', 'titleMarginRight', 'titleMarginBottom', 'titleMarginLeft',
 			'formTitle',
 			'labelAlign', 'labelColor', 'labelFontFamily',
-			'labelFontSize', 'labelFontWeight', 'labelLetterSpacing',
+			'labelFontSize', 'labelFontWeight', 'labelFontStyle', 'labelLetterSpacing',
 			'labelTextDecoration', 'labelTextTransform', 'labelLineHeight',
 			'labelPaddingTop', 'labelPaddingRight', 'labelPaddingBottom', 'labelPaddingLeft',
 			'labelMarginTop', 'labelMarginRight', 'labelMarginBottom', 'labelMarginLeft',
+			// Textarea field
+			'textareaBg', 'textareaHoverBg', 'textareaFocusBg',
+			'textareaTextColor', 'textareaFocusTextColor',
+			'textareaBorderColor', 'textareaBorderWidth', 'textareaBorderStyle',
+			'textareaHoverBorderColor', 'textareaFocusBorderColor',
+			'textareaBorderRadiusTL', 'textareaBorderRadiusTR', 'textareaBorderRadiusBR', 'textareaBorderRadiusBL',
+			'textareaFontSize', 'textareaFontWeight', 'textareaFontStyle', 'textareaFontFamily',
+			'textareaLetterSpacing', 'textareaLineHeight', 'textareaTextTransform', 'textareaTextDecoration', 'textareaTextAlign',
+			'textareaPaddingTop', 'textareaPaddingRight', 'textareaPaddingBottom', 'textareaPaddingLeft',
+			'textareaMinHeight',
+			// Acceptance field
+			'acceptanceBg', 'acceptanceCheckedBg', 'acceptanceBorderColor', 'acceptanceBorderWidth',
+			'acceptanceBorderRadius', 'acceptanceSize',
+			'acceptanceLabelColor', 'acceptanceLabelFontSize', 'acceptanceLabelFontWeight',
+			'acceptanceGap',
+			// Poll-specific
+			'pollOptionsGap',
+			'pollOptionPaddingTop', 'pollOptionPaddingRight', 'pollOptionPaddingBottom', 'pollOptionPaddingLeft',
+			'pollOptionBg', 'pollOptionHoverBg', 'pollOptionCheckedBg',
+			'pollOptionBorderColor', 'pollOptionBorderWidth', 'pollOptionBorderStyle', 'pollOptionBorderRadius',
+			'pollAccentColor', 'pollOptionColor', 'pollOptionFontSize', 'pollOptionFontWeight',
+			'pollBarColor', 'pollBarColor2', 'pollBarTrackColor',
+			'pollBarHeight', 'pollBarRadius',
+			'pollResultsLabelColor', 'pollResultsCountColor', 'pollResultsFontSize',
+			'pollTotalColor', 'pollTotalFontSize', 'pollResultsMarginTop',
+			// Quiz-specific
+			'quizOptionsGap',
+			'quizOptionPaddingTop', 'quizOptionPaddingRight', 'quizOptionPaddingBottom', 'quizOptionPaddingLeft',
+			'quizOptionBg', 'quizOptionHoverBg', 'quizOptionCheckedBg',
+			'quizOptionBorderColor', 'quizOptionBorderWidth', 'quizOptionBorderStyle', 'quizOptionBorderRadius',
+			'quizAccentColor', 'quizOptionColor', 'quizOptionFontSize', 'quizOptionFontWeight',
+			'quizSummaryBg', 'quizSummaryColor', 'quizSummaryBorderColor', 'quizSummaryBorderWidth',
+			'quizSummaryPaddingTop', 'quizSummaryPaddingRight', 'quizSummaryPaddingBottom', 'quizSummaryPaddingLeft',
+			'quizScoreFontSize',
+			// Multi-step: prev & next buttons (shared)
+			'navBtnBgColor', 'navBtnTextColor',
+			'navBtnHoverBg', 'navBtnHoverColor', 'navBtnHoverBorderColor',
+			'navBtnBorderColor', 'navBtnBorderWidth', 'navBtnBorderStyle',
+			'navBtnRadiusTL', 'navBtnRadiusTR', 'navBtnRadiusBR', 'navBtnRadiusBL',
+			'navBtnFontSize', 'navBtnFontFamily',
+			'navBtnFontWeight', 'navBtnFontStyle', 'navBtnLetterSpacing', 'navBtnTextDecoration', 'navBtnTextTransform', 'navBtnLineHeight',
+			'navBtnPaddingTop', 'navBtnPaddingRight', 'navBtnPaddingBottom', 'navBtnPaddingLeft',
+			'navBtnTransitionDuration', 'navBtnTransitionEasing',
+			// Multi-step: step indicator
+			'stepBarFillColor', 'stepBarTrackColor', 'stepBarHeight', 'stepBarRadius',
+			'stepActiveNumBg', 'stepActiveNumColor',
+			'stepCompleteNumBg', 'stepCompleteNumColor',
+			'stepInactiveNumBg', 'stepInactiveNumColor',
+			'stepNumSize', 'stepNumFontSize', 'stepConnectorColor',
 		];
 
 		foreach ( $style_keys as $key ) {
@@ -399,11 +470,31 @@ class BlockHandler {
 		// Boolean flags
 		if (
 			! empty( $attributes['btnFullWidth'] ) ||
+			! empty( $attributes['navBtnFullWidth'] ) ||
 			( isset( $attributes['successMsgEnabled'] ) && $attributes['successMsgEnabled'] === false ) ||
 			( isset( $attributes['errorMsgEnabled'] ) && $attributes['errorMsgEnabled'] === false ) ||
 			! empty( $attributes['showLabels'] ) ||
 			( isset( $attributes['showPlaceholders'] ) && $attributes['showPlaceholders'] === false )
 		) {
+			return true;
+		}
+
+		// Direction toggles (vertical/horizontal) trigger wrapper even when no
+		// other style attrs are set — we only need to wrap when explicitly 'horizontal'.
+		if ( isset( $attributes['radioOptionsDirection'] ) && $attributes['radioOptionsDirection'] === 'horizontal' ) {
+			return true;
+		}
+
+		if ( isset( $attributes['cbGroupDirection'] ) && $attributes['cbGroupDirection'] === 'horizontal' ) {
+			return true;
+		}
+
+		if ( isset( $attributes['pollOptionsDirection'] ) && $attributes['pollOptionsDirection'] === 'horizontal' ) {
+			return true;
+		}
+
+		// Same for quiz option direction.
+		if ( isset( $attributes['quizOptionsDirection'] ) && $attributes['quizOptionsDirection'] === 'horizontal' ) {
 			return true;
 		}
 
@@ -451,27 +542,8 @@ class BlockHandler {
 			$parts[] = 'max-height:' . sanitize_text_field( $max_height );
 		}
 
-		$margin_top = (string) ( $attributes['marginTop'] ?? '' );
-		if ( $margin_top !== '' ) {
-			$parts[] = 'margin-top:' . sanitize_text_field( $margin_top );
-		}
-
-		$margin_right = (string) ( $attributes['marginRight'] ?? '' );
-		if ( $margin_right !== '' ) {
-			$parts[] = 'margin-right:' . sanitize_text_field( $margin_right );
-		}
-
-		$margin_bottom = (string) ( $attributes['marginBottom'] ?? '' );
-		if ( $margin_bottom !== '' ) {
-			$parts[] = 'margin-bottom:' . sanitize_text_field( $margin_bottom );
-		}
-
-		$margin_left = (string) ( $attributes['marginLeft'] ?? '' );
-		if ( $margin_left !== '' ) {
-			$parts[] = 'margin-left:' . sanitize_text_field( $margin_left );
-		}
-
-		// formAlign overrides side margins when a max-width is set.
+		// formAlign auto-margins go first so explicit user margins override them
+		// when both are set (later declaration in inline style wins).
 		$form_align = (string) ( $attributes['formAlign'] ?? '' );
 		if ( $form_align === 'center' && $max_width !== '' ) {
 			$parts[] = 'margin-left:auto';
@@ -481,6 +553,33 @@ class BlockHandler {
 			$parts[] = 'margin-right:0';
 		} elseif ( $form_align === 'stretch' ) {
 			$parts[] = 'width:100%';
+		}
+
+		// Explicit user margins. A bare number (no unit) gets 'px' appended so
+		// BoxControl values without a unit still produce valid CSS.
+		$normalize = static function ( string $v ): string {
+			$v = sanitize_text_field( $v );
+			return ( $v !== '' && is_numeric( $v ) ) ? $v . 'px' : $v;
+		};
+
+		$margin_top = $normalize( (string) ( $attributes['marginTop'] ?? '' ) );
+		if ( $margin_top !== '' ) {
+			$parts[] = 'margin-top:' . $margin_top;
+		}
+
+		$margin_right = $normalize( (string) ( $attributes['marginRight'] ?? '' ) );
+		if ( $margin_right !== '' ) {
+			$parts[] = 'margin-right:' . $margin_right;
+		}
+
+		$margin_bottom = $normalize( (string) ( $attributes['marginBottom'] ?? '' ) );
+		if ( $margin_bottom !== '' ) {
+			$parts[] = 'margin-bottom:' . $margin_bottom;
+		}
+
+		$margin_left = $normalize( (string) ( $attributes['marginLeft'] ?? '' ) );
+		if ( $margin_left !== '' ) {
+			$parts[] = 'margin-left:' . $margin_left;
 		}
 
 		return implode( ';', $parts );
@@ -500,9 +599,7 @@ class BlockHandler {
 	 *
 	 * @param string $uid         8-char hex uid for this attribute combination.
 	 * @param array  $attributes  Block attributes.
-	 * @return string             Raw CSS string. Attached to a registered
-	 *                            stylesheet handle via wp_add_inline_style by
-	 *                            BlockHandler::render(); never echoed directly.
+	 * @return string             Raw CSS string (safe to echo inside <style>).
 	 */
 	private static function build_scoped_css( string $uid, array $attributes ): string {
 		$wrap_sel = '.neural-forms-block-' . $uid;
@@ -521,50 +618,36 @@ class BlockHandler {
 			return $v;
 		};
 
-		$wrap_rules = [];
-		$var_rules  = [];
+		$wrap_rules          = [];
+		$var_rules           = [];
+		$form_wrap_pad_rules = [];
 
 		// ' Container box '
+		// Background (color / image / gradient) goes to .neural-forms-form-wrap so
+		// that the padding gap between the container edges and the form content shows
+		// the container background color. The outer wrapper stays transparent and
+		// only carries border, shadow, and border-radius (with overflow:hidden to
+		// clip the form-wrap background to the rounded shape).
 		$bg_color = (string) ( $attributes['bgColor'] ?? '' );
 		if ( $bg_color !== '' ) {
-			$wrap_rules[] = 'background-color:' . sanitize_hex_color( $bg_color );
-			$var_rules[]  = 'background-color:' . sanitize_hex_color( $bg_color );
+			$hex = sanitize_hex_color( $bg_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$form_wrap_pad_rules[] = 'background-color:' . $hex;
+			}
 		}
 
-		// Background image / gradient. Image wins when both are set, but a
-		// gradient can be layered on top of a solid color so they coexist.
-		//
-		// Apply bg-image / bg-gradient to BOTH the outer wrap AND the inner
-		// .neural-forms-form element. Reason: bgColor is also mirrored to
-		// both (see above), so the inner form paints its own background on
-		// top of the wrap. Without mirroring image/gradient too, the form's
-		// solid color hides the wrap's image - the user sees the image only
-		// in the strip above the form (where the title lives), not under the
-		// fields. Same rule for both, applied to both selectors.
 		$bg_image    = (string) ( $attributes['bgImage']    ?? '' );
 		$bg_gradient = (string) ( $attributes['bgGradient'] ?? '' );
 		if ( $bg_image !== '' ) {
-			$bg_image_rule = 'background-image:url("' . esc_url( $bg_image ) . '")';
-			$bg_size       = (string) ( $attributes['bgImageSize'] ?? '' );
-			$bg_size_rule  = 'background-size:' . sanitize_text_field( $bg_size !== '' ? $bg_size : 'cover' );
-			$bg_pos        = (string) ( $attributes['bgImagePosition'] ?? '' );
-			$bg_pos_rule   = 'background-position:' . sanitize_text_field( $bg_pos !== '' ? $bg_pos : 'center center' );
-			$bg_repeat     = (string) ( $attributes['bgImageRepeat'] ?? '' );
-			$bg_repeat_rule = 'background-repeat:' . sanitize_text_field( $bg_repeat !== '' ? $bg_repeat : 'no-repeat' );
-
-			$wrap_rules[] = $bg_image_rule;
-			$wrap_rules[] = $bg_size_rule;
-			$wrap_rules[] = $bg_pos_rule;
-			$wrap_rules[] = $bg_repeat_rule;
-
-			$var_rules[]  = $bg_image_rule;
-			$var_rules[]  = $bg_size_rule;
-			$var_rules[]  = $bg_pos_rule;
-			$var_rules[]  = $bg_repeat_rule;
+			$bg_size        = (string) ( $attributes['bgImageSize']     ?? '' );
+			$bg_pos         = (string) ( $attributes['bgImagePosition'] ?? '' );
+			$bg_repeat      = (string) ( $attributes['bgImageRepeat']   ?? '' );
+			$form_wrap_pad_rules[] = 'background-image:url("' . esc_url( $bg_image ) . '")';
+			$form_wrap_pad_rules[] = 'background-size:'     . sanitize_text_field( $bg_size   !== '' ? $bg_size   : 'cover' );
+			$form_wrap_pad_rules[] = 'background-position:' . sanitize_text_field( $bg_pos    !== '' ? $bg_pos    : 'center center' );
+			$form_wrap_pad_rules[] = 'background-repeat:'   . sanitize_text_field( $bg_repeat !== '' ? $bg_repeat : 'no-repeat' );
 		} elseif ( $bg_gradient !== '' ) {
-			$gradient_rule = 'background-image:' . sanitize_text_field( $bg_gradient );
-			$wrap_rules[]  = $gradient_rule;
-			$var_rules[]   = $gradient_rule;
+			$form_wrap_pad_rules[] = 'background-image:' . sanitize_text_field( $bg_gradient );
 		}
 
 		$border_color = (string) ( $attributes['borderColor'] ?? '' );
@@ -585,14 +668,26 @@ class BlockHandler {
 		$has_corner_radius = ( $radius_tl !== '' || $radius_tr !== '' || $radius_br !== '' || $radius_bl !== '' );
 
 		if ( $has_corner_radius ) {
-			if ( $radius_tl !== '' ) $wrap_rules[] = 'border-top-left-radius:'     . sanitize_text_field( $radius_tl );
-			if ( $radius_tr !== '' ) $wrap_rules[] = 'border-top-right-radius:'    . sanitize_text_field( $radius_tr );
-			if ( $radius_br !== '' ) $wrap_rules[] = 'border-bottom-right-radius:' . sanitize_text_field( $radius_br );
-			if ( $radius_bl !== '' ) $wrap_rules[] = 'border-bottom-left-radius:'  . sanitize_text_field( $radius_bl );
+			if ( $radius_tl !== '' ) $wrap_rules[] = 'border-top-left-radius:'     . $len( $radius_tl );
+			if ( $radius_tr !== '' ) $wrap_rules[] = 'border-top-right-radius:'    . $len( $radius_tr );
+			if ( $radius_br !== '' ) $wrap_rules[] = 'border-bottom-right-radius:' . $len( $radius_br );
+			if ( $radius_bl !== '' ) $wrap_rules[] = 'border-bottom-left-radius:'  . $len( $radius_bl );
+			// Clip children (form bg) to the rounded shape so corners aren't covered.
+			$wrap_rules[] = 'overflow:hidden';
+			// Also apply directly to form-wrap so its background respects the radius
+			// regardless of overflow:hidden clipping (e.g. when form-wrap has a
+			// background set and the outer wrapper is transparent).
+			if ( $radius_tl !== '' ) $form_wrap_pad_rules[] = 'border-top-left-radius:'     . $len( $radius_tl );
+			if ( $radius_tr !== '' ) $form_wrap_pad_rules[] = 'border-top-right-radius:'    . $len( $radius_tr );
+			if ( $radius_br !== '' ) $form_wrap_pad_rules[] = 'border-bottom-right-radius:' . $len( $radius_br );
+			if ( $radius_bl !== '' ) $form_wrap_pad_rules[] = 'border-bottom-left-radius:'  . $len( $radius_bl );
 		} else {
 			$container_radius = (string) ( $attributes['borderRadius'] ?? '' );
 			if ( $container_radius !== '' ) {
-				$wrap_rules[] = 'border-radius:' . sanitize_text_field( $container_radius );
+				$wrap_rules[] = 'border-radius:' . $len( $container_radius );
+				$wrap_rules[] = 'overflow:hidden';
+				// Also clip the form-wrap's own background to the same radius.
+				$form_wrap_pad_rules[] = 'border-radius:' . $len( $container_radius );
 			}
 		}
 
@@ -615,24 +710,26 @@ class BlockHandler {
 			$wrap_rules[] = 'box-shadow:' . $inset . $h . ' ' . $v . ' ' . $b . ' ' . $s . ' ' . $c;
 		}
 
+		// Container padding: insets form content from the form-wrap edges (which
+		// carry the background, so the gap shows the container colour).
 		$padding_top = (string) ( $attributes['paddingTop'] ?? '' );
 		if ( $padding_top !== '' ) {
-			$wrap_rules[] = 'padding-top:' . sanitize_text_field( $padding_top );
+			$form_wrap_pad_rules[] = 'padding-top:' . $len( $padding_top );
 		}
 
 		$padding_right = (string) ( $attributes['paddingRight'] ?? '' );
 		if ( $padding_right !== '' ) {
-			$wrap_rules[] = 'padding-right:' . sanitize_text_field( $padding_right );
+			$form_wrap_pad_rules[] = 'padding-right:' . $len( $padding_right );
 		}
 
 		$padding_bottom = (string) ( $attributes['paddingBottom'] ?? '' );
 		if ( $padding_bottom !== '' ) {
-			$wrap_rules[] = 'padding-bottom:' . sanitize_text_field( $padding_bottom );
+			$form_wrap_pad_rules[] = 'padding-bottom:' . $len( $padding_bottom );
 		}
 
 		$padding_left = (string) ( $attributes['paddingLeft'] ?? '' );
 		if ( $padding_left !== '' ) {
-			$wrap_rules[] = 'padding-left:' . sanitize_text_field( $padding_left );
+			$form_wrap_pad_rules[] = 'padding-left:' . $len( $padding_left );
 		}
 
 		// ' CSS custom properties (cascade to all form children) '
@@ -646,9 +743,9 @@ class BlockHandler {
 			$var_rules[] = '--neural-forms-btn-bg:' . sanitize_hex_color( $btn_bg_color );
 		}
 
-		$btn_radius = (string) ( $attributes['btnRadius'] ?? '' );
+		$btn_radius = $len( (string) ( $attributes['btnRadius'] ?? '' ) );
 		if ( $btn_radius !== '' ) {
-			$var_rules[] = '--neural-forms-btn-radius:' . sanitize_text_field( $btn_radius );
+			$var_rules[] = '--neural-forms-btn-radius:' . $btn_radius;
 		}
 
 		$btn_align = (string) ( $attributes['btnAlign'] ?? '' );
@@ -684,6 +781,11 @@ class BlockHandler {
 		$field_border_width = (string) ( $attributes['fieldBorderWidth'] ?? '' );
 		if ( $field_border_width !== '' ) {
 			$var_rules[] = '--neural-forms-border-width:' . sanitize_text_field( $field_border_width );
+		}
+
+		$field_border_style = (string) ( $attributes['fieldBorderStyle'] ?? '' );
+		if ( $field_border_style !== '' && in_array( $field_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ) {
+			$var_rules[] = '--neural-forms-border-style:' . $field_border_style;
 		}
 
 		$field_border_radius = (string) ( $attributes['fieldBorderRadius'] ?? '' );
@@ -724,6 +826,10 @@ class BlockHandler {
 		if ( $field_font_weight !== '' ) {
 			$field_typo_rules[] = 'font-weight:' . sanitize_text_field( $field_font_weight );
 		}
+		$field_font_style = (string) ( $attributes['fieldFontStyle'] ?? '' );
+		if ( $field_font_style === 'italic' ) {
+			$field_typo_rules[] = 'font-style:italic';
+		}
 		$field_letter_spacing = (string) ( $attributes['fieldLetterSpacing'] ?? '' );
 		if ( $field_letter_spacing !== '' ) {
 			$ls = $field_letter_spacing;
@@ -733,11 +839,11 @@ class BlockHandler {
 			$field_typo_rules[] = 'letter-spacing:' . sanitize_text_field( $ls );
 		}
 		$field_text_decoration = (string) ( $attributes['fieldTextDecoration'] ?? '' );
-		if ( $field_text_decoration !== '' && in_array( $field_text_decoration, [ 'underline', 'line-through' ], true ) ) {
+		if ( $field_text_decoration !== '' && in_array( $field_text_decoration, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
 			$field_typo_rules[] = 'text-decoration:' . $field_text_decoration;
 		}
 		$field_text_transform = (string) ( $attributes['fieldTextTransform'] ?? '' );
-		if ( $field_text_transform !== '' && in_array( $field_text_transform, [ 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+		if ( $field_text_transform !== '' && in_array( $field_text_transform, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
 			$field_typo_rules[] = 'text-transform:' . $field_text_transform;
 		}
 		$field_line_height = (string) ( $attributes['fieldLineHeight'] ?? '' );
@@ -781,10 +887,10 @@ class BlockHandler {
 		$btn_radius_br = (string) ( $attributes['btnRadiusBR'] ?? '' );
 		$btn_radius_bl = (string) ( $attributes['btnRadiusBL'] ?? '' );
 		if ( $btn_radius_tl !== '' || $btn_radius_tr !== '' || $btn_radius_br !== '' || $btn_radius_bl !== '' ) {
-			if ( $btn_radius_tl !== '' ) $btn_rules[] = 'border-top-left-radius:'     . sanitize_text_field( $btn_radius_tl );
-			if ( $btn_radius_tr !== '' ) $btn_rules[] = 'border-top-right-radius:'    . sanitize_text_field( $btn_radius_tr );
-			if ( $btn_radius_br !== '' ) $btn_rules[] = 'border-bottom-right-radius:' . sanitize_text_field( $btn_radius_br );
-			if ( $btn_radius_bl !== '' ) $btn_rules[] = 'border-bottom-left-radius:'  . sanitize_text_field( $btn_radius_bl );
+			if ( $btn_radius_tl !== '' ) $btn_rules[] = 'border-top-left-radius:'     . $len( $btn_radius_tl );
+			if ( $btn_radius_tr !== '' ) $btn_rules[] = 'border-top-right-radius:'    . $len( $btn_radius_tr );
+			if ( $btn_radius_br !== '' ) $btn_rules[] = 'border-bottom-right-radius:' . $len( $btn_radius_br );
+			if ( $btn_radius_bl !== '' ) $btn_rules[] = 'border-bottom-left-radius:'  . $len( $btn_radius_bl );
 		}
 
 		$btn_font_family = (string) ( $attributes['btnFontFamily'] ?? '' );
@@ -822,6 +928,10 @@ class BlockHandler {
 		if ( $btn_font_weight !== '' ) {
 			$btn_rules[] = 'font-weight:' . sanitize_text_field( $btn_font_weight );
 		}
+		$btn_font_style = (string) ( $attributes['btnFontStyle'] ?? '' );
+		if ( $btn_font_style === 'italic' ) {
+			$btn_rules[] = 'font-style:italic';
+		}
 		$btn_letter_spacing = (string) ( $attributes['btnLetterSpacing'] ?? '' );
 		if ( $btn_letter_spacing !== '' ) {
 			$ls = $btn_letter_spacing;
@@ -831,11 +941,11 @@ class BlockHandler {
 			$btn_rules[] = 'letter-spacing:' . sanitize_text_field( $ls );
 		}
 		$btn_text_decoration = (string) ( $attributes['btnTextDecoration'] ?? '' );
-		if ( $btn_text_decoration !== '' && in_array( $btn_text_decoration, [ 'underline', 'line-through' ], true ) ) {
+		if ( $btn_text_decoration !== '' && in_array( $btn_text_decoration, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
 			$btn_rules[] = 'text-decoration:' . $btn_text_decoration;
 		}
 		$btn_text_transform = (string) ( $attributes['btnTextTransform'] ?? '' );
-		if ( $btn_text_transform !== '' && in_array( $btn_text_transform, [ 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+		if ( $btn_text_transform !== '' && in_array( $btn_text_transform, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
 			$btn_rules[] = 'text-transform:' . $btn_text_transform;
 		}
 		$btn_line_height = (string) ( $attributes['btnLineHeight'] ?? '' );
@@ -846,7 +956,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'btnPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$btn_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$btn_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 
@@ -875,6 +985,10 @@ class BlockHandler {
 			$css .= $wrap_sel . '{' . implode( ';', $wrap_rules ) . '}';
 		}
 
+		if ( $form_wrap_pad_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form-wrap{' . implode( ';', $form_wrap_pad_rules ) . '}';
+		}
+
 		if ( $var_rules ) {
 			$css .= $form_sel . '{' . implode( ';', $var_rules ) . '}';
 		}
@@ -889,22 +1003,20 @@ class BlockHandler {
 
 		if ( $field_typo_rules ) {
 			$field_sel = $wrap_sel . ' .neural-forms-form__input,'
-				. $wrap_sel . ' .neural-forms-form__textarea,'
 				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_sel . '{' . implode( ';', $field_typo_rules ) . '}';
 		}
 
-		// ' Field padding (applies to inputs, textareas, selects) '
+		// ' Field padding (applies to inputs, selects — textarea has its own panel) '
 		$field_pad_rules = [];
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'fieldPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$field_pad_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$field_pad_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 		if ( $field_pad_rules ) {
 			$field_pad_sel = $wrap_sel . ' .neural-forms-form__input,'
-				. $wrap_sel . ' .neural-forms-form__textarea,'
 				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_pad_sel . '{' . implode( ';', $field_pad_rules ) . '}';
 		}
@@ -936,16 +1048,20 @@ class BlockHandler {
 		if ( $title_fw !== '' ) {
 			$title_rules[] = 'font-weight:' . sanitize_text_field( $title_fw );
 		}
+		$title_fstyle = (string) ( $attributes['titleFontStyle'] ?? '' );
+		if ( $title_fstyle === 'italic' ) {
+			$title_rules[] = 'font-style:italic';
+		}
 		$title_ls = (string) ( $attributes['titleLetterSpacing'] ?? '' );
 		if ( $title_ls !== '' ) {
 			$title_rules[] = 'letter-spacing:' . sanitize_text_field( $title_ls );
 		}
 		$title_td = (string) ( $attributes['titleTextDecoration'] ?? '' );
-		if ( $title_td !== '' && in_array( $title_td, [ 'underline', 'line-through' ], true ) ) {
+		if ( $title_td !== '' && in_array( $title_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
 			$title_rules[] = 'text-decoration:' . $title_td;
 		}
 		$title_tt = (string) ( $attributes['titleTextTransform'] ?? '' );
-		if ( $title_tt !== '' && in_array( $title_tt, [ 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+		if ( $title_tt !== '' && in_array( $title_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
 			$title_rules[] = 'text-transform:' . $title_tt;
 		}
 		$title_lh = (string) ( $attributes['titleLineHeight'] ?? '' );
@@ -955,13 +1071,13 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'titlePadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$title_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$title_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 		foreach ( [ 'Top' => 'margin-top', 'Right' => 'margin-right', 'Bottom' => 'margin-bottom', 'Left' => 'margin-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'titleMargin' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$title_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$title_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 		if ( $title_rules ) {
@@ -998,6 +1114,10 @@ class BlockHandler {
 		if ( $label_fw !== '' ) {
 			$label_rules[] = 'font-weight:' . sanitize_text_field( $label_fw );
 		}
+		$label_fstyle = (string) ( $attributes['labelFontStyle'] ?? '' );
+		if ( $label_fstyle === 'italic' ) {
+			$label_rules[] = 'font-style:italic';
+		}
 		$label_ls = (string) ( $attributes['labelLetterSpacing'] ?? '' );
 		if ( $label_ls !== '' ) {
 			$ls = $label_ls;
@@ -1007,11 +1127,11 @@ class BlockHandler {
 			$label_rules[] = 'letter-spacing:' . sanitize_text_field( $ls );
 		}
 		$label_td = (string) ( $attributes['labelTextDecoration'] ?? '' );
-		if ( $label_td !== '' && in_array( $label_td, [ 'underline', 'line-through' ], true ) ) {
+		if ( $label_td !== '' && in_array( $label_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
 			$label_rules[] = 'text-decoration:' . $label_td;
 		}
 		$label_tt = (string) ( $attributes['labelTextTransform'] ?? '' );
-		if ( $label_tt !== '' && in_array( $label_tt, [ 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+		if ( $label_tt !== '' && in_array( $label_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
 			$label_rules[] = 'text-transform:' . $label_tt;
 		}
 		$label_lh = (string) ( $attributes['labelLineHeight'] ?? '' );
@@ -1021,13 +1141,13 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'labelPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$label_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$label_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 		foreach ( [ 'Top' => 'margin-top', 'Right' => 'margin-right', 'Bottom' => 'margin-bottom', 'Left' => 'margin-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'labelMargin' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$label_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$label_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 		if ( $label_rules ) {
@@ -1043,17 +1163,16 @@ class BlockHandler {
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'fieldBorderRadius' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$field_corner_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+				$field_corner_rules[] = $css_prop . ':' . $len( $val );
 			}
 		}
 		if ( $field_corner_rules ) {
 			$field_corner_sel = $wrap_sel . ' .neural-forms-form__input,'
-				. $wrap_sel . ' .neural-forms-form__textarea,'
 				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_corner_sel . '{' . implode( ';', $field_corner_rules ) . '}';
 		}
 
-		// ' Field hover state (bg + border color) '
+		// ' Field hover state (bg + border color — textarea has its own panel) '
 		$field_hover_rules = [];
 		$field_hover_bg = (string) ( $attributes['fieldHoverBg'] ?? '' );
 		if ( $field_hover_bg !== '' ) {
@@ -1065,36 +1184,133 @@ class BlockHandler {
 		}
 		if ( $field_hover_rules ) {
 			$field_hover_sel = $wrap_sel . ' .neural-forms-form__input:hover:not(:focus),'
-				. $wrap_sel . ' .neural-forms-form__textarea:hover:not(:focus),'
 				. $wrap_sel . ' .neural-forms-form__select:hover:not(:focus)';
 			$css .= $field_hover_sel . '{' . implode( ';', $field_hover_rules ) . '}';
 		}
 
-		// ' Field error state (invalid input + per-field error message) '
-		$field_error_rules = [];
-		$field_err_bg = (string) ( $attributes['fieldErrorBg'] ?? '' );
-		if ( $field_err_bg !== '' ) {
-			$field_error_rules[] = 'background-color:' . sanitize_hex_color( $field_err_bg );
+		// ' Textarea field — type-specific (.neural-forms-form__textarea) '
+		$ta_sel   = $wrap_sel . ' .neural-forms-form__textarea';
+		$ta_rules = [];
+		$ta_bg = (string) ( $attributes['textareaBg'] ?? '' );
+		if ( $ta_bg !== '' ) $ta_rules[] = 'background-color:' . sanitize_hex_color( $ta_bg );
+		$ta_text = (string) ( $attributes['textareaTextColor'] ?? '' );
+		if ( $ta_text !== '' ) $ta_rules[] = 'color:' . sanitize_hex_color( $ta_text );
+		$ta_bc = (string) ( $attributes['textareaBorderColor'] ?? '' );
+		$ta_bw = (string) ( $attributes['textareaBorderWidth'] ?? '' );
+		$ta_bs = (string) ( $attributes['textareaBorderStyle'] ?? '' );
+		if ( $ta_bc !== '' || $ta_bw !== '' || $ta_bs !== '' ) {
+			$bw = $ta_bw !== '' ? sanitize_text_field( $ta_bw ) : '1px';
+			$bc = $ta_bc !== '' ? sanitize_hex_color( $ta_bc ) : 'transparent';
+			$bs = in_array( $ta_bs, [ 'solid', 'dashed', 'dotted' ], true ) ? $ta_bs : 'solid';
+			$ta_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
-		$field_err_text = (string) ( $attributes['fieldErrorTextColor'] ?? '' );
-		if ( $field_err_text !== '' ) {
-			$field_error_rules[] = 'color:' . sanitize_hex_color( $field_err_text );
+		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $k => $prop ) {
+			$v = $len( (string) ( $attributes[ 'textareaBorderRadius' . $k ] ?? '' ) );
+			if ( $v !== '' ) $ta_rules[] = $prop . ':' . $v;
 		}
-		$field_err_border = (string) ( $attributes['fieldErrorBorderColor'] ?? '' );
-		if ( $field_err_border !== '' ) {
-			$field_error_rules[] = 'border-color:' . sanitize_hex_color( $field_err_border );
+		$ta_fs_raw = (string) ( $attributes['textareaFontSize'] ?? '' );
+		if ( isset( $slug_to_px[ $ta_fs_raw ] ) ) $ta_fs_raw = $slug_to_px[ $ta_fs_raw ];
+		$ta_fs = $len( $ta_fs_raw );
+		if ( $ta_fs !== '' ) $ta_rules[] = 'font-size:' . $ta_fs;
+		$ta_fw = (string) ( $attributes['textareaFontWeight'] ?? '' );
+		if ( $ta_fw !== '' ) $ta_rules[] = 'font-weight:' . sanitize_text_field( $ta_fw );
+		$ta_fstyle = (string) ( $attributes['textareaFontStyle'] ?? '' );
+		if ( $ta_fstyle === 'italic' ) $ta_rules[] = 'font-style:italic';
+		$ta_ff = (string) ( $attributes['textareaFontFamily'] ?? '' );
+		if ( $ta_ff !== '' ) $ta_rules[] = 'font-family:' . sanitize_text_field( $ta_ff );
+		$ta_ls = (string) ( $attributes['textareaLetterSpacing'] ?? '' );
+		if ( $ta_ls !== '' ) { if ( is_numeric( $ta_ls ) ) $ta_ls .= 'px'; $ta_rules[] = 'letter-spacing:' . sanitize_text_field( $ta_ls ); }
+		$ta_lh = (string) ( $attributes['textareaLineHeight'] ?? '' );
+		if ( $ta_lh !== '' ) $ta_rules[] = 'line-height:' . sanitize_text_field( $ta_lh );
+		$ta_tt = (string) ( $attributes['textareaTextTransform'] ?? '' );
+		if ( $ta_tt !== '' && in_array( $ta_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) $ta_rules[] = 'text-transform:' . $ta_tt;
+		$ta_td = (string) ( $attributes['textareaTextDecoration'] ?? '' );
+		if ( $ta_td !== '' && in_array( $ta_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) $ta_rules[] = 'text-decoration:' . $ta_td;
+		$ta_ta = (string) ( $attributes['textareaTextAlign'] ?? '' );
+		if ( $ta_ta !== '' && in_array( $ta_ta, [ 'left', 'center', 'right', 'justify' ], true ) ) $ta_rules[] = 'text-align:' . $ta_ta;
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $k => $prop ) {
+			$v = $len( (string) ( $attributes[ 'textareaPadding' . $k ] ?? '' ) );
+			if ( $v !== '' ) $ta_rules[] = $prop . ':' . $v;
 		}
-		if ( $field_error_rules ) {
-			$field_err_sel = $wrap_sel . ' .neural-forms-form__field--has-error .neural-forms-form__input,'
-				. $wrap_sel . ' .neural-forms-form__field--has-error .neural-forms-form__textarea,'
-				. $wrap_sel . ' .neural-forms-form__field--has-error .neural-forms-form__select';
-			$css .= $field_err_sel . '{' . implode( ';', $field_error_rules ) . '}';
+		$ta_mh = $len( (string) ( $attributes['textareaMinHeight'] ?? '' ) );
+		if ( $ta_mh !== '' ) $ta_rules[] = 'min-height:' . $ta_mh;
+		if ( $ta_rules ) $css .= $ta_sel . '{' . implode( ';', $ta_rules ) . '}';
+
+		$ta_focus_rules = [];
+		$ta_focus_bg = (string) ( $attributes['textareaFocusBg'] ?? '' );
+		if ( $ta_focus_bg !== '' ) $ta_focus_rules[] = 'background-color:' . sanitize_hex_color( $ta_focus_bg );
+		$ta_focus_text = (string) ( $attributes['textareaFocusTextColor'] ?? '' );
+		if ( $ta_focus_text !== '' ) $ta_focus_rules[] = 'color:' . sanitize_hex_color( $ta_focus_text );
+		$ta_focus_border = (string) ( $attributes['textareaFocusBorderColor'] ?? '' );
+		if ( $ta_focus_border !== '' ) $ta_focus_rules[] = 'border-color:' . sanitize_hex_color( $ta_focus_border );
+		if ( $ta_focus_rules ) $css .= $ta_sel . ':focus{' . implode( ';', $ta_focus_rules ) . '}';
+
+		$ta_hover_rules = [];
+		$ta_hover_bg = (string) ( $attributes['textareaHoverBg'] ?? '' );
+		if ( $ta_hover_bg !== '' ) $ta_hover_rules[] = 'background-color:' . sanitize_hex_color( $ta_hover_bg );
+		$ta_hover_border = (string) ( $attributes['textareaHoverBorderColor'] ?? '' );
+		if ( $ta_hover_border !== '' ) $ta_hover_rules[] = 'border-color:' . sanitize_hex_color( $ta_hover_border );
+		if ( $ta_hover_rules ) $css .= $ta_sel . ':hover:not(:focus){' . implode( ';', $ta_hover_rules ) . '}';
+
+		// ' Acceptance field — checkbox + label (.neural-forms-form__field--acceptance) '
+		$acc_cb_sel    = $wrap_sel . ' .neural-forms-form__field--acceptance .neural-forms-form__checkbox';
+		$acc_label_sel = $wrap_sel . ' .neural-forms-form__field--acceptance .neural-forms-form__label--checkbox';
+		$acc_wrap_sel  = $wrap_sel . ' .neural-forms-form__field--acceptance .neural-forms-form__checkbox-wrapper';
+		$acc_cb_rules      = [];
+		$acc_checked_bg    = sanitize_hex_color( (string) ( $attributes['acceptanceCheckedBg'] ?? '' ) );
+		$acc_border_color  = sanitize_hex_color( (string) ( $attributes['acceptanceBorderColor'] ?? '' ) );
+		$acc_border_width  = $len( (string) ( $attributes['acceptanceBorderWidth'] ?? '' ) );
+		$acc_radius        = $len( (string) ( $attributes['acceptanceBorderRadius'] ?? '' ) );
+		$acc_size_raw      = $len( (string) ( $attributes['acceptanceSize'] ?? '' ) );
+
+		if ( $acc_size_raw !== '' ) { $acc_cb_rules[] = 'width:' . $acc_size_raw; $acc_cb_rules[] = 'height:' . $acc_size_raw; }
+		if ( $acc_border_color !== null && $acc_border_color !== '' ) {
+			$acc_cb_rules[] = 'border-color:' . $acc_border_color;
+			$acc_cb_rules[] = 'border-style:solid';
+			if ( $acc_border_width !== '' ) $acc_cb_rules[] = 'border-width:' . $acc_border_width;
+		} elseif ( $acc_border_width !== '' ) {
+			$acc_cb_rules[] = 'border-style:solid';
+			$acc_cb_rules[] = 'border-width:' . $acc_border_width;
+		}
+		if ( $acc_radius !== '' ) $acc_cb_rules[] = 'border-radius:' . $acc_radius;
+
+		if ( $acc_cb_rules ) {
+			// appearance:none required so browser stops using native rendering and honours our CSS.
+			// We prepend base reset rules so they come first in the declaration.
+			$base = [ 'appearance:none', '-webkit-appearance:none', 'cursor:pointer', 'background-color:#ffffff', 'box-sizing:border-box' ];
+			$css .= $acc_cb_sel . '{' . implode( ';', array_merge( $base, $acc_cb_rules ) ) . '}';
+			// Checked state: fill with accent colour + inline SVG checkmark (accent-color doesn't work with appearance:none).
+			$fill    = ( $acc_checked_bg !== null && $acc_checked_bg !== '' ) ? $acc_checked_bg : '#2271b1';
+			$chk_svg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2' d='M3 8l3.5 3.5L13 4'/%3E%3C/svg%3E\")";
+			$css .= $acc_cb_sel . ':checked{background-color:' . $fill . ';background-image:' . $chk_svg . ';background-size:70%;background-repeat:no-repeat;background-position:center}';
+		} elseif ( $acc_checked_bg !== null && $acc_checked_bg !== '' ) {
+			// Only the accent colour is set — keep native appearance so accent-color still works.
+			$css .= $acc_cb_sel . '{accent-color:' . $acc_checked_bg . '}';
 		}
 
+		$acc_label_rules = [];
+		$acc_label_color = (string) ( $attributes['acceptanceLabelColor'] ?? '' );
+		if ( $acc_label_color !== '' ) $acc_label_rules[] = 'color:' . sanitize_hex_color( $acc_label_color );
+		$acc_label_fs_raw = (string) ( $attributes['acceptanceLabelFontSize'] ?? '' );
+		$label_slug_map = [ 'small' => '12px', 'medium' => '14px', 'large' => '16px', 'x-large' => '20px' ];
+		if ( isset( $label_slug_map[ $acc_label_fs_raw ] ) ) $acc_label_fs_raw = $label_slug_map[ $acc_label_fs_raw ];
+		$acc_label_fs = $len( $acc_label_fs_raw );
+		if ( $acc_label_fs !== '' ) $acc_label_rules[] = 'font-size:' . $acc_label_fs;
+		$acc_label_fw = (string) ( $attributes['acceptanceLabelFontWeight'] ?? '' );
+		if ( $acc_label_fw !== '' ) $acc_label_rules[] = 'font-weight:' . sanitize_text_field( $acc_label_fw );
+		if ( $acc_label_rules ) $css .= $acc_label_sel . '{' . implode( ';', $acc_label_rules ) . '}';
+
+		$acc_gap = (string) ( $attributes['acceptanceGap'] ?? '' );
+		if ( $acc_gap !== '' ) $css .= $acc_wrap_sel . '{gap:' . sanitize_text_field( $acc_gap ) . '}';
+
+		// ' Field error state (invalid input + per-field error message) '
 		$field_err_msg_rules = [];
 		$field_err_msg_color = (string) ( $attributes['fieldErrorMsgColor'] ?? '' );
 		if ( $field_err_msg_color !== '' ) {
-			$field_err_msg_rules[] = 'color:' . sanitize_hex_color( $field_err_msg_color );
+			$hex = sanitize_hex_color( $field_err_msg_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$field_err_msg_rules[] = 'color:' . $hex;
+			}
 		}
 		$field_err_msg_fs = $len( $attributes['fieldErrorMsgFontSize'] ?? '' );
 		if ( $field_err_msg_fs !== '' ) {
@@ -1117,14 +1333,11 @@ class BlockHandler {
 			if ( $success_color !== '' ) {
 				$success_rules[] = 'color:' . sanitize_hex_color( $success_color );
 			}
-			$success_border = (string) ( $attributes['successMsgBorderColor'] ?? '' );
-			if ( $success_border !== '' ) {
-				$success_rules[] = 'border-color:' . sanitize_hex_color( $success_border );
-			}
+
 			foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 				$val = (string) ( $attributes[ 'successMsgPadding' . $key ] ?? '' );
 				if ( $val !== '' ) {
-					$success_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+					$success_rules[] = $css_prop . ':' . $len( $val );
 				}
 			}
 			if ( $success_rules ) {
@@ -1139,20 +1352,22 @@ class BlockHandler {
 			$err_rules = [];
 			$err_bg = (string) ( $attributes['errorMsgBg'] ?? '' );
 			if ( $err_bg !== '' ) {
-				$err_rules[] = 'background-color:' . sanitize_hex_color( $err_bg );
+				$hex = sanitize_hex_color( $err_bg );
+				if ( $hex !== null && $hex !== '' ) {
+					$err_rules[] = 'background-color:' . $hex;
+				}
 			}
 			$err_color = (string) ( $attributes['errorMsgColor'] ?? '' );
 			if ( $err_color !== '' ) {
-				$err_rules[] = 'color:' . sanitize_hex_color( $err_color );
-			}
-			$err_border = (string) ( $attributes['errorMsgBorderColor'] ?? '' );
-			if ( $err_border !== '' ) {
-				$err_rules[] = 'border-color:' . sanitize_hex_color( $err_border );
+				$hex = sanitize_hex_color( $err_color );
+				if ( $hex !== null && $hex !== '' ) {
+					$err_rules[] = 'color:' . $hex;
+				}
 			}
 			foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 				$val = (string) ( $attributes[ 'errorMsgPadding' . $key ] ?? '' );
 				if ( $val !== '' ) {
-					$err_rules[] = $css_prop . ':' . sanitize_text_field( $val );
+					$err_rules[] = $css_prop . ':' . $len( $val );
 				}
 			}
 			if ( $err_rules ) {
@@ -1160,45 +1375,882 @@ class BlockHandler {
 			}
 		}
 
-		// ' Per-field-type controls (checkbox / radio / select / file) '
-		$cb_size = (string) ( $attributes['checkboxSize'] ?? '' );
-		if ( $cb_size !== '' ) {
-			$cb = sanitize_text_field( $cb_size );
-			$cb_sel = $wrap_sel . ' .neural-forms-form__checkbox,' . $wrap_sel . ' .neural-forms-form__radio';
-			$css .= $cb_sel . '{width:' . $cb . ';height:' . $cb . '}';
-		}
-		$cb_color = (string) ( $attributes['checkboxCheckedColor'] ?? '' );
-		if ( $cb_color !== '' ) {
-			$cb_sel = $wrap_sel . ' .neural-forms-form__checkbox,' . $wrap_sel . ' .neural-forms-form__radio';
-			$css .= $cb_sel . '{accent-color:' . sanitize_hex_color( $cb_color ) . '}';
+		// ——— Radio field ———
+
+		$radio_opt_sel       = $wrap_sel . ' .neural-forms-form__radio-option';
+		$radio_opt_hover_sel = $radio_opt_sel . ':hover';
+		$radio_opt_chk_sel   = $wrap_sel . ' .neural-forms-form__radio-option:has(.neural-forms-form__radio:checked)';
+		$radio_opts_sel      = $wrap_sel . ' .neural-forms-form__radio-group';
+		$radio_input_sel     = $wrap_sel . ' .neural-forms-form__radio';
+		$radio_label_sel     = $wrap_sel . ' .neural-forms-form__label--radio';
+
+		$radio_direction = (string) ( $attributes['radioOptionsDirection'] ?? 'vertical' );
+		if ( $radio_direction === 'horizontal' ) {
+			$css .= $radio_opts_sel . '{flex-direction:row;flex-wrap:wrap}';
 		}
 
-		$arrow_color = (string) ( $attributes['selectArrowColor'] ?? '' );
-		if ( $arrow_color !== '' ) {
-			$hex = sanitize_hex_color( $arrow_color );
-			if ( $hex ) {
-				// Encode the hex without the leading '#' for the inline SVG URL.
-				$encoded = '%23' . substr( $hex, 1 );
-				$svg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='" . $encoded . "' d='M1 1l5 5 5-5'/%3E%3C/svg%3E\")";
-				$css .= $wrap_sel . ' .neural-forms-form__select{background-image:' . $svg . '}';
+		$radio_gap = (string) ( $attributes['radioOptionsGap'] ?? '' );
+		if ( $radio_gap !== '' ) {
+			$css .= $radio_opts_sel . '{gap:' . sanitize_text_field( $radio_gap ) . '}';
+		}
+
+		$radio_size = (string) ( $attributes['radioOptionSize'] ?? '' );
+		if ( $radio_size !== '' ) {
+			$s = $len( $radio_size );
+			$css .= $radio_input_sel . '{width:' . $s . ';height:' . $s . ';min-width:' . $s . '}';
+		}
+
+		$radio_label_gap = (string) ( $attributes['radioLabelGap'] ?? '' );
+		if ( $radio_label_gap !== '' ) {
+			$css .= $radio_input_sel . '{margin-right:' . $len( $radio_label_gap ) . '}';
+		}
+
+		$radio_opt_rules = [];
+		$radio_opt_bg = (string) ( $attributes['radioOptionBg'] ?? '' );
+		if ( $radio_opt_bg !== '' ) {
+			$radio_opt_rules[] = 'background-color:' . sanitize_hex_color( $radio_opt_bg );
+		}
+		$radio_opt_border_color = (string) ( $attributes['radioOptionBorderColor'] ?? '' );
+		$radio_opt_border_width = (string) ( $attributes['radioOptionBorderWidth'] ?? '' );
+		$radio_opt_border_style = (string) ( $attributes['radioOptionBorderStyle'] ?? '' );
+		if ( $radio_opt_border_color !== '' || $radio_opt_border_width !== '' || $radio_opt_border_style !== '' ) {
+			$bw = $radio_opt_border_width !== '' ? sanitize_text_field( $radio_opt_border_width ) : '1px';
+			$bc = $radio_opt_border_color !== '' ? ( sanitize_hex_color( $radio_opt_border_color ) ?? 'transparent' ) : 'transparent';
+			$bs = in_array( $radio_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $radio_opt_border_style : 'solid';
+			$radio_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+		$radio_opt_radius = (string) ( $attributes['radioOptionBorderRadius'] ?? '' );
+		if ( $radio_opt_radius !== '' ) {
+			$radio_opt_rules[] = 'border-radius:' . sanitize_text_field( $radio_opt_radius );
+		}
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
+			$val = (string) ( $attributes[ 'radioOptionPadding' . $side ] ?? '' );
+			if ( $val !== '' ) {
+				$radio_opt_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+		if ( $radio_opt_rules ) {
+			$css .= $radio_input_sel . '{' . implode( ';', $radio_opt_rules ) . '}';
+		}
+
+		$radio_hover_bg = (string) ( $attributes['radioOptionHoverBg'] ?? '' );
+		if ( $radio_hover_bg !== '' ) {
+			$css .= $radio_opt_hover_sel . '{background-color:' . sanitize_hex_color( $radio_hover_bg ) . '}';
+		}
+
+		$radio_checked_bg = (string) ( $attributes['radioOptionCheckedBg'] ?? '' );
+		if ( $radio_checked_bg !== '' ) {
+			$css .= $radio_opt_chk_sel . '{background-color:' . sanitize_hex_color( $radio_checked_bg ) . '}';
+		}
+
+		$radio_accent = (string) ( $attributes['radioAccentColor'] ?? '' );
+		if ( $radio_accent !== '' ) {
+			$hex = sanitize_hex_color( $radio_accent );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $radio_input_sel . ':checked{background-image:radial-gradient(circle,' . $hex . ' 40%,transparent 40%);border-color:' . $hex . '}';
 			}
 		}
 
-		$file_rules = [];
-		$file_bg = (string) ( $attributes['fileBg'] ?? '' );
-		if ( $file_bg !== '' ) {
-			$file_rules[] = 'background-color:' . sanitize_hex_color( $file_bg );
+		$radio_label_rules = [];
+		$radio_label_color = (string) ( $attributes['radioOptionColor'] ?? '' );
+		if ( $radio_label_color !== '' ) {
+			$hex = sanitize_hex_color( $radio_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$radio_label_rules[] = 'color:' . $hex;
+			}
 		}
-		$file_color = (string) ( $attributes['fileColor'] ?? '' );
-		if ( $file_color !== '' ) {
-			$file_rules[] = 'color:' . sanitize_hex_color( $file_color );
+		$radio_label_fs = (string) ( $attributes['radioOptionFontSize'] ?? '' );
+		if ( $radio_label_fs !== '' ) {
+			$radio_label_rules[] = 'font-size:' . $len( $radio_label_fs );
 		}
-		$file_border = (string) ( $attributes['fileBorderColor'] ?? '' );
-		if ( $file_border !== '' ) {
-			$file_rules[] = 'border-color:' . sanitize_hex_color( $file_border );
+		$radio_label_fw = (string) ( $attributes['radioOptionFontWeight'] ?? '' );
+		if ( $radio_label_fw !== '' ) {
+			$radio_label_rules[] = 'font-weight:' . sanitize_text_field( $radio_label_fw );
 		}
-		if ( $file_rules ) {
-			$css .= $wrap_sel . ' .neural-forms-form__file-input{' . implode( ';', $file_rules ) . '}';
+		if ( $radio_label_rules ) {
+			$css .= $radio_label_sel . '{' . implode( ';', $radio_label_rules ) . '}';
+		}
+
+		// ——— Checkbox group field ———
+
+		$cbg_cb_grp_sel = $wrap_sel . ' .neural-forms-form__checkbox-group .neural-forms-form__checkbox';
+		$cbg_cb_sng_sel = $wrap_sel . ' .neural-forms-form__field--checkbox .neural-forms-form__checkbox';
+		$cbg_cb_sel     = $cbg_cb_grp_sel . ',' . $cbg_cb_sng_sel;
+		$cbg_cb_chk_sel = $cbg_cb_grp_sel . ':checked,' . $cbg_cb_sng_sel . ':checked';
+		$cbg_cb_fcs_sel = $cbg_cb_grp_sel . ':focus,' . $cbg_cb_sng_sel . ':focus';
+		$cbg_label_sel  = $wrap_sel . ' .neural-forms-form__checkbox-group .neural-forms-form__label--checkbox,'
+		                . $wrap_sel . ' .neural-forms-form__field--checkbox .neural-forms-form__label--checkbox';
+		$cbg_opt_sel    = $wrap_sel . ' .neural-forms-form__checkbox-group .neural-forms-form__checkbox-option';
+		$cbg_grp_sel    = $wrap_sel . ' .neural-forms-form__checkbox-group';
+
+		$cbg_direction = (string) ( $attributes['cbGroupDirection'] ?? 'vertical' );
+		if ( $cbg_direction === 'horizontal' ) {
+			$css .= $cbg_grp_sel . '{flex-direction:row;flex-wrap:wrap}';
+		}
+
+		$cbg_size = (string) ( $attributes['cbGroupSize'] ?? '' );
+		$cbg_bg   = (string) ( $attributes['cbGroupBg']   ?? '' );
+		$cbg_chk  = (string) ( $attributes['cbGroupCheckedBg'] ?? '' );
+		$cbg_bc   = (string) ( $attributes['cbGroupBorderColor'] ?? '' );
+		$cbg_bw   = (string) ( $attributes['cbGroupBorderWidth'] ?? '' );
+		$cbg_br   = (string) ( $attributes['cbGroupBorderRadius'] ?? '' );
+
+		$has_cbg_custom = ( $cbg_bg !== '' || $cbg_bc !== '' || $cbg_bw !== '' || $cbg_br !== '' || $cbg_size !== '' );
+
+		$cbg_cb_rules = [];
+		if ( $cbg_size !== '' ) {
+			$s = $len( $cbg_size );
+			$cbg_cb_rules[] = 'width:' . $s;
+			$cbg_cb_rules[] = 'height:' . $s;
+			$cbg_cb_rules[] = 'min-width:' . $s;
+		}
+		if ( $has_cbg_custom ) {
+			// appearance:none so border/bg CSS takes effect on native checkboxes
+			$cbg_cb_rules[] = 'appearance:none';
+			$cbg_cb_rules[] = '-webkit-appearance:none';
+			$cbg_cb_rules[] = 'cursor:pointer';
+			$cbg_cb_rules[] = 'box-sizing:border-box';
+			$cbg_bg_hex = $cbg_bg !== '' ? ( sanitize_hex_color( $cbg_bg ) ?? '#ffffff' ) : '#ffffff';
+			$cbg_cb_rules[] = 'background-color:' . $cbg_bg_hex;
+		}
+		if ( $cbg_bc !== '' || $cbg_bw !== '' ) {
+			$bw = $cbg_bw !== '' ? sanitize_text_field( $cbg_bw ) : '1px';
+			$bc = $cbg_bc !== '' ? ( sanitize_hex_color( $cbg_bc ) ?? '#cccccc' ) : '#cccccc';
+			$cbg_cb_rules[] = 'border:' . $bw . ' solid ' . $bc;
+		}
+		if ( $cbg_br !== '' ) {
+			$cbg_cb_rules[] = 'border-radius:' . $len( $cbg_br );
+		}
+		if ( $cbg_cb_rules ) {
+			$css .= $cbg_cb_sel . '{' . implode( ';', $cbg_cb_rules ) . '}';
+		}
+
+		if ( $has_cbg_custom ) {
+			// Checked state: accent bg + white SVG tick
+			$fill_hex   = $cbg_chk !== '' ? ( sanitize_hex_color( $cbg_chk ) ?? '#2271b1' ) : '#2271b1';
+			$chk_svg    = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2' d='M3 8l3.5 3.5L13 4'/%3E%3C/svg%3E\")";
+			$css .= $cbg_cb_chk_sel . '{background-color:' . $fill_hex . ';background-image:' . $chk_svg . ';background-size:70%;background-repeat:no-repeat;background-position:center;border-color:' . $fill_hex . '}';
+			$css .= $cbg_cb_fcs_sel . '{outline:none}';
+		} elseif ( $cbg_chk !== '' ) {
+			// Only checked bg set — keep native appearance and use accent-color
+			$hex = sanitize_hex_color( $cbg_chk );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $cbg_cb_sel . '{accent-color:' . $hex . '}';
+			}
+		}
+
+		$cbg_gap = (string) ( $attributes['cbGroupGap'] ?? '' );
+		if ( $cbg_gap !== '' ) {
+			$css .= $cbg_cb_sel . '{margin-right:' . $len( $cbg_gap ) . '}';
+		}
+
+		$cbg_item_gap = (string) ( $attributes['cbGroupItemGap'] ?? '' );
+		if ( $cbg_item_gap !== '' ) {
+			$css .= $cbg_grp_sel . '{gap:' . $len( $cbg_item_gap ) . '}';
+		}
+
+		$cbg_label_rules = [];
+		$cbg_lc = (string) ( $attributes['cbGroupLabelColor'] ?? '' );
+		if ( $cbg_lc !== '' ) {
+			$hex = sanitize_hex_color( $cbg_lc );
+			if ( $hex !== null && $hex !== '' ) {
+				$cbg_label_rules[] = 'color:' . $hex;
+			}
+		}
+		$cbg_lfs = (string) ( $attributes['cbGroupLabelFontSize'] ?? '' );
+		if ( $cbg_lfs !== '' ) {
+			$cbg_label_rules[] = 'font-size:' . $len( $cbg_lfs );
+		}
+		$cbg_lfw = (string) ( $attributes['cbGroupLabelFontWeight'] ?? '' );
+		if ( $cbg_lfw !== '' ) {
+			$cbg_label_rules[] = 'font-weight:' . sanitize_text_field( $cbg_lfw );
+		}
+		if ( $cbg_label_rules ) {
+			$css .= $cbg_label_sel . '{' . implode( ';', $cbg_label_rules ) . '}';
+		}
+
+		// ——— Rating field ———
+
+		$rating_glyph_sel = $wrap_sel . ' .neural-forms-form__rating-glyph';
+		$rating_star_sel  = $wrap_sel . ' .neural-forms-form__rating-star';
+		$rating_row_sel   = $wrap_sel . ' .neural-forms-form__rating';
+
+		$rating_size = (string) ( $attributes['ratingStarSize'] ?? '' );
+		if ( $rating_size !== '' ) {
+			$css .= $rating_glyph_sel . '{font-size:' . $len( $rating_size ) . '}';
+		}
+
+		$rating_gap = (string) ( $attributes['ratingStarGap'] ?? '' );
+		if ( $rating_gap !== '' ) {
+			$css .= $rating_row_sel . '{gap:' . $len( $rating_gap ) . '}';
+		}
+
+		$rating_empty = (string) ( $attributes['ratingEmptyColor'] ?? '' );
+		if ( $rating_empty !== '' ) {
+			$hex = sanitize_hex_color( $rating_empty );
+			if ( $hex !== null && $hex !== '' ) {
+				// Default state: every glyph (all are visually "empty" until starred)
+				$css .= $rating_glyph_sel . '{color:' . $hex . '}';
+			}
+		}
+
+		$rating_filled = (string) ( $attributes['ratingFilledColor'] ?? '' );
+		if ( $rating_filled !== '' ) {
+			$hex = sanitize_hex_color( $rating_filled );
+			if ( $hex !== null && $hex !== '' ) {
+				// Filled: checked input's glyph + all preceding siblings (row-reverse trick)
+				$css .= $wrap_sel . ' .neural-forms-form__rating-input:checked ~ .neural-forms-form__rating-glyph,'
+					. $wrap_sel . ' .neural-forms-form__rating-star:has(.neural-forms-form__rating-input:checked) .neural-forms-form__rating-glyph,'
+					. $wrap_sel . ' .neural-forms-form__rating-star:has(.neural-forms-form__rating-input:checked) ~ .neural-forms-form__rating-star .neural-forms-form__rating-glyph'
+					. '{color:' . $hex . '}';
+			}
+		}
+
+		$rating_hover = (string) ( $attributes['ratingHoverColor'] ?? '' );
+		if ( $rating_hover !== '' ) {
+			$hex = sanitize_hex_color( $rating_hover );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $rating_star_sel . ':hover,'
+					. $rating_star_sel . ':hover ~ ' . $rating_star_sel . ','
+					. $rating_star_sel . ':focus-within,'
+					. $rating_star_sel . ':focus-within ~ ' . $rating_star_sel
+					. '{color:' . $hex . '}';
+			}
+		}
+
+		// ——— File input field (filename display area) ———
+
+		$fi_sel   = $wrap_sel . ' .neural-forms-form__file-input';
+		$fi_rules = [];
+
+		$fi_bg = (string) ( $attributes['fileInputBg'] ?? '' );
+		if ( $fi_bg !== '' ) {
+			$hex = sanitize_hex_color( $fi_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$fi_rules[] = 'background-color:' . $hex;
+			}
+		}
+
+		$fi_color = (string) ( $attributes['fileInputColor'] ?? '' );
+		if ( $fi_color !== '' ) {
+			$hex = sanitize_hex_color( $fi_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$fi_rules[] = 'color:' . $hex;
+			}
+		}
+
+		$fi_fs = (string) ( $attributes['fileInputFontSize'] ?? '' );
+		if ( $fi_fs !== '' ) {
+			$fi_rules[] = 'font-size:' . $len( $fi_fs );
+		}
+
+		$fi_bc = (string) ( $attributes['fileInputBorderColor'] ?? '' );
+		$fi_bw = (string) ( $attributes['fileInputBorderWidth'] ?? '' );
+		$fi_bs = (string) ( $attributes['fileInputBorderStyle'] ?? '' );
+		if ( $fi_bc !== '' || $fi_bw !== '' || $fi_bs !== '' ) {
+			$bw = $fi_bw !== '' ? sanitize_text_field( $fi_bw ) : '1px';
+			$bc = $fi_bc !== '' ? ( sanitize_hex_color( $fi_bc ) ?? 'transparent' ) : 'transparent';
+			$bs = in_array( $fi_bs, [ 'solid', 'dashed', 'dotted' ], true ) ? $fi_bs : 'solid';
+			$fi_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+
+		$fi_br = (string) ( $attributes['fileInputBorderRadius'] ?? '' );
+		if ( $fi_br !== '' ) {
+			$fi_rules[] = 'border-radius:' . $len( $fi_br );
+		}
+
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
+			$val = (string) ( $attributes[ 'fileInputPadding' . $side ] ?? '' );
+			if ( $val !== '' ) {
+				$fi_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+
+		if ( $fi_rules ) {
+			$css .= $fi_sel . '{' . implode( ';', $fi_rules ) . '}';
+		}
+
+		// ——— File browse button (::file-selector-button pseudo-element) ———
+
+		$fbtn_sel       = $wrap_sel . ' .neural-forms-form__file-input::file-selector-button';
+		$fbtn_hover_sel = $wrap_sel . ' .neural-forms-form__file-input:hover::file-selector-button';
+		$fbtn_rules     = [];
+
+		$fbtn_bg = (string) ( $attributes['fileBtnBg'] ?? '' );
+		if ( $fbtn_bg !== '' ) {
+			$hex = sanitize_hex_color( $fbtn_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$fbtn_rules[] = 'background-color:' . $hex;
+			}
+		}
+
+		$fbtn_color = (string) ( $attributes['fileBtnColor'] ?? '' );
+		if ( $fbtn_color !== '' ) {
+			$hex = sanitize_hex_color( $fbtn_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$fbtn_rules[] = 'color:' . $hex;
+			}
+		}
+
+		$fbtn_fs = (string) ( $attributes['fileBtnFontSize'] ?? '' );
+		if ( $fbtn_fs !== '' ) {
+			$fbtn_rules[] = 'font-size:' . $len( $fbtn_fs );
+		}
+
+		$fbtn_fw = (string) ( $attributes['fileBtnFontWeight'] ?? '' );
+		if ( $fbtn_fw !== '' ) {
+			$fbtn_rules[] = 'font-weight:' . sanitize_text_field( $fbtn_fw );
+		}
+
+		$fbtn_bc = (string) ( $attributes['fileBtnBorderColor'] ?? '' );
+		$fbtn_bw = (string) ( $attributes['fileBtnBorderWidth'] ?? '' );
+		$fbtn_bs = (string) ( $attributes['fileBtnBorderStyle'] ?? '' );
+		if ( $fbtn_bc !== '' || $fbtn_bw !== '' || $fbtn_bs !== '' ) {
+			$bw = $fbtn_bw !== '' ? sanitize_text_field( $fbtn_bw ) : '1px';
+			$bc = $fbtn_bc !== '' ? ( sanitize_hex_color( $fbtn_bc ) ?? 'transparent' ) : 'transparent';
+			$bs = in_array( $fbtn_bs, [ 'solid', 'dashed', 'dotted' ], true ) ? $fbtn_bs : 'solid';
+			$fbtn_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+
+		$fbtn_br = (string) ( $attributes['fileBtnBorderRadius'] ?? '' );
+		if ( $fbtn_br !== '' ) {
+			$fbtn_rules[] = 'border-radius:' . $len( $fbtn_br );
+		}
+
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
+			$val = (string) ( $attributes[ 'fileBtnPadding' . $side ] ?? '' );
+			if ( $val !== '' ) {
+				$fbtn_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+
+		if ( $fbtn_rules ) {
+			$css .= $fbtn_sel . '{' . implode( ';', $fbtn_rules ) . '}';
+		}
+
+		$fbtn_hover_bg = (string) ( $attributes['fileBtnHoverBg'] ?? '' );
+		if ( $fbtn_hover_bg !== '' ) {
+			$hex = sanitize_hex_color( $fbtn_hover_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $fbtn_hover_sel . '{background-color:' . $hex . '}';
+			}
+		}
+
+		// ——— Poll options ———
+
+		$poll_opt_sel        = $wrap_sel . ' .neural-forms-form__poll-option';
+		$poll_opt_hover_sel  = $poll_opt_sel . ':hover';
+		$poll_opt_check_sel  = $wrap_sel . ' .neural-forms-form__poll-option:has(.neural-forms-form__poll-input:checked)';
+		$poll_opts_sel       = $wrap_sel . ' .neural-forms-form__poll-options';
+		$poll_input_sel      = $wrap_sel . ' .neural-forms-form__poll-input';
+		$poll_label_sel      = $wrap_sel . ' .neural-forms-form__label--poll';
+
+		// Layout direction.
+		$poll_direction = (string) ( $attributes['pollOptionsDirection'] ?? 'vertical' );
+		if ( $poll_direction === 'horizontal' ) {
+			$css .= $poll_opts_sel . '{flex-direction:row;flex-wrap:wrap}';
+		}
+
+		// Gap between option rows.
+		$poll_gap = (string) ( $attributes['pollOptionsGap'] ?? '' );
+		if ( $poll_gap !== '' ) {
+			$css .= $poll_opts_sel . '{gap:' . sanitize_text_field( $poll_gap ) . '}';
+		}
+
+		// Option item rules (bg, border, radius, padding).
+		$poll_opt_rules = [];
+		$poll_opt_bg = (string) ( $attributes['pollOptionBg'] ?? '' );
+		if ( $poll_opt_bg !== '' ) {
+			$poll_opt_rules[] = 'background-color:' . sanitize_hex_color( $poll_opt_bg );
+		}
+		$poll_opt_border_color = (string) ( $attributes['pollOptionBorderColor'] ?? '' );
+		$poll_opt_border_width = (string) ( $attributes['pollOptionBorderWidth'] ?? '' );
+		$poll_opt_border_style = (string) ( $attributes['pollOptionBorderStyle'] ?? '' );
+		if ( $poll_opt_border_color !== '' || $poll_opt_border_width !== '' || $poll_opt_border_style !== '' ) {
+			$bw = $poll_opt_border_width !== '' ? sanitize_text_field( $poll_opt_border_width ) : '1px';
+			$bc = $poll_opt_border_color !== '' ? sanitize_hex_color( $poll_opt_border_color ) : 'transparent';
+			$bs = in_array( $poll_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $poll_opt_border_style : 'solid';
+			$poll_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+		$poll_opt_radius = (string) ( $attributes['pollOptionBorderRadius'] ?? '' );
+		if ( $poll_opt_radius !== '' ) {
+			$poll_opt_rules[] = 'border-radius:' . sanitize_text_field( $poll_opt_radius );
+		}
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'pollOptionPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$poll_opt_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+		if ( $poll_opt_rules ) {
+			$css .= $poll_opt_sel . '{' . implode( ';', $poll_opt_rules ) . '}';
+		}
+
+		// Option hover bg.
+		$poll_opt_hover_bg = (string) ( $attributes['pollOptionHoverBg'] ?? '' );
+		if ( $poll_opt_hover_bg !== '' ) {
+			$css .= $poll_opt_hover_sel . '{background-color:' . sanitize_hex_color( $poll_opt_hover_bg ) . '}';
+		}
+
+		// Selected (checked) option bg.
+		$poll_opt_checked_bg = (string) ( $attributes['pollOptionCheckedBg'] ?? '' );
+		if ( $poll_opt_checked_bg !== '' ) {
+			$css .= $poll_opt_check_sel . '{background-color:' . sanitize_hex_color( $poll_opt_checked_bg ) . '}';
+		}
+
+		// Radio accent color.
+		$poll_accent = (string) ( $attributes['pollAccentColor'] ?? '' );
+		if ( $poll_accent !== '' ) {
+			$css .= $poll_input_sel . '{accent-color:' . sanitize_hex_color( $poll_accent ) . '}';
+		}
+
+		// Option label color + typography.
+		$poll_label_rules = [];
+		$poll_opt_color = (string) ( $attributes['pollOptionColor'] ?? '' );
+		if ( $poll_opt_color !== '' ) {
+			$poll_label_rules[] = 'color:' . sanitize_hex_color( $poll_opt_color );
+		}
+		$poll_opt_fs_raw = (string) ( $attributes['pollOptionFontSize'] ?? '' );
+		$poll_slug_to_px = [ 'small' => '13px', 'medium' => '15px', 'large' => '18px', 'x-large' => '22px' ];
+		if ( isset( $poll_slug_to_px[ $poll_opt_fs_raw ] ) ) {
+			$poll_opt_fs_raw = $poll_slug_to_px[ $poll_opt_fs_raw ];
+		}
+		$poll_opt_fs = $len( $poll_opt_fs_raw );
+		if ( $poll_opt_fs !== '' ) {
+			$poll_label_rules[] = 'font-size:' . $poll_opt_fs;
+		}
+		$poll_opt_fw = (string) ( $attributes['pollOptionFontWeight'] ?? '' );
+		if ( $poll_opt_fw !== '' ) {
+			$poll_label_rules[] = 'font-weight:' . sanitize_text_field( $poll_opt_fw );
+		}
+		if ( $poll_label_rules ) {
+			$css .= $poll_label_sel . '{' . implode( ';', $poll_label_rules ) . '}';
+		}
+
+		// ——— Results bar ———
+
+		$poll_bar_fill_sel  = $wrap_sel . ' .neural-forms-form__poll-bar-fill';
+		$poll_bar_track_sel = $wrap_sel . ' .neural-forms-form__poll-bar-track';
+		$poll_bar_label_sel = $wrap_sel . ' .neural-forms-form__poll-bar-label';
+		$poll_bar_count_sel = $wrap_sel . ' .neural-forms-form__poll-bar-count';
+		$poll_total_sel     = $wrap_sel . ' .neural-forms-form__poll-total';
+		$poll_results_sel   = $wrap_sel . ' .neural-forms-form__poll-results';
+
+		// Bar fill: solid or two-stop gradient.
+		$poll_bar_c1 = (string) ( $attributes['pollBarColor']  ?? '' );
+		$poll_bar_c2 = (string) ( $attributes['pollBarColor2'] ?? '' );
+		if ( $poll_bar_c1 !== '' ) {
+			$c1 = sanitize_hex_color( $poll_bar_c1 );
+			$c2 = $poll_bar_c2 !== '' ? sanitize_hex_color( $poll_bar_c2 ) : $c1;
+			$fill_bg = ( $c2 && $c2 !== $c1 )
+				? 'linear-gradient(90deg,' . $c1 . ' 0%,' . $c2 . ' 100%)'
+				: $c1;
+			$css .= $poll_bar_fill_sel . '{background:' . $fill_bg . '}';
+		}
+
+		// Bar track color.
+		$poll_bar_track = (string) ( $attributes['pollBarTrackColor'] ?? '' );
+		if ( $poll_bar_track !== '' ) {
+			$css .= $poll_bar_track_sel . '{background-color:' . sanitize_hex_color( $poll_bar_track ) . '}';
+		}
+
+		// Bar height + border-radius (applied to both track and fill).
+		$poll_bar_height = $len( $attributes['pollBarHeight'] ?? '' );
+		$poll_bar_radius = $len( $attributes['pollBarRadius'] ?? '' );
+		$poll_bar_dim_rules = [];
+		if ( $poll_bar_height !== '' ) {
+			$poll_bar_dim_rules[] = 'height:' . $poll_bar_height;
+		}
+		if ( $poll_bar_radius !== '' ) {
+			$poll_bar_dim_rules[] = 'border-radius:' . $poll_bar_radius;
+		}
+		if ( $poll_bar_dim_rules ) {
+			$dim_css = implode( ';', $poll_bar_dim_rules );
+			$css .= $poll_bar_track_sel . '{' . $dim_css . '}';
+			$css .= $poll_bar_fill_sel  . '{' . $dim_css . '}';
+		}
+
+		// Results area margin-top.
+		// Targets the in-form results container (visible when results_visibility="always")
+		// AND the dynamic results card in the success message (visible after voting for
+		// all visibility modes — it is a sibling of <form>, outside form.hidden=true).
+		$poll_results_mt = $len( $attributes['pollResultsMarginTop'] ?? '' );
+		if ( $poll_results_mt !== '' ) {
+			$css .= $poll_results_sel . '{margin-top:' . $poll_results_mt . '}';
+			$css .= $wrap_sel . ' .neural-forms-form__dynamic-results{margin-top:' . $poll_results_mt . '}';
+		}
+
+		// Results bar label + count typography.
+		$poll_res_fs_raw = (string) ( $attributes['pollResultsFontSize'] ?? '' );
+		if ( isset( $poll_slug_to_px[ $poll_res_fs_raw ] ) ) {
+			$poll_res_fs_raw = $poll_slug_to_px[ $poll_res_fs_raw ];
+		}
+		$poll_res_fs = $len( $poll_res_fs_raw );
+		if ( $poll_res_fs !== '' ) {
+			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-size:' . $poll_res_fs . '}';
+		}
+
+		$poll_res_label_color = (string) ( $attributes['pollResultsLabelColor'] ?? '' );
+		if ( $poll_res_label_color !== '' ) {
+			$css .= $poll_bar_label_sel . '{color:' . sanitize_hex_color( $poll_res_label_color ) . '}';
+		}
+		$poll_res_count_color = (string) ( $attributes['pollResultsCountColor'] ?? '' );
+		if ( $poll_res_count_color !== '' ) {
+			$css .= $poll_bar_count_sel . '{color:' . sanitize_hex_color( $poll_res_count_color ) . ';opacity:1}';
+		}
+
+		// Total votes text.
+		$poll_total_rules = [];
+		$poll_total_color = (string) ( $attributes['pollTotalColor'] ?? '' );
+		if ( $poll_total_color !== '' ) {
+			$poll_total_rules[] = 'color:' . sanitize_hex_color( $poll_total_color );
+		}
+		$poll_total_fs_raw = (string) ( $attributes['pollTotalFontSize'] ?? '' );
+		if ( isset( $poll_slug_to_px[ $poll_total_fs_raw ] ) ) {
+			$poll_total_fs_raw = $poll_slug_to_px[ $poll_total_fs_raw ];
+		}
+		$poll_total_fs = $len( $poll_total_fs_raw );
+		if ( $poll_total_fs !== '' ) {
+			$poll_total_rules[] = 'font-size:' . $poll_total_fs;
+		}
+		if ( $poll_total_rules ) {
+			$css .= $poll_total_sel . '{' . implode( ';', $poll_total_rules ) . '}';
+		}
+
+		// ——— Quiz options ———
+
+		$quiz_opt_sel       = $wrap_sel . ' .neural-forms-form__quiz-option';
+		$quiz_opt_hover_sel = $quiz_opt_sel . ':hover';
+		$quiz_opt_check_sel = $wrap_sel . ' .neural-forms-form__quiz-option:has(.neural-forms-form__quiz-input:checked)';
+		$quiz_opts_sel      = $wrap_sel . ' .neural-forms-form__quiz-options';
+		$quiz_input_sel     = $wrap_sel . ' .neural-forms-form__quiz-input';
+		$quiz_label_sel     = $wrap_sel . ' .neural-forms-form__label--quiz';
+
+		$quiz_direction = (string) ( $attributes['quizOptionsDirection'] ?? '' );
+		if ( $quiz_direction === 'horizontal' ) {
+			$css .= $quiz_opts_sel . '{flex-direction:row;flex-wrap:wrap}';
+		}
+
+		$quiz_gap = (string) ( $attributes['quizOptionsGap'] ?? '' );
+		if ( $quiz_gap !== '' ) {
+			$css .= $quiz_opts_sel . '{gap:' . sanitize_text_field( $quiz_gap ) . '}';
+		}
+
+		$quiz_opt_rules        = [];
+		$quiz_opt_bg           = (string) ( $attributes['quizOptionBg'] ?? '' );
+		$quiz_opt_border_color = (string) ( $attributes['quizOptionBorderColor'] ?? '' );
+		$quiz_opt_border_width = (string) ( $attributes['quizOptionBorderWidth'] ?? '' );
+		$quiz_opt_border_style = (string) ( $attributes['quizOptionBorderStyle'] ?? '' );
+
+		if ( $quiz_opt_bg !== '' ) {
+			$quiz_opt_rules[] = 'background-color:' . sanitize_hex_color( $quiz_opt_bg );
+		}
+		if ( $quiz_opt_border_color !== '' || $quiz_opt_border_width !== '' || $quiz_opt_border_style !== '' ) {
+			$bw = $quiz_opt_border_width !== '' ? sanitize_text_field( $quiz_opt_border_width ) : '1px';
+			$bc = $quiz_opt_border_color !== '' ? sanitize_hex_color( $quiz_opt_border_color ) : 'transparent';
+			$bs = in_array( $quiz_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $quiz_opt_border_style : 'solid';
+			$quiz_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+		$quiz_opt_radius = (string) ( $attributes['quizOptionBorderRadius'] ?? '' );
+		if ( $quiz_opt_radius !== '' ) {
+			$quiz_opt_rules[] = 'border-radius:' . sanitize_text_field( $quiz_opt_radius );
+		}
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'quizOptionPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$quiz_opt_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+		if ( $quiz_opt_rules ) {
+			$css .= $quiz_opt_sel . '{' . implode( ';', $quiz_opt_rules ) . '}';
+		}
+
+		$quiz_opt_hover_bg = (string) ( $attributes['quizOptionHoverBg'] ?? '' );
+		if ( $quiz_opt_hover_bg !== '' ) {
+			$css .= $quiz_opt_hover_sel . '{background-color:' . sanitize_hex_color( $quiz_opt_hover_bg ) . '}';
+		}
+
+		$quiz_opt_checked_bg = (string) ( $attributes['quizOptionCheckedBg'] ?? '' );
+		if ( $quiz_opt_checked_bg !== '' ) {
+			$css .= $quiz_opt_check_sel . '{background-color:' . sanitize_hex_color( $quiz_opt_checked_bg ) . '}';
+		}
+
+		$quiz_accent = (string) ( $attributes['quizAccentColor'] ?? '' );
+		if ( $quiz_accent !== '' ) {
+			$css .= $quiz_input_sel . '{accent-color:' . sanitize_hex_color( $quiz_accent ) . '}';
+		}
+
+		$quiz_label_rules = [];
+		$quiz_opt_color   = (string) ( $attributes['quizOptionColor'] ?? '' );
+		if ( $quiz_opt_color !== '' ) {
+			$quiz_label_rules[] = 'color:' . sanitize_hex_color( $quiz_opt_color );
+		}
+		$quiz_opt_fs_raw   = (string) ( $attributes['quizOptionFontSize'] ?? '' );
+		$quiz_slug_to_px   = [ 'small' => '13px', 'medium' => '15px', 'large' => '18px', 'x-large' => '22px' ];
+		if ( isset( $quiz_slug_to_px[ $quiz_opt_fs_raw ] ) ) {
+			$quiz_opt_fs_raw = $quiz_slug_to_px[ $quiz_opt_fs_raw ];
+		}
+		$quiz_opt_fs = $len( $quiz_opt_fs_raw );
+		if ( $quiz_opt_fs !== '' ) {
+			$quiz_label_rules[] = 'font-size:' . $quiz_opt_fs;
+		}
+		$quiz_opt_fw = (string) ( $attributes['quizOptionFontWeight'] ?? '' );
+		if ( $quiz_opt_fw !== '' ) {
+			$quiz_label_rules[] = 'font-weight:' . sanitize_text_field( $quiz_opt_fw );
+		}
+		if ( $quiz_label_rules ) {
+			$css .= $quiz_label_sel . '{' . implode( ';', $quiz_label_rules ) . '}';
+		}
+
+		// ——— Quiz score summary ———
+
+		$quiz_summary_sel       = $wrap_sel . ' .neural-forms-form__quiz-summary';
+		$quiz_summary_score_sel = $wrap_sel . ' .neural-forms-form__quiz-summary-line strong';
+		$quiz_summary_rules     = [];
+
+		$quiz_summary_bg = (string) ( $attributes['quizSummaryBg'] ?? '' );
+		if ( $quiz_summary_bg !== '' ) {
+			$hex = sanitize_hex_color( $quiz_summary_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$quiz_summary_rules[] = 'background-color:' . $hex;
+			}
+		}
+
+		$quiz_summary_color = (string) ( $attributes['quizSummaryColor'] ?? '' );
+		if ( $quiz_summary_color !== '' ) {
+			$hex = sanitize_hex_color( $quiz_summary_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$quiz_summary_rules[] = 'color:' . $hex;
+			}
+		}
+
+		$quiz_summary_bc = (string) ( $attributes['quizSummaryBorderColor'] ?? '' );
+		$quiz_summary_bw = (string) ( $attributes['quizSummaryBorderWidth'] ?? '' );
+		if ( $quiz_summary_bc !== '' || $quiz_summary_bw !== '' ) {
+			$bw = $quiz_summary_bw !== '' ? sanitize_text_field( $quiz_summary_bw ) : '1px';
+			$bc = $quiz_summary_bc !== '' ? sanitize_hex_color( $quiz_summary_bc ) : 'currentColor';
+			$quiz_summary_rules[] = 'border:' . $bw . ' solid ' . $bc;
+		}
+
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'quizSummaryPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$quiz_summary_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+		if ( $quiz_summary_rules ) {
+			$css .= $quiz_summary_sel . '{' . implode( ';', $quiz_summary_rules ) . '}';
+		}
+
+		$quiz_score_fs_raw = (string) ( $attributes['quizScoreFontSize'] ?? '' );
+		if ( isset( $quiz_slug_to_px[ $quiz_score_fs_raw ] ) ) {
+			$quiz_score_fs_raw = $quiz_slug_to_px[ $quiz_score_fs_raw ];
+		}
+		$quiz_score_fs = $len( $quiz_score_fs_raw );
+		if ( $quiz_score_fs !== '' ) {
+			$css .= $quiz_summary_score_sel . '{font-size:' . $quiz_score_fs . '}';
+		}
+
+		// ——— Multi-step: prev & next buttons (shared navBtn* attributes) ———
+
+		$nav_btn_sel       = $wrap_sel . ' .neural-forms-form__step-prev,' . $wrap_sel . ' .neural-forms-form__step-next';
+		$nav_btn_hover_sel = $wrap_sel . ' .neural-forms-form__step-prev:hover:not(:disabled),' . $wrap_sel . ' .neural-forms-form__step-next:hover:not(:disabled)';
+		$nav_btn_rules     = [];
+		$nav_btn_hover_rules = [];
+
+		$nav_border_color = (string) ( $attributes['navBtnBorderColor'] ?? '' );
+		$nav_border_width = (string) ( $attributes['navBtnBorderWidth'] ?? '' );
+		$nav_border_style = (string) ( $attributes['navBtnBorderStyle'] ?? '' );
+		if ( $nav_border_color !== '' || $nav_border_width !== '' || $nav_border_style !== '' ) {
+			$bw = $nav_border_width !== '' ? sanitize_text_field( $nav_border_width ) : '1px';
+			$bc = $nav_border_color !== '' ? sanitize_hex_color( $nav_border_color ) : 'transparent';
+			$bs = in_array( $nav_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $nav_border_style : 'solid';
+			$nav_btn_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+
+		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $corner => $css_prop ) {
+			$val = (string) ( $attributes[ 'navBtnRadius' . $corner ] ?? '' );
+			if ( $val !== '' ) {
+				$nav_btn_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+
+		$nav_font_family = (string) ( $attributes['navBtnFontFamily'] ?? '' );
+		if ( $nav_font_family !== '' ) {
+			$nav_btn_rules[] = 'font-family:' . sanitize_text_field( $nav_font_family );
+		}
+
+		$nav_fs = $len( (string) ( $attributes['navBtnFontSize'] ?? '' ) );
+		if ( $nav_fs !== '' ) {
+			$nav_btn_rules[] = 'font-size:' . $nav_fs;
+		}
+
+		$nav_trans_dur  = (string) ( $attributes['navBtnTransitionDuration'] ?? '' );
+		$nav_trans_ease = (string) ( $attributes['navBtnTransitionEasing'] ?? '' );
+		if ( $nav_trans_dur !== '' || $nav_trans_ease !== '' ) {
+			$dur  = $nav_trans_dur !== '' ? sanitize_text_field( $nav_trans_dur ) : '0.15s';
+			$ease = $nav_trans_ease !== '' ? sanitize_text_field( $nav_trans_ease ) : 'ease';
+			$nav_btn_rules[] = 'transition:background-color ' . $dur . ' ' . $ease . ',color ' . $dur . ' ' . $ease . ',border-color ' . $dur . ' ' . $ease . ',filter ' . $dur . ' ' . $ease;
+		}
+
+		if ( ! empty( $attributes['navBtnFullWidth'] ) ) {
+			$nav_btn_rules[] = 'width:100%';
+		}
+
+		$nav_fw = (string) ( $attributes['navBtnFontWeight'] ?? '' );
+		if ( $nav_fw !== '' ) {
+			$nav_btn_rules[] = 'font-weight:' . sanitize_text_field( $nav_fw );
+		}
+		$nav_fstyle = (string) ( $attributes['navBtnFontStyle'] ?? '' );
+		if ( $nav_fstyle === 'italic' ) {
+			$nav_btn_rules[] = 'font-style:italic';
+		}
+		$nav_ls = (string) ( $attributes['navBtnLetterSpacing'] ?? '' );
+		if ( $nav_ls !== '' ) {
+			if ( is_numeric( $nav_ls ) ) { $nav_ls .= 'px'; }
+			$nav_btn_rules[] = 'letter-spacing:' . sanitize_text_field( $nav_ls );
+		}
+		$nav_td = (string) ( $attributes['navBtnTextDecoration'] ?? '' );
+		if ( $nav_td !== '' && in_array( $nav_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
+			$nav_btn_rules[] = 'text-decoration:' . $nav_td;
+		}
+		$nav_tt = (string) ( $attributes['navBtnTextTransform'] ?? '' );
+		if ( $nav_tt !== '' && in_array( $nav_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+			$nav_btn_rules[] = 'text-transform:' . $nav_tt;
+		}
+		$nav_lh = (string) ( $attributes['navBtnLineHeight'] ?? '' );
+		if ( $nav_lh !== '' ) {
+			$nav_btn_rules[] = 'line-height:' . sanitize_text_field( $nav_lh );
+		}
+
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'navBtnPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$nav_btn_rules[] = $css_prop . ':' . $len( $val );
+			}
+		}
+
+		$nav_bg_color   = (string) ( $attributes['navBtnBgColor']   ?? '' );
+		$nav_text_color = (string) ( $attributes['navBtnTextColor']  ?? '' );
+		if ( $nav_bg_color !== '' ) {
+			$hex = sanitize_hex_color( $nav_bg_color );
+			if ( $hex !== null && $hex !== '' ) { $nav_btn_rules[] = 'background-color:' . $hex; }
+		}
+		if ( $nav_text_color !== '' ) {
+			$hex = sanitize_hex_color( $nav_text_color );
+			if ( $hex !== null && $hex !== '' ) { $nav_btn_rules[] = 'color:' . $hex; }
+		}
+
+		$nav_hover_bg     = (string) ( $attributes['navBtnHoverBg']          ?? '' );
+		$nav_hover_color  = (string) ( $attributes['navBtnHoverColor']       ?? '' );
+		$nav_hover_border = (string) ( $attributes['navBtnHoverBorderColor'] ?? '' );
+		if ( $nav_hover_bg !== '' ) {
+			$hex = sanitize_hex_color( $nav_hover_bg );
+			if ( $hex !== null && $hex !== '' ) { $nav_btn_hover_rules[] = 'background-color:' . $hex; }
+		}
+		if ( $nav_hover_color !== '' ) {
+			$hex = sanitize_hex_color( $nav_hover_color );
+			if ( $hex !== null && $hex !== '' ) { $nav_btn_hover_rules[] = 'color:' . $hex; }
+		}
+		if ( $nav_hover_border !== '' ) {
+			$hex = sanitize_hex_color( $nav_hover_border );
+			if ( $hex !== null && $hex !== '' ) { $nav_btn_hover_rules[] = 'border-color:' . $hex; }
+		}
+		if ( $nav_btn_hover_rules ) {
+			$nav_btn_hover_rules[] = 'filter:none';
+		}
+
+		if ( $nav_btn_rules ) {
+			$css .= $nav_btn_sel . '{' . implode( ';', $nav_btn_rules ) . '}';
+		}
+		if ( $nav_btn_hover_rules ) {
+			$css .= $nav_btn_hover_sel . '{' . implode( ';', $nav_btn_hover_rules ) . '}';
+		}
+
+		// ——— Multi-step: step indicator — progress bar ———
+
+		$bar_track_sel = $wrap_sel . ' .neural-forms-form__progress-bar-track';
+		$bar_fill_sel  = $wrap_sel . ' .neural-forms-form__progress-bar-fill';
+
+		$step_bar_fill  = sanitize_hex_color( (string) ( $attributes['stepBarFillColor']  ?? '' ) );
+		$step_bar_track = sanitize_hex_color( (string) ( $attributes['stepBarTrackColor'] ?? '' ) );
+		$step_bar_h     = $len( (string) ( $attributes['stepBarHeight'] ?? '' ) );
+		$step_bar_r     = $len( (string) ( $attributes['stepBarRadius'] ?? '' ) );
+
+		if ( $step_bar_fill !== null && $step_bar_fill !== '' ) {
+			$css .= $bar_fill_sel . '{background:' . $step_bar_fill . '}';
+		}
+		if ( $step_bar_track !== null && $step_bar_track !== '' ) {
+			$css .= $bar_track_sel . '{background:' . $step_bar_track . '}';
+		}
+		if ( $step_bar_h !== '' ) {
+			$css .= $bar_track_sel . '{height:' . $step_bar_h . '}';
+			$css .= $bar_fill_sel  . '{height:' . $step_bar_h . '}';
+		}
+		if ( $step_bar_r !== '' ) {
+			$css .= $bar_track_sel . '{border-radius:' . $step_bar_r . '}';
+			$css .= $bar_fill_sel  . '{border-radius:' . $step_bar_r . '}';
+		}
+
+		// ——— Multi-step: step indicator — step numbers ———
+
+		$step_num_sel            = $wrap_sel . ' .neural-forms-form__progress-num';
+		$step_active_item_sel    = $wrap_sel . ' .neural-forms-form__progress-item.is-active .neural-forms-form__progress-num';
+		$step_complete_item_sel  = $wrap_sel . ' .neural-forms-form__progress-item.is-complete .neural-forms-form__progress-num';
+
+		$step_inactive_bg    = sanitize_hex_color( (string) ( $attributes['stepInactiveNumBg']    ?? '' ) );
+		$step_inactive_color = sanitize_hex_color( (string) ( $attributes['stepInactiveNumColor'] ?? '' ) );
+		$step_active_bg      = sanitize_hex_color( (string) ( $attributes['stepActiveNumBg']      ?? '' ) );
+		$step_active_color   = sanitize_hex_color( (string) ( $attributes['stepActiveNumColor']   ?? '' ) );
+		$step_complete_bg    = sanitize_hex_color( (string) ( $attributes['stepCompleteNumBg']    ?? '' ) );
+		$step_complete_color = sanitize_hex_color( (string) ( $attributes['stepCompleteNumColor'] ?? '' ) );
+		$step_num_size       = $len( (string) ( $attributes['stepNumSize']     ?? '' ) );
+		$step_num_fs         = $len( (string) ( $attributes['stepNumFontSize'] ?? '' ) );
+
+		$step_num_base_rules = [];
+		if ( $step_inactive_bg !== null && $step_inactive_bg !== '' ) {
+			$step_num_base_rules[] = 'background:' . $step_inactive_bg;
+		}
+		if ( $step_inactive_color !== null && $step_inactive_color !== '' ) {
+			$step_num_base_rules[] = 'color:' . $step_inactive_color;
+		}
+		if ( $step_num_size !== '' ) {
+			$step_num_base_rules[] = 'min-width:' . $step_num_size;
+			$step_num_base_rules[] = 'height:' . $step_num_size;
+		}
+		if ( $step_num_fs !== '' ) {
+			$step_num_base_rules[] = 'font-size:' . $step_num_fs;
+		}
+		if ( $step_num_base_rules ) {
+			$css .= $step_num_sel . '{' . implode( ';', $step_num_base_rules ) . '}';
+		}
+
+		$step_active_rules = [];
+		if ( $step_active_bg !== null && $step_active_bg !== '' ) {
+			$step_active_rules[] = 'background:' . $step_active_bg;
+		}
+		if ( $step_active_color !== null && $step_active_color !== '' ) {
+			$step_active_rules[] = 'color:' . $step_active_color;
+		}
+		if ( $step_active_rules ) {
+			$css .= $step_active_item_sel . '{' . implode( ';', $step_active_rules ) . '}';
+		}
+
+		$step_complete_rules = [];
+		if ( $step_complete_bg !== null && $step_complete_bg !== '' ) {
+			$step_complete_rules[] = 'background:' . $step_complete_bg;
+		}
+		if ( $step_complete_color !== null && $step_complete_color !== '' ) {
+			$step_complete_rules[] = 'color:' . $step_complete_color;
+		}
+		if ( $step_complete_rules ) {
+			$css .= $step_complete_item_sel . '{' . implode( ';', $step_complete_rules ) . '}';
+		}
+
+		$step_connector_color = sanitize_hex_color( (string) ( $attributes['stepConnectorColor'] ?? '' ) );
+		if ( $step_connector_color !== null && $step_connector_color !== '' ) {
+			$connector_sel = $wrap_sel . ' .neural-forms-form__progress--numbers .neural-forms-form__progress-item:not(:last-child)::after';
+			$css .= $connector_sel . '{content:\'\';flex-shrink:0;display:inline-block;width:16px;height:2px;background:' . $step_connector_color . ';align-self:center;margin-left:6px}';
 		}
 
 		return $css;
