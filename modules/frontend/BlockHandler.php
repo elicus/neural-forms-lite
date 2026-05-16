@@ -62,6 +62,14 @@ class BlockHandler {
 	 */
 	public static function boot(): void {
 		add_action( 'init', [ static::class, 'register' ] );
+		// Suppress E_DEPRECATED during REST API requests so that
+		// deprecated notices from WP core (e.g. null passed to
+		// strpos / str_replace in functions.php) cannot corrupt the
+		// JSON response body that the editor's ServerSideRender
+		// expects, regardless of WP_DEBUG_DISPLAY setting.
+		add_action( 'rest_api_init', static function () {
+			error_reporting( error_reporting() & ~E_DEPRECATED );
+		}, 1 );
 	}
 
 	// Registration
@@ -135,10 +143,23 @@ class BlockHandler {
 			? require $asset_file
 			: [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
 
+		// Ensure neural-forms-block (the protected block.js bundle that
+		// registers neural-forms/form) loads BEFORE this bundle so the
+		// design-extras script can unregisterBlockType('neural-forms/form')
+		// + re-register with the extended attributes. wp-dom-ready is
+		// also required by the editor-extras client code.
+		$deps = $asset['dependencies'];
+		if ( ! in_array( 'neural-forms-block', $deps, true ) ) {
+			$deps[] = 'neural-forms-block';
+		}
+		if ( ! in_array( 'wp-dom-ready', $deps, true ) ) {
+			$deps[] = 'wp-dom-ready';
+		}
+
 		wp_register_script(
 			'neural-forms-blocks-extra',
 			NEURAL_FORMS_URL . 'modules/admin/build/blocks-extra.js',
-			$asset['dependencies'],
+			$deps,
 			$asset['version'],
 			true
 		);

@@ -140,7 +140,7 @@ export default function FormSelector( {
 						</Notice>
 					) }
 
-					{ selectedForm && (
+					{ false && selectedForm && (
 						<p style={ { fontSize: 12, color: '#6b7280', marginTop: 8 } }>
 							<strong>{ selectedForm.name }</strong>
 							{ selectedForm.slug && (
@@ -170,14 +170,19 @@ export default function FormSelector( {
 						</p>
 					) }
 				</PanelBody>
-
-				{ extras }
 			</InspectorControls>
+
+			{ extras && (
+				<InspectorControls group="styles">
+					{ extras }
+				</InspectorControls>
+			) }
 
 			{ formId > 0 ? (
 				<ServerSideRender
 					block={ blockName }
 					attributes={ attributes }
+					httpMethod="POST"
 					EmptyResponsePlaceholder={ () => (
 						<p style={ { padding: 16, color: '#6b7280', fontStyle: 'italic' } }>
 							{ __( 'No preview available.', 'neural-forms-lite' ) }

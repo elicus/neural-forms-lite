@@ -57,6 +57,7 @@
     /* Fields - inputs, textareas, selects */
     --neural-forms-field-bg:       #fff;      /* input background colour       */
     --neural-forms-border-width:   1px;       /* input border width            */
+    --neural-forms-border-style:   solid;     /* input border style            */
     --neural-forms-input-font-size:1rem;      /* input font size               */
 
     /* Submit button - override these via block formatting controls.
@@ -77,6 +78,7 @@
 .neural-forms-form-wrap {
     /* Block container only - width and max-width left to the theme. */
     width: 100%;
+    box-sizing: border-box;
 }
 
 
@@ -275,7 +277,7 @@
     display: block;
     width: 100%;
     padding: var(--neural-forms-input-py) var(--neural-forms-input-px);
-    border: var(--neural-forms-border-width) solid var(--neural-forms-border);
+    border: var(--neural-forms-border-width) var(--neural-forms-border-style) var(--neural-forms-border);
     border-radius: var(--neural-forms-radius);
     color: var(--neural-forms-text);
     font-family: inherit;
@@ -325,7 +327,7 @@
     display: block;
     width: 100%;
     padding: var(--neural-forms-input-py) var(--neural-forms-input-px);
-    border: var(--neural-forms-border-width) solid var(--neural-forms-border);
+    border: var(--neural-forms-border-width) var(--neural-forms-border-style) var(--neural-forms-border);
     border-radius: var(--neural-forms-radius);
     color: var(--neural-forms-text);
     font-family: inherit;
@@ -365,7 +367,7 @@
     padding: var(--neural-forms-input-py) var(--neural-forms-input-px);
     /* Extra right padding leaves room for the custom arrow */
     padding-right: 2.25rem;
-    border: var(--neural-forms-border-width) solid var(--neural-forms-border);
+    border: var(--neural-forms-border-width) var(--neural-forms-border-style) var(--neural-forms-border);
     border-radius: var(--neural-forms-radius);
     color: var(--neural-forms-text);
     font-family: inherit;
@@ -411,15 +413,29 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
+    align-items: center;
 }
 
 .neural-forms-form__radio {
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
-    margin-top: 0.2em;
     cursor: pointer;
-    accent-color: var(--neural-forms-border-focus);
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid #ccc;
+    border-radius: 50%;
+    background-color: #fff;
+    box-sizing: border-box;
+}
+
+.neural-forms-form__radio:checked {
+    background-image: radial-gradient(circle, var(--neural-forms-border-focus) 40%, transparent 40%);
+    border-color: var(--neural-forms-border-focus);
+}
+
+.neural-forms-form__radio:focus {
+    outline: none;
 }
 
 /*
@@ -439,6 +455,7 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
+    align-items: center;
 }
 
 /*
@@ -450,6 +467,7 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
+    align-items: center;
 }
 
 .neural-forms-form__checkbox {
@@ -463,6 +481,13 @@
     accent-color: var(--neural-forms-border-focus);
 }
 
+/* Remove the WP global-styles focus outline (:where(.wp-site-blocks :focus))
+   from checkboxes — it adds a misplaced 2px solid ring on every focused
+   checkbox regardless of theme. */
+.neural-forms-form__checkbox:focus {
+    outline: none;
+}
+
 
 /*
    Date
@@ -472,7 +497,7 @@
     display: block;
     width: 100%;
     padding: var(--neural-forms-input-py) var(--neural-forms-input-px);
-    border: var(--neural-forms-border-width) solid var(--neural-forms-border);
+    border: var(--neural-forms-border-width) var(--neural-forms-border-style) var(--neural-forms-border);
     border-radius: var(--neural-forms-radius);
     color: var(--neural-forms-text);
     font-family: inherit;
@@ -964,7 +989,7 @@
     display: block;
     width: 100%;
     padding: var(--neural-forms-input-py) var(--neural-forms-input-px);
-    border: var(--neural-forms-border-width) solid var(--neural-forms-border);
+    border: var(--neural-forms-border-width) var(--neural-forms-border-style) var(--neural-forms-border);
     border-radius: var(--neural-forms-radius);
     color: var(--neural-forms-text);
     font-family: inherit;
@@ -1126,7 +1151,7 @@
 
 .neural-forms-form__step {
     border-top: 2px solid #080f5b;
-    padding: 16px 0 4px;
+    padding: 30px 0 4px;
     margin-bottom: 8px;
 }
 
@@ -1136,19 +1161,22 @@
 }
 
 .neural-forms-form__step-title {
-    margin: 0 0 4px;
+    margin: 0 0 10px;
     font-size: 1.1em;
     font-weight: 600;
     color: #080f5b;
 }
 
 .neural-forms-form__step-description {
-    margin: 0 0 12px;
+    margin: 0 0 20px;
     color: #4b5563;
     font-size: 0.92em;
 }
 
 .neural-forms-form__step-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--neural-forms-field-gap);
     margin-bottom: 8px;
 }
 
@@ -1335,252 +1363,18 @@
     padding-bottom: 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Matrix field (frontend)                                            */
-/* ------------------------------------------------------------------ */
-/* Survey-style row-by-column grid. Renders responsively: a horizontal
-   scroll wraps the table so wide matrices never overflow the form
-   container on mobile. Distinct class prefix `.neural-forms-matrix`
-   so admin builder preview styles can never bleed in. */
-
-.neural-forms-matrix {
-    border: 0;
-    padding: 0;
-    margin: 0;
+/* Block editor inspector panel — border label spacing (stable selector) */
+fieldset[data-wp-component="BorderControl"] legend,
+fieldset[data-wp-component="BorderControl"] .components-base-control__label {
+    margin-bottom: 20px;
 }
 
-.neural-forms-matrix__scroll {
+/* Block editor — line height control: expand input to full available width */
+.block-editor-line-height-control .components-input-control__container {
     width: 100%;
-    overflow-x: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    background: #fff;
-    /* iOS momentum scroll */
-    -webkit-overflow-scrolling: touch;
 }
 
-.neural-forms-matrix__table {
-    border-collapse: collapse;
-    width: 100%;
-    font-size: 14px;
-    color: #1f2937;
-}
-
-.neural-forms-matrix__table th,
-.neural-forms-matrix__table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid #f1f5f9;
-    text-align: center;
-    vertical-align: middle;
-}
-
-.neural-forms-matrix__table tbody tr:last-child th,
-.neural-forms-matrix__table tbody tr:last-child td {
-    border-bottom: 0;
-}
-
-.neural-forms-matrix__corner {
-    background: #f9fafb;
-}
-
-.neural-forms-matrix__col {
-    font-weight: 600;
-    color: #374151;
-    background: #f9fafb;
-    white-space: nowrap;
-}
-
-.neural-forms-matrix__row-label {
-    font-weight: 500;
-    text-align: left;
-    color: #374151;
-    background: #f9fafb;
-    white-space: nowrap;
-    /* Keep the row label visible while the user scrolls right on
-       narrow viewports. */
-    position: sticky;
-    left: 0;
-    z-index: 1;
-}
-
-.neural-forms-matrix__cell {
-    /* Comfortable click target without the cell collapsing too far on
-       narrow screens. */
-    min-width: 64px;
-}
-
-.neural-forms-matrix__cell-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    cursor: pointer;
-}
-
-.neural-forms-matrix__input {
-    cursor: pointer;
-    accent-color: #080f5b;
-}
-
-.neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell,
-.neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__row-label {
-    background: #fbfbfd;
-}
-
-.neural-forms-matrix__notice {
-    margin: 0;
-    padding: 10px 12px;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: 6px;
-    color: #92400e;
-    font-size: 13px;
-}
-
-@media ( max-width: 600px ) {
-    .neural-forms-matrix__table {
-        font-size: 13px;
-    }
-    .neural-forms-matrix__table th,
-    .neural-forms-matrix__table td {
-        padding: 8px 10px;
-    }
-}
-
-/* ------------------------------------------------------------------ */
-/* Repeater field (frontend)                                          */
-/* ------------------------------------------------------------------ */
-/* Repeatable group of child fields. Each iteration is an <li> inside
-   an <ol class="__list">. The fieldset carries data-min / data-max
-   / data-columns; form-submit.js consults them for add/remove
-   visibility. */
-
-.neural-forms-repeater {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 12px;
-    margin: 0;
-    background: #fcfcfd;
-}
-
-.neural-forms-repeater__list {
-    /* !important is intentional here. Some themes (Divi being the
-       canonical example) ship aggressive `.entry-content ol { list-
-       style: decimal; padding-left: 1.5em; }` rules that override
-       the un-marked style we want, producing a SECOND visible
-       number next to the .__item-num span. The list-style-none +
-       padding-inline-start:0 pair fully suppresses both the
-       marker and the marker indent — without !important they get
-       beaten by theme specificity. */
-    list-style: none !important;
-    margin: 0;
-    padding: 0;
-    padding-inline-start: 0 !important;
-    display: grid;
-    gap: 12px;
-}
-
-.neural-forms-repeater__item {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 12px;
-    /* Suppress the native ::marker. Even with list-style:none on
-       the parent <ol>, some themes restore the marker per <li>
-       (e.g. `.entry-content li { list-style: decimal; }`). The
-       !important here mirrors the parent's reset. */
-    list-style: none !important;
-}
-
-.neural-forms-repeater__item-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    gap: 8px;
-}
-
-.neural-forms-repeater__item-num {
-    font-size: 14px;
-    font-weight: 600;
-    color: #374151;
-    line-height: 1;
-    /* Numeric label only — no "Item " prefix, so we drop the
-       uppercase + letter-spacing styling that suited an English
-       label. */
-}
-
-.neural-forms-repeater__remove {
-    background: transparent;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-.neural-forms-repeater__remove:hover {
-    background: #fef2f2;
-}
-
-.neural-forms-repeater__remove[hidden] {
-    display: none;
-}
-
-.neural-forms-repeater__grid {
-    display: grid;
-    gap: 10px;
-}
-
-.neural-forms-repeater__grid--cols-1 { grid-template-columns: 1fr; }
-.neural-forms-repeater__grid--cols-2 { grid-template-columns: 1fr 1fr; }
-.neural-forms-repeater__grid--cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-.neural-forms-repeater__grid--cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
-
-.neural-forms-repeater__child {
-    min-width: 0;
-    margin-bottom: 0;
-}
-
-.neural-forms-repeater__add {
-    margin-top: 12px;
-    background: #fff;
-    color: #080f5b;
-    border: 1px solid #080f5b;
-    border-radius: 6px;
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-}
-
-.neural-forms-repeater__add:hover {
-    background: #080f5b;
-    color: #fff;
-}
-
-.neural-forms-repeater__add[hidden] {
-    display: none;
-}
-
-.neural-forms-repeater__notice {
-    margin: 0;
-    padding: 10px 12px;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: 6px;
-    color: #92400e;
-    font-size: 13px;
-}
-
-@media ( max-width: 600px ) {
-    /* Always collapse to one column on small viewports — multi-
-       column repeater grids get unreadable past 2 columns inside a
-       narrow form container. */
-    .neural-forms-repeater__grid {
-        grid-template-columns: 1fr !important;
-    }
+/* Block editor — gap between BorderControl fieldset and the next BaseControl (e.g. Hover Border Color) */
+fieldset[data-wp-component="BorderControl"] + .components-base-control {
+    margin-top: 16px;
 }

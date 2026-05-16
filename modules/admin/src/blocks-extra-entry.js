@@ -33,11 +33,35 @@
  *     yet honour — see the brief.
  */
 
-import { registerBlockType } from '@wordpress/blocks';
+import { registerBlockType, unregisterBlockType } from '@wordpress/blocks';
 import { __ }                from '@wordpress/i18n';
-import { PanelBody, PanelRow, SelectControl, ExternalLink } from '@wordpress/components';
 import baseMetadata          from '../../frontend/block/block.json';
 import FormSelector          from './blocks/shared/FormSelector';
+import FormDesignExtras      from './blocks/form/FormDesignExtras';
+import PollDesignExtras      from './blocks/poll/PollDesignExtras';
+import QuizDesignExtras      from './blocks/quiz/QuizDesignExtras';
+import MultiStepDesignExtras from './blocks/multistep/MultiStepDesignExtras';
+
+// Inject Inspector-sidebar CSS into the main admin document.
+// form.css is loaded as editor_style → it reaches the canvas iframe only
+// (WP 6.5+ canvas-in-iframe). The Inspector sidebar lives in the MAIN
+// admin document, so styles must be injected here instead.
+( function () {
+	const s = document.createElement( 'style' );
+	s.textContent = `
+		fieldset[data-wp-component="BorderControl"] legend,
+		fieldset[data-wp-component="BorderControl"] .components-base-control__label {
+			margin-bottom: 20px;
+		}
+		fieldset[data-wp-component="BorderControl"] {
+			margin-bottom: 16px;
+		}
+		.block-editor-line-height-control .components-input-control__container {
+			width: 100%;
+		}
+	`;
+	document.head.appendChild( s );
+}() );
 
 /**
  * Build a SAME-SHAPE clone of the form block's attribute schema. We
@@ -50,124 +74,27 @@ const baseAttrs    = JSON.parse( JSON.stringify( baseMetadata.attributes || {} )
 const baseSupports = JSON.parse( JSON.stringify( baseMetadata.supports || {} ) );
 
 /**
- * Resolve admin URL the same way FormSelector does — used here for
- * the Edit-form / Analytics anchors inside the block-specific notes.
+ * Multi Step extras — full design sidebar via MultiStepDesignExtras.
+ * Includes all shared field panels + NavigationButtonsPanel (Prev/Next/Submit)
+ * + StepIndicatorPanel (bar + numbers modes).
  */
-function adminBase() {
-	if ( typeof window !== 'undefined' && window.neuralFormsAdmin?.admin?.ajaxUrl ) {
-		return new URL( '../', window.neuralFormsAdmin.admin.ajaxUrl ).pathname;
-	}
-	return '/wp-admin/';
+function MultiStepExtras( props ) {
+	return <MultiStepDesignExtras { ...props } />;
 }
 
 /**
- * Multi Step extras — a real, schema-non-mutating override for the
- * progress-indicator style. The form's own
- * form_schema.settings.multistep.progress_indicator is left untouched;
- * BlockHandler::render forwards the attribute as a render option,
- * FormRenderer::render_form shadows the schema value when the option
- * resolves to one of {numbers, bar, none}. Empty string (default) =
- * "Use form setting".
+ * Poll extras — full design settings via PollDesignExtras.
+ * Links to builder / analytics are preserved inside ResultsBarPanel.
  */
-function MultiStepExtras( { attributes, setAttributes } ) {
-	const value = attributes.progressIndicatorOverride || '';
-	return (
-		<PanelBody title={ __( 'Multi Step', 'neural-forms-lite' ) } initialOpen={ false }>
-			<SelectControl
-				label={ __( 'Progress indicator', 'neural-forms-lite' ) }
-				help={ __(
-					'Override only this placement. Does not change the form’s saved setting.',
-					'neural-forms-lite'
-				) }
-				value={ value }
-				options={ [
-					{ label: __( 'Use form setting', 'neural-forms-lite' ), value: ''        },
-					{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
-					{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar'     },
-					{ label: __( 'None',             'neural-forms-lite' ), value: 'none'    },
-				] }
-				onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
-			/>
-			<p style={ { fontSize: 12, color: '#6b7280', marginTop: 8, marginBottom: 0 } }>
-				{ __(
-					'Step labels, button text and step content are configured in the form builder.',
-					'neural-forms-lite'
-				) }
-			</p>
-		</PanelBody>
-	);
+function PollExtras( props ) {
+	return <PollDesignExtras { ...props } />;
 }
 
 /**
- * Poll extras — read-only notes. The renderer reads results_visibility
- * and chart_type from each Poll FIELD’s settings (per-field, not
- * form-level), so a clean block-level override would have to thread
- * through render_nodes → render_field → render_poll. That’s
- * deferred until the renderer grows a context-options channel; until
- * then we point the author at the form builder rather than ship a
- * SelectControl that does nothing.
+ * Quiz extras — full design settings via QuizDesignExtras.
  */
-function PollExtras( { attributes } ) {
-	const formId = attributes.formId;
-	const adminUrl = adminBase();
-	const editUrl     = formId ? `${ adminUrl }admin.php?page=neural-forms&edit=${ formId }`             : '';
-	const analyticsUrl = formId ? `${ adminUrl }admin.php?page=neural-forms-results&form_id=${ formId }` : '';
-
-	return (
-		<PanelBody title={ __( 'Poll Results', 'neural-forms-lite' ) } initialOpen={ false }>
-			<p style={ { fontSize: 12, color: '#374151', marginTop: 0 } }>
-				{ __(
-					'Poll result visibility and chart style are configured per Poll field in the form builder.',
-					'neural-forms-lite'
-				) }
-			</p>
-			<ul style={ { fontSize: 12, color: '#6b7280', paddingLeft: 18, margin: '0 0 8px' } }>
-				<li>{ __( 'Visibility: after vote, always, or never.', 'neural-forms-lite' ) }</li>
-				<li>{ __( 'Chart style: bar or percentage.',          'neural-forms-lite' ) }</li>
-			</ul>
-			{ formId > 0 && (
-				<PanelRow>
-					<span style={ { fontSize: 12 } }>
-						<ExternalLink href={ editUrl }>{ __( 'Edit form', 'neural-forms-lite' ) }</ExternalLink>
-						{ ' · ' }
-						<ExternalLink href={ analyticsUrl }>{ __( 'Analytics', 'neural-forms-lite' ) }</ExternalLink>
-					</span>
-				</PanelRow>
-			) }
-		</PanelBody>
-	);
-}
-
-/**
- * Quiz extras — read-only notes only. The brief is explicit: do not
- * invent unsupported quiz display overrides. Scoring, correctness
- * visibility and pass/fail copy live on quiz_question fields and
- * form-level settings inside the builder.
- */
-function QuizExtras( { attributes } ) {
-	const formId = attributes.formId;
-	const adminUrl = adminBase();
-	const editUrl     = formId ? `${ adminUrl }admin.php?page=neural-forms&edit=${ formId }`             : '';
-	const analyticsUrl = formId ? `${ adminUrl }admin.php?page=neural-forms-results&form_id=${ formId }` : '';
-
-	return (
-		<PanelBody title={ __( 'Quiz Settings', 'neural-forms-lite' ) } initialOpen={ false }>
-			<ul style={ { fontSize: 12, color: '#374151', paddingLeft: 18, margin: '0 0 8px' } }>
-				<li>{ __( 'Scoring is configured in the form builder.',                            'neural-forms-lite' ) }</li>
-				<li>{ __( 'Correct-answer visibility is set per Quiz Question field.',             'neural-forms-lite' ) }</li>
-				<li>{ __( 'Pass / fail thresholds and result messages live in Form Settings.',     'neural-forms-lite' ) }</li>
-			</ul>
-			{ formId > 0 && (
-				<PanelRow>
-					<span style={ { fontSize: 12 } }>
-						<ExternalLink href={ editUrl }>{ __( 'Edit form', 'neural-forms-lite' ) }</ExternalLink>
-						{ ' · ' }
-						<ExternalLink href={ analyticsUrl }>{ __( 'Analytics', 'neural-forms-lite' ) }</ExternalLink>
-					</span>
-				</PanelRow>
-			) }
-		</PanelBody>
-	);
+function QuizExtras( props ) {
+	return <QuizDesignExtras { ...props } />;
 }
 
 const NEW_BLOCKS = [
@@ -216,6 +143,48 @@ NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras } ) => 
 			/>
 		),
 		// Dynamic block — server renders via BlockHandler::render.
+		save: () => null,
+	} );
+} );
+
+/**
+ * Replace the neural-forms/form block registered by the protected block.js
+ * bundle with an updated version that uses the full FormDesignExtras sidebar.
+ * We must unregister first (block.js already ran — it's listed as a dependency
+ * of neural-forms-blocks-extra so it's guaranteed to execute before this file)
+ * and then re-register with identical metadata so saved post content is not
+ * affected. The render callback is server-side (BlockHandler::render) so save()
+ * always returns null regardless of which JS bundle registered the block.
+ */
+function FormExtras( props ) {
+	return <FormDesignExtras { ...props } />;
+}
+
+wp.domReady( () => {
+	// Capture title and icon from the block.js registration before unregistering,
+	// so the re-registered block is visually identical in the inserter.
+	const existing = wp.blocks.getBlockType( 'neural-forms/form' );
+
+	unregisterBlockType( 'neural-forms/form' );
+
+	registerBlockType( 'neural-forms/form', {
+		apiVersion:  3,
+		title:       existing?.title,
+		icon:        existing?.icon,
+		description: existing?.description,
+		category:    existing?.category || 'embed',
+		keywords:    existing?.keywords || [],
+		textdomain:  'neural-forms-lite',
+		attributes:  JSON.parse( JSON.stringify( baseMetadata.attributes || {} ) ),
+		supports:    JSON.parse( JSON.stringify( baseMetadata.supports   || {} ) ),
+		edit: ( props ) => (
+			<FormSelector
+				{ ...props }
+				blockKind="form"
+				blockName="neural-forms/form"
+				extras={ <FormExtras { ...props } /> }
+			/>
+		),
 		save: () => null,
 	} );
 } );
