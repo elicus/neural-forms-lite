@@ -237,11 +237,17 @@ class BlockHandler {
 	 */
 	public static function render( array $attributes ): string {
 		$form_id   = (int) ( $attributes['formId'] ?? 0 );
-		// Narrower than `REST_REQUEST` alone — only true when WordPress
-		// thinks we're inside an admin request (i.e. the block editor's
-		// ServerSideRender call), so that frontend REST callers can't
-		// flip the form into editor preview mode by accident.
-		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && is_admin();
+		// Detect ServerSideRender editor preview. The block editor's
+		// REST call hits /wp-json/wp/v2/block-renderer/<block> from
+		// the admin page, but the PHP handling of that REST endpoint
+		// does NOT define WP_ADMIN — so `is_admin()` returns FALSE
+		// here even though the browser is on an admin URL. The
+		// reliable signal is REST_REQUEST alone. (An over-narrow
+		// `REST_REQUEST && is_admin()` guard was tried and broke the
+		// editor preview entirely: the hybrid CSS routing below would
+		// have taken the wp_add_inline_style path, which never
+		// reaches the REST response body.)
+		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST;
 
 		if ( $form_id < 1 ) {
 			if ( $is_editor ) {
