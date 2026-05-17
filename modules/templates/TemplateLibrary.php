@@ -45,11 +45,21 @@ class TemplateLibrary {
 	/** Default remote host. Filter the allow-list to add mirrors. */
 	const DEFAULT_HOST = 'templates.neuralforms.ai';
 
-	/** Remote catalog URL. */
-	const CATALOG_URL = 'https://templates.neuralforms.ai/catalog.json';
+	/** Catalog base — builder slug is appended to form the per-builder
+	 *  index URL (e.g. /gutenberg/templates.json). The flat layout
+	 *  scales to hundreds of templates without a single root catalog
+	 *  growing unbounded — each builder gets its own index and the
+	 *  plugin only fetches the one it needs. */
+	const CATALOG_BASE = 'https://templates.neuralforms.ai/';
 
-	/** Transient key for the catalog cache. */
-	const CATALOG_TRANSIENT = 'neural_forms_template_catalog_gutenberg';
+	/** Builders we support fetching for. MVP is Gutenberg only; the
+	 *  list is here so divi / elementor can be added by adding the
+	 *  string here without touching call sites. */
+	const SUPPORTED_BUILDERS = [ 'gutenberg' ];
+
+	/** Transient key prefix for the catalog cache. Suffixed by builder
+	 *  so a future divi/elementor cache doesn't collide. */
+	const CATALOG_TRANSIENT_PREFIX = 'neural_forms_template_catalog_';
 
 	/** Cache TTL in seconds. */
 	const CATALOG_TTL = 6 * HOUR_IN_SECONDS;
@@ -65,15 +75,26 @@ class TemplateLibrary {
 	 * @param bool $bypass_cache When true, skips the transient lookup.
 	 * @return array|WP_Error
 	 */
-	public static function fetch_catalog( bool $bypass_cache = false ) {
+	public static function fetch_catalog( bool $bypass_cache = false, string $builder = 'gutenberg' ) {
+		if ( ! in_array( $builder, self::SUPPORTED_BUILDERS, true ) ) {
+			return new WP_Error(
+				'template_unsupported_builder',
+				/* translators: %s: builder slug requested by the client. */
+				sprintf( __( 'Template builder "%s" is not supported.', 'neural-forms-lite' ), $builder ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$transient_key = self::CATALOG_TRANSIENT_PREFIX . $builder;
 		if ( ! $bypass_cache ) {
-			$cached = get_transient( self::CATALOG_TRANSIENT );
+			$cached = get_transient( $transient_key );
 			if ( is_array( $cached ) ) {
 				return $cached;
 			}
 		}
 
-		$catalog = self::request_json( self::CATALOG_URL );
+		$catalog_url = self::CATALOG_BASE . $builder . '/templates.json';
+		$catalog     = self::request_json( $catalog_url );
 
 		// Catalog fetch is resilient by design. DNS failures, 4xx / 5xx
 		// from the remote, malformed JSON — none of those should
@@ -86,11 +107,12 @@ class TemplateLibrary {
 		if ( is_wp_error( $catalog ) ) {
 			$payload = [
 				'version'             => '',
+				'builder'             => $builder,
 				'updated_at'          => '',
 				'templates'           => [],
 				'service_unavailable' => true,
 			];
-			set_transient( self::CATALOG_TRANSIENT, $payload, 5 * MINUTE_IN_SECONDS );
+			set_transient( $transient_key, $payload, 5 * MINUTE_IN_SECONDS );
 			return $payload;
 		}
 
@@ -98,117 +120,125 @@ class TemplateLibrary {
 			? $catalog['templates']
 			: [];
 
-		// Filter to Gutenberg-compatible templates only. Catalog
-		// entries without a `compatibility` array are treated as
-		// non-Gutenberg and excluded so a malformed catalog row
-		// doesn't surface as a broken card in the UI.
-		$gutenberg = [];
+		// Filter to compatible templates only. Catalog entries
+		// without a `compatibility` array, or whose array doesn't
+		// include this builder, are excluded so a malformed row
+		// doesn't render as a broken card in the UI.
+		$visible = [];
 		foreach ( $templates as $row ) {
 			if ( ! is_array( $row ) ) continue;
 			$compat = isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
 				? array_map( 'strval', $row['compatibility'] )
 				: [];
-			if ( ! in_array( 'gutenberg', $compat, true ) ) continue;
-			$gutenberg[] = self::normalize_catalog_row( $row );
+			if ( ! in_array( $builder, $compat, true ) ) continue;
+			$visible[] = self::normalize_catalog_row( $row );
 		}
 
 		$payload = [
 			'version'    => isset( $catalog['version'] ) ? (string) $catalog['version'] : '',
+			'builder'    => isset( $catalog['builder'] ) ? (string) $catalog['builder'] : $builder,
 			'updated_at' => isset( $catalog['updated_at'] ) ? (string) $catalog['updated_at'] : '',
-			'templates'  => $gutenberg,
+			'templates'  => $visible,
 		];
 
-		set_transient( self::CATALOG_TRANSIENT, $payload, self::CATALOG_TTL );
+		set_transient( $transient_key, $payload, self::CATALOG_TTL );
 
 		return $payload;
 	}
 
 	/**
-	 * Import a template by manifest URL.
+	 * Import a template from a single self-contained bundle URL.
+	 *
+	 * MVP layout (templates.neuralforms.ai):
+	 *   /<builder>/templates.json                    ← index (catalog)
+	 *   /<builder>/<category>/<slug>.json            ← bundle  (this method)
+	 *   /<builder>/<category>/screenshots/<slug>.jpg ← card thumb
+	 *
+	 * The bundle is one JSON document carrying both the Gutenberg page
+	 * (block markup) and every form referenced from that markup — so
+	 * a successful import is one HTTP request, not three (catalog
+	 * already fetched the index, this is the second + final fetch).
 	 *
 	 * Flow:
-	 *   1. Validate the manifest URL host against the allow-list.
-	 *   2. Fetch manifest → page.json → each form.json.
-	 *   3. Sanitize each form (strip integrations, secrets, recipients).
-	 *   4. Insert each form via FormRepository, building the
-	 *      sourceFormId → newLocalFormId map.
-	 *   5. Replace formId attributes inside the page block content
-	 *      using parse_blocks() / serialize_blocks(), with a regex
-	 *      fallback for safety.
-	 *   6. wp_insert_post() the resulting content as a draft page.
+	 *   1. Validate the bundle URL host against the allow-list.
+	 *   2. Fetch the bundle JSON.
+	 *   3. Structural validation (builder, page, forms shape).
+	 *   4. For each `forms[]` row: sanitize the embedded `form`
+	 *      payload, insert via FormRepository, record
+	 *      sourceFormId → newLocalFormId.
+	 *   5. Replace formId attributes inside page.post_content using
+	 *      parse_blocks() / serialize_blocks(), with a regex fallback
+	 *      for safety.
+	 *   6. wp_kses_post() the rewritten content.
+	 *   7. wp_insert_post() as a draft page.
+	 *
+	 * Extensibility: the manifest-based multi-file layout (catalog →
+	 * manifest → page.json → forms[].file) is no longer fetched, but
+	 * the helpers it relied on (replace_form_ids_in_content,
+	 * sanitize_imported_form, validate_page_shape) are unchanged and
+	 * reusable if a future release reintroduces the multi-file flow
+	 * for very large templates.
 	 *
 	 * Returns an array with `page_id`, `edit_url`, `view_url`,
 	 * `imported_form_ids[]` on success; WP_Error on any failure.
 	 *
-	 * @param string $manifest_url
+	 * @param string $import_url Bundle URL on the allow-list.
 	 * @return array|WP_Error
 	 */
-	public static function import_template( string $manifest_url ) {
-		if ( ! self::is_allowed_url( $manifest_url ) ) {
+	public static function import_template( string $import_url ) {
+		if ( ! self::is_allowed_url( $import_url ) ) {
 			return new WP_Error(
 				'template_disallowed_host',
-				__( 'Template manifest URL is not on the allow-list.', 'neural-forms-lite' ),
+				__( 'Template import URL is not on the allow-list.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		$manifest = self::request_json( $manifest_url );
-		if ( is_wp_error( $manifest ) ) return $manifest;
+		$bundle = self::request_json( $import_url );
+		if ( is_wp_error( $bundle ) ) return $bundle;
 
 		// Structural validation BEFORE we touch any value. Even though
 		// the catalog server is first-party, we treat its payloads as
 		// untrusted — a compromised CDN cache, a man-in-the-middle, or
-		// just a typo in catalog authoring shouldn't be enough to
-		// poison a downstream install. The manifest must have the
-		// keys we'll read; absent keys mean we abort rather than
-		// import garbage.
-		$manifest_err = self::validate_manifest_shape( $manifest );
-		if ( $manifest_err ) return $manifest_err;
+		// just a typo in template authoring shouldn't be enough to
+		// poison a downstream install.
+		$shape_err = self::validate_bundle_shape( $bundle );
+		if ( $shape_err ) return $shape_err;
 
-		// Builder gate — only Gutenberg manifests are imported by Lite.
-		$builder = isset( $manifest['builder'] ) ? (string) $manifest['builder'] : '';
+		// Builder gate — only Gutenberg bundles are imported by Lite.
+		$builder = isset( $bundle['builder'] ) ? (string) $bundle['builder'] : '';
 		if ( $builder !== 'gutenberg' ) {
 			return new WP_Error(
 				'template_unsupported_builder',
-				/* translators: %s: builder slug from the remote manifest. */
+				/* translators: %s: builder slug from the remote bundle. */
 				sprintf( __( 'Template builder "%s" is not supported yet.', 'neural-forms-lite' ), $builder ),
 				[ 'status' => 400 ]
 			);
 		}
 
-		$page_url = isset( $manifest['page'] ) ? (string) $manifest['page'] : '';
-		if ( ! self::is_allowed_url( $page_url ) ) {
-			return new WP_Error(
-				'template_invalid_page_url',
-				__( 'Template page URL is missing or not allowed.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
-			);
-		}
-
-		$page = self::request_json( $page_url );
-		if ( is_wp_error( $page ) ) return $page;
-
-		$page_err = self::validate_page_shape( $page );
-		if ( $page_err ) return $page_err;
+		$page  = isset( $bundle['page'] ) && is_array( $bundle['page'] ) ? $bundle['page'] : [];
+		$forms = isset( $bundle['forms'] ) && is_array( $bundle['forms'] ) ? $bundle['forms'] : [];
 
 		// Import forms first so the formId map is ready before we
-		// rewrite the page content.
-		$id_map      = [];
+		// rewrite the page content. Each row carries the form payload
+		// inline (the older multi-file layout had a `file` URL here
+		// instead — we no longer fetch that for MVP).
+		$id_map            = [];
 		$imported_form_ids = [];
-		$forms       = isset( $manifest['forms'] ) && is_array( $manifest['forms'] ) ? $manifest['forms'] : [];
 		foreach ( $forms as $form_ref ) {
 			if ( ! is_array( $form_ref ) ) continue;
 			$source_id = isset( $form_ref['sourceFormId'] ) ? (int) $form_ref['sourceFormId'] : 0;
-			$file_url  = isset( $form_ref['file'] ) ? (string) $form_ref['file'] : '';
-			if ( $source_id <= 0 || ! self::is_allowed_url( $file_url ) ) {
+			$form_data = isset( $form_ref['form'] ) && is_array( $form_ref['form'] ) ? $form_ref['form'] : null;
+			if ( $source_id <= 0 || $form_data === null ) {
+				// Skip — without a sourceFormId we can't remap, and
+				// without an inline form payload there's nothing to
+				// import. A malformed row shouldn't fail the whole
+				// import.
 				continue;
 			}
 
-			$form_json = self::request_json( $file_url );
-			if ( is_wp_error( $form_json ) ) return $form_json;
-
-			$clean   = self::sanitize_imported_form( $form_json );
-			$new_id  = FormRepository::create( $clean );
+			$clean  = self::sanitize_imported_form( $form_data );
+			$new_id = FormRepository::create( $clean );
 			if ( ! $new_id ) {
 				return new WP_Error(
 					'template_form_insert_failed',
@@ -233,9 +263,9 @@ class TemplateLibrary {
 		$rewrote_content = self::replace_form_ids_in_content( $raw_content, $id_map );
 		$safe_content    = wp_kses_post( $rewrote_content );
 
-		$title  = isset( $page['title'] ) ? (string) $page['title'] : ( isset( $manifest['title'] ) ? (string) $manifest['title'] : __( 'Imported Template', 'neural-forms-lite' ) );
+		$title  = isset( $page['title'] ) ? (string) $page['title'] : ( isset( $bundle['name'] ) ? (string) $bundle['name'] : __( 'Imported Template', 'neural-forms-lite' ) );
 		$slug   = isset( $page['slug'] ) ? sanitize_title( (string) $page['slug'] ) : '';
-		// Force draft regardless of what the template says — never
+		// Force draft regardless of what the bundle says — never
 		// auto-publish imported content; the admin should review first.
 		$status = 'draft';
 
@@ -385,48 +415,33 @@ class TemplateLibrary {
 	}
 
 	/**
-	 * Structural validation for a manifest.json payload. Returns null
-	 * when shape is acceptable, a WP_Error otherwise. Catches missing
-	 * top-level keys, wrong types for known keys, and an empty forms
-	 * array (a Gutenberg page template with no Neural Forms form
-	 * reference is almost certainly malformed at this stage in Lite).
+	 * Structural validation for a self-contained template bundle.
 	 *
-	 * @param mixed $manifest
+	 * Returns null when shape is acceptable, a WP_Error otherwise.
+	 * Required: top-level object, `builder` string, `page` object
+	 * containing a string `post_content`. `forms` is optional (a
+	 * landing-page template with no form is legal) but must be an
+	 * array when present.
+	 *
+	 * @param mixed $bundle
 	 * @return WP_Error|null
 	 */
-	private static function validate_manifest_shape( $manifest ) {
-		if ( ! is_array( $manifest ) ) {
-			return new WP_Error( 'template_manifest_invalid', __( 'Template manifest is not a valid object.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+	private static function validate_bundle_shape( $bundle ) {
+		if ( ! is_array( $bundle ) ) {
+			return new WP_Error( 'template_bundle_invalid', __( 'Template bundle is not a valid object.', 'neural-forms-lite' ), [ 'status' => 502 ] );
 		}
-		if ( empty( $manifest['builder'] ) || ! is_string( $manifest['builder'] ) ) {
-			return new WP_Error( 'template_manifest_missing_builder', __( 'Template manifest is missing the builder field.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+		if ( empty( $bundle['builder'] ) || ! is_string( $bundle['builder'] ) ) {
+			return new WP_Error( 'template_bundle_missing_builder', __( 'Template bundle is missing the builder field.', 'neural-forms-lite' ), [ 'status' => 502 ] );
 		}
-		if ( empty( $manifest['page'] ) || ! is_string( $manifest['page'] ) ) {
-			return new WP_Error( 'template_manifest_missing_page', __( 'Template manifest is missing the page URL.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+		if ( ! isset( $bundle['page'] ) || ! is_array( $bundle['page'] ) ) {
+			return new WP_Error( 'template_bundle_missing_page', __( 'Template bundle is missing the page object.', 'neural-forms-lite' ), [ 'status' => 502 ] );
 		}
-		if ( isset( $manifest['forms'] ) && ! is_array( $manifest['forms'] ) ) {
-			return new WP_Error( 'template_manifest_forms_invalid', __( 'Template manifest "forms" is not an array.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+		if ( ! isset( $bundle['page']['post_content'] ) || ! is_string( $bundle['page']['post_content'] ) ) {
+			return new WP_Error( 'template_bundle_missing_content', __( 'Template bundle page is missing post_content.', 'neural-forms-lite' ), [ 'status' => 502 ] );
 		}
-		return null;
-	}
-
-	/**
-	 * Structural validation for a page.json payload. Returns null when
-	 * shape is acceptable, a WP_Error otherwise. The block-content
-	 * itself is further sanitized via wp_kses_post() at import time.
-	 *
-	 * @param mixed $page
-	 * @return WP_Error|null
-	 */
-	private static function validate_page_shape( $page ) {
-		if ( ! is_array( $page ) ) {
-			return new WP_Error( 'template_page_invalid', __( 'Template page payload is not a valid object.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+		if ( isset( $bundle['forms'] ) && ! is_array( $bundle['forms'] ) ) {
+			return new WP_Error( 'template_bundle_forms_invalid', __( 'Template bundle "forms" is not an array.', 'neural-forms-lite' ), [ 'status' => 502 ] );
 		}
-		if ( ! isset( $page['post_content'] ) || ! is_string( $page['post_content'] ) ) {
-			return new WP_Error( 'template_page_missing_content', __( 'Template page payload is missing post_content.', 'neural-forms-lite' ), [ 'status' => 502 ] );
-		}
-		// title / slug / status are optional — the importer fills
-		// sensible defaults when they're missing.
 		return null;
 	}
 
@@ -571,9 +586,18 @@ class TemplateLibrary {
 	 * @return array
 	 */
 	private static function normalize_catalog_row( array $row ): array {
+		// Field names mirror the templates.json contract:
+		//   name         (card title, was "title" in the older layout)
+		//   preview_url  (HTML demo page opened in a new tab — was "preview")
+		//   import_url   (the single self-contained template JSON the
+		//                 Import button POSTs through — was "manifest")
+		// thumbnail / category / compatibility / tags / description are
+		// unchanged. Any URL that fails the allow-list check is dropped
+		// to '' so the card still renders (just without that image /
+		// action) rather than failing the whole grid.
 		return [
 			'id'            => isset( $row['id'] ) ? sanitize_key( (string) $row['id'] ) : '',
-			'title'         => isset( $row['title'] ) ? (string) $row['title'] : '',
+			'name'          => isset( $row['name'] ) ? (string) $row['name'] : '',
 			'description'   => isset( $row['description'] ) ? (string) $row['description'] : '',
 			'category'      => isset( $row['category'] ) ? (string) $row['category'] : '',
 			'compatibility' => isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
@@ -582,11 +606,11 @@ class TemplateLibrary {
 			'thumbnail'     => isset( $row['thumbnail'] ) && self::is_allowed_url( (string) $row['thumbnail'] )
 				? esc_url_raw( (string) $row['thumbnail'] )
 				: '',
-			'preview'       => isset( $row['preview'] ) && self::is_allowed_url( (string) $row['preview'] )
-				? esc_url_raw( (string) $row['preview'] )
+			'preview_url'   => isset( $row['preview_url'] ) && self::is_allowed_url( (string) $row['preview_url'] )
+				? esc_url_raw( (string) $row['preview_url'] )
 				: '',
-			'manifest'      => isset( $row['manifest'] ) && self::is_allowed_url( (string) $row['manifest'] )
-				? esc_url_raw( (string) $row['manifest'] )
+			'import_url'    => isset( $row['import_url'] ) && self::is_allowed_url( (string) $row['import_url'] )
+				? esc_url_raw( (string) $row['import_url'] )
 				: '',
 			'tags'          => isset( $row['tags'] ) && is_array( $row['tags'] )
 				? array_values( array_map( 'sanitize_text_field', array_map( 'strval', $row['tags'] ) ) )

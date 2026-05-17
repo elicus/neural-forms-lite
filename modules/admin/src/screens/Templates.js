@@ -74,15 +74,15 @@ export default function Templates() {
 	}, [ catalog, filter ] );
 
 	function onImport( tpl ) {
-		if ( ! tpl || ! tpl.manifest ) return;
+		if ( ! tpl || ! tpl.import_url ) return;
 		setImporting( tpl.id );
 		setImportError( '' );
 		setImportSuccess( null );
 		api( '/templates/import', {
 			method: 'POST',
 			data: {
-				template_id:  tpl.id,
-				manifest_url: tpl.manifest,
+				template_id: tpl.id,
+				import_url:  tpl.import_url,
 			},
 		} )
 			.then( ( res ) => {
@@ -215,7 +215,7 @@ function TemplateCard( { tpl, importing, onImport } ) {
 				{ tpl.thumbnail ? (
 					<img
 						src={ tpl.thumbnail }
-						alt={ tpl.title || tpl.id }
+						alt={ tpl.name || tpl.id }
 						loading="lazy"
 					/>
 				) : (
@@ -225,7 +225,7 @@ function TemplateCard( { tpl, importing, onImport } ) {
 
 			<div className="neural-forms-templates__body">
 				<h2 className="neural-forms-templates__card-title">
-					{ tpl.title || tpl.id }
+					{ tpl.name || tpl.id }
 				</h2>
 
 				{ !! tpl.description && (
@@ -244,10 +244,10 @@ function TemplateCard( { tpl, importing, onImport } ) {
 			<footer className="neural-forms-templates__actions">
 				<Button
 					variant="secondary"
-					href={ tpl.preview || tpl.thumbnail || '#' }
+					href={ tpl.preview_url || tpl.thumbnail || '#' }
 					target="_blank"
 					rel="noreferrer"
-					disabled={ ! tpl.preview && ! tpl.thumbnail }
+					disabled={ ! tpl.preview_url && ! tpl.thumbnail }
 				>
 					{ __( 'Preview', 'neural-forms-lite' ) }
 				</Button>
@@ -255,7 +255,7 @@ function TemplateCard( { tpl, importing, onImport } ) {
 					variant="primary"
 					onClick={ () => onImport( tpl ) }
 					isBusy={ importing }
-					disabled={ importing || ! tpl.manifest }
+					disabled={ importing || ! tpl.import_url }
 				>
 					{ importing ? __( 'Importing…', 'neural-forms-lite' ) : __( 'Import', 'neural-forms-lite' ) }
 				</Button>

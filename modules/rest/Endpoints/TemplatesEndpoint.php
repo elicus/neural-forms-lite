@@ -45,7 +45,14 @@ class TemplatesEndpoint {
 			'callback'            => [ $this, 'import_template' ],
 			'permission_callback' => [ $this, 'check_permission' ],
 			'args'                => [
-				'manifest_url' => [
+				// import_url points at one self-contained template
+				// bundle JSON (page + forms inline). Older versions
+				// of the spec used `manifest_url` for a multi-file
+				// fetch chain; for MVP only the bundle path is
+				// supported, but the parameter name keeps the door
+				// open for a future Pro feature that lets sites
+				// import from an arbitrary bundle URL.
+				'import_url' => [
 					'type'              => 'string',
 					'required'          => true,
 					'sanitize_callback' => 'esc_url_raw',
@@ -77,15 +84,15 @@ class TemplatesEndpoint {
 	 * @return array|WP_Error
 	 */
 	public function import_template( WP_REST_Request $request ) {
-		$manifest_url = (string) $request->get_param( 'manifest_url' );
-		if ( $manifest_url === '' ) {
+		$import_url = (string) $request->get_param( 'import_url' );
+		if ( $import_url === '' ) {
 			return new WP_Error(
-				'template_missing_manifest',
-				__( 'manifest_url is required.', 'neural-forms-lite' ),
+				'template_missing_import_url',
+				__( 'import_url is required.', 'neural-forms-lite' ),
 				[ 'status' => 400 ]
 			);
 		}
-		return TemplateLibrary::import_template( $manifest_url );
+		return TemplateLibrary::import_template( $import_url );
 	}
 
 	/**
