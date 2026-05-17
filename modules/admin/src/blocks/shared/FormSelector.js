@@ -16,7 +16,7 @@
 
 import { useEffect, useState, useMemo } from '@wordpress/element';
 import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
-import { PanelBody, SelectControl, TextControl, Spinner, Notice, ExternalLink } from '@wordpress/components';
+import { PanelBody, SelectControl, TextControl, ToggleControl, Spinner, Notice, ExternalLink } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import ServerSideRender from '@wordpress/server-side-render';
 import api from '../../api';
@@ -137,6 +137,15 @@ export default function FormSelector( {
 							value={ attributes.formTitle || '' }
 							onChange={ ( v ) => setAttributes( { formTitle: v } ) }
 							help={ __( 'Optional heading rendered above the form. Style it under Styles → Form Title.', 'neural-forms-lite' ) }
+						/>
+					) }
+
+					{ ! loading && (
+						<ToggleControl
+							label={ __( 'Show Field Labels', 'neural-forms-lite' ) }
+							checked={ !! attributes.showLabels }
+							onChange={ ( v ) => setAttributes( { showLabels: !! v } ) }
+							help={ __( 'When off, each field shows only its placeholder. Turn on to render a visible label above every input.', 'neural-forms-lite' ) }
 						/>
 					) }
 
