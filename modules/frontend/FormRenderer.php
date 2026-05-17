@@ -1516,7 +1516,11 @@ class FormRenderer {
 			$checked = ( $val === $default ) ? ' checked' : '';
 			$req_attr = ( $required && $i === 0 ) ? ' required aria-required="true"' : '';
 
-			$html .= '<div class="neural-forms-form__poll-option">'
+			// Whole option row is a <label> wrapping the radio + the
+			// option text so clicking anywhere inside the padded /
+			// bordered area selects the radio (same rationale as
+			// render_quiz_question).
+			$html .= '<label class="neural-forms-form__poll-option" for="' . esc_attr( $opt_id ) . '">'
 				. '<input type="radio"'
 				. ' id="' . esc_attr( $opt_id ) . '"'
 				. ' name="' . esc_attr( $field['id'] ) . '"'
@@ -1525,10 +1529,10 @@ class FormRenderer {
 				. $checked
 				. $req_attr
 				. '>'
-				. '<label class="neural-forms-form__label neural-forms-form__label--poll" for="' . esc_attr( $opt_id ) . '">'
+				. '<span class="neural-forms-form__label neural-forms-form__label--poll">'
 				. esc_html( $label )
-				. '</label>'
-				. '</div>';
+				. '</span>'
+				. '</label>';
 		}
 
 		$html .= '</div>';
@@ -1734,7 +1738,13 @@ class FormRenderer {
 			// is_correct INTENTIONALLY NOT EMITTED: it would leak the
 			// answer to anyone with browser devtools. Score is computed
 			// server-side; the submit response carries the verdict.
-			$html .= '<div class="neural-forms-form__quiz-option">'
+			//
+			// The whole option row is a <label> wrapping the radio +
+			// option text so clicking ANYWHERE inside the padded /
+			// bordered option box selects the radio (admins added
+			// large padding to options via the design panel; clicking
+			// only the small radio circle felt fiddly).
+			$html .= '<label class="neural-forms-form__quiz-option" for="' . esc_attr( $opt_id ) . '">'
 				. '<input type="radio"'
 				. ' id="' . esc_attr( $opt_id ) . '"'
 				. ' name="' . esc_attr( $field['id'] ) . '"'
@@ -1743,10 +1753,10 @@ class FormRenderer {
 				. $checked
 				. $req_attr
 				. '>'
-				. '<label class="neural-forms-form__label neural-forms-form__label--quiz" for="' . esc_attr( $opt_id ) . '">'
+				. '<span class="neural-forms-form__label neural-forms-form__label--quiz">'
 				. esc_html( $label )
-				. '</label>'
-				. '</div>';
+				. '</span>'
+				. '</label>';
 		}
 
 		$html .= '</div>';

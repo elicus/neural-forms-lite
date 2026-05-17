@@ -624,6 +624,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    cursor: pointer;
 }
 
 .neural-forms-form__poll-input {
@@ -666,6 +667,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    cursor: pointer;
 }
 
 .neural-forms-form__quiz-input {
