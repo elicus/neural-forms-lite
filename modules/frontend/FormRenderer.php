@@ -464,8 +464,17 @@ class FormRenderer {
 		// cannot accidentally submit). form-submit.js wires their
 		// click handlers + per-step visibility.
 		if ( $has_steps ) {
-			$first_prev = (string) ( $top_steps[0]['settings']['button_previous'] ?? __( 'Back', 'neural-forms-lite' ) );
-			$first_next = (string) ( $top_steps[0]['settings']['button_next']     ?? __( 'Next', 'neural-forms-lite' ) );
+			// Block-level overrides (set by BlockHandler when called
+			// from the Multi Step block) win over per-step settings.
+			// An explicit empty string is honoured — the button still
+			// renders as an empty <button> so admins can style it as
+			// icon-only via CSS without text leaking through.
+			$first_prev = array_key_exists( 'prev_button_text', $options )
+				? (string) $options['prev_button_text']
+				: (string) ( $top_steps[0]['settings']['button_previous'] ?? __( 'Back', 'neural-forms-lite' ) );
+			$first_next = array_key_exists( 'next_button_text', $options )
+				? (string) $options['next_button_text']
+				: (string) ( $top_steps[0]['settings']['button_next']     ?? __( 'Next', 'neural-forms-lite' ) );
 
 			$html .= '<div class="neural-forms-form__steps-nav" data-neural-forms-steps-nav>'
 					. '<button type="button" class="neural-forms-form__step-prev"'
@@ -501,9 +510,15 @@ class FormRenderer {
 				. ' hidden></div>';
 		}
 
+		// Block-level submit-text override. Explicit empty string emits
+		// an empty button (icon-only support via theme CSS).
+		$submit_text = array_key_exists( 'submit_button_text', $options )
+			? (string) $options['submit_button_text']
+			: __( 'Submit', 'neural-forms-lite' );
+
 		$html .= '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
-				. esc_html__( 'Submit', 'neural-forms-lite' )
+				. esc_html( $submit_text )
 				. '</button>'
 				. '</div>';
 

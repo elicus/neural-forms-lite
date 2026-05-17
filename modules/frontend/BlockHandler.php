@@ -271,6 +271,27 @@ class BlockHandler {
 				|| $attributes['showPlaceholders'] !== false,
 		];
 
+		// Button-text overrides (1.1.0). Block attributes always carry a
+		// default ("Submit" / "Previous" / "Next"), so the option key is
+		// always set when rendering through the block path. We forward
+		// the value as-is — including an EXPLICIT empty string, which
+		// tells the renderer to emit a button with no text inside (so
+		// admins who add an icon via theme CSS get an icon-only button).
+		//
+		// We only forward the key when it exists on $attributes so the
+		// shortcode / standalone FormRenderer::render() path is
+		// unaffected (its option key stays absent → renderer falls
+		// back to its hardcoded defaults).
+		if ( array_key_exists( 'submitButtonText', $attributes ) ) {
+			$render_options['submit_button_text'] = (string) $attributes['submitButtonText'];
+		}
+		if ( array_key_exists( 'prevButtonText', $attributes ) ) {
+			$render_options['prev_button_text'] = (string) $attributes['prevButtonText'];
+		}
+		if ( array_key_exists( 'nextButtonText', $attributes ) ) {
+			$render_options['next_button_text'] = (string) $attributes['nextButtonText'];
+		}
+
 		// Multi-Step block (and the form block, harmlessly): per-placement
 		// progress-indicator override. Empty string = "Use form setting"
 		// → no override. Any other value is validated by FormRenderer.

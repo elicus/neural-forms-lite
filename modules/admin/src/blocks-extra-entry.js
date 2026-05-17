@@ -35,7 +35,7 @@
 
 import { registerBlockType, unregisterBlockType } from '@wordpress/blocks';
 import { __ }                from '@wordpress/i18n';
-import { SelectControl }     from '@wordpress/components';
+import { SelectControl, TextControl } from '@wordpress/components';
 import baseMetadata          from '../../frontend/block/block.json';
 import FormSelector          from './blocks/shared/FormSelector';
 import FormDesignExtras      from './blocks/form/FormDesignExtras';
@@ -100,18 +100,32 @@ function MultiStepExtras( props ) {
 function MultiStepSettingsExtras( { attributes, setAttributes } ) {
 	const value = String( attributes?.progressIndicatorOverride || '' );
 	return (
-		<SelectControl
-			label={ __( 'Progress Indicator', 'neural-forms-lite' ) }
-			value={ value }
-			options={ [
-				{ label: __( 'Use form default', 'neural-forms-lite' ), value: '' },
-				{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
-				{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar' },
-				{ label: __( 'None',             'neural-forms-lite' ), value: 'none' },
-			] }
-			onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
-			help={ __( 'Override the form\'s saved progress indicator for this placement only.', 'neural-forms-lite' ) }
-		/>
+		<>
+			<SelectControl
+				label={ __( 'Progress Indicator', 'neural-forms-lite' ) }
+				value={ value }
+				options={ [
+					{ label: __( 'Use form default', 'neural-forms-lite' ), value: '' },
+					{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
+					{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar' },
+					{ label: __( 'None',             'neural-forms-lite' ), value: 'none' },
+				] }
+				onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
+				help={ __( 'Override the form\'s saved progress indicator for this placement only.', 'neural-forms-lite' ) }
+			/>
+			<TextControl
+				label={ __( 'Previous Button Text', 'neural-forms-lite' ) }
+				value={ attributes?.prevButtonText ?? 'Previous' }
+				onChange={ ( v ) => setAttributes( { prevButtonText: v } ) }
+				help={ __( 'Leave empty to render an empty Previous button (icon-only support).', 'neural-forms-lite' ) }
+			/>
+			<TextControl
+				label={ __( 'Next Button Text', 'neural-forms-lite' ) }
+				value={ attributes?.nextButtonText ?? 'Next' }
+				onChange={ ( v ) => setAttributes( { nextButtonText: v } ) }
+				help={ __( 'Leave empty to render an empty Next button (icon-only support).', 'neural-forms-lite' ) }
+			/>
+		</>
 	);
 }
 

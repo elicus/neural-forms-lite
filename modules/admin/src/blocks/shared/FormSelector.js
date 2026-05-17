@@ -149,6 +149,15 @@ export default function FormSelector( {
 						/>
 					) }
 
+					{ ! loading && (
+						<TextControl
+							label={ __( 'Submit Button Text', 'neural-forms-lite' ) }
+							value={ attributes.submitButtonText ?? 'Submit' }
+							onChange={ ( v ) => setAttributes( { submitButtonText: v } ) }
+							help={ __( 'Leave empty to render an empty submit button — useful when you style it as icon-only via theme CSS.', 'neural-forms-lite' ) }
+						/>
+					) }
+
 					{ ! loading && settingsExtras }
 
 					{ selectedForm && ! selectedTypeMatches && (

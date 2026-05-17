@@ -155,6 +155,9 @@
 
         "showLabels":       { "type": "boolean", "default": false },
         "showPlaceholders": { "type": "boolean", "default": true  },
+        "submitButtonText": { "type": "string",  "default": "Submit" },
+        "prevButtonText":   { "type": "string",  "default": "Previous" },
+        "nextButtonText":   { "type": "string",  "default": "Next" },
         "labelAlign":         { "type": "string",  "default": "" },
         "labelColor":         { "type": "string",  "default": "" },
         "labelFontFamily":    { "type": "string",  "default": "" },
