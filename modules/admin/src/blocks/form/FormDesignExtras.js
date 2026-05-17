@@ -467,7 +467,7 @@ export default function FormDesignExtras( { attributes, setAttributes } ) {
 	return (
 		<>
 			<ContainerPanel      a={ a } set={ set } />
-			<TitlePanel          a={ a } set={ set } />
+			{ ( a.formTitle || '' ).trim() !== '' && <TitlePanel a={ a } set={ set } /> }
 			<LabelsPanel         a={ a } set={ set } />
 			<InputFieldsPanel    a={ a } set={ set } />
 			<TextareaFieldPanel  a={ a } set={ set } />
