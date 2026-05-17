@@ -198,7 +198,8 @@ function TitlePanel( { a, set } ) {
 function LabelsPanel( { a, set } ) {
 	return (
 		<PanelBody title={ __( 'Labels', 'neural-forms-lite' ) } initialOpen={ false }>
-			<ToggleControl label={ __( 'Show Labels', 'neural-forms-lite' ) } checked={ !!a.showLabels } onChange={ v => set( { showLabels: v } ) } />
+			{ /* Show Labels lives in Settings → Display now; removed
+			     from here to avoid a duplicate control. */ }
 			<ToggleGroupControl label={ __( 'Alignment', 'neural-forms-lite' ) } value={ a.labelAlign || 'left' } onChange={ v => set( { labelAlign: v } ) } isBlock __nextHasNoMarginBottom>
 				<ToggleGroupControlOption value="left"   label={ __( 'Left', 'neural-forms-lite' ) } />
 				<ToggleGroupControlOption value="center" label={ __( 'Center', 'neural-forms-lite' ) } />
