@@ -417,6 +417,28 @@ class SubmissionValidator {
 				}
 				break;
 
+			case 'phone':
+			case 'tel':
+				// Allowed punctuation: + (leading only), digits, spaces,
+				// dashes, parens, dots. 7-15 digits — same envelope used
+				// by client-side validation in form-submit.js. Rejects
+				// "0", "1", and other single-digit / alphabetic inputs
+				// that previously slipped through because there was no
+				// type rule for phone here.
+				$digits = preg_replace( '/\D/', '', (string) $value );
+				if (
+					! preg_match( '/^\+?[\d\s().\-]+$/', (string) $value )
+					|| strlen( $digits ) < 7
+					|| strlen( $digits ) > 15
+				) {
+					return [
+						'code'    => 'invalid_phone',
+						/* translators: %s: field label */
+						'message' => sprintf( __( '%s must be a valid phone number.', 'neural-forms-lite' ), $label ),
+					];
+				}
+				break;
+
 			case 'number':
 				if ( ! is_numeric( $value ) ) {
 					return [

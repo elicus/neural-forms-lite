@@ -296,8 +296,16 @@
 			return;
 		}
 
+		// Client-side pre-submit validation. Server validation remains
+		// the source of truth, but this gives the visitor immediate
+		// inline feedback on required + type errors (phone "0",
+		// malformed email, etc.) without a round-trip. clearErrors()
+		// runs inside validateClientSide() so callers don't have to.
+		if ( ! validateClientSide( form ) ) {
+			return;
+		}
+
 		// Reset UI, disable form, then fire the request.
-		clearErrors( form );
 		setSubmitting( form, true );
 
 		// ' CAPTCHA pre-submit check '
@@ -951,6 +959,233 @@
 			globalError.textContent = '';
 			globalError.hidden      = true;
 		}
+	}
+
+	/**
+	 * Resolve the human-readable label for a field wrapper so client-side
+	 * validation messages can read like the server's ("Email is required.",
+	 * "Phone must be a valid phone number."). Falls back to the input's
+	 * aria-label / placeholder / name when no visible label is present
+	 * (e.g. show_labels === false).
+	 *
+	 * @param {Element} wrapper  .neural-forms-form__field element.
+	 * @param {Element} input    The <input>/<select>/<textarea>.
+	 * @returns {string}         A label-like string, never empty.
+	 */
+	function fieldLabelText( wrapper, input ) {
+		var labelEl = wrapper.querySelector( '.neural-forms-form__label' );
+		if ( labelEl ) {
+			// Strip the required asterisk (rendered as <span> with text '*')
+			// and trim whitespace.
+			var txt = ( labelEl.textContent || '' ).replace( /\*/g, '' ).trim();
+			if ( txt !== '' ) return txt;
+		}
+		if ( input ) {
+			var aria = input.getAttribute( 'aria-label' );
+			if ( aria && aria.trim() !== '' ) return aria.trim();
+			var ph = input.getAttribute( 'placeholder' );
+			if ( ph && ph.trim() !== '' ) return ph.trim();
+		}
+		return 'This field';
+	}
+
+	/**
+	 * Apply field-level error state to a wrapper. Mirrors the DOM mutations
+	 * that showFieldErrors() makes for server-returned errors so the same
+	 * CSS hooks (red border via __field--has-error, error paragraph slot)
+	 * light up.
+	 *
+	 * @param {Element} wrapper
+	 * @param {string}  message
+	 */
+	function markFieldInvalid( wrapper, message ) {
+		var errEl = wrapper.querySelector( '.neural-forms-form__field-error' );
+		if ( errEl ) {
+			errEl.textContent = message;
+			errEl.hidden      = false;
+		}
+		wrapper.classList.add( 'neural-forms-form__field--has-error' );
+		var input = wrapper.querySelector( 'input, select, textarea' );
+		if ( input ) {
+			input.setAttribute( 'aria-invalid', 'true' );
+		}
+	}
+
+	/**
+	 * Client-side type validation for a single non-empty input value.
+	 *
+	 * Returns an error message (string) when the value fails the type
+	 * check for the given HTML5 input type, or null when it passes /
+	 * the type has no client-side rule. The rules deliberately MIRROR
+	 * the server's check_type() so a value that passes here also
+	 * passes the server, and vice versa (no UX mismatch).
+	 *
+	 *   - email   matches RFC-light "<local>@<host>.<tld>" with no spaces
+	 *   - tel     digits-and-separators only, 7+ digits total (rejects "0",
+	 *             single-digit entries, alphabetic strings)
+	 *   - url     parseable by URL() — same intent as FILTER_VALIDATE_URL
+	 *   - number  finite numeric — same as is_numeric()
+	 *   - date    YYYY-MM-DD plus a real-date check (rejects 2025-13-40)
+	 *
+	 * @param {string}  type     Lowercase input.type ('email', 'tel', …).
+	 * @param {string}  value    The trimmed value (caller guarantees non-empty).
+	 * @param {string}  label    Field label for the user-visible message.
+	 * @returns {string|null}
+	 */
+	function clientTypeError( type, value, label ) {
+		switch ( type ) {
+			case 'email':
+				if ( ! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( value ) ) {
+					return label + ' must be a valid email address.';
+				}
+				return null;
+
+			case 'tel':
+				// Allowed punctuation: + (leading only), digits, spaces,
+				// dashes, parens, dots. Need at least 7 digits to be a
+				// plausible phone number. A bare "0" or "1" has 1 digit
+				// and rightly fails. Letters or symbols outside the
+				// allowed set also fail.
+				if ( ! /^\+?[\d\s().\-]+$/.test( value ) ) {
+					return label + ' must be a valid phone number.';
+				}
+				var digits = value.replace( /\D/g, '' );
+				if ( digits.length < 7 || digits.length > 15 ) {
+					return label + ' must be a valid phone number.';
+				}
+				return null;
+
+			case 'url':
+				try {
+					// URL() throws on malformed values; same intent as
+					// PHP's FILTER_VALIDATE_URL.
+					new URL( value );
+				} catch ( e ) {
+					return label + ' must be a valid URL.';
+				}
+				return null;
+
+			case 'number':
+				if ( ! isFinite( Number( value ) ) ) {
+					return label + ' must be a number.';
+				}
+				return null;
+
+			case 'date':
+				if ( ! /^\d{4}-\d{2}-\d{2}$/.test( value ) ) {
+					return label + ' must be a valid date.';
+				}
+				// Reject impossible dates (e.g. 2025-13-40). The Date
+				// constructor accepts YYYY-MM-DD but normalises out-of-
+				// range parts — round-trip the parse to detect that.
+				var parts = value.split( '-' );
+				var y = Number( parts[ 0 ] ), m = Number( parts[ 1 ] ), d = Number( parts[ 2 ] );
+				var dt = new Date( Date.UTC( y, m - 1, d ) );
+				if (
+					isNaN( dt.getTime() )
+					|| dt.getUTCFullYear() !== y
+					|| dt.getUTCMonth() + 1  !== m
+					|| dt.getUTCDate()       !== d
+				) {
+					return label + ' must be a valid date.';
+				}
+				return null;
+		}
+		return null;
+	}
+
+	/**
+	 * Walk every visible field wrapper inside `scope` (the form, or a
+	 * single multi-step step) and validate required + type. Returns the
+	 * first wrapper that failed so the caller can scroll/focus it.
+	 *
+	 * Conditional-hidden wrappers ([hidden] / display:none) are skipped
+	 * so visitors aren't blocked by rules on a field they can't see.
+	 * Checkbox / radio groups are intentionally left to the server —
+	 * HTML5 `required` on a single checkbox in a group doesn't
+	 * represent the group rule, and the server already validates them.
+	 *
+	 * @param {Element} scope
+	 * @returns {Element|null}  First failing wrapper, or null when all pass.
+	 */
+	function validateFieldsIn( scope ) {
+		var wrappers = scope.querySelectorAll( '.neural-forms-form__field' );
+		var firstError = null;
+
+		for ( var i = 0; i < wrappers.length; i++ ) {
+			var w = wrappers[ i ];
+
+			// Skip fields hidden by conditional logic.
+			if ( w.hasAttribute( 'hidden' ) ) continue;
+			if ( w.style && w.style.display === 'none' ) continue;
+
+			var input = w.querySelector( 'input, select, textarea' );
+			if ( ! input ) continue;
+
+			// Honeypot — server enforces it; client treats as transparent.
+			if ( input.name === 'neural_forms_website' ) continue;
+
+			// Hidden type without `required` is not user-facing; skip.
+			if ( input.type === 'hidden' && ! input.required ) continue;
+
+			// Checkbox / radio groups: leave to server (see docblock).
+			if ( input.type === 'checkbox' || input.type === 'radio' ) continue;
+
+			var label    = fieldLabelText( w, input );
+			var required = input.required || input.hasAttribute( 'required' );
+
+			if ( input.type === 'file' ) {
+				if ( required && input.files && input.files.length === 0 ) {
+					markFieldInvalid( w, label + ' is required.' );
+					if ( ! firstError ) firstError = w;
+				}
+				continue;
+			}
+
+			var value   = input.value != null ? String( input.value ) : '';
+			var trimmed = value.trim();
+
+			if ( required && trimmed === '' ) {
+				markFieldInvalid( w, label + ' is required.' );
+				if ( ! firstError ) firstError = w;
+				continue;
+			}
+
+			// Type validation only kicks in when the visitor has actually
+			// entered something. Empty + optional is always fine.
+			if ( trimmed !== '' ) {
+				var typeErr = clientTypeError( ( input.type || '' ).toLowerCase(), trimmed, label );
+				if ( typeErr ) {
+					markFieldInvalid( w, typeErr );
+					if ( ! firstError ) firstError = w;
+				}
+			}
+		}
+
+		return firstError;
+	}
+
+	/**
+	 * Form-wide pre-submit validation. Clears prior errors, runs the
+	 * required + type pass across the whole form, and on failure
+	 * scrolls to / focuses the first invalid wrapper. Returns true
+	 * when the submission can proceed.
+	 *
+	 * @param {HTMLFormElement} form
+	 * @returns {boolean}
+	 */
+	function validateClientSide( form ) {
+		clearErrors( form );
+		var firstError = validateFieldsIn( form );
+		if ( firstError ) {
+			firstError.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+			var focusTarget = firstError.querySelector( 'input, select, textarea' );
+			if ( focusTarget && typeof focusTarget.focus === 'function' ) {
+				setTimeout( function () { focusTarget.focus(); }, 350 );
+			}
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -1941,32 +2176,36 @@
 		}
 
 		/**
-		 * Validate the visible required fields inside the current step
-		 * client-side. Returns true when the step can advance.
-		 * Server validation remains the source of truth; this is UX-only.
+		 * Validate the visible fields inside the current step before
+		 * letting the visitor advance. Delegates to validateFieldsIn()
+		 * so the rules (required + type for email/tel/url/number/date)
+		 * match the full pre-submit pass exactly — no UX gap where a
+		 * field passes step nav but trips on final submit.
+		 *
+		 * Clears prior errors inside this step first so re-validating
+		 * an already-corrected step doesn't leave stale red borders.
 		 */
 		function validateStep( step ) {
-			var inputs = step.querySelectorAll( 'input[required], select[required], textarea[required]' );
-			var firstInvalid = null;
-			for ( var i = 0; i < inputs.length; i++ ) {
-				var el = inputs[ i ];
-
-				// Skip fields whose wrapper is hidden by conditional logic.
-				var wrapper = el.closest( '.neural-forms-form__field' );
-				if ( wrapper && wrapper.hasAttribute( 'hidden' ) ) continue;
-				if ( wrapper && wrapper.style.display === 'none' ) continue;
-
-				var value = ( el.type === 'checkbox' || el.type === 'radio' ) ? el.checked : ( el.value || '' );
-				if ( el.type === 'checkbox' && el.required && ! el.checked ) {
-					if ( ! firstInvalid ) firstInvalid = el;
-					continue;
-				}
-				if ( typeof value === 'string' && value.trim() === '' ) {
-					if ( ! firstInvalid ) firstInvalid = el;
-				}
+			// Local error reset scoped to this step (don't clear errors
+			// in subsequent steps the visitor hasn't reached yet).
+			var stepErrors = step.querySelectorAll( '.neural-forms-form__field-error' );
+			for ( var i = 0; i < stepErrors.length; i++ ) {
+				stepErrors[ i ].textContent = '';
+				stepErrors[ i ].hidden      = true;
 			}
-			if ( firstInvalid ) {
-				try { firstInvalid.focus(); } catch ( e ) { /* noop */ }
+			var stepInvalidWrappers = step.querySelectorAll( '.neural-forms-form__field--has-error' );
+			for ( var j = 0; j < stepInvalidWrappers.length; j++ ) {
+				stepInvalidWrappers[ j ].classList.remove( 'neural-forms-form__field--has-error' );
+				var invInput = stepInvalidWrappers[ j ].querySelector( '[aria-invalid]' );
+				if ( invInput ) invInput.removeAttribute( 'aria-invalid' );
+			}
+
+			var firstError = validateFieldsIn( step );
+			if ( firstError ) {
+				var focusTarget = firstError.querySelector( 'input, select, textarea' );
+				if ( focusTarget && typeof focusTarget.focus === 'function' ) {
+					try { focusTarget.focus(); } catch ( e ) { /* noop */ }
+				}
 				return false;
 			}
 			return true;
