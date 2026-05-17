@@ -1115,9 +1115,14 @@ class BlockHandler {
 			$field_idle_rules[] = 'border-radius:' . $len( $field_border_radius );
 		}
 		if ( $field_idle_rules ) {
+			// Selector covers inputs + selects only. Textarea has its
+			// own dedicated panel (Textarea Field → bg/border/etc.) so
+			// it would be wrong for the Input Fields panel to bleed
+			// into textareas. Keeping textarea out of this selector
+			// list means an empty Textarea panel renders a transparent
+			// textarea even when the Input Fields panel paints inputs.
 			$field_idle_sel = $wrap_sel . ' .neural-forms-form__input,'
-				. $wrap_sel . ' .neural-forms-form__select,'
-				. $wrap_sel . ' .neural-forms-form__textarea';
+				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_idle_sel . '{' . implode( ';', $field_idle_rules ) . '}';
 		}
 
@@ -1136,9 +1141,10 @@ class BlockHandler {
 			$field_focus_rules[] = 'border-color:' . sanitize_hex_color( $field_focus_border_color );
 		}
 		if ( $field_focus_rules ) {
+			// Inputs + selects only — textarea has its own focus
+			// styling under the Textarea panel.
 			$field_focus_sel = $wrap_sel . ' .neural-forms-form__input:focus,'
-				. $wrap_sel . ' .neural-forms-form__select:focus,'
-				. $wrap_sel . ' .neural-forms-form__textarea:focus';
+				. $wrap_sel . ' .neural-forms-form__select:focus';
 			$css .= $field_focus_sel . '{' . implode( ';', $field_focus_rules ) . '}';
 		}
 
