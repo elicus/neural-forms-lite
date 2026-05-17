@@ -60,12 +60,12 @@
     --neural-forms-border-style:   solid;     /* input border style            */
     --neural-forms-input-font-size:1rem;      /* input font size               */
 
-    /* Submit button - override these via block formatting controls.
-       Background inherits the active theme's primary/accent color via
-       theme.json presets, falling back to a tasteful indigo. */
-    --neural-forms-btn-bg:         var(--wp--preset--color--primary, var(--wp--preset--color--accent, var(--wp--preset--color--vivid-cyan-blue, #4f46e5)));
-    --neural-forms-btn-color:      #ffffff;   /* button text colour         */
-    --neural-forms-btn-radius:     var(--neural-forms-radius); /* button corner radius */
+    /* Submit / nav button — no default bg/color/radius here.
+       FormRenderer adds `wp-element-button` to those buttons so the
+       active theme's Button-element style (block themes via
+       theme.json, classic themes via a `button` selector) controls
+       the look. BlockHandler emits per-block btn* overrides as
+       direct rules at higher specificity when authors customise. */
     --neural-forms-btn-width:      auto;      /* 100% for full-width toggle */
     --neural-forms-btn-align:      left;      /* left / center / right      */
 }
@@ -1075,17 +1075,19 @@
 }
 
 .neural-forms-form__submit {
+    /* Structural rules only — color, background, border, font and
+       radius are deliberately omitted so the theme's
+       :where(.wp-element-button) rule (block themes) or general
+       `button` styles (classic themes) take effect by default. A
+       Neural Forms block dropped onto a page looks like every other
+       button on that page. Per-block customisations
+       (btnBgColor / btnTextColor / btnRadius / btnFontSize / etc.)
+       still win because BlockHandler emits them as direct rules on
+       `.neural-forms-block-<uid>.neural-forms-block-wrap .neural-
+       forms-form__submit` (specificity 0,3,0), high enough to beat
+       any `:where()`-wrapped theme rule. */
     display: inline-block;
     width: var(--neural-forms-btn-width);
-    padding: 0.875rem 1.75rem;
-    border: 1px solid transparent;
-    border-radius: var(--neural-forms-btn-radius);
-    background-color: var(--neural-forms-btn-bg);
-    color: var(--neural-forms-btn-color);
-    font-family: inherit;
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
@@ -1214,32 +1216,23 @@
     flex-wrap: wrap;
 }
 
+/* Multi-step nav buttons — like the submit button, structural only.
+   The theme's :where(.wp-element-button) rule (block themes) or its
+   general `button` selector (classic themes) supplies the color /
+   background / border / radius / typography. The previous version
+   hardcoded `#080f5b` (NF brand navy) which felt out of place on any
+   site whose theme used a different palette. Per-block button
+   overrides emitted by BlockHandler still apply at higher
+   specificity. */
 .neural-forms-form__step-prev,
 .neural-forms-form__step-next {
-    background: #fff;
-    color: #080f5b;
-    border: 1px solid #080f5b;
-    border-radius: 6px;
-    padding: 9px 18px;
-    font-size: 0.95em;
-    font-weight: 500;
     cursor: pointer;
 }
 
-.neural-forms-form__step-prev:hover,
-.neural-forms-form__step-next:hover {
-    background: rgba( 8, 15, 91, 0.06 );
-}
-
 .neural-forms-form__step-next {
-    background: #080f5b;
-    color: #fff;
+    /* Keep the layout-only declaration that pushes the Next button
+       to the right edge of the steps-nav flex row. */
     margin-left: auto;
-}
-
-.neural-forms-form__step-next:hover {
-    background: #050a45;
-    color: #fff;
 }
 
 /* Submit button on a multi-step form is JS-toggled; no CSS-only

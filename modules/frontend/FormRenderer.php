@@ -476,19 +476,35 @@ class FormRenderer {
 				? (string) $options['next_button_text']
 				: (string) ( $top_steps[0]['settings']['button_next']     ?? __( 'Next', 'neural-forms-lite' ) );
 
+			// `wp-element-button` is the WordPress core class that block
+			// themes (and many classic themes) apply Button-element
+			// styles to via `:where(.wp-element-button)` in theme.json.
+			// Adding it here means a Neural Forms block on a page picks
+			// up the theme's button color / radius / typography by
+			// default — no per-form configuration needed. Per-block
+			// btnBgColor / btnTextColor / etc. still win because
+			// BlockHandler emits them as direct rules at higher
+			// specificity than `:where()`.
 			$html .= '<div class="neural-forms-form__steps-nav" data-neural-forms-steps-nav>'
-					. '<button type="button" class="neural-forms-form__step-prev"'
+					. '<button type="button" class="neural-forms-form__step-prev wp-element-button"'
 					. ' data-step-action="prev">'
 					. esc_html( $first_prev )
 					. '</button>'
-					. '<button type="button" class="neural-forms-form__step-next"'
+					. '<button type="button" class="neural-forms-form__step-next wp-element-button"'
 					. ' data-step-action="next">'
 					. esc_html( $first_next )
 					. '</button>'
 					. '</div>';
 		}
 
-		$submit_class = 'neural-forms-form__submit';
+		// `wp-element-button` is the WordPress core class block themes
+		// hook Button-element styles to. Adding it here makes the
+		// submit button inherit the active theme's button look (color,
+		// border-radius, typography) by default. Per-block customisations
+		// via btnBgColor / btnTextColor still win because BlockHandler
+		// emits them as direct rules at higher specificity than the
+		// theme's `:where(.wp-element-button)` rule.
+		$submit_class = 'neural-forms-form__submit wp-element-button';
 		if ( $has_steps ) {
 			// JS hides the submit until the last step is reached.
 			// Without JS the submit stays visible (graceful fallback).
