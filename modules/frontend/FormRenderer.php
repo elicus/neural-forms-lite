@@ -1483,16 +1483,18 @@ class FormRenderer {
 
 		$html = '<fieldset class="neural-forms-form__poll" aria-describedby="' . esc_attr( $error_id ) . '">';
 
-		$lbl        = (string) ( $field['label'] ?? '' );
-		$show_label = ! empty( $field['show_label'] );
+		// Poll question label is the field's content (the question
+		// itself). Same reasoning as render_quiz_question: always
+		// render visibly when set; the block-level `show_labels`
+		// toggle controls labels on text-like fields, but a poll
+		// question has no placeholder fallback — hide it and the
+		// visitor sees orphan radio options.
+		$lbl = (string) ( $field['label'] ?? '' );
 		if ( $lbl !== '' ) {
-			$legend_class  = $show_label
-				? 'neural-forms-form__label neural-forms-form__label--block'
-				: 'screen-reader-text';
-			$required_mark = ( $show_label && $required )
+			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="neural-forms-form__label neural-forms-form__label--block">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -1694,16 +1696,20 @@ class FormRenderer {
 			. $randomize_attr
 			. ' aria-describedby="' . esc_attr( $error_id ) . '">';
 
-		$lbl        = (string) ( $field['label'] ?? '' );
-		$show_label = ! empty( $field['show_label'] );
+		// Quiz question label is the field's content (the question
+		// itself). Always render visibly when set — the block-level
+		// `show_labels` toggle controls labels on text-like fields
+		// (where the placeholder can carry the hint instead), but
+		// for a quiz/poll question there is no alternative carrier:
+		// hide it and the visitor sees just orphan radio options.
+		// Admins who want to suppress the question text can set
+		// label to an empty string.
+		$lbl = (string) ( $field['label'] ?? '' );
 		if ( $lbl !== '' ) {
-			$legend_class  = $show_label
-				? 'neural-forms-form__label neural-forms-form__label--block'
-				: 'screen-reader-text';
-			$required_mark = ( $show_label && $required )
+			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="neural-forms-form__label neural-forms-form__label--block">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
