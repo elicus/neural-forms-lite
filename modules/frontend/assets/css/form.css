@@ -323,17 +323,32 @@
    Textarea
  */
 
+/*
+   Textarea visual rules deliberately do NOT consume the
+   --neural-forms-field-* variables that inputs/selects use.
+   The block editor's "Input Fields" panel sets those variables
+   on the form root; if textarea inherited from them it would
+   silently take on input bg / border / text color even though
+   the dedicated "Textarea Field" panel was left empty (visible
+   bleed reported in 0.2.0). Use textarea-scoped variables with
+   the same literal defaults instead, so the two panels stay
+   independent: Textarea panel emits direct rules on
+   .neural-forms-block-<uid> .neural-forms-form__textarea to
+   customise; absent customisation, textareas fall back to the
+   form's idle defaults regardless of what fieldBg / fieldText /
+   etc are set on inputs.
+ */
 .neural-forms-form__textarea {
     display: block;
     width: 100%;
     padding: var(--neural-forms-input-py) var(--neural-forms-input-px);
-    border: var(--neural-forms-border-width) var(--neural-forms-border-style) var(--neural-forms-border);
-    border-radius: var(--neural-forms-radius);
-    color: var(--neural-forms-text);
+    border: var(--neural-forms-textarea-border-width, 1px) var(--neural-forms-textarea-border-style, solid) var(--neural-forms-textarea-border, #d1d5db);
+    border-radius: var(--neural-forms-textarea-radius, 6px);
+    color: var(--neural-forms-textarea-text, #111827);
     font-family: inherit;
     font-size: var(--neural-forms-input-font-size);
     line-height: 1.5;
-    background-color: var(--neural-forms-field-bg);
+    background-color: var(--neural-forms-textarea-bg, #fff);
     resize: vertical;
     min-height: 6rem;
     transition: var(--neural-forms-transition);
@@ -341,10 +356,10 @@
 
 .neural-forms-form__textarea:focus {
     outline: none;
-    border-color: var(--neural-forms-border-focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--neural-forms-border-focus) 20%, transparent);
-    background-color: var(--neural-forms-field-focus-bg, var(--neural-forms-field-bg));
-    color: var(--neural-forms-field-focus-text, var(--neural-forms-text));
+    border-color: var(--neural-forms-textarea-border-focus, #4f46e5);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--neural-forms-textarea-border-focus, #4f46e5) 20%, transparent);
+    background-color: var(--neural-forms-textarea-focus-bg, var(--neural-forms-textarea-bg, #fff));
+    color: var(--neural-forms-textarea-focus-text, var(--neural-forms-textarea-text, #111827));
 }
 
 .neural-forms-form__textarea::placeholder {
