@@ -910,6 +910,20 @@ class BlockHandler {
 		$btn_rules     = [];
 		$btn_hover_rules = [];
 
+		// Emit color + background-color directly on the block-uid-scoped
+		// `.neural-forms-block-<uid> .neural-forms-form__submit` selector
+		// (specificity 0,2,0) so themes that target buttons with their
+		// own class-level rules (e.g. Divi's `.et_pb_button` / WooCommerce's
+		// `.button`) don't beat the variable expansion that form.css does
+		// at lower specificity. The CSS variables remain set on the form
+		// element above so any theme-side variable consumer still works.
+		if ( $btn_text_color !== '' ) {
+			$btn_rules[] = 'color:' . sanitize_hex_color( $btn_text_color );
+		}
+		if ( $btn_bg_color !== '' ) {
+			$btn_rules[] = 'background-color:' . sanitize_hex_color( $btn_bg_color );
+		}
+
 		$btn_border_color = (string) ( $attributes['btnBorderColor'] ?? '' );
 		$btn_border_width = (string) ( $attributes['btnBorderWidth'] ?? '' );
 		$btn_border_style = (string) ( $attributes['btnBorderStyle'] ?? '' );
