@@ -43,6 +43,12 @@ const PANEL_TITLE = {
 	multistep: __( 'Neural Multi Step', 'neural-forms-lite' ),
 };
 
+// Display panel sits below the Form panel and only opens on demand
+// (initialOpen=false) so the form picker remains the focal point when
+// the block is first selected — the visitor / author looking at a new
+// embed needs to choose a form before any display tweaks matter.
+const DISPLAY_PANEL_TITLE = __( 'Display', 'neural-forms-lite' );
+
 export default function FormSelector( {
 	attributes, setAttributes, blockKind, blockName, extras = null, settingsExtras = null,
 } ) {
@@ -115,6 +121,13 @@ export default function FormSelector( {
 	return (
 		<div { ...blockProps }>
 			<InspectorControls>
+				{ /*
+				   Panel 1 — Form. Owns the form picker, title, type-
+				   compatibility warning, and the Edit / Analytics links
+				   for the chosen form. This is the panel an author hits
+				   first when configuring a new embed, so it stays
+				   initialOpen.
+				*/ }
 				<PanelBody title={ PANEL_TITLE[ blockKind ] || PANEL_TITLE.form } initialOpen={ true }>
 					{ loading && <Spinner /> }
 					{ ! loading && filteredForms.length === 0 && (
@@ -139,37 +152,6 @@ export default function FormSelector( {
 							help={ __( 'Optional heading rendered above the form. Style it under Styles → Form Title.', 'neural-forms-lite' ) }
 						/>
 					) }
-
-					{ /*
-					   The Show Field Labels toggle is suppressed on the
-					   Neural Quiz and Neural Poll blocks because the
-					   question text IS the label there —
-					   render_quiz_question and render_poll always emit
-					   the question regardless of `show_labels`. Surfacing
-					   the toggle would imply it controls the question
-					   text (it doesn't), which is confusing UX. The
-					   toggle still applies on Form and Multi Step blocks
-					   where non-question fields make the option useful.
-					*/ }
-					{ ! loading && blockKind !== 'quiz' && blockKind !== 'poll' && (
-						<ToggleControl
-							label={ __( 'Show Field Labels', 'neural-forms-lite' ) }
-							checked={ !! attributes.showLabels }
-							onChange={ ( v ) => setAttributes( { showLabels: !! v } ) }
-							help={ __( 'When off, each field shows only its placeholder. Turn on to render a visible label above every input.', 'neural-forms-lite' ) }
-						/>
-					) }
-
-					{ ! loading && (
-						<TextControl
-							label={ __( 'Submit Button Text', 'neural-forms-lite' ) }
-							value={ attributes.submitButtonText ?? 'Submit' }
-							onChange={ ( v ) => setAttributes( { submitButtonText: v } ) }
-							help={ __( 'Leave empty to render an empty submit button — useful when you style it as icon-only via theme CSS.', 'neural-forms-lite' ) }
-						/>
-					) }
-
-					{ ! loading && settingsExtras }
 
 					{ selectedForm && ! selectedTypeMatches && (
 						<Notice status="warning" isDismissible={ false }>
@@ -210,6 +192,48 @@ export default function FormSelector( {
 						</p>
 					) }
 				</PanelBody>
+
+				{ /*
+				   Panel 2 — Display. Owns presentational toggles that
+				   don't change WHICH form is rendered, only how it
+				   shows. Collapsed by default so the picker stays
+				   visually dominant in the sidebar on first open.
+
+				   Quiz + Poll suppress the Show Field Labels toggle
+				   because for those blocks the question text IS the
+				   label — render_quiz_question / render_poll always
+				   emit it regardless of show_labels. Surfacing the
+				   toggle there would imply it controls the question
+				   text, which it doesn't. We still render the panel
+				   on Quiz / Poll so Submit Button Text remains
+				   reachable.
+
+				   Multi Step's settingsExtras (Progress Indicator
+				   override + Previous / Next button text) is also a
+				   display concern, so it ships here under the same
+				   panel.
+				*/ }
+				{ ! loading && (
+					<PanelBody title={ DISPLAY_PANEL_TITLE } initialOpen={ false }>
+						{ blockKind !== 'quiz' && blockKind !== 'poll' && (
+							<ToggleControl
+								label={ __( 'Show Field Labels', 'neural-forms-lite' ) }
+								checked={ !! attributes.showLabels }
+								onChange={ ( v ) => setAttributes( { showLabels: !! v } ) }
+								help={ __( 'When off, each field shows only its placeholder. Turn on to render a visible label above every input.', 'neural-forms-lite' ) }
+							/>
+						) }
+
+						<TextControl
+							label={ __( 'Submit Button Text', 'neural-forms-lite' ) }
+							value={ attributes.submitButtonText ?? 'Submit' }
+							onChange={ ( v ) => setAttributes( { submitButtonText: v } ) }
+							help={ __( 'Leave empty to render an empty submit button — useful when you style it as icon-only via theme CSS.', 'neural-forms-lite' ) }
+						/>
+
+						{ settingsExtras }
+					</PanelBody>
+				) }
 			</InspectorControls>
 
 			{ extras && (
