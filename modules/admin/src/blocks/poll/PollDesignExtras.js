@@ -182,7 +182,6 @@ function ContainerPanel( { a, set } ) {
 function TitlePanel( { a, set } ) {
 	return (
 		<PanelBody title={ __( 'Form Title', 'neural-forms-lite' ) } initialOpen={ false }>
-			<TextControl label={ __( 'Title Text', 'neural-forms-lite' ) } value={ a.formTitle || '' } onChange={ v => set( { formTitle: v } ) } />
 			<SelectControl label={ __( 'Heading Level', 'neural-forms-lite' ) } value={ a.titleLevel || 'h2' } options={ [ 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ].map( h => ( { label: h.toUpperCase(), value: h } ) ) } onChange={ v => set( { titleLevel: v } ) } />
 			<ToggleGroupControl label={ __( 'Alignment', 'neural-forms-lite' ) } value={ a.titleAlign || 'left' } onChange={ v => set( { titleAlign: v } ) } isBlock __nextHasNoMarginBottom>
 				<ToggleGroupControlOption value="left"   label={ __( 'Left', 'neural-forms-lite' ) } />

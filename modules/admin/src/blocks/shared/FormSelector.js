@@ -16,7 +16,7 @@
 
 import { useEffect, useState, useMemo } from '@wordpress/element';
 import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
-import { PanelBody, SelectControl, Spinner, Notice, ExternalLink } from '@wordpress/components';
+import { PanelBody, SelectControl, TextControl, Spinner, Notice, ExternalLink } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import ServerSideRender from '@wordpress/server-side-render';
 import api from '../../api';
@@ -124,10 +124,19 @@ export default function FormSelector( {
 					) }
 					{ ! loading && (
 						<SelectControl
-							label={ __( 'Form', 'neural-forms-lite' ) }
+							label={ __( 'Select Form', 'neural-forms-lite' ) }
 							value={ formId ? String( formId ) : '' }
 							options={ options }
 							onChange={ ( v ) => setAttributes( { formId: v ? Number( v ) : undefined } ) }
+						/>
+					) }
+
+					{ ! loading && (
+						<TextControl
+							label={ __( 'Form Title', 'neural-forms-lite' ) }
+							value={ attributes.formTitle || '' }
+							onChange={ ( v ) => setAttributes( { formTitle: v } ) }
+							help={ __( 'Optional heading rendered above the form. Style it under Styles → Form Title.', 'neural-forms-lite' ) }
 						/>
 					) }
 
