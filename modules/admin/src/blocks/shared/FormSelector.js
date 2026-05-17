@@ -140,7 +140,18 @@ export default function FormSelector( {
 						/>
 					) }
 
-					{ ! loading && (
+					{ /*
+					   The Show Field Labels toggle is suppressed on the
+					   Neural Quiz and Neural Poll blocks because the
+					   question text IS the label there —
+					   render_quiz_question and render_poll always emit
+					   the question regardless of `show_labels`. Surfacing
+					   the toggle would imply it controls the question
+					   text (it doesn't), which is confusing UX. The
+					   toggle still applies on Form and Multi Step blocks
+					   where non-question fields make the option useful.
+					*/ }
+					{ ! loading && blockKind !== 'quiz' && blockKind !== 'poll' && (
 						<ToggleControl
 							label={ __( 'Show Field Labels', 'neural-forms-lite' ) }
 							checked={ !! attributes.showLabels }
