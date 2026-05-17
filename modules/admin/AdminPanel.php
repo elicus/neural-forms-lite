@@ -34,6 +34,12 @@ class AdminPanel {
         // unlock the provider tabs (which still show "Coming soon"
         // until the actual provider work ships).
         'neural-forms-integrations' => 'integrations',
+        // 1.1.0 (Templates): remote template library page. React grid
+        // backed by GET /templates → fetches templates.neuralforms.ai
+        // catalog, lets the admin import a ready-made Gutenberg page.
+        // Lite-only feature, no Pro gating (capability check is the
+        // same neural_forms_manage_forms used by every Forms screen).
+        'neural-forms-templates'    => 'templates',
     ];
 
     public static function boot(): void {
@@ -156,6 +162,21 @@ class AdminPanel {
             __( 'Integrations', 'neural-forms-lite' ),
             NEURAL_FORMS_CAP_MANAGE_FORMS,
             'neural-forms-integrations',
+            [ self::class, 'render_page' ]
+        );
+
+        // Templates (1.1.0). Lite-only remote template library page.
+        // React grid fetches templates.neuralforms.ai catalog via
+        // GET /templates and imports a chosen template as a draft
+        // WordPress page plus its referenced Neural Forms forms.
+        // No Pro gating — the same neural_forms_manage_forms cap
+        // governs every Forms-related admin screen.
+        add_submenu_page(
+            'neural-forms',
+            __( 'Templates - Neural Forms', 'neural-forms-lite' ),
+            __( 'Templates', 'neural-forms-lite' ),
+            NEURAL_FORMS_CAP_MANAGE_FORMS,
+            'neural-forms-templates',
             [ self::class, 'render_page' ]
         );
 
@@ -599,6 +620,47 @@ class AdminPanel {
                     $build_url . 'integrations.css',
                     [ 'wp-components' ],
                     (string) filemtime( $build_dir . 'integrations.css' )
+                );
+            }
+        }
+
+        // Templates screen — enqueue build/templates.js + build/templates.css
+        // on ?page=neural-forms-templates. Same per-screen split-bundle
+        // pattern as forms / entries / settings / stats / import /
+        // integrations. The React grid mounts at #neural-forms-app and
+        // talks to GET /templates and POST /templates/import.
+        if (
+            self::get_current_screen() === 'templates'
+            && file_exists( $build_dir . 'templates.js' )
+        ) {
+            $asset_file = $build_dir . 'templates.asset.php';
+            $asset      = file_exists( $asset_file )
+                ? require $asset_file
+                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+
+            if ( ! is_array( $asset ) ) {
+                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
+            }
+            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
+            $bust    = (string) filemtime( $build_dir . 'templates.js' );
+            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+            wp_enqueue_script(
+                'neural-forms-admin',
+                $build_url . 'templates.js',
+                $deps,
+                $version,
+                true
+            );
+
+            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+            if ( file_exists( $build_dir . 'templates.css' ) ) {
+                wp_enqueue_style(
+                    'neural-forms-admin',
+                    $build_url . 'templates.css',
+                    [ 'wp-components' ],
+                    (string) filemtime( $build_dir . 'templates.css' )
                 );
             }
         }

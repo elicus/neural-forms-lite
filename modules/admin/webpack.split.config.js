@@ -76,6 +76,13 @@ const SCREENS = {
 	// layout when Pro flips it true. No provider wiring yet on either
 	// side — the capability gates the UX while providers are built.
 	integrations:  'src/integrations-entry.js',
+	// 1.1.0 (Templates): remote template library page. Fetches the
+	// templates.neuralforms.ai catalog via GET /templates, renders a
+	// card grid, and imports a chosen template (page + forms) via
+	// POST /templates/import. Same per-screen pattern as the other
+	// split bundles — its handle aliases `neural-forms-admin` and
+	// mounts under #neural-forms-app.
+	templates:     'src/templates-entry.js',
 	// Gutenberg form-rendering block — registered via block.json,
 	// enqueued by frontend/BlockHandler.php as build/block.js.
 	// Carved out of the legacy `wp-scripts build` flow so the block
