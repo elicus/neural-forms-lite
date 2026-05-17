@@ -1380,3 +1380,37 @@ fieldset[data-wp-component="BorderControl"] .components-base-control__label {
 fieldset[data-wp-component="BorderControl"] + .components-base-control {
     margin-top: 16px;
 }
+
+
+/*
+   Repeater field
+   The Repeater renders its iterations inside an <ol> for semantics
+   (it really is an ordered list of repeated groups). The visible
+   per-item label is the .__item-num span emitted by FormRenderer:
+   "1.", "2.", etc. — substituted in <template> clones at runtime.
+   We DO NOT want the browser to also draw its native ::marker on
+   top of that — themes like Divi ship aggressive
+   `.entry-content ol { list-style: decimal; padding-left: 1.5em; }`
+   rules that beat lower-specificity overrides, producing a doubled
+   number ("1./1.", "2./2.") next to the Remove button.
+ */
+
+.neural-forms-repeater__list {
+    /* !important is intentional. Theme content-area rules (Divi's
+       .entry-content ol etc.) carry enough specificity to win
+       against ordinary resets. The list-style-none + padding-
+       inline-start:0 pair fully suppresses both the marker and
+       the marker indent. */
+    list-style: none !important;
+    margin: 0;
+    padding: 0;
+    padding-inline-start: 0 !important;
+}
+
+.neural-forms-repeater__item {
+    /* Suppress the native ::marker. Even with list-style:none on
+       the parent <ol>, some themes restore the marker per <li>
+       (Twenty Twenty-Two, etc.). Mirror the parent's reset so the
+       ::marker can't reappear. */
+    list-style: none !important;
+}
