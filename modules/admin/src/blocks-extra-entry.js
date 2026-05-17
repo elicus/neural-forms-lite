@@ -86,33 +86,46 @@ function MultiStepExtras( props ) {
 /**
  * Multi Step block: per-placement progress-indicator override.
  *
- * Renders in the Settings tab (NOT Styles) directly under the Form
- * Title input. Bound to `attributes.progressIndicatorOverride`,
- * which BlockHandler::render forwards into FormRenderer as
+ * Renders in the Display panel, between Show Field Labels and Submit
+ * Button Text. Bound to `attributes.progressIndicatorOverride`, which
+ * BlockHandler::render forwards into FormRenderer as
  * `progress_indicator_override`. Empty string means "use the form's
- * own saved setting" — admins still configure the default inside
- * the form builder; this control just lets one specific embed
- * override it without editing the form.
+ * own saved setting" — admins still configure the default inside the
+ * form builder; this control just lets one specific embed override it
+ * without editing the form.
  *
- * Option labels match the form-builder dropdown so the two surfaces
- * read consistently.
+ * Surface label is "Step Progress" rather than the internal
+ * "Progress Indicator" — clearer to non-technical authors, and
+ * covers all three option values (bar, numbers, none) without
+ * implying it only swaps the bar variant.
  */
-function MultiStepSettingsExtras( { attributes, setAttributes } ) {
+function MultiStepSettingsExtrasTop( { attributes, setAttributes } ) {
 	const value = String( attributes?.progressIndicatorOverride || '' );
 	return (
+		<SelectControl
+			label={ __( 'Step Progress', 'neural-forms-lite' ) }
+			value={ value }
+			options={ [
+				{ label: __( 'Use form default', 'neural-forms-lite' ), value: '' },
+				{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
+				{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar' },
+				{ label: __( 'None',             'neural-forms-lite' ), value: 'none' },
+			] }
+			onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
+			help={ __( 'Override the form\'s saved progress indicator for this placement only.', 'neural-forms-lite' ) }
+		/>
+	);
+}
+
+/**
+ * Multi Step block: per-placement Previous / Next button text. Lives
+ * AFTER the shared Submit Button Text in the Display panel so all
+ * three button-label controls cluster together (Submit / Previous /
+ * Next), which matches how an author thinks about them.
+ */
+function MultiStepSettingsExtrasBottom( { attributes, setAttributes } ) {
+	return (
 		<>
-			<SelectControl
-				label={ __( 'Progress Indicator', 'neural-forms-lite' ) }
-				value={ value }
-				options={ [
-					{ label: __( 'Use form default', 'neural-forms-lite' ), value: '' },
-					{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
-					{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar' },
-					{ label: __( 'None',             'neural-forms-lite' ), value: 'none' },
-				] }
-				onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
-				help={ __( 'Override the form\'s saved progress indicator for this placement only.', 'neural-forms-lite' ) }
-			/>
 			<TextControl
 				label={ __( 'Previous Button Text', 'neural-forms-lite' ) }
 				value={ attributes?.prevButtonText ?? 'Previous' }
@@ -154,13 +167,14 @@ const NEW_BLOCKS = [
 		Extras:      QuizExtras,
 	},
 	{
-		name:           'neural-forms/multi-step',
-		kind:           'multistep',
-		title:          __( 'Neural Multi Step', 'neural-forms-lite' ),
-		description:    __( 'Embed a multi-step Neural Forms form. Picks up forms that contain two or more Step layout blocks.', 'neural-forms-lite' ),
-		keywords:       [ __( 'multi-step', 'neural-forms-lite' ), __( 'wizard', 'neural-forms-lite' ), __( 'steps', 'neural-forms-lite' ) ],
-		Extras:         MultiStepExtras,
-		SettingsExtras: MultiStepSettingsExtras,
+		name:                 'neural-forms/multi-step',
+		kind:                 'multistep',
+		title:                __( 'Neural Multi Step', 'neural-forms-lite' ),
+		description:          __( 'Embed a multi-step Neural Forms form. Picks up forms that contain two or more Step layout blocks.', 'neural-forms-lite' ),
+		keywords:             [ __( 'multi-step', 'neural-forms-lite' ), __( 'wizard', 'neural-forms-lite' ), __( 'steps', 'neural-forms-lite' ) ],
+		Extras:               MultiStepExtras,
+		SettingsExtrasTop:    MultiStepSettingsExtrasTop,
+		SettingsExtrasBottom: MultiStepSettingsExtrasBottom,
 	},
 	{
 		name:        'neural-forms/poll',
@@ -172,7 +186,7 @@ const NEW_BLOCKS = [
 	},
 ];
 
-NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, SettingsExtras } ) => {
+NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, SettingsExtrasTop, SettingsExtrasBottom } ) => {
 	registerBlockType( name, {
 		apiVersion:  3,
 		title,
@@ -188,7 +202,8 @@ NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, Settin
 				blockKind={ kind }
 				blockName={ name }
 				extras={ <Extras { ...props } /> }
-				settingsExtras={ SettingsExtras ? <SettingsExtras { ...props } /> : null }
+				settingsExtrasTop={ SettingsExtrasTop ? <SettingsExtrasTop { ...props } /> : null }
+				settingsExtrasBottom={ SettingsExtrasBottom ? <SettingsExtrasBottom { ...props } /> : null }
 			/>
 		),
 		// Dynamic block — server renders via BlockHandler::render.

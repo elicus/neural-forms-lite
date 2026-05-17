@@ -50,7 +50,17 @@ const PANEL_TITLE = {
 const DISPLAY_PANEL_TITLE = __( 'Display', 'neural-forms-lite' );
 
 export default function FormSelector( {
-	attributes, setAttributes, blockKind, blockName, extras = null, settingsExtras = null,
+	attributes, setAttributes, blockKind, blockName, extras = null,
+	settingsExtras = null,
+	// `settingsExtrasTop` renders BETWEEN Show Field Labels and Submit
+	// Button Text. `settingsExtrasBottom` renders AFTER Submit Button
+	// Text. Multi Step uses these so the Display panel reads:
+	//   Show Field Labels → Progress Bar → Submit → Previous → Next.
+	// `settingsExtras` (no suffix) is kept for back-compat with any
+	// existing caller and renders at the bottom alongside
+	// settingsExtrasBottom — equivalent to the previous behavior.
+	settingsExtrasTop = null,
+	settingsExtrasBottom = null,
 } ) {
 	const blockProps = useBlockProps();
 	const { formId } = attributes;
@@ -224,6 +234,8 @@ export default function FormSelector( {
 							/>
 						) }
 
+						{ settingsExtrasTop }
+
 						<TextControl
 							label={ __( 'Submit Button Text', 'neural-forms-lite' ) }
 							value={ attributes.submitButtonText ?? 'Submit' }
@@ -231,6 +243,7 @@ export default function FormSelector( {
 							help={ __( 'Leave empty to render an empty submit button — useful when you style it as icon-only via theme CSS.', 'neural-forms-lite' ) }
 						/>
 
+						{ settingsExtrasBottom }
 						{ settingsExtras }
 					</PanelBody>
 				) }
