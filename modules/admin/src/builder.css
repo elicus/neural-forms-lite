@@ -2224,36 +2224,53 @@
 /* Repeater field — canvas preview                                  */
 
 #neural-forms-app .nf-preview__repeater {
-	border: 1px dashed #cbd5e1;
+	border: 1px solid #e5e7eb;
 	border-radius: 8px;
 	background: #fcfcfd;
-	padding: 10px 12px;
+	padding: 12px;
 }
 
 #neural-forms-app .nf-preview__repeater-meta {
 	font-size: 11px;
 	color: #6b7280;
-	margin-bottom: 8px;
+	margin-bottom: 10px;
 }
 
 #neural-forms-app .nf-preview__repeater-item {
 	background: #fff;
 	border: 1px solid #e5e7eb;
 	border-radius: 6px;
-	padding: 8px 10px;
+	padding: 12px;
 }
 
 #neural-forms-app .nf-preview__repeater-item-head {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	font-size: 11px;
-	color: #6b7280;
-	margin-bottom: 6px;
+	margin-bottom: 8px;
+	gap: 8px;
 }
 
+/* The "Item 1" label — mirrors the frontend .__item-num typography. */
+#neural-forms-app .nf-preview__repeater-item-head > span:first-child {
+	font-size: 14px;
+	font-weight: 600;
+	color: #374151;
+	line-height: 1;
+}
+
+/* The remove hint — read-only pill in the canvas, styled like the
+   real frontend remove button so the builder author sees what
+   visitors will actually see. */
 #neural-forms-app .nf-preview__repeater-remove-hint {
-	font-style: italic;
+	font-style: normal;
+	background: transparent;
+	color: #b91c1c;
+	border: 1px solid #fecaca;
+	border-radius: 6px;
+	padding: 4px 10px;
+	font-size: 12px;
+	line-height: 1;
 }
 
 #neural-forms-app .nf-preview__repeater-grid {
@@ -2281,11 +2298,18 @@
 	color: var( --nf-primary, #080f5b );
 }
 
+/* "+ Add item" hint — styled like the real frontend add button. */
 #neural-forms-app .nf-preview__repeater-add-hint {
-	margin-top: 8px;
-	font-size: 11px;
-	color: var( --nf-primary, #080f5b );
-	font-weight: 600;
+	display: inline-block;
+	margin-top: 12px;
+	background: #fff;
+	color: #080f5b;
+	border: 1px solid #080f5b;
+	border-radius: 6px;
+	padding: 6px 12px;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1;
 }
 
 /* Repeater field — inspector controls                              */
