@@ -652,7 +652,21 @@ class BlockHandler {
 	 * @return string             Raw CSS string (safe to echo inside <style>).
 	 */
 	private static function build_scoped_css( string $uid, array $attributes ): string {
-		$wrap_sel = '.neural-forms-block-' . $uid;
+		// Compound the two classes that BlockHandler::render() always
+		// puts on the same wrapper div (`neural-forms-block-wrap` +
+		// `neural-forms-block-<uid>`). The selector still targets a
+		// single element — the wrap — but its specificity is (0,2,0)
+		// instead of (0,1,0). Every derived selector below inherits
+		// that bump, so the actual rules land at (0,3,0+) and survive
+		// theme stylesheets that ship aggressive `.entry-content
+		// input.something` style selectors at (0,2,1). Without this,
+		// switching themes can wipe out the block's painted bg / text
+		// / border colors on the frontend (the editor canvas got away
+		// with (0,2,0) only because Gutenberg's `.editor-styles-
+		// wrapper` already added a class). Keeping both classes on
+		// the wrap div in render() is therefore load-bearing — DO NOT
+		// drop either class.
+		$wrap_sel = '.neural-forms-block-' . $uid . '.neural-forms-block-wrap';
 		$form_sel = $wrap_sel . ' .neural-forms-form';
 
 		// Normalize a length value: if a bare number is supplied (e.g. FontSizePicker
