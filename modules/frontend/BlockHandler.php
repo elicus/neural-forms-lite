@@ -1081,6 +1081,67 @@ class BlockHandler {
 			$css .= $field_sel . '{' . implode( ';', $field_typo_rules ) . '}';
 		}
 
+		// ' Field bg / color / border — direct rules on the scoped input
+		//   selector. We ALSO set CSS variables above (for back-compat and
+		//   so non-block contexts like the shortcode pick them up), but in
+		//   the block editor and in front-end themes that ship aggressive
+		//   `input[type="text"]` rules (Gutenberg core, Divi, etc.), the
+		//   consumer rule `.neural-forms-form__input { background-color:
+		//   var(--…); }` from form.css can lose on specificity even though
+		//   the variable resolves correctly. Emit the colors / border
+		//   directly on the scoped uid selector (`.neural-forms-block-
+		//   <uid> .neural-forms-form__input`) so the resulting selector
+		//   beats `.editor-styles-wrapper input[type="text"]` in the
+		//   canvas and survives most theme overrides on the frontend. '
+		$field_idle_rules = [];
+		if ( $field_bg !== '' ) {
+			$field_idle_rules[] = 'background-color:' . sanitize_hex_color( $field_bg );
+		}
+		if ( $field_text_color !== '' ) {
+			$field_idle_rules[] = 'color:' . sanitize_hex_color( $field_text_color );
+		}
+		// Border: only emit the shorthand when at least one of color /
+		// width / style is set. Fill the others from the form.css default
+		// so partial selections (e.g. just color) still produce a valid
+		// declaration. Themes that override the full border shorthand
+		// would otherwise wipe out a partial-property fight.
+		if ( $field_border_color !== '' || $field_border_width !== '' || $field_border_style !== '' ) {
+			$bw = $field_border_width !== '' ? $len( $field_border_width ) : '1px';
+			$bc = $field_border_color !== '' ? sanitize_hex_color( $field_border_color ) : '#d1d5db';
+			$bs = in_array( $field_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $field_border_style : 'solid';
+			$field_idle_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
+		}
+		if ( $field_border_radius !== '' ) {
+			$field_idle_rules[] = 'border-radius:' . $len( $field_border_radius );
+		}
+		if ( $field_idle_rules ) {
+			$field_idle_sel = $wrap_sel . ' .neural-forms-form__input,'
+				. $wrap_sel . ' .neural-forms-form__select,'
+				. $wrap_sel . ' .neural-forms-form__textarea';
+			$css .= $field_idle_sel . '{' . implode( ';', $field_idle_rules ) . '}';
+		}
+
+		// Focus-state direct rules — same reasoning as above. Form.css's
+		// `:focus` rule for inputs uses CSS variables; we mirror it as
+		// direct color rules on the scoped selector so theme/editor
+		// `:focus` overrides don't win.
+		$field_focus_rules = [];
+		if ( $field_focus_bg !== '' ) {
+			$field_focus_rules[] = 'background-color:' . sanitize_hex_color( $field_focus_bg );
+		}
+		if ( $field_focus_text !== '' ) {
+			$field_focus_rules[] = 'color:' . sanitize_hex_color( $field_focus_text );
+		}
+		if ( $field_focus_border_color !== '' ) {
+			$field_focus_rules[] = 'border-color:' . sanitize_hex_color( $field_focus_border_color );
+		}
+		if ( $field_focus_rules ) {
+			$field_focus_sel = $wrap_sel . ' .neural-forms-form__input:focus,'
+				. $wrap_sel . ' .neural-forms-form__select:focus,'
+				. $wrap_sel . ' .neural-forms-form__textarea:focus';
+			$css .= $field_focus_sel . '{' . implode( ';', $field_focus_rules ) . '}';
+		}
+
 		// ' Field padding (applies to inputs, selects — textarea has its own panel) '
 		$field_pad_rules = [];
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
