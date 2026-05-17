@@ -854,9 +854,14 @@ final class FormSettingsSanitizer {
 	public static function sanitize_google_form_url( string $raw ): string {
 		$clean = function_exists( 'esc_url_raw' ) ? esc_url_raw( $raw ) : trim( $raw );
 		if ( $clean === '' ) return '';
-		$scheme = strtolower( (string) ( function_exists( 'wp_parse_url' ) ? wp_parse_url( $clean, PHP_URL_SCHEME ) : parse_url( $clean, PHP_URL_SCHEME ) ) );
+		// wp_parse_url() is the WP-compatible alternative to PHP's parse_url();
+		// it's been available since WP 4.4 so the function_exists guard is
+		// unnecessary, and the previous fallback to PHP's parse_url() was
+		// what tripped WordPress.WP.AlternativeFunctions.parse_url_parse_url
+		// in Plugin Check.
+		$scheme = strtolower( (string) wp_parse_url( $clean, PHP_URL_SCHEME ) );
 		if ( $scheme !== 'https' ) return '';
-		$host = strtolower( (string) ( function_exists( 'wp_parse_url' ) ? wp_parse_url( $clean, PHP_URL_HOST ) : parse_url( $clean, PHP_URL_HOST ) ) );
+		$host = strtolower( (string) wp_parse_url( $clean, PHP_URL_HOST ) );
 		if ( $host !== self::GF_FORM_URL_HOST ) return '';
 		return $clean;
 	}
@@ -969,11 +974,11 @@ final class FormSettingsSanitizer {
 	 * cap is consistent if we ever apply it elsewhere.
 	 */
 	private static function sanitize_short_text( string $raw, int $max ): string {
-		if ( function_exists( 'sanitize_text_field' ) ) {
-			$clean = sanitize_text_field( $raw );
-		} else {
-			$clean = trim( strip_tags( $raw ) );
-		}
+		// sanitize_text_field() has been in WP core since 2.9, so the
+		// fallback branch was dead. Removing it also drops the bare
+		// strip_tags() call that tripped Plugin Check's strip_tags
+		// alternative-functions warning.
+		$clean = sanitize_text_field( $raw );
 		if ( function_exists( 'mb_strlen' ) && mb_strlen( $clean ) > $max ) {
 			return mb_substr( $clean, 0, $max );
 		}

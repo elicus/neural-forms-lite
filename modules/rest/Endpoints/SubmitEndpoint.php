@@ -1270,7 +1270,13 @@ class SubmitEndpoint {
 			if ( ! isset( $_FILES[ $repeater_id ] ) || ! is_array( $_FILES[ $repeater_id ] ) ) {
 				continue;
 			}
-			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			// $_FILES is a PHP-managed superglobal whose top-level keys
+			// (name / type / tmp_name / error / size) are set by PHP
+			// itself, not by user input — there's no scalar to sanitize
+			// at this level. Each name / type is sanitized further down
+			// when it's read individually, and uploaded tmp files are
+			// validated via wp_check_filetype_and_ext() before storage.
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			$files_root = $_FILES[ $repeater_id ];
 			if ( ! is_array( $files_root['name'] ?? null ) ) {
 				// Not the nested parallel-array shape — could be a flat

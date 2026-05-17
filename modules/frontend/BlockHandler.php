@@ -69,13 +69,16 @@ class BlockHandler {
 	 */
 	public static function boot(): void {
 		add_action( 'init', [ static::class, 'register' ] );
-		// Suppress E_DEPRECATED during REST API requests so that deprecated
-		// notices from WP core (e.g. null passed to strpos/str_replace in
-		// functions.php) cannot corrupt the JSON response body that
-		// ServerSideRender expects, regardless of WP_DEBUG_DISPLAY setting.
-		add_action( 'rest_api_init', static function () {
-			error_reporting( error_reporting() & ~E_DEPRECATED );
-		}, 1 );
+		// (Removed) Earlier versions globally suppressed E_DEPRECATED on
+		// rest_api_init to keep deprecated-warning output from third-party
+		// theme functions.php files from corrupting the JSON body of
+		// ServerSideRender's block-renderer REST endpoint. WordPress.org
+		// Plugin Check flagged the global error_reporting() toggle as a
+		// path-disclosure risk (it would also mask our OWN deprecated
+		// warnings under WP_DEBUG_DISPLAY, hiding real bugs from devs).
+		// If a third-party theme emits warnings during REST that break
+		// the editor preview, that's a theme-side bug; we no longer
+		// silence them on its behalf.
 	}
 
 	// Registration

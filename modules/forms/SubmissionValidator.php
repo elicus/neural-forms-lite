@@ -365,8 +365,8 @@ class SubmissionValidator {
 			if ( count( $rows ) < $threshold ) {
 				return [
 					'code'    => 'required',
-					/* translators: 1: field label, 2: minimum iteration count */
 					'message' => sprintf(
+						/* translators: 1: field label, 2: minimum iteration count */
 						__( '%1$s needs at least %2$d item(s).', 'neural-forms-lite' ),
 						$label,
 						$threshold
@@ -713,8 +713,8 @@ class SubmissionValidator {
 				if ( $row_count > $max_items ) {
 					return [
 						'code'    => 'invalid_repeater',
-						/* translators: 1: field label, 2: max iteration count */
 						'message' => sprintf(
+							/* translators: 1: field label, 2: max iteration count */
 							__( '%1$s allows at most %2$d item(s).', 'neural-forms-lite' ),
 							$label,
 							$max_items
@@ -727,8 +727,8 @@ class SubmissionValidator {
 						// Tampered scalar inside an iteration slot.
 						return [
 							'code'    => 'invalid_repeater',
-							/* translators: 1: field label, 2: row index */
 							'message' => sprintf(
+								/* translators: 1: field label, 2: row index */
 								__( '%1$s item #%2$d is malformed.', 'neural-forms-lite' ),
 								$label,
 								(int) $row_idx + 1

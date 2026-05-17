@@ -31,6 +31,8 @@ declare( strict_types = 1 );
 
 namespace {
 	if ( ! defined( 'ABSPATH' ) ) define( 'ABSPATH', '/tmp/abspath' );
+	defined( 'ABSPATH' ) || exit; // Direct-access guard (no-op once the line above defines ABSPATH).
+	// phpcs:disable WordPress.Security.EscapeOutput,WordPress.Security.ValidatedSanitizedInput,WordPress.Security.NonceVerification -- CLI-only test runner.
 	if ( ! function_exists( '__' ) )    { function __( $s, $domain = null ) { return $s; } }
 	if ( ! function_exists( 'apply_filters' ) ) {
 		function apply_filters( $hook, $value, ...$args ) {

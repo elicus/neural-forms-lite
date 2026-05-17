@@ -10,6 +10,8 @@ declare( strict_types = 1 );
 
 // Minimal WP shims.
 if ( ! defined( 'ABSPATH' ) ) define( 'ABSPATH', '/tmp/abspath' );
+defined( 'ABSPATH' ) || exit; // Direct-access guard (no-op once the line above defines ABSPATH).
+// phpcs:disable WordPress.Security.EscapeOutput,WordPress.Security.ValidatedSanitizedInput,WordPress.Security.NonceVerification -- CLI-only test runner.
 
 class WP_Error {
 	private $code;
