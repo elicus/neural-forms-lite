@@ -339,27 +339,28 @@ class BlockHandler {
 				. ' .neural-forms-form{pointer-events:none;}';
 		}
 
-		// Per-instance scoped CSS routing — hybrid:
+		// Per-instance scoped CSS — inline <style> tag, both surfaces.
 		//
-		//   * Frontend page load: attach via wp_add_inline_style() to
-		//     the already-enqueued 'neural-forms-form' handle. WP
-		//     prints late-enqueued styles alongside the registered
-		//     stylesheet, no raw <style> tag in the document body.
-		//     Matches the WordPress.org plugin directory's preference
-		//     for the enqueue API on the public surface.
+		// Previously the frontend path used wp_add_inline_style() to
+		// attach the scoped CSS to the 'neural-forms-form' handle and
+		// relied on WP's late-print pipeline to flush it alongside the
+		// stylesheet. That works in the happy path, but breaks the
+		// moment a theme / plugin / template forces an early style
+		// print, swaps the enqueue queue, or strips the handle before
+		// the inline content is flushed — and when it breaks, the
+		// inline CSS is silently dropped and the form falls back to
+		// the form.css defaults regardless of what the author
+		// configured (reported after a theme switch on 0.2.0).
 		//
-		//   * Editor (ServerSideRender REST request): the REST
-		//     endpoint only returns the rendered HTML — it does NOT
-		//     flush WordPress's enqueue queue, so any CSS routed via
-		//     wp_add_inline_style() never reaches the block editor
-		//     preview. Inline a <style> tag scoped to this block
-		//     instance's uid so the editor preview reflects the
-		//     configured styles, matching what the frontend will
-		//     render. This pattern is the industry-standard approach
-		//     for dynamic block render callbacks (cf. core Cover /
-		//     Gallery blocks, Kadence, GenerateBlocks, Stackable).
-		//     The CSS is scoped to .neural-forms-block-<uid> so it
-		//     cannot leak into sibling blocks on the same page.
+		// Emit an inline <style> tag in the rendered block content
+		// instead. It's scoped via `.neural-forms-block-<uid>` so it
+		// cannot leak into sibling blocks, and it's the pattern every
+		// established dynamic-block plugin uses for the same reason
+		// (Cover / Gallery / Kadence / GenerateBlocks / Stackable).
+		// The static dedupe guard below prevents re-emitting the same
+		// rule block when the same form is embedded more than once on
+		// a single page (two embeds of the same form with identical
+		// attributes share one uid and one <style> tag).
 		$inline_css = $scoped_css . $editor_css;
 
 		$wrap_html = '<div class="' . $wrap_class . '"' . $style_attr . '>'
@@ -370,18 +371,14 @@ class BlockHandler {
 			return $wrap_html;
 		}
 
-		if ( $is_editor ) {
-			return '<style>' . $inline_css . '</style>' . $wrap_html;
+		static $emitted_inline_css = [];
+		$css_key = md5( $inline_css );
+		if ( isset( $emitted_inline_css[ $css_key ] ) ) {
+			return $wrap_html;
 		}
+		$emitted_inline_css[ $css_key ] = true;
 
-		static $added_inline_css = [];
-		$handle = 'neural-forms-form';
-		$key    = $handle . '|' . md5( $inline_css );
-		if ( ! isset( $added_inline_css[ $key ] ) ) {
-			wp_add_inline_style( $handle, $inline_css );
-			$added_inline_css[ $key ] = true;
-		}
-		return $wrap_html;
+		return '<style>' . $inline_css . '</style>' . $wrap_html;
 	}
 
 	// Style helpers
