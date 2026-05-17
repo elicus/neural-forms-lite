@@ -1384,33 +1384,132 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 
 /*
    Repeater field
-   The Repeater renders its iterations inside an <ol> for semantics
-   (it really is an ordered list of repeated groups). The visible
-   per-item label is the .__item-num span emitted by FormRenderer:
-   "1.", "2.", etc. — substituted in <template> clones at runtime.
-   We DO NOT want the browser to also draw its native ::marker on
-   top of that — themes like Divi ship aggressive
-   `.entry-content ol { list-style: decimal; padding-left: 1.5em; }`
-   rules that beat lower-specificity overrides, producing a doubled
-   number ("1./1.", "2./2.") next to the Remove button.
+   Repeatable group of child fields. Each iteration is an <li>
+   inside an <ol class="__list">. The fieldset carries data-min /
+   data-max / data-columns; form-submit.js consults them for
+   add/remove visibility. The visible per-item label is the
+   .__item-num span emitted by FormRenderer: "1.", "2.", etc.
  */
+
+.neural-forms-repeater {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 0;
+    background: #fcfcfd;
+}
 
 .neural-forms-repeater__list {
     /* !important is intentional. Theme content-area rules (Divi's
-       .entry-content ol etc.) carry enough specificity to win
-       against ordinary resets. The list-style-none + padding-
-       inline-start:0 pair fully suppresses both the marker and
-       the marker indent. */
+       `.entry-content ol { list-style: decimal; padding-left:
+       1.5em; }`) carry enough specificity to win against ordinary
+       resets, producing a SECOND visible number next to the
+       .__item-num span. The list-style-none + padding-inline-
+       start:0 pair fully suppresses both the marker and the
+       marker indent. */
     list-style: none !important;
     margin: 0;
     padding: 0;
     padding-inline-start: 0 !important;
+    display: grid;
+    gap: 12px;
 }
 
 .neural-forms-repeater__item {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px;
     /* Suppress the native ::marker. Even with list-style:none on
        the parent <ol>, some themes restore the marker per <li>
-       (Twenty Twenty-Two, etc.). Mirror the parent's reset so the
-       ::marker can't reappear. */
+       (Twenty Twenty-Two, etc.). Mirror the parent's reset. */
     list-style: none !important;
+}
+
+.neural-forms-repeater__item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.neural-forms-repeater__item-num {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    line-height: 1;
+}
+
+.neural-forms-repeater__remove {
+    background: transparent;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.neural-forms-repeater__remove:hover {
+    background: #fef2f2;
+}
+
+.neural-forms-repeater__remove[hidden] {
+    display: none;
+}
+
+.neural-forms-repeater__grid {
+    display: grid;
+    gap: 10px;
+}
+
+.neural-forms-repeater__grid--cols-1 { grid-template-columns: 1fr; }
+.neural-forms-repeater__grid--cols-2 { grid-template-columns: 1fr 1fr; }
+.neural-forms-repeater__grid--cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.neural-forms-repeater__grid--cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+.neural-forms-repeater__child {
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.neural-forms-repeater__add {
+    margin-top: 12px;
+    background: #fff;
+    color: #080f5b;
+    border: 1px solid #080f5b;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.neural-forms-repeater__add:hover {
+    background: #080f5b;
+    color: #fff;
+}
+
+.neural-forms-repeater__add[hidden] {
+    display: none;
+}
+
+.neural-forms-repeater__notice {
+    margin: 0;
+    padding: 10px 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    color: #92400e;
+    font-size: 13px;
+}
+
+@media ( max-width: 600px ) {
+    /* Always collapse to one column on small viewports — multi-
+       column repeater grids get unreadable past 2 columns inside
+       a narrow form container. */
+    .neural-forms-repeater__grid {
+        grid-template-columns: 1fr !important;
+    }
 }
