@@ -22,13 +22,28 @@
 
 .neural-forms-form {
 
+    /* Theme-aware accent color.
+       Resolves through WordPress preset slugs the active theme is
+       most likely to ship (primary / accent / vivid-cyan-blue from
+       WP core), falling back to the Neural Forms brand navy only
+       when no preset matches. Used everywhere we previously
+       hardcoded #080f5b — multistep step title, progress indicator
+       active / fill / track, section title divider, radio /
+       checkbox accent-color, repeater Add button, and the input
+       focus ring. */
+    --neural-forms-accent: var(--wp--preset--color--primary, var(--wp--preset--color--accent, var(--wp--preset--color--vivid-cyan-blue, #080f5b)));
+
     /* Border colours */
     --neural-forms-border:         #d1d5db;   /* idle border          */
-    --neural-forms-border-focus:   #4f46e5;   /* focus ring           */
+    --neural-forms-border-focus:   var(--neural-forms-accent);
     --neural-forms-border-error:   #dc2626;   /* error border + text  */
 
-    /* Text */
-    --neural-forms-text:           #111827;   /* input value colour   */
+    /* Text — NO default here. The input / label consumer rules read
+       `color: var(--neural-forms-text)`; with the variable unset the
+       declaration is invalid and the color cascades down from the
+       parent (= the theme's body text color). BlockHandler still
+       sets the variable when an author picks fieldTextColor, so
+       per-block overrides keep working. */
     --neural-forms-placeholder:    #9ca3af;   /* placeholder colour   */
     --neural-forms-required:       #dc2626;   /* required * colour    */
 
@@ -54,11 +69,17 @@
     /* Motion */
     --neural-forms-transition:     border-color 0.15s ease, box-shadow 0.15s ease;
 
-    /* Fields - inputs, textareas, selects */
+    /* Fields - inputs, textareas, selects.
+       --neural-forms-input-font-size is intentionally NOT defaulted
+       so the input font-size inherits from the theme's body. The
+       consumer rules read `font-size: var(--neural-forms-input-
+       font-size)` and the unset var makes the declaration invalid
+       → falls through to the inherited size. Per-field overrides
+       still apply because BlockHandler emits fieldFontSize as a
+       direct rule, not via this variable. */
     --neural-forms-field-bg:       #fff;      /* input background colour       */
     --neural-forms-border-width:   1px;       /* input border width            */
     --neural-forms-border-style:   solid;     /* input border style            */
-    --neural-forms-input-font-size:1rem;      /* input font size               */
 
     /* Submit / nav button — no default bg/color/radius here.
        FormRenderer adds `wp-element-button` to those buttons so the
@@ -622,7 +643,7 @@
 .neural-forms-form__rating-input:checked ~ .neural-forms-form__rating-glyph,
 .neural-forms-form__rating-star:has( .neural-forms-form__rating-input:checked ),
 .neural-forms-form__rating-star:has( .neural-forms-form__rating-input:checked ) ~ .neural-forms-form__rating-star {
-    color: #080f5b;
+    color: var(--neural-forms-accent);
 }
 
 
@@ -652,7 +673,7 @@
 }
 
 .neural-forms-form__poll-input {
-    accent-color: #080f5b;
+    accent-color: var(--neural-forms-accent);
     cursor: pointer;
 }
 
@@ -695,7 +716,7 @@
 }
 
 .neural-forms-form__quiz-input {
-    accent-color: #080f5b;
+    accent-color: var(--neural-forms-accent);
     cursor: pointer;
 }
 
@@ -707,7 +728,7 @@
     margin-top: 0.5rem;
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
-    background: rgba( 8, 15, 91, 0.04 );
+    background: color-mix(in srgb, var(--neural-forms-accent) 4%, transparent);
 }
 
 .neural-forms-form__quiz-verdict {
@@ -875,7 +896,7 @@
 
 .neural-forms-form__poll-bar-track {
     height: 8px;
-    background: rgba( 8, 15, 91, 0.08 );
+    background: color-mix(in srgb, var(--neural-forms-accent) 8%, transparent);
     border-radius: 999px;
     overflow: hidden;
 }
@@ -984,7 +1005,7 @@
 .neural-forms-form__dynamic-quiz-question {
     padding: 0.75rem;
     border-radius: 6px;
-    background: rgba( 8, 15, 91, 0.04 );
+    background: color-mix(in srgb, var(--neural-forms-accent) 4%, transparent);
 }
 
 .neural-forms-form__dynamic-quiz-label {
@@ -1003,7 +1024,7 @@
 .neural-forms-form__dynamic-poll {
     padding: 0.75rem;
     border-radius: 6px;
-    background: rgba( 8, 15, 91, 0.04 );
+    background: color-mix(in srgb, var(--neural-forms-accent) 4%, transparent);
 }
 
 
@@ -1178,7 +1199,7 @@
  * ------------------------------------------------------------------------- */
 
 .neural-forms-form__step {
-    border-top: 2px solid #080f5b;
+    border-top: 2px solid var(--neural-forms-accent);
     padding: 30px 0 4px;
     margin-bottom: 8px;
 }
@@ -1192,7 +1213,7 @@
     margin: 0 0 10px;
     font-size: 1.1em;
     font-weight: 600;
-    color: #080f5b;
+    color: var(--neural-forms-accent);
 }
 
 .neural-forms-form__step-description {
@@ -1288,12 +1309,12 @@
 }
 
 .neural-forms-form__progress-item.is-active .neural-forms-form__progress-num {
-    background: #080f5b;
+    background: var(--neural-forms-accent);
     color: #fff;
 }
 
 .neural-forms-form__progress-item.is-active {
-    color: #080f5b;
+    color: var(--neural-forms-accent);
     font-weight: 600;
 }
 
@@ -1303,7 +1324,7 @@
 }
 
 .neural-forms-form__progress-item.is-complete {
-    color: #080f5b;
+    color: var(--neural-forms-accent);
 }
 
 /* Bar mode - track + fill + label. */
@@ -1315,14 +1336,14 @@
 .neural-forms-form__progress-bar-track {
     width: 100%;
     height: 6px;
-    background: rgba( 8, 15, 91, 0.10 );
+    background: color-mix(in srgb, var(--neural-forms-accent) 10%, transparent);
     border-radius: 999px;
     overflow: hidden;
 }
 
 .neural-forms-form__progress-bar-fill {
     height: 100%;
-    background: #080f5b;
+    background: var(--neural-forms-accent);
     transition: width 0.25s ease;
 }
 
@@ -1351,7 +1372,7 @@
     margin: 0 0 4px;
     font-size: 1.05em;
     font-weight: 600;
-    color: #080f5b;
+    color: var(--neural-forms-accent);
 }
 
 .neural-forms-form__section-description {
@@ -1361,7 +1382,7 @@
 }
 
 .neural-forms-form__section--default .neural-forms-form__section-title {
-    border-bottom: 1px solid rgba( 8, 15, 91, 0.10 );
+    border-bottom: 1px solid color-mix(in srgb, var(--neural-forms-accent) 10%, transparent);
     padding-bottom: 6px;
 }
 
@@ -1371,8 +1392,8 @@
 }
 
 .neural-forms-form__section--boxed {
-    background: rgba( 8, 15, 91, 0.04 );
-    border: 1px solid rgba( 8, 15, 91, 0.10 );
+    background: color-mix(in srgb, var(--neural-forms-accent) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--neural-forms-accent) 10%, transparent);
     border-radius: 8px;
     padding: 12px 14px;
 }
@@ -1494,8 +1515,8 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 .neural-forms-repeater__add {
     margin-top: 12px;
     background: #fff;
-    color: #080f5b;
-    border: 1px solid #080f5b;
+    color: var(--neural-forms-accent);
+    border: 1px solid var(--neural-forms-accent);
     border-radius: 6px;
     padding: 8px 14px;
     font-size: 13px;
@@ -1504,7 +1525,7 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 }
 
 .neural-forms-repeater__add:hover {
-    background: #080f5b;
+    background: var(--neural-forms-accent);
     color: #fff;
 }
 
@@ -1618,7 +1639,7 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 
 .neural-forms-matrix__input {
     cursor: pointer;
-    accent-color: #080f5b;
+    accent-color: var(--neural-forms-accent);
 }
 
 .neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell,
