@@ -3,7 +3,7 @@
     "apiVersion": 3,
     "name": "neural-forms/form",
     "version": "0.1.0",
-    "title": "Neural Forms Form",
+    "title": "Neural Forms",
     "category": "embed",
     "description": "Embed a Neural Forms form on any post or page.",
     "keywords": [ "form", "contact", "submission" ],

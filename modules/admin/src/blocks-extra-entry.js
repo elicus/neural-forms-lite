@@ -210,15 +210,20 @@ function FormExtras( props ) {
 }
 
 wp.domReady( () => {
-	// Capture title and icon from the block.js registration before unregistering,
-	// so the re-registered block is visually identical in the inserter.
+	// Capture icon / description from the block.js registration before
+	// unregistering so the re-registered block keeps the original visuals
+	// in the inserter. Title is hardcoded here (NOT pulled from `existing`)
+	// because the protected build/block.js bundle baked in the old
+	// "Neural Forms Form" string at compile time, and updating block.json
+	// alone can't reach it. Re-asserting the title here is the canonical
+	// override.
 	const existing = wp.blocks.getBlockType( 'neural-forms/form' );
 
 	unregisterBlockType( 'neural-forms/form' );
 
 	registerBlockType( 'neural-forms/form', {
 		apiVersion:  3,
-		title:       existing?.title,
+		title:       __( 'Neural Forms', 'neural-forms-lite' ),
 		icon:        existing?.icon,
 		description: existing?.description,
 		category:    existing?.category || 'embed',
