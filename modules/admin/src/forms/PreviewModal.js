@@ -223,6 +223,93 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
   .neural-forms-matrix__table th,
   .neural-forms-matrix__table td { padding: 8px 10px; }
 }
+
+/* ----------------------------------------------------------------- */
+/* Repeater field (preview-iframe twin of frontend form.css)          */
+/* ----------------------------------------------------------------- */
+/* Kept in sync with modules/frontend/assets/css/form.css's          */
+/* .neural-forms-repeater* block. Duplicated here intentionally —     */
+/* the iframe is sandbox="" and cannot pull form.css. The list-style */
+/* + padding-inline-start resets suppress the browser's native ::    */
+/* marker on the <ol>/<li> so the only visible item label is the    */
+/* .__item-num span emitted by FormRenderer.                         */
+.neural-forms-repeater {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0;
+  background: #fcfcfd;
+}
+.neural-forms-repeater__list {
+  list-style: none !important;
+  margin: 0;
+  padding: 0;
+  padding-inline-start: 0 !important;
+  display: grid;
+  gap: 12px;
+}
+.neural-forms-repeater__item {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+  list-style: none !important;
+}
+.neural-forms-repeater__item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.neural-forms-repeater__item-num {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  line-height: 1;
+}
+.neural-forms-repeater__remove {
+  background: transparent;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.neural-forms-repeater__remove:hover { background: #fef2f2; }
+.neural-forms-repeater__remove[hidden] { display: none; }
+.neural-forms-repeater__grid { display: grid; gap: 10px; }
+.neural-forms-repeater__grid--cols-1 { grid-template-columns: 1fr; }
+.neural-forms-repeater__grid--cols-2 { grid-template-columns: 1fr 1fr; }
+.neural-forms-repeater__grid--cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.neural-forms-repeater__grid--cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.neural-forms-repeater__child { min-width: 0; margin-bottom: 0; }
+.neural-forms-repeater__add {
+  margin-top: 12px;
+  background: #fff;
+  color: #080f5b;
+  border: 1px solid #080f5b;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.neural-forms-repeater__add:hover { background: #080f5b; color: #fff; }
+.neural-forms-repeater__add[hidden] { display: none; }
+.neural-forms-repeater__notice {
+  margin: 0;
+  padding: 10px 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 13px;
+}
+@media ( max-width: 600px ) {
+  .neural-forms-repeater__grid { grid-template-columns: 1fr !important; }
+}
 </style></head><body>${ html }</body></html>`;
 
 	return (
