@@ -79,6 +79,15 @@
     /* Block container only - width and max-width left to the theme. */
     width: 100%;
     box-sizing: border-box;
+    /* Breathing room between consecutive Neural Forms blocks /
+       shortcodes. Two stacked forms otherwise sit flush, which reads
+       as one combined form. Margins on this wrapper collapse with
+       adjacent siblings so two stacked forms see ~1.5rem of visible
+       gap (not 3rem). The shortcode surface and the block surface
+       both emit this wrapper, so this rule covers every render path.
+       Authors can fight it via theme CSS or the block's margin
+       controls (which write to the outer .neural-forms-block-wrap). */
+    margin-block: 1.5rem;
 }
 
 
