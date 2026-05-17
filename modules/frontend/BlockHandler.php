@@ -696,27 +696,37 @@ class BlockHandler {
 		$radius_bl = (string) ( $attributes['borderRadiusBL'] ?? '' );
 		$has_corner_radius = ( $radius_tl !== '' || $radius_tr !== '' || $radius_br !== '' || $radius_bl !== '' );
 
+		// Border-radius rationale:
+		//
+		//   Outer wrap carries the border + border-radius. The
+		//   inner .neural-forms-form-wrap (which holds the
+		//   background / gradient / padding) is clipped to the
+		//   outer's rounded contour by `overflow:hidden`.
+		//
+		//   `overflow:hidden` clips at the PADDING-box contour,
+		//   whose effective radius equals `border-radius - border-width`
+		//   (the browser computes this automatically). So when the
+		//   admin sets a border AND a border-radius, the inner
+		//   background follows the smaller padding-box curve, which
+		//   matches the inner edge of the border exactly.
+		//
+		//   We intentionally do NOT mirror border-radius onto the
+		//   inner wrap. Doing so would put a `border-radius`-sized
+		//   curve at the inner wrap's OWN corners (which sit at the
+		//   padding-box edge), creating a tighter inset shape than
+		//   the padding-box clipping and leaving visible triangular
+		//   gaps in each corner whenever the outer has a border.
 		if ( $has_corner_radius ) {
 			if ( $radius_tl !== '' ) $wrap_rules[] = 'border-top-left-radius:'     . $len( $radius_tl );
 			if ( $radius_tr !== '' ) $wrap_rules[] = 'border-top-right-radius:'    . $len( $radius_tr );
 			if ( $radius_br !== '' ) $wrap_rules[] = 'border-bottom-right-radius:' . $len( $radius_br );
 			if ( $radius_bl !== '' ) $wrap_rules[] = 'border-bottom-left-radius:'  . $len( $radius_bl );
-			// Clip children (form bg) to the rounded shape so corners aren't covered.
 			$wrap_rules[] = 'overflow:hidden';
-			// Also apply directly to form-wrap so its background respects the radius
-			// regardless of overflow:hidden clipping (e.g. when form-wrap has a
-			// background set and the outer wrapper is transparent).
-			if ( $radius_tl !== '' ) $form_wrap_pad_rules[] = 'border-top-left-radius:'     . $len( $radius_tl );
-			if ( $radius_tr !== '' ) $form_wrap_pad_rules[] = 'border-top-right-radius:'    . $len( $radius_tr );
-			if ( $radius_br !== '' ) $form_wrap_pad_rules[] = 'border-bottom-right-radius:' . $len( $radius_br );
-			if ( $radius_bl !== '' ) $form_wrap_pad_rules[] = 'border-bottom-left-radius:'  . $len( $radius_bl );
 		} else {
 			$container_radius = (string) ( $attributes['borderRadius'] ?? '' );
 			if ( $container_radius !== '' ) {
 				$wrap_rules[] = 'border-radius:' . $len( $container_radius );
 				$wrap_rules[] = 'overflow:hidden';
-				// Also clip the form-wrap's own background to the same radius.
-				$form_wrap_pad_rules[] = 'border-radius:' . $len( $container_radius );
 			}
 		}
 
