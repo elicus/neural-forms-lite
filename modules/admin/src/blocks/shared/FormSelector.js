@@ -44,7 +44,7 @@ const PANEL_TITLE = {
 };
 
 export default function FormSelector( {
-	attributes, setAttributes, blockKind, blockName, extras = null,
+	attributes, setAttributes, blockKind, blockName, extras = null, settingsExtras = null,
 } ) {
 	const blockProps = useBlockProps();
 	const { formId } = attributes;
@@ -139,6 +139,8 @@ export default function FormSelector( {
 							help={ __( 'Optional heading rendered above the form. Style it under Styles → Form Title.', 'neural-forms-lite' ) }
 						/>
 					) }
+
+					{ ! loading && settingsExtras }
 
 					{ selectedForm && ! selectedTypeMatches && (
 						<Notice status="warning" isDismissible={ false }>

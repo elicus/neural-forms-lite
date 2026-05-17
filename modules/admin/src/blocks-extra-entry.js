@@ -35,6 +35,7 @@
 
 import { registerBlockType, unregisterBlockType } from '@wordpress/blocks';
 import { __ }                from '@wordpress/i18n';
+import { SelectControl }     from '@wordpress/components';
 import baseMetadata          from '../../frontend/block/block.json';
 import FormSelector          from './blocks/shared/FormSelector';
 import FormDesignExtras      from './blocks/form/FormDesignExtras';
@@ -83,6 +84,38 @@ function MultiStepExtras( props ) {
 }
 
 /**
+ * Multi Step block: per-placement progress-indicator override.
+ *
+ * Renders in the Settings tab (NOT Styles) directly under the Form
+ * Title input. Bound to `attributes.progressIndicatorOverride`,
+ * which BlockHandler::render forwards into FormRenderer as
+ * `progress_indicator_override`. Empty string means "use the form's
+ * own saved setting" — admins still configure the default inside
+ * the form builder; this control just lets one specific embed
+ * override it without editing the form.
+ *
+ * Option labels match the form-builder dropdown so the two surfaces
+ * read consistently.
+ */
+function MultiStepSettingsExtras( { attributes, setAttributes } ) {
+	const value = String( attributes?.progressIndicatorOverride || '' );
+	return (
+		<SelectControl
+			label={ __( 'Progress Indicator', 'neural-forms-lite' ) }
+			value={ value }
+			options={ [
+				{ label: __( 'Use form default', 'neural-forms-lite' ), value: '' },
+				{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
+				{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar' },
+				{ label: __( 'None',             'neural-forms-lite' ), value: 'none' },
+			] }
+			onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
+			help={ __( 'Override the form\'s saved progress indicator for this placement only.', 'neural-forms-lite' ) }
+		/>
+	);
+}
+
+/**
  * Poll extras — full design settings via PollDesignExtras.
  * Links to builder / analytics are preserved inside ResultsBarPanel.
  */
@@ -107,12 +140,13 @@ const NEW_BLOCKS = [
 		Extras:      QuizExtras,
 	},
 	{
-		name:        'neural-forms/multi-step',
-		kind:        'multistep',
-		title:       __( 'Neural Multi Step', 'neural-forms-lite' ),
-		description: __( 'Embed a multi-step Neural Forms form. Picks up forms that contain two or more Step layout blocks.', 'neural-forms-lite' ),
-		keywords:    [ __( 'multi-step', 'neural-forms-lite' ), __( 'wizard', 'neural-forms-lite' ), __( 'steps', 'neural-forms-lite' ) ],
-		Extras:      MultiStepExtras,
+		name:           'neural-forms/multi-step',
+		kind:           'multistep',
+		title:          __( 'Neural Multi Step', 'neural-forms-lite' ),
+		description:    __( 'Embed a multi-step Neural Forms form. Picks up forms that contain two or more Step layout blocks.', 'neural-forms-lite' ),
+		keywords:       [ __( 'multi-step', 'neural-forms-lite' ), __( 'wizard', 'neural-forms-lite' ), __( 'steps', 'neural-forms-lite' ) ],
+		Extras:         MultiStepExtras,
+		SettingsExtras: MultiStepSettingsExtras,
 	},
 	{
 		name:        'neural-forms/poll',
@@ -124,7 +158,7 @@ const NEW_BLOCKS = [
 	},
 ];
 
-NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras } ) => {
+NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, SettingsExtras } ) => {
 	registerBlockType( name, {
 		apiVersion:  3,
 		title,
@@ -140,6 +174,7 @@ NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras } ) => 
 				blockKind={ kind }
 				blockName={ name }
 				extras={ <Extras { ...props } /> }
+				settingsExtras={ SettingsExtras ? <SettingsExtras { ...props } /> : null }
 			/>
 		),
 		// Dynamic block — server renders via BlockHandler::render.
