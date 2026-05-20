@@ -83,8 +83,21 @@ class AdminPanel {
             30
         );
 
-        // WordPress auto-creates a first submenu item with slug 'neural-forms';
-        // rename it to "Forms" so the label matches the destination.
+        // Submenu order is driven by the sequence of add_submenu_page()
+        // calls below. Intentional ordering (Forms first, Import last):
+        //   1. Forms          ← landing page (matches the parent slug)
+        //   2. Templates      ← discover ready-made layouts
+        //   3. Entries        ← submissions inbox (carries unread bubble)
+        //   4. Analytics      ← form-level conversion / drop-off
+        //   5. Stats          ← admin dashboard KPIs
+        //   6. Integrations   ← provider config (Pro-gated, Lite shows shell)
+        //   7. Settings       ← email / CAPTCHA / Cloud AI
+        //   8. Import         ← CF7 migration, conditional on CF7 active
+
+        // 1. Forms — WordPress auto-creates a first submenu item with
+        // slug 'neural-forms'; we re-register it so the label is the
+        // explicit "Forms" string instead of WP's auto-cloned parent
+        // label.
         add_submenu_page(
             'neural-forms',
             __( 'Forms - Neural Forms', 'neural-forms-lite' ),
@@ -94,9 +107,25 @@ class AdminPanel {
             [ self::class, 'render_page' ]
         );
 
-        // Match WP core's Plugins-update bubble: same markup, same classes,
-        // so the existing admin CSS styles it without any new rules.
-        $unread_count = self::unread_entries_count();
+        // 2. Templates (1.1.0). Lite-only remote template library page.
+        // React grid fetches templates.neuralforms.ai catalog via
+        // GET /templates and imports a chosen template as a published
+        // page plus its referenced Neural Forms forms. No Pro gating —
+        // the same neural_forms_manage_forms cap governs every Forms-
+        // related admin screen.
+        add_submenu_page(
+            'neural-forms',
+            __( 'Templates - Neural Forms', 'neural-forms-lite' ),
+            __( 'Templates', 'neural-forms-lite' ),
+            NEURAL_FORMS_CAP_MANAGE_FORMS,
+            'neural-forms-templates',
+            [ self::class, 'render_page' ]
+        );
+
+        // 3. Entries. Match WP core's Plugins-update bubble: same
+        // markup, same classes, so the existing admin CSS styles it
+        // without any new rules.
+        $unread_count  = self::unread_entries_count();
         $entries_label = __( 'Entries', 'neural-forms-lite' );
         if ( $unread_count > 0 ) {
             $entries_label .= sprintf(
@@ -115,16 +144,7 @@ class AdminPanel {
             [ self::class, 'render_page' ]
         );
 
-        add_submenu_page(
-            'neural-forms',
-            __( 'Stats - Neural Forms', 'neural-forms-lite' ),
-            __( 'Stats', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-stats',
-            [ self::class, 'render_page' ]
-        );
-
-        // Analytics screen (1.1.0). Independent split bundle.
+        // 4. Analytics screen (1.1.0). Independent split bundle.
         // render_results_page() emits the #neural-forms-results-app root
         // that the analytics bundle mounts into; the rest of the screens
         // (Forms / Entries / Settings / Stats / Import) each have their
@@ -143,17 +163,18 @@ class AdminPanel {
             [ self::class, 'render_results_page' ]
         );
 
+        // 5. Stats.
         add_submenu_page(
             'neural-forms',
-            __( 'Settings - Neural Forms', 'neural-forms-lite' ),
-            __( 'Settings', 'neural-forms-lite' ),
+            __( 'Stats - Neural Forms', 'neural-forms-lite' ),
+            __( 'Stats', 'neural-forms-lite' ),
             NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-settings',
+            'neural-forms-stats',
             [ self::class, 'render_page' ]
         );
 
-        // Integrations (1.1.0). Lite always shows the menu entry; the
-        // page renders in a locked Pro-upsell state when
+        // 6. Integrations (1.1.0). Lite always shows the menu entry;
+        // the page renders in a locked Pro-upsell state when
         // Capabilities::INTEGRATIONS is false (default in Lite). Pro
         // flips the filter and the provider tabs become live.
         add_submenu_page(
@@ -165,18 +186,13 @@ class AdminPanel {
             [ self::class, 'render_page' ]
         );
 
-        // Templates (1.1.0). Lite-only remote template library page.
-        // React grid fetches templates.neuralforms.ai catalog via
-        // GET /templates and imports a chosen template as a draft
-        // WordPress page plus its referenced Neural Forms forms.
-        // No Pro gating — the same neural_forms_manage_forms cap
-        // governs every Forms-related admin screen.
+        // 7. Settings.
         add_submenu_page(
             'neural-forms',
-            __( 'Templates - Neural Forms', 'neural-forms-lite' ),
-            __( 'Templates', 'neural-forms-lite' ),
+            __( 'Settings - Neural Forms', 'neural-forms-lite' ),
+            __( 'Settings', 'neural-forms-lite' ),
             NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-templates',
+            'neural-forms-settings',
             [ self::class, 'render_page' ]
         );
 
@@ -665,13 +681,27 @@ class AdminPanel {
             }
         }
 
-        // Page-header unifier — ships every per-screen split bundle the
-        // same hero-card header that the Analytics screen already uses.
-        // The CSS retargets each screen's existing `__header` / `__title`
-        // BEM classes so the React tree stays untouched and only the
-        // visual shell changes. Attached to the shared `neural-forms-admin`
-        // handle that every split branch above enqueues under.
-        wp_add_inline_style( 'neural-forms-admin', self::page_hero_unifier_css() );
+        // Page-header unifier — applies the canonical Templates-style
+        // hero card to every Neural Forms admin screen. Attaches to
+        // EACH handle separately because the per-screen bundles use
+        // distinct stylesheet handles:
+        //   - neural-forms-admin   → Forms / Stats / Settings / Import /
+        //                            Integrations / Templates (catch-all
+        //                            handle name used by every split
+        //                            branch above)
+        //   - neural-forms-results → Analytics (own bundle handle)
+        //   - neural-forms-entries → Entries  (own bundle handle)
+        // Without all three attachments the unifier would silently
+        // skip Analytics + Entries, leaving them with plain white
+        // headers instead of the gradient panel.
+        //
+        // wp_add_inline_style is a no-op when the target handle isn't
+        // registered, so calling all three is safe regardless of
+        // which screen is active.
+        $hero_css = self::page_hero_unifier_css();
+        wp_add_inline_style( 'neural-forms-admin',    $hero_css );
+        wp_add_inline_style( 'neural-forms-results',  $hero_css );
+        wp_add_inline_style( 'neural-forms-entries',  $hero_css );
 
         // Forms-screen-only: inject a Shortcode column into the React-rendered
         // forms table. Lives outside the React bundle so it can ship without
@@ -1149,143 +1179,174 @@ JS;
 
     /**
      * Unified page-header CSS shipped on every Neural Forms admin
-     * screen. The Analytics screen's `nf-analytics-hero` is the visual
-     * source of truth (white rounded card, navy title, soft border,
-     * subtle shadow); this CSS applies the same look to the per-screen
-     * bundles (Stats / Forms list / Settings / Import) by retargeting
-     * their existing `__header` + `__title` markup.
+     * screen. The TEMPLATES screen's `__hero` is now the visual
+     * source of truth (soft gradient panel, navy title, brand
+     * subtitle, subtle 1-px shadow); this CSS applies the same look
+     * to every other admin screen by retargeting their existing
+     * `__header` + `__title` markup.
      *
-     * No DOM changes — each per-screen bundle emits its own header
-     * elements; we only restyle them so the visual chrome stays in
-     * lockstep across the admin without each bundle re-implementing
-     * the hero card.
+     * Covered screens:
+     *   - Forms list (`.neural-forms-forms-list__*`)
+     *   - Entries    (`.neural-forms-entries-page-header*` — see note)
+     *   - Analytics  (`.nf-analytics-hero*`)
+     *   - Stats      (`.neural-forms-stats__*`)
+     *   - Integrations (`.neural-forms-integrations__*`)
+     *   - Settings   (`.neural-forms-settings__*`)
+     *   - Import     (`.neural-forms-import__*`)
      *
-     * The shared `.nf-page-hero` / `.nf-page-hero__title` /
-     * `.nf-page-hero__subtitle` / `.nf-page-hero__actions` classes are
-     * also exposed so future React work (Pro admin screens) can use
-     * the canonical class names directly.
+     * Templates intentionally owns its OWN copy in
+     * src/templates.css — the unifier mirrors those values; if
+     * Templates' hero is restyled, propagate the change here too.
+     *
+     * Entries note: the existing Gmail-style 2-pane layout doesn't
+     * have a top-of-page card — its inbox header sits INSIDE the
+     * pane frame. We don't retarget any entries class today (would
+     * fight the inbox layout); if a unified entries hero is wanted,
+     * Entries.js needs its own JSX-side change. The exclusion is
+     * documented here so a future contributor doesn't try to add
+     * `.neural-forms-entries-*` and discover the conflict at
+     * runtime.
      */
     private static function page_hero_unifier_css(): string {
-        // Single source of truth — copied from nf-analytics-hero in
-        // modules/admin/src/results.css. Keep these values in sync
-        // when the Analytics hero is restyled.
+        // Single source of truth — values copied from
+        // .neural-forms-templates__hero / __title / __subtitle in
+        // modules/admin/src/templates.css. Keep in sync.
         return <<<'CSS'
 /* ── Shared hero card (canonical class names) ──────────────────── */
 #neural-forms-app .nf-page-hero,
 #neural-forms-results-app .nf-page-hero {
-    box-sizing: border-box;     /* keep 28×32 padding INSIDE 100% width
-                                   so the card aligns with siblings inside
-                                   a constrained parent (e.g. forms-list's
-                                   960px max-width). */
+    box-sizing: border-box;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 24px;
-    padding: 28px 32px;
+    flex-wrap: wrap;
+    padding: 24px 28px;
     margin-bottom: 24px;
-    background: #fff;
+    background: linear-gradient( 135deg, #f5f6fb 0%, #ffffff 100% );
     border: 1px solid #e5e7eb;
-    border-radius: 18px;
-    box-shadow: 0 8px 24px rgba(8, 15, 91, 0.06);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
 }
 
 #neural-forms-app .nf-page-hero__copy,
 #neural-forms-results-app .nf-page-hero__copy {
+    flex: 1 1 360px;
     min-width: 0;
-    flex: 1 1 auto;
 }
 
 #neural-forms-app .nf-page-hero__title,
 #neural-forms-results-app .nf-page-hero__title {
-    margin: 0 0 6px;
+    margin: 0 0 8px;
     color: #080f5b;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 700;
+    letter-spacing: -0.01em;
     line-height: 1.2;
-    letter-spacing: 0.01em;
 }
 
 #neural-forms-app .nf-page-hero__subtitle,
 #neural-forms-results-app .nf-page-hero__subtitle {
     margin: 0;
-    color: #475569;
-    font-size: 13px;
+    color: #4b5563;
+    font-size: 14px;
     line-height: 1.5;
 }
 
 #neural-forms-app .nf-page-hero__actions,
 #neural-forms-results-app .nf-page-hero__actions {
     display: flex;
+    flex-direction: column;
     align-items: flex-end;
-    gap: 12px;
+    gap: 6px;
     flex: 0 0 auto;
 }
 
-@media (max-width: 900px) {
-    #neural-forms-app .nf-page-hero,
-    #neural-forms-results-app .nf-page-hero {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    #neural-forms-app .nf-page-hero__actions,
-    #neural-forms-results-app .nf-page-hero__actions {
-        width: 100%;
-    }
-    #neural-forms-app .nf-page-hero__actions > *,
-    #neural-forms-results-app .nf-page-hero__actions > * {
-        width: 100%;
-    }
-}
-
-/* ── Per-screen bundles: skin existing __header/__title ──
+/* ── Per-screen bundles: skin existing __header / __title ──
  *
- * Each per-screen bundle (Stats / Forms list / Settings / Import)
- * emits its own header container (`__header`) and title element
- * (`__title`). We retarget those classes with the hero-card visuals
- * so every screen reads as part of the same design system without
- * each bundle re-implementing the hero internally.
+ * One :is() rule per visual property keeps the selector list
+ * compact — adding a new screen is two-or-three line changes
+ * (add the screen's __header class to the card rule + its
+ * __title class to the title rule + its subtitle class to the
+ * subtitle rule).
  *
- * Each rule is an `:is()` group so adding a new screen takes one line.
- *
- * Entries is intentionally NOT in this list — the entries bundle ships
- * its own hero card defined in src/entries.css, sized to its 2-pane
- * Gmail-style layout. Don't add `.neural-forms-entries*` selectors
- * here without de-duplicating the per-bundle hero first. */
+ * Entries is intentionally NOT in this list — see method docblock.
+ */
 
 #neural-forms-app :is(
     .neural-forms-stats__header,
     .neural-forms-forms-list__header,
     .neural-forms-settings__header,
-    .neural-forms-import__header
-) {
-    box-sizing: border-box;     /* keep 28×32 padding INSIDE the screen's
-                                   max-width so the hero card aligns with
-                                   the list/table sibling instead of
-                                   pushing 64px wider than its container. */
+    .neural-forms-import__header,
+    .neural-forms-integrations__header,
+    .neural-forms-entries-header
+),
+#neural-forms-results-app .nf-analytics-hero {
+    box-sizing: border-box;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 24px;
-    padding: 28px 32px;
+    flex-wrap: wrap;
+    padding: 24px 28px;
     margin-bottom: 24px;
-    background: #fff;
+    background: linear-gradient( 135deg, #f5f6fb 0%, #ffffff 100% );
     border: 1px solid #e5e7eb;
-    border-radius: 18px;
-    box-shadow: 0 8px 24px rgba(8, 15, 91, 0.06);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
 }
 
+/* Title rules target the actual H1 elements (NOT the wrapper divs).
+ * wp-admin ships a `h1 { font-weight: 400 }` rule that beats inherited
+ * font-weight cascading from a parent, so the weight has to be applied
+ * directly to the H1 — otherwise Settings / Integrations title text
+ * stays at 400 weight even with 700 on the wrapper. */
 #neural-forms-app :is(
     .neural-forms-stats__title,
     .neural-forms-forms-list__title,
-    .neural-forms-settings__header-text,
-    .neural-forms-import__title
-) {
-    margin: 0;
+    .neural-forms-settings__page-title,
+    .neural-forms-import__title,
+    .neural-forms-integrations__page-title,
+    .neural-forms-entries-title
+),
+#neural-forms-results-app .nf-analytics-hero__title {
+    margin: 0 0 8px;
     color: #080f5b;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 700;
+    letter-spacing: -0.01em;
     line-height: 1.2;
-    letter-spacing: 0.01em;
+}
+
+/* Subtitle / page-description text. Every screen that ships a
+ * subtitle uses one of these class names; the rule normalises them
+ * to the canonical Templates subtitle look. */
+#neural-forms-app :is(
+    .neural-forms-stats__subtitle,
+    .neural-forms-settings__page-desc,
+    .neural-forms-integrations__page-desc,
+    .neural-forms-entries-subtitle
+),
+#neural-forms-results-app .nf-analytics-hero__subtitle {
+    margin: 0;
+    color: #4b5563;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Header text wrappers — the div that holds title + subtitle on
+ * screens that wrap them (Settings, Stats post-fix, Integrations,
+ * Entries header-copy). Flex-grows to fill the left side so the
+ * title/subtitle stack vertically while actions (Save / Refresh /
+ * etc.) sit aligned to the right edge. */
+#neural-forms-app :is(
+    .neural-forms-stats__header-text,
+    .neural-forms-settings__header-text,
+    .neural-forms-integrations__header-text,
+    .neural-forms-entries-header-copy
+) {
+    flex: 1 1 360px;
+    min-width: 0;
 }
 
 @media (max-width: 900px) {
@@ -1293,8 +1354,11 @@ JS;
         .neural-forms-stats__header,
         .neural-forms-forms-list__header,
         .neural-forms-settings__header,
-        .neural-forms-import__header
-    ) {
+        .neural-forms-import__header,
+        .neural-forms-integrations__header,
+        .neural-forms-entries-header
+    ),
+    #neural-forms-results-app .nf-analytics-hero {
         flex-direction: column;
         align-items: stretch;
     }
@@ -1484,6 +1548,13 @@ CSS;
             'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
             'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
             'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
+            // Templates admin page slug — generated through admin_url
+            // so it picks up the install's actual wp-admin path
+            // (subdir installs, custom admin URLs, etc.). The dropdown
+            // injector reads this when the "Use Template" item is
+            // clicked. Kept alongside the other admin URLs so the
+            // payload stays one flat object.
+            'templatesUrl'   => esc_url_raw( admin_url( 'admin.php?page=neural-forms-templates' ) ),
             'i18n' => [
                 'caretLabel'   => __( 'New form options',           'neural-forms-lite' ),
                 'blank'        => __( 'Blank Form',                  'neural-forms-lite' ),
@@ -1872,9 +1943,15 @@ CSS;
         wrapper.appendChild( menu );
 
         // Build menu items.
+        // "template" navigates to the Templates admin page rather
+        // than firing the underlying "+ New Form" button. Falls back
+        // to a relative admin URL if the localized value is missing
+        // (defensive — the PHP side always sets it, but a malformed
+        // payload shouldn't crash the dropdown).
+        var templatesUrl = ( data && data.templatesUrl ) || 'admin.php?page=neural-forms-templates';
         var items = [
             { id: 'blank',    label: data.i18n.blank,    enabled: true,  action: function () { btn.click(); } },
-            { id: 'template', label: data.i18n.template, enabled: true,  action: function () { btn.click(); } },
+            { id: 'template', label: data.i18n.template, enabled: true,  action: function () { window.location.href = templatesUrl; } },
         ];
 
         var aiEnabled  = !! data.available;

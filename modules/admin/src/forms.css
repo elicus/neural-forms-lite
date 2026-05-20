@@ -63,9 +63,20 @@
 }
 
 /* ── List container ─────────────────────────────────────────── */
+/* Canonical Neural Forms admin spacing — mirrors Analytics's
+ * #neural-forms-results-app so every screen lines up to the same
+ * top + left edge inside .wrap. */
 .neural-forms-forms-list {
-	margin: 0 0 48px;
-	max-width: var( --f-content-width );
+	max-width: 1200px;
+	margin: 0;
+	padding: 28px 24px 48px;
+	box-sizing: border-box;
+}
+
+@media ( max-width: 782px ) {
+	.neural-forms-forms-list {
+		padding: 20px 16px 40px;
+	}
 }
 
 /* ── Header (title + New Form) ──────────────────────────────── */
@@ -82,19 +93,22 @@
 	flex: 1 1 auto;
 }
 
-.neural-forms-forms-list__title {
-	color: var( --f-gray-900 );
-	font-size: 22px;
-	font-weight: 600;
-	line-height: 1.3;
-	margin: 0;
+/* Canonical hero typography — `#neural-forms-app` prefix bumps
+ * specificity to (1,1,0) to beat WP core's `.wrap h1` (0,1,1). */
+#neural-forms-app .neural-forms-forms-list__title {
+	color: var( --f-blue-600 );
+	font-size: 26px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	margin: 0 0 8px;
 }
 
-.neural-forms-forms-list__subtitle {
-	color: var( --f-gray-500 );
-	font-size: 13px;
+#neural-forms-app .neural-forms-forms-list__subtitle {
+	color: #4b5563;
+	font-size: 14px;
 	line-height: 1.5;
-	margin: 6px 0 0;
+	max-width: none;	margin: 0;
 }
 
 .neural-forms-forms-list__new-btn {

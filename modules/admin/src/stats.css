@@ -62,8 +62,20 @@
 }
 
 /* ── Container ────────────────────────────────────────────────── */
+/* Canonical Neural Forms admin spacing — mirrors Analytics's
+ * #neural-forms-results-app so every screen lines up to the same
+ * top + left edge inside .wrap. */
 .neural-forms-stats {
-	max-width: 960px;
+	max-width: 1200px;
+	margin: 0;
+	padding: 28px 24px 48px;
+	box-sizing: border-box;
+}
+
+@media ( max-width: 782px ) {
+	.neural-forms-stats {
+		padding: 20px 16px 40px;
+	}
 }
 
 /* ── Header ───────────────────────────────────────────────────── */
@@ -73,17 +85,25 @@
 	padding: 0 0 20px;
 }
 
-.neural-forms-stats__title {
-	color: var( --f-gray-900 );
-	font-size: 22px;
-	font-weight: 600;
-	margin: 0 0 2px;
+/* Canonical hero typography. `#neural-forms-app` prefix bumps the
+ * selector to specificity (1,1,0) — beats WordPress core's
+ * `.wrap h1` rule (0,1,1) shipped via load-styles.php which would
+ * otherwise force font-size 23px / font-weight 400 on every admin
+ * H1. Same fix mirrored across every per-bundle title rule. */
+#neural-forms-app .neural-forms-stats__title {
+	color: var( --f-blue-600 );
+	font-size: 26px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	margin: 0 0 8px;
 }
 
-.neural-forms-stats__subtitle {
-	color: var( --f-gray-500 );
-	font-size: 13px;
-	margin: 0;
+#neural-forms-app .neural-forms-stats__subtitle {
+	color: #4b5563;
+	font-size: 14px;
+	line-height: 1.5;
+	max-width: none;	margin: 0;
 }
 
 /* ── KPI stat cards (4-up grid, blue cards with mint accent) ──── */

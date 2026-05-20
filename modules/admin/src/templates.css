@@ -1,60 +1,215 @@
 /*
  * Templates screen styles.
  *
- * Scoped under `#neural-forms-app .neural-forms-templates` so the rules
- * cannot leak into the surrounding wp-admin chrome or other split
- * bundles that mount at the same node.
+ * Every rule is scoped under `#neural-forms-app .neural-forms-templates`
+ * so nothing leaks into the surrounding wp-admin chrome or into
+ * sibling split bundles that share the same mount node.
  *
  * Brand colors:
- *   --nf-primary: #080f5b  (dominant interactive surface)
- *   --nf-accent : #15db95  (live/success accent)
+ *   --nf-primary  #080f5b  (dominant interactive surface — navy)
+ *   --nf-accent   #15db95  (success / "imported" accent — mint)
  */
 
 #neural-forms-app .neural-forms-templates {
 	--nf-primary: #080f5b;
 	--nf-accent:  #15db95;
-	max-width: 1200px;
-	margin: 16px auto 64px;
-	padding: 0 12px;
+	/* Templates is intentionally full-width — every other Neural
+	 * Forms admin screen caps at 1200px to mirror Analytics, but
+	 * the card grid here benefits from the extra room so 4–5
+	 * cards land per row at typical desktop widths. Top + left
+	 * padding (28px / 24px) still match the canonical screen so
+	 * the page lines up to the same top-left corner. */
+	margin: 0;
+	padding: 28px 24px 48px;
+	box-sizing: border-box;
 	color: #1f2937;
 }
 
-#neural-forms-app .neural-forms-templates__header {
-	border-bottom: 1px solid #e5e7eb;
-	padding-bottom: 16px;
-	margin-bottom: 20px;
+@media ( max-width: 782px ) {
+	#neural-forms-app .neural-forms-templates {
+		padding: 20px 16px 40px;
+	}
+}
+
+/*
+ * ─── hero header ──────────────────────────────────────────────────
+ * Title + subtitle on the left, Refresh Catalog + Last-updated
+ * timestamp on the right. Flex-wraps on tablet so the Refresh
+ * button drops below the title instead of getting squished.
+ */
+#neural-forms-app .neural-forms-templates__hero {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 24px;
+	padding: 24px 28px;
+	background: linear-gradient( 135deg, #f5f6fb 0%, #ffffff 100% );
+	border: 1px solid #e5e7eb;
+	border-radius: 14px;
+	margin-bottom: 24px;
+	flex-wrap: wrap;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
+}
+
+#neural-forms-app .neural-forms-templates__hero-text {
+	flex: 1 1 360px;
+	min-width: 0;
 }
 
 #neural-forms-app .neural-forms-templates__title {
-	margin: 0 0 6px;
-	font-size: 22px;
+	margin: 0 0 8px;
+	font-size: 26px;
 	font-weight: 700;
 	color: var(--nf-primary);
+	letter-spacing: -0.01em;
 }
 
 #neural-forms-app .neural-forms-templates__subtitle {
 	margin: 0;
 	color: #4b5563;
 	font-size: 14px;
+	line-height: 1.5;
+	max-width: none;}
+
+#neural-forms-app .neural-forms-templates__hero-actions {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
 }
 
-#neural-forms-app .neural-forms-templates__notice {
-	margin: 0 0 16px;
+#neural-forms-app .neural-forms-templates__updated {
+	font-size: 12px;
+	color: #6b7280;
 }
 
 /*
- * Filter tabs — pill row across the top of the grid. Matches the
- * visual rhythm of the Entries / Integrations screens (rounded pills
- * with brand color on the active state).
+ * Refresh Catalog button. Renders as <Button variant="secondary"> from
+ * @wordpress/components — by default that ships as a white pill with
+ * a thin blue ring, which reads as unbranded next to the navy "Import
+ * Again" button below. Re-skin to a navy-filled primary so the hero
+ * action matches the rest of the Neural Forms brand surface.
  */
+#neural-forms-app .neural-forms-templates__hero-actions .components-button {
+	background: var(--nf-primary);
+	color: #fff;
+	border: 1px solid var(--nf-primary);
+	box-shadow: none;
+	border-radius: 4px;
+	padding: 8px 16px;
+	height: auto;
+	font-weight: 500;
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#neural-forms-app .neural-forms-templates__hero-actions .components-button:hover:not(:disabled),
+#neural-forms-app .neural-forms-templates__hero-actions .components-button:focus:not(:disabled) {
+	background: #050a45;
+	border-color: #050a45;
+	color: #fff;
+	box-shadow: none;
+}
+
+#neural-forms-app .neural-forms-templates__hero-actions .components-button:focus-visible {
+	outline: 2px solid var(--nf-primary);
+	outline-offset: 2px;
+}
+
+#neural-forms-app .neural-forms-templates__hero-actions .components-button:disabled,
+#neural-forms-app .neural-forms-templates__hero-actions .components-button[aria-disabled="true"] {
+	background: var(--nf-primary);
+	border-color: var(--nf-primary);
+	color: #fff;
+	opacity: 0.6;
+}
+
+/*
+ * ─── builder tabs ─────────────────────────────────────────────────
+ */
+#neural-forms-app .neural-forms-templates__builders {
+	display: flex;
+	gap: 4px;
+	border-bottom: 1px solid #e5e7eb;
+	margin-bottom: 24px;
+}
+
+#neural-forms-app .neural-forms-templates__builder {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	appearance: none;
+	-webkit-appearance: none;
+	background: transparent;
+	border: 0;
+	padding: 12px 18px;
+	font-size: 14px;
+	font-weight: 500;
+	color: #4b5563;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -1px; /* overlap parent border */
+	transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+#neural-forms-app .neural-forms-templates__builder:hover:not(:disabled) {
+	color: var(--nf-primary);
+}
+
+#neural-forms-app .neural-forms-templates__builder.is-active {
+	color: var(--nf-primary);
+	border-bottom-color: var(--nf-primary);
+}
+
+#neural-forms-app .neural-forms-templates__builder.is-disabled,
+#neural-forms-app .neural-forms-templates__builder:disabled {
+	cursor: not-allowed;
+	color: #9ca3af;
+}
+
+/*
+ * Per-builder pill (e.g. "PRO" on Divi). The base class is generic
+ * so a future builder can carry a different pill variant (`--soon`,
+ * `--beta`, …) without duplicating the typography rules. Today only
+ * the navy `--pro` variant is in use.
+ */
+#neural-forms-app .neural-forms-templates__builder-pill {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+#neural-forms-app .neural-forms-templates__builder-pill--pro {
+	background: var(--nf-primary);
+	color: #fff;
+}
+
+/*
+ * ─── toolbar (filters + search) ──────────────────────────────────
+ */
+#neural-forms-app .neural-forms-templates__toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	margin: 0 0 24px;
+}
+
 #neural-forms-app .neural-forms-templates__filters {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
-	margin: 0 0 20px;
+	flex: 1 1 auto;
 }
 
 #neural-forms-app .neural-forms-templates__filter {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	appearance: none;
 	-webkit-appearance: none;
 	background: #fff;
@@ -78,32 +233,108 @@
 	border-color: var(--nf-primary);
 }
 
-#neural-forms-app .neural-forms-templates__loading {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	color: #6b7280;
-	padding: 32px 0;
+#neural-forms-app .neural-forms-templates__filter-count {
+	display: inline-block;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 6px;
+	background: rgba( 8, 15, 91, 0.08 );
+	color: var(--nf-primary);
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 18px;
+	text-align: center;
 }
 
+#neural-forms-app .neural-forms-templates__filter.is-active .neural-forms-templates__filter-count {
+	background: rgba( 255, 255, 255, 0.18 );
+	color: #fff;
+}
+
+#neural-forms-app .neural-forms-templates__search {
+	flex: 0 0 240px;
+	max-width: 100%;
+}
+
+#neural-forms-app .neural-forms-templates__search input {
+	width: 100%;
+	padding: 8px 14px;
+	border: 1px solid #d1d5db;
+	border-radius: 999px;
+	font-size: 13px;
+	background: #fff;
+	color: #1f2937;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#neural-forms-app .neural-forms-templates__search input:focus {
+	outline: none;
+	border-color: var(--nf-primary);
+	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.12 );
+}
+
+#neural-forms-app .neural-forms-templates__notice {
+	margin: 0 0 24px;
+}
+
+/*
+ * Count strip — small muted line that surfaces just under the
+ * toolbar so the admin can scan filter / search effectiveness at a
+ * glance. aria-live="polite" on the React side announces changes
+ * to screen readers without barging in mid-interaction.
+ */
+#neural-forms-app .neural-forms-templates__count {
+	margin: 0 0 16px;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+#neural-forms-app .neural-forms-templates__notice-meta {
+	font-weight: 500;
+	color: #4b5563;
+}
+
+/*
+ * ─── empty / status ──────────────────────────────────────────────
+ */
 #neural-forms-app .neural-forms-templates__empty {
-	padding: 32px;
+	padding: 48px 32px;
 	background: #fff;
 	border: 1px dashed #d1d5db;
-	border-radius: 8px;
+	border-radius: 14px;
 	color: #6b7280;
 	text-align: center;
 }
 
+#neural-forms-app .neural-forms-templates__empty p {
+	margin: 0 0 8px;
+}
+
+#neural-forms-app .neural-forms-templates__empty p:last-child {
+	margin-bottom: 0;
+}
+
+#neural-forms-app .neural-forms-templates__empty-hint {
+	font-size: 13px;
+	color: #9ca3af;
+}
+
 /*
- * Card grid. Auto-fill keeps cards a comfortable width regardless of
- * how many templates the catalog ships — at desktop widths the row
- * carries 3-4 cards, collapsing to 2 on tablet and 1 on mobile.
+ * ─── grid + card ─────────────────────────────────────────────────
  */
 #neural-forms-app .neural-forms-templates__grid {
 	display: grid;
-	grid-template-columns: repeat( auto-fill, minmax( 280px, 1fr ) );
-	gap: 18px;
+	/* Auto-fill packs as many ~260px cards as the available width
+	   allows, so the page naturally yields:
+	     ~1700px viewport → 5–6 across
+	     ~1400px viewport → 4–5 across
+	     ~1100px viewport → 3 across
+	     <  720px         → 1 across (handled below)
+	   The mobile 1-column rule lives in the breakpoint block at the
+	   bottom of this file alongside the lightbox padding overrides. */
+	grid-template-columns: repeat( auto-fill, minmax( 260px, 1fr ) );
+	gap: 24px;
 }
 
 #neural-forms-app .neural-forms-templates__card {
@@ -111,14 +342,33 @@
 	flex-direction: column;
 	background: #fff;
 	border: 1px solid #e5e7eb;
-	border-radius: 10px;
+	border-radius: 16px;
 	overflow: hidden;
-	transition: box-shadow 0.15s ease, transform 0.15s ease;
+	transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
 }
 
 #neural-forms-app .neural-forms-templates__card:hover {
-	box-shadow: 0 6px 20px rgba( 8, 15, 91, 0.08 );
-	transform: translateY( -1px );
+	/* Slightly deeper lift + a soft navy-tinted shadow. Two stacked
+	   shadow layers — short tight one for contact, longer diffuse
+	   one for depth — read as "card lifted off the page" without
+	   the harsh edge a single shadow layer produces. */
+	box-shadow:
+		0  2px  6px rgba( 8, 15, 91, 0.06 ),
+		0 14px 36px rgba( 8, 15, 91, 0.14 );
+	transform: translateY( -3px );
+	border-color: #d1d5db;
+}
+
+#neural-forms-app .neural-forms-templates__card.is-imported {
+	border-color: rgba( 21, 219, 149, 0.45 );
+}
+
+/*
+ * Thumbnail wrap is the positioning context for the absolute-
+ * positioned compatibility chip and "Imported" badge.
+ */
+#neural-forms-app .neural-forms-templates__thumb-wrap {
+	position: relative;
 }
 
 #neural-forms-app .neural-forms-templates__thumb {
@@ -127,11 +377,36 @@
 	overflow: hidden;
 }
 
-#neural-forms-app .neural-forms-templates__thumb img {
+#neural-forms-app .neural-forms-templates__thumb--clickable {
+	display: block;
+	width: 100%;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	background: #f3f4f6;
+	cursor: zoom-in;
+	font: inherit;
+	color: inherit;
+	aspect-ratio: 16 / 10;
+	overflow: hidden;
+}
+
+#neural-forms-app .neural-forms-templates__thumb--clickable:focus-visible {
+	outline: 2px solid var(--nf-primary);
+	outline-offset: -2px;
+}
+
+#neural-forms-app .neural-forms-templates__thumb img,
+#neural-forms-app .neural-forms-templates__thumb--clickable img {
 	display: block;
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
+	transition: transform 0.25s ease;
+}
+
+#neural-forms-app .neural-forms-templates__thumb--clickable:hover img {
+	transform: scale( 1.04 );
 }
 
 #neural-forms-app .neural-forms-templates__thumb-placeholder {
@@ -140,19 +415,87 @@
 	background: linear-gradient( 135deg, #eef0f7 0%, #f9fafb 100% );
 }
 
+/*
+ * Compatibility chip — top-LEFT over the thumbnail (paired with the
+ * Imported badge which lives top-right, so the two anchor opposite
+ * corners and never collide). White background with navy text keeps
+ * it readable over any thumbnail image without dimming the artwork.
+ */
+#neural-forms-app .neural-forms-templates__compat-chip {
+	position: absolute;
+	left: 12px;
+	top: 12px;
+	display: inline-block;
+	padding: 4px 10px;
+	background: var(--nf-primary);
+	color: #fff;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.2 );
+}
+
+/*
+ * "Imported" badge — top-right over the thumbnail. Solid brand mint
+ * (#15DB95) with white text + tick. Matches the navy "Block Editor"
+ * compat-chip on the opposite corner so the card reads as the same
+ * brand surface: filled pill, white label.
+ */
+#neural-forms-app .neural-forms-templates__imported-badge {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 5px 10px;
+	background: var(--nf-accent);
+	color: #fff;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	box-shadow: 0 2px 6px rgba( 21, 219, 149, 0.32 );
+}
+
+#neural-forms-app .neural-forms-templates__imported-tick {
+	font-size: 12px;
+	line-height: 1;
+}
+
+/*
+ * Card body
+ */
 #neural-forms-app .neural-forms-templates__body {
-	padding: 14px 16px 8px;
+	padding: 18px 20px 8px;
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 8px;
 	flex: 1;
+}
+
+/*
+ * Eyebrow — small uppercase category label above the title. Tight
+ * letter-spacing + small font-size keeps it visually subordinate to
+ * the H2 below it. Sits just under the thumbnail so the eye reads
+ * thumbnail → category → name.
+ */
+#neural-forms-app .neural-forms-templates__eyebrow {
+	font-size: 10px;
+	font-weight: 700;
+	color: var(--nf-primary);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	margin-bottom: 2px;
 }
 
 #neural-forms-app .neural-forms-templates__card-title {
 	margin: 0;
-	font-size: 16px;
+	font-size: 17px;
 	font-weight: 600;
 	color: var(--nf-primary);
+	line-height: 1.3;
 }
 
 #neural-forms-app .neural-forms-templates__card-desc {
@@ -160,43 +503,73 @@
 	font-size: 13px;
 	color: #4b5563;
 	line-height: 1.5;
-	/* Clamp long descriptions so card heights stay even across the
-	   grid. The card itself flex-grows the body so the action row
-	   always sticks to the bottom. */
 	display: -webkit-box;
-	-webkit-line-clamp: 3;
+	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 }
 
-#neural-forms-app .neural-forms-templates__badge {
-	align-self: flex-start;
-	display: inline-block;
+#neural-forms-app .neural-forms-templates__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 	margin-top: 4px;
-	padding: 3px 9px;
-	border-radius: 999px;
-	background: rgba( 21, 219, 149, 0.16 );
-	color: #0a7d56;
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
 }
 
-#neural-forms-app .neural-forms-templates__actions {
-	display: flex;
-	gap: 8px;
-	justify-content: flex-end;
-	padding: 12px 16px 16px;
-	border-top: 1px solid #f1f5f9;
-	margin-top: 8px;
+#neural-forms-app .neural-forms-templates__tag {
+	display: inline-block;
+	padding: 2px 8px;
+	background: #f3f4f6;
+	color: #4b5563;
+	border-radius: 6px;
+	font-size: 11px;
+	font-weight: 500;
 }
 
 /*
- * Brand-tint the primary button via the active card to match the
- * Neural Forms navy without fighting `wp-components`-shipped styles
- * on every site. wp-components Button[variant=primary] gives us the
- * filled look; we just retint inside the card.
+ * Card footer / actions
+ */
+#neural-forms-app .neural-forms-templates__actions {
+	/* 20px above the action row visually separates it from the body
+	   (description + tags) without needing a hairline border on every
+	   card. The border-top is kept as a subtle divider but more
+	   air-padding makes the Preview / Import buttons feel anchored. */
+	padding: 18px 20px 20px;
+	border-top: 1px solid #f1f5f9;
+	margin-top: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+#neural-forms-app .neural-forms-templates__actions-row {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+#neural-forms-app .neural-forms-templates__imported-meta {
+	font-size: 12px;
+	color: #6b7280;
+	text-align: right;
+}
+
+#neural-forms-app .neural-forms-templates__edit-link {
+	color: var(--nf-primary);
+	font-weight: 500;
+	text-decoration: underline;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 2px;
+}
+
+#neural-forms-app .neural-forms-templates__imported-sep {
+	color: #d1d5db;
+}
+
+/*
+ * Brand-tint the wp-components Buttons inside cards so the primary
+ * Import button uses navy and the secondary Preview button gets a
+ * navy outline.
  */
 #neural-forms-app .neural-forms-templates__card .components-button.is-primary {
 	background: var(--nf-primary);
@@ -213,11 +586,139 @@
 	box-shadow: inset 0 0 0 1px var(--nf-primary);
 }
 
-@media ( max-width: 600px ) {
+/*
+ * ─── skeleton loader ─────────────────────────────────────────────
+ */
+@keyframes nf-templates-shimmer {
+	0%   { background-position: -400px 0; }
+	100% { background-position: 400px 0; }
+}
+
+#neural-forms-app .neural-forms-templates__card--skeleton {
+	pointer-events: none;
+}
+
+#neural-forms-app .neural-forms-templates__card--skeleton:hover {
+	box-shadow: none;
+	transform: none;
+}
+
+#neural-forms-app .neural-forms-templates__thumb--skeleton {
+	aspect-ratio: 16 / 10;
+	background: linear-gradient( 90deg, #f1f5f9 0%, #e5e7eb 50%, #f1f5f9 100% );
+	background-size: 800px 100%;
+	animation: nf-templates-shimmer 1.4s linear infinite;
+}
+
+#neural-forms-app .neural-forms-templates__skel-line {
+	height: 12px;
+	border-radius: 6px;
+	background: linear-gradient( 90deg, #f1f5f9 0%, #e5e7eb 50%, #f1f5f9 100% );
+	background-size: 800px 100%;
+	animation: nf-templates-shimmer 1.4s linear infinite;
+	margin-bottom: 8px;
+}
+
+#neural-forms-app .neural-forms-templates__skel-line--short {
+	width: 30%;
+}
+
+#neural-forms-app .neural-forms-templates__skel-line--med {
+	width: 65%;
+}
+
+/*
+ * ─── lightbox ────────────────────────────────────────────────────
+ */
+#neural-forms-app .neural-forms-templates__lightbox {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 40px;
+	background: rgba( 8, 15, 91, 0.88 );
+	animation: nf-templates-lightbox-fade-in 0.15s ease;
+}
+
+@keyframes nf-templates-lightbox-fade-in {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+
+#neural-forms-app .neural-forms-templates__lightbox-image {
+	display: block;
+	max-width: 95%;
+	max-height: 95vh;
+	width: auto;
+	height: auto;
+	object-fit: contain;
+	border-radius: 6px;
+	box-shadow: 0 24px 60px rgba( 0, 0, 0, 0.45 );
+	cursor: default;
+}
+
+#neural-forms-app .neural-forms-templates__lightbox-close {
+	position: absolute;
+	top: 20px;
+	right: 20px;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: #fff;
+	color: #1f2937;
+	font-size: 28px;
+	line-height: 1;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 4px 12px rgba( 0, 0, 0, 0.25 );
+	transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+#neural-forms-app .neural-forms-templates__lightbox-close:hover {
+	background: #f3f4f6;
+	transform: scale( 1.05 );
+}
+
+#neural-forms-app .neural-forms-templates__lightbox-close:focus-visible {
+	outline: 3px solid var(--nf-accent);
+	outline-offset: 3px;
+}
+
+@media ( max-width: 768px ) {
 	#neural-forms-app .neural-forms-templates {
-		padding: 0 8px;
+		padding: 20px 16px;
 	}
+	#neural-forms-app .neural-forms-templates__hero {
+		padding: 20px;
+	}
+	#neural-forms-app .neural-forms-templates__hero-actions {
+		align-items: flex-start;
+		width: 100%;
+	}
+	#neural-forms-app .neural-forms-templates__search {
+		flex: 1 1 100%;
+	}
+}
+
+/* Single-column collapse at the spec'd 720px breakpoint. */
+@media ( max-width: 719px ) {
 	#neural-forms-app .neural-forms-templates__grid {
 		grid-template-columns: 1fr;
+	}
+}
+
+@media ( max-width: 600px ) {
+	#neural-forms-app .neural-forms-templates__lightbox {
+		padding: 16px;
+	}
+	#neural-forms-app .neural-forms-templates__lightbox-close {
+		top: 12px;
+		right: 12px;
 	}
 }

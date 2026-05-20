@@ -25,6 +25,27 @@ defined( 'ABSPATH' ) || exit;
  */
 class SettingsEndpoint {
 
+	/**
+	 * Background hook + TTL for the plan-cache refresh. See
+	 * maybe_schedule_plan_refresh() for the why — the refresh used to
+	 * block GET /settings on a synchronous /v1/auth/me round-trip
+	 * (up to 5s on a slow cloud); it now runs out-of-band via
+	 * wp_schedule_single_event so the Settings page returns
+	 * immediately from cached data.
+	 */
+	const PLAN_REFRESH_HOOK = 'neural_forms_refresh_plan_cache';
+	const PLAN_CACHE_TTL    = 300;
+
+	/**
+	 * Register cron handlers that need to be available on every
+	 * request (REST + wp-cron + admin). Called once from
+	 * NeuralForms::boot_rest(). Idempotent — re-registration is a
+	 * no-op because add_action() de-duplicates identical callbacks.
+	 */
+	public static function register_hooks(): void {
+		add_action( self::PLAN_REFRESH_HOOK, [ self::class, 'refresh_plan_cache_now' ] );
+	}
+
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
@@ -81,17 +102,21 @@ class SettingsEndpoint {
 	public function get_settings( WP_REST_Request $request ) {
 		$all = Config::all();
 
-		// Lazy-refresh the plan + balance snapshot from /v1/auth/me when the
-		// cached copy is older than 60s. Each AI call already mirrors the
-		// cloud's `usage.credits_remaining` into the local cache via
-		// PlanManager::apply_usage(), but a periodic round-trip catches the
-		// edge cases where:
-		//   - usage block was missing from a pre-fix cloud response
+		// Schedule a background refresh of the plan + balance snapshot from
+		// /v1/auth/me when the cached copy is older than PLAN_CACHE_TTL.
+		// This used to fire the cloud round-trip inline, which could hold
+		// the Settings page on its loading spinner for up to 5s every time
+		// the cache aged out — now the refresh runs via WP-Cron on the next
+		// request boundary so GET /settings returns immediately from cache.
+		// Each AI call already mirrors usage.credits_remaining into the
+		// local cache via PlanManager::apply_usage(), so the periodic
+		// round-trip is only needed to catch:
+		//   - usage block missing from a pre-fix cloud response
 		//   - the user topped up credits in another tab
 		//   - the plan changed (cancelled / renewed) outside this admin
-		// Soft-fail: any cloud error leaves the cached balance untouched so
-		// the Settings page still loads if the cloud is briefly unreachable.
-		$this->maybe_refresh_plan_cache();
+		// Worst case: the user sees a one-navigation-stale balance after a
+		// long gap, instead of a blocked page load.
+		$this->maybe_schedule_plan_refresh();
 
 		// Derived signup-complete: sticky once the user has saved a key OR has
 		// previously revoked one. The revoke snapshot acts as a backfill marker
@@ -139,24 +164,51 @@ class SettingsEndpoint {
 	}
 
 	/**
-	 * Lazy plan-cache refresh used at the top of get_settings(). Triggers a
-	 * /v1/auth/me round-trip when:
+	 * Schedules a one-shot background refresh of the plan + balance cache
+	 * via wp_schedule_single_event when:
 	 *   - cloud is configured (api key + cloud_ai_enabled),
-	 *   - the cached plan is older than 60 seconds.
+	 *   - the cached plan is older than PLAN_CACHE_TTL,
+	 *   - no refresh is already queued.
 	 *
-	 * Soft-fail by design: any exception (transport / auth / parse) is
-	 * swallowed so the Settings page still renders from the existing cache
-	 * if the cloud is briefly unreachable.
+	 * Always returns immediately — the actual /v1/auth/me round-trip runs
+	 * out-of-band on the next request boundary (handled by
+	 * refresh_plan_cache_now() via the PLAN_REFRESH_HOOK action). This
+	 * removes the synchronous cloud call that previously blocked
+	 * GET /settings whenever the cache aged out.
 	 */
-	private function maybe_refresh_plan_cache(): void {
+	private function maybe_schedule_plan_refresh(): void {
 		if ( ! Config::get( 'cloud_ai_enabled' ) ) return;
 		if ( Config::get( 'cloud_api_key' ) === '' ) return;
 
 		$plan       = PlanManager::get_plan();
 		$fetched_at = (int) ( $plan['fetched_at'] ?? 0 );
-		if ( $fetched_at > 0 && ( time() - $fetched_at ) < 60 ) {
+		if ( $fetched_at > 0 && ( time() - $fetched_at ) < self::PLAN_CACHE_TTL ) {
 			return;
 		}
+
+		// Single-event de-dup: if a refresh is already queued (or running),
+		// don't pile up more. WP-Cron will fire the existing one on the
+		// next request boundary.
+		if ( wp_next_scheduled( self::PLAN_REFRESH_HOOK ) ) {
+			return;
+		}
+
+		wp_schedule_single_event( time() + 1, self::PLAN_REFRESH_HOOK );
+	}
+
+	/**
+	 * Background refresh handler — runs out-of-band via WP-Cron after
+	 * maybe_schedule_plan_refresh() enqueues PLAN_REFRESH_HOOK. Performs
+	 * the actual /v1/auth/me round-trip and mirrors the response into
+	 * PlanManager's local cache.
+	 *
+	 * Soft-fail by design: any exception (transport / auth / parse) is
+	 * logged and swallowed so a transient cloud outage never breaks the
+	 * cron pass.
+	 */
+	public static function refresh_plan_cache_now(): void {
+		if ( ! Config::get( 'cloud_ai_enabled' ) ) return;
+		if ( Config::get( 'cloud_api_key' ) === '' ) return;
 
 		try {
 			$provider = \NeuralForms\AI\AiManager::resolve();
@@ -168,7 +220,7 @@ class SettingsEndpoint {
 			Logger::file(
 				'plan_refresh',
 				'warn',
-				'Settings load: /v1/auth/me refresh failed - ' . $e->getMessage()
+				'Background /v1/auth/me refresh failed - ' . $e->getMessage()
 			);
 		}
 	}

@@ -1,32 +1,38 @@
 /**
  * Left sidebar for the builder.
  *
- * Composes three palettes, top to bottom:
- *   FieldPalette    Basic fields + locked future fields
- *   LayoutPalette   Row / 2-3-4 columns + locked Section
- *   AiPromptPanel   AI prompt placeholder (Pro)
+ * Section order (top → bottom):
+ *   1. Basic Fields
+ *   2. Survey Fields
+ *   3. Advanced Fields
+ *   4. Layout
+ *
+ * Generate-with-AI used to live here but moved to the right Inspector's
+ * empty state (BuilderInspector::EmptyInspector) — the left sidebar
+ * stays focused on draggable fields / layout blocks, and the AI card
+ * surfaces only when no field/row/section/step is selected.
  *
  * Each palette is its own file so the architecture stays modular as
- * we add Pro field packs / AI generators / template galleries.
+ * we add Pro field packs / template galleries / future creation tools.
  */
 
 import { __ } from '@wordpress/i18n';
-import FieldPalette from './FieldPalette';
+import {
+	BasicFieldsPalette,
+	SurveyFieldsPalette,
+	AdvancedFieldsPalette,
+} from './FieldPalette';
 import LayoutPalette from './LayoutPalette';
-import AiPromptPanel from './AiPromptPanel';
 
 export default function BuilderSidebar( {
 	onAddField, onAddRow, onAddStep, onAddSection,
-	currentFieldCount, onApplyAiForm,
 } ) {
 	return (
 		<aside className="nf-builder-sidebar" aria-label={ __( 'Add fields and layout', 'neural-forms-lite' ) }>
-			<FieldPalette  onAddField={ onAddField } />
+			<BasicFieldsPalette    onAddField={ onAddField } />
+			<SurveyFieldsPalette   onAddField={ onAddField } />
+			<AdvancedFieldsPalette onAddField={ onAddField } />
 			<LayoutPalette onAddRow={ onAddRow } onAddStep={ onAddStep } onAddSection={ onAddSection } />
-			<AiPromptPanel
-				currentFieldCount={ currentFieldCount }
-				onApplyForm={ onApplyAiForm }
-			/>
 		</aside>
 	);
 }

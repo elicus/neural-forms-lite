@@ -168,12 +168,21 @@ export default function Stats() {
 	return (
 		<div className="neural-forms-stats">
 			<header className="neural-forms-stats__header">
-				<h1 className="neural-forms-stats__title">
-					{ __( 'Stats', 'neural-forms-lite' ) }
-				</h1>
-				<p className="neural-forms-stats__subtitle">
-					{ __( 'Track recent activity, AI usage, and system health.', 'neural-forms-lite' ) }
-				</p>
+				{ /* Wrap title + subtitle in a __header-text container so
+				     the flex layout treats them as a single block (text
+				     stacks vertically on the left, future actions can
+				     sit on the right). Without this wrapper,
+				     justify-content: space-between on the parent pushed
+				     the H1 to the left edge and the subtitle to the
+				     right edge. Mirrors the Settings header structure. */ }
+				<div className="neural-forms-stats__header-text">
+					<h1 className="neural-forms-stats__title">
+						{ __( 'Stats', 'neural-forms-lite' ) }
+					</h1>
+					<p className="neural-forms-stats__subtitle">
+						{ __( 'Track recent activity, AI usage, and system health.', 'neural-forms-lite' ) }
+					</p>
+				</div>
 			</header>
 
 			{ /* 4-card KPI grid */ }

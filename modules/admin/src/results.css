@@ -32,11 +32,18 @@
 
 	color: var( --nfr-text );
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-	max-width: 960px;
+	/* Bumped 960 → 1200 so the hero's title + subtitle + FORM
+	 * selector + Refresh button fit on a single row at desktop
+	 * widths. The selector input alone is min-width 320px; adding
+	 * the Refresh button + the title's natural width pushes past
+	 * 960 and flex-wrap was dropping the controls onto a new line.
+	 * 1200 matches Settings / Integrations / Templates so every
+	 * screen lines up consistently. */
+	max-width: 1200px;
 	/* Left-aligned inside the WP admin .wrap, matching the Stats page
-	 * (.neural-forms-stats { max-width: 960px } with no margin:auto).
-	 * margin:0 (not 0 auto) keeps the container flush to the .wrap's
-	 * native left edge instead of centering on wide screens. */
+	 * with no margin:auto. margin:0 (not 0 auto) keeps the container
+	 * flush to the .wrap's native left edge instead of centering on
+	 * wide screens. */
 	margin: 0;
 	/* Match .neural-forms-screen (Stats/Forms/Entries/Settings) so
 	 * Analytics opens at the same x/y offset as every other Neural
@@ -1559,26 +1566,30 @@
  * ───────────────────────────────────────────────────────────────── */
 
 #neural-forms-results-app .nf-analytics-hero {
-	/* Same visual tokens as AdminPanel::page_hero_unifier_css() — keep
-	 * these in sync with `.nf-page-hero` and the protected-screen
-	 * `:is(.neural-forms-stats__header, …)` retarget rule. The hero
-	 * card visual language is "one design, three places that emit it":
-	 *   - results bundle  → .nf-analytics-hero (this file)
-	 *   - admin unifier   → .nf-page-hero + protected `__header` retargets
-	 * box-sizing: border-box matches the unifier so 28×32 padding stays
-	 * inside 100% width — alignment with the empty-state / content card
-	 * below works without per-page overrides. */
+	/* Mirrors AdminPanel::page_hero_unifier_css() — gradient panel,
+	 * 14px radius, subtle 1px shadow. Keep in sync with `.nf-page-
+	 * hero` (canonical) and the `:is(.neural-forms-stats__header,
+	 * …)` retarget rule. The hero visual language now reads as one
+	 * design across:
+	 *   - .neural-forms-templates__hero  (canonical reference)
+	 *   - .nf-page-hero                  (admin unifier)
+	 *   - .nf-analytics-hero             (this file)
+	 *   - .neural-forms-entries-header   (entries bundle)
+	 *   - retargeted Stats / Forms / Settings / Import / Integrations
+	 * box-sizing: border-box matches the unifier so 24×28 padding
+	 * stays inside 100% width. */
 	box-sizing: border-box;
 	width: 100%;
 	display: flex;
-	align-items: center;
+	align-items: flex-end;
 	justify-content: space-between;
 	gap: 24px;
-	padding: 28px 32px;
-	background: #fff;
+	flex-wrap: wrap;
+	padding: 24px 28px;
+	background: linear-gradient( 135deg, #f5f6fb 0%, #ffffff 100% );
 	border: 1px solid #e5e7eb;
-	border-radius: 18px;
-	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.06 );
+	border-radius: 14px;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
 	margin-bottom: 24px;
 }
 
@@ -1587,21 +1598,24 @@
 	flex: 1 1 auto;
 }
 
+/* Canonical hero typography — mirrors Templates / Entries / etc.
+ * The `#neural-forms-results-app` prefix already gives this rule
+ * specificity (1,1,0), which beats WP core's `.wrap h1` (0,1,1). */
 #neural-forms-results-app .nf-analytics-hero__title {
-	margin: 0 0 6px;
-	font-size: 22px;
+	margin: 0 0 8px;
+	font-size: 26px;
 	font-weight: 700;
 	color: var( --nfr-primary );
 	line-height: 1.2;
-	letter-spacing: 0.01em;
+	letter-spacing: -0.01em;
 }
 
 #neural-forms-results-app .nf-analytics-hero__subtitle {
 	margin: 0;
-	color: #475569;
-	font-size: 13px;
+	color: #4b5563;
+	font-size: 14px;
 	line-height: 1.5;
-}
+	max-width: none;}
 
 #neural-forms-results-app .nf-analytics-hero__controls {
 	display: flex;

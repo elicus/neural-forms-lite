@@ -104,19 +104,23 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 	const primary   = PRIMARY_IDS.map( findTemplate ).filter( Boolean );
 	const secondary = SECONDARY_IDS.map( findTemplate ).filter( Boolean );
 
-	// Footer copy is split by reason for the lock so the line stays
-	// accurate as features ship:
-	//   * `available: 'pro-modal'` items (AI Generated Form) point
-	//     at the existing Pro entry point on the Forms list — they
-	//     are already shippable, just not as a static template.
-	//   * Everything else still locked is genuinely upcoming and
-	//     gets the literal "coming soon" sentence.
+	// Footer copy. Locked templates that ship a real Pro entry point
+	// elsewhere (`available: 'pro-modal'`) are filtered out of the
+	// "coming soon" sentence so we never claim the AI form generator
+	// is upcoming when it's actually live in the right Inspector. The
+	// inline assistant card in BuilderInspector::EmptyInspector is the
+	// canonical surface for that flow now — no need to repeat the
+	// pitch here.
 	const upcoming = TEMPLATE_CATALOG
 		.filter( ( t ) => t.locked && t.available !== 'pro-modal' )
 		.map( ( t ) => t.label );
-	const proAvailable = TEMPLATE_CATALOG
-		.filter( ( t ) => t.locked && t.available === 'pro-modal' )
-		.map( ( t ) => t.label );
+
+	// Read the Pro capability flag once so the empty-state hint can
+	// point users at the right place: Pro users at the AI assistant
+	// already mounted in the inspector, Lite users at the Pro upsell.
+	const root = ( typeof window !== 'undefined' && window.neuralFormsAdmin ) || {};
+	const caps = ( root.plugin && root.plugin.capabilities ) || {};
+	const canGenerate = !! caps.ai_form_generate;
 
 	const title = heading || (
 		mode === 'modal'
@@ -167,15 +171,11 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 					) }
 				</p>
 			) }
-			{ proAvailable.length > 0 && (
-				<p className="nf-starter__footer">
-					{ sprintf(
-						/* translators: %s: feature label, e.g. "AI Generated Form" */
-						__( '%s is available with Neural Forms Pro from the Forms list.', 'neural-forms-lite' ),
-						proAvailable.join( ', ' )
-					) }
-				</p>
-			) }
+			<p className="nf-starter__footer">
+				{ canGenerate
+					? __( 'Use the AI assistant in the Inspector to generate a form from a prompt.', 'neural-forms-lite' )
+					: __( 'AI form generation is available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</p>
 		</div>
 	);
 }

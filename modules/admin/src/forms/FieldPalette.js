@@ -136,52 +136,64 @@ function LockedProChip( { label } ) {
 	);
 }
 
-export default function FieldPalette( { onAddField } ) {
-	const basics   = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
-	const surveys  = FIELD_TYPES.filter( ( t ) => SURVEY_TYPES.includes( t.value ) );
-	const advanced = FIELD_TYPES.filter( ( t ) => ADVANCED_TYPES.includes( t.value ) );
-	const caps     = readCaps();
-	const matrixUnlocked   = caps[ MATRIX_CAP ]   === true;
-	const repeaterUnlocked = caps[ REPEATER_CAP ] === true;
+// Per-section components. Split out so BuilderSidebar can interleave
+// the Generate-with-AI card between Basic and Survey instead of
+// rendering all three sections in a single block at the top.
 
+export function BasicFieldsPalette( { onAddField } ) {
+	const basics = FIELD_TYPES.filter( ( t ) => BASIC_TYPES.includes( t.value ) );
 	return (
-		<>
-			<section className="nf-palette__section">
-				<h3 className="nf-palette__title">{ __( 'Basic Fields', 'neural-forms-lite' ) }</h3>
-				<p className="nf-palette__hint">
-					{ __( 'Click to add, drag to place.', 'neural-forms-lite' ) }
-				</p>
-				<div className="nf-palette__grid">
-					{ basics.map( ( t ) => (
+		<section className="nf-palette__section">
+			<h3 className="nf-palette__title">{ __( 'Basic Fields', 'neural-forms-lite' ) }</h3>
+			<p className="nf-palette__hint">
+				{ __( 'Click to add, drag to place.', 'neural-forms-lite' ) }
+			</p>
+			<div className="nf-palette__grid">
+				{ basics.map( ( t ) => (
+					<FieldChip
+						key={ t.value }
+						type={ t.value }
+						label={ t.label }
+						onAddField={ onAddField }
+					/>
+				) ) }
+			</div>
+		</section>
+	);
+}
+
+export function SurveyFieldsPalette( { onAddField } ) {
+	const surveys = FIELD_TYPES.filter( ( t ) => SURVEY_TYPES.includes( t.value ) );
+	const caps    = readCaps();
+	const matrixUnlocked = caps[ MATRIX_CAP ] === true;
+	return (
+		<section className="nf-palette__section">
+			<h3 className="nf-palette__title">{ __( 'Survey Fields', 'neural-forms-lite' ) }</h3>
+			<div className="nf-palette__grid">
+				{ surveys.map( ( t ) => {
+					if ( t.value === 'matrix' && ! matrixUnlocked ) {
+						return <LockedProChip key={ t.value } label={ t.label } />;
+					}
+					return (
 						<FieldChip
 							key={ t.value }
 							type={ t.value }
 							label={ t.label }
 							onAddField={ onAddField }
 						/>
-					) ) }
-				</div>
-			</section>
+					);
+				} ) }
+			</div>
+		</section>
+	);
+}
 
-			<section className="nf-palette__section">
-				<h3 className="nf-palette__title">{ __( 'Survey Fields', 'neural-forms-lite' ) }</h3>
-				<div className="nf-palette__grid">
-					{ surveys.map( ( t ) => {
-						if ( t.value === 'matrix' && ! matrixUnlocked ) {
-							return <LockedProChip key={ t.value } label={ t.label } />;
-						}
-						return (
-							<FieldChip
-								key={ t.value }
-								type={ t.value }
-								label={ t.label }
-								onAddField={ onAddField }
-							/>
-						);
-					} ) }
-				</div>
-			</section>
-
+export function AdvancedFieldsPalette( { onAddField } ) {
+	const advanced = FIELD_TYPES.filter( ( t ) => ADVANCED_TYPES.includes( t.value ) );
+	const caps     = readCaps();
+	const repeaterUnlocked = caps[ REPEATER_CAP ] === true;
+	return (
+		<>
 			<section className="nf-palette__section">
 				<h3 className="nf-palette__title">{ __( 'Advanced Fields', 'neural-forms-lite' ) }</h3>
 				<div className="nf-palette__grid">
@@ -220,6 +232,19 @@ export default function FieldPalette( { onAddField } ) {
 					</div>
 				</section>
 			) }
+		</>
+	);
+}
+
+// Legacy default export kept for any caller that still imports the
+// monolithic palette (search-and-replace can land in follow-up). Renders
+// all three sections in their original order — no AI card interleaved.
+export default function FieldPalette( { onAddField } ) {
+	return (
+		<>
+			<BasicFieldsPalette    onAddField={ onAddField } />
+			<SurveyFieldsPalette   onAddField={ onAddField } />
+			<AdvancedFieldsPalette onAddField={ onAddField } />
 		</>
 	);
 }

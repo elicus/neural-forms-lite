@@ -64,26 +64,39 @@
 }
 
 /* ── Page shell ──────────────────────────────────────────────── */
+/* Top + left padding mirror Analytics's #neural-forms-results-app
+ * so the Inbox lines up to the same top + left edge as every other
+ * screen — but the Inbox is intentionally full-width (no 1200px
+ * cap) because the two-pane sidebar + entries table needs the
+ * extra room at desktop widths. */
 .neural-forms-entries-layout {
 	box-sizing: border-box;
 	color: var( --f-gray-900 );
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
-	padding: 8px 4px 24px;
+	margin: 0;
+	padding: 28px 24px 48px;
 }
 
-/* Hero card — mirrors the shared admin page-hero look used on
- * Stats / Forms / Settings / Import / Analytics. White card with
- * brand-navy title, slate-gray subtitle, soft shadow. The list-only
- * controls (Export / sort / search) sit on the right via flex
- * space-between; on narrow widths they wrap below. */
+@media ( max-width: 782px ) {
+	.neural-forms-entries-layout {
+		padding: 20px 16px 40px;
+	}
+}
+
+/* Hero card — mirrors the canonical Templates hero look used by
+ * AdminPanel::page_hero_unifier_css() across every Neural Forms
+ * admin screen. Gradient panel, navy title at 26px, brand subtitle,
+ * subtle 1px shadow. The list-only controls (Export / sort /
+ * search) sit on the right via flex space-between; on narrow widths
+ * they wrap below. */
 .neural-forms-entries-header {
-	align-items: center;
-	background: #fff;
+	align-items: flex-end;
+	background: linear-gradient( 135deg, #f5f6fb 0%, #ffffff 100% );
 	border: 1px solid #e5e7eb;
-	border-radius: 18px;
-	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.06 );
+	border-radius: 14px;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
 	box-sizing: border-box;
 	display: flex;
 	flex-wrap: wrap;
@@ -94,25 +107,30 @@
 }
 
 .neural-forms-entries-header-copy {
-	flex: 1 1 auto;
+	flex: 1 1 360px;
 	min-width: 0;
 }
 
-.neural-forms-entries-title {
+/* `#neural-forms-app` prefix bumps the specificity to (1,1,0) so it
+ * beats wp-admin's `.wrap h1, .wrap h2 { font-weight: 600 }` rule
+ * (which sits at 0,1,1). Without the prefix the H1 stayed at the
+ * wp-core 600 weight even though entries.css said 700 — visually
+ * thinner than the canonical Templates title. */
+#neural-forms-app .neural-forms-entries-title {
 	color: var( --f-blue-600 );
-	font-size: 22px;
+	font-size: 26px;
 	font-weight: 700;
-	letter-spacing: 0.01em;
+	letter-spacing: -0.01em;
 	line-height: 1.2;
-	margin: 0 0 6px;
+	margin: 0 0 8px;
 }
 
-.neural-forms-entries-subtitle {
-	color: var( --f-gray-600 );
-	font-size: 13px;
+#neural-forms-app .neural-forms-entries-subtitle {
+	color: #4b5563;
+	font-size: 14px;
 	line-height: 1.5;
 	margin: 0;
-}
+	max-width: none;}
 
 @media ( max-width: 900px ) {
 	.neural-forms-entries-header {

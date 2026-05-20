@@ -57,13 +57,52 @@ function extractErrorMessage( err, fallback ) {
 	return fallback;
 }
 
+// Canonical Pro upgrade URL — matches Integrations / BuilderInspector
+// / EntryDetail / Settings / PagePerformance so a future change has one
+// place to update. Cloud responses may carry their own `upgrade_url`;
+// this is the static fallback used when no cloud-supplied URL exists.
+const UPGRADE_URL = 'https://neuralforms.ai/pricing';
+
+/**
+ * Polished assistant-card chrome used by every state of the panel.
+ * Renders the icon + title + subtitle + optional PRO badge header,
+ * then the description, then whatever state-specific body the caller
+ * passes as `children`. Soft mint→white gradient surface, mint-tinted
+ * border — see `.nf-inspector-ai-card` in builder.css.
+ */
+function AssistantCard( { locked = false, subtitle, description, children } ) {
+	const className = 'nf-inspector-ai-card'
+		+ ( locked ? ' nf-inspector-ai-card--locked' : '' );
+	return (
+		<section className={ className }>
+			<header className="nf-inspector-ai-card__head">
+				<span className="nf-inspector-ai-card__icon" aria-hidden="true">AI</span>
+				<div className="nf-inspector-ai-card__heading">
+					<h4 className="nf-inspector-ai-card__title">
+						{ __( 'Generate with AI', 'neural-forms-lite' ) }
+					</h4>
+					{ subtitle && (
+						<p className="nf-inspector-ai-card__sub">{ subtitle }</p>
+					) }
+				</div>
+				{ locked && (
+					<span className="nf-inspector-ai-card__badge">
+						{ __( 'PRO', 'neural-forms-lite' ) }
+					</span>
+				) }
+			</header>
+			{ description && (
+				<p className="nf-inspector-ai-card__desc">{ description }</p>
+			) }
+			{ children }
+		</section>
+	);
+}
+
 const PROMPT_EXAMPLES = [
-	'Contact form for a law firm',
-	'Dental appointment form with name, email, phone, and preferred date',
-	'Multi-step quote request form',
-	'Customer feedback survey with rating',
-	'Poll about preferred service',
-	'Quiz with 5 questions about WordPress basics',
+	'Contact form for a service business with name, email, phone, service type, and message.',
+	'Appointment booking form with preferred date, time, contact details, and notes.',
+	'Customer feedback form with rating, comments, and permission to contact.',
 ];
 
 function readBootData() {
@@ -219,6 +258,12 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	const [ lastUsage, setLastUsage ] = useState( null );
 	const [ warnings,  setWarnings  ] = useState( [] );
 	const [ generated, setGenerated ] = useState( null );
+
+	// "Need ideas?" inline reveal — replaces the previous <details>
+	// element so the example list looks like a real interactive block
+	// in the inspector (and so we can style the toggle as a ghost link
+	// instead of relying on the native disclosure widget).
+	const [ showIdeas, setShowIdeas ] = useState( false );
 
 	// Map a server error code to an actionable CTA so the user has one
 	// click to fix it. Mirrors the brief's spec — no OpenAI mention,
@@ -471,187 +516,138 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 		setPrompt( '' );
 	};
 
-	// State 1: Pro not installed → upsell placeholder.
+	// State 1: Pro not installed → compact locked card. Header carries
+	// the PRO badge inline (no longer a floating right-pinned chip).
+	// Single CTA links to the canonical Pro pricing URL.
 	if ( ! boot.canGenerate ) {
 		return (
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">
-					{ __( 'Generate with AI', 'neural-forms-lite' ) }
-					<span className="nf-palette__title-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
-				</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( 'Describe the form you want and we will draft the fields.', 'neural-forms-lite' ) }
-				</p>
-				<textarea
-					className="nf-ai-prompt__input"
-					rows={ 3 }
-					placeholder={ __( 'e.g. Create a dental appointment form with name, email, phone, and preferred date.', 'neural-forms-lite' ) }
-					value={ prompt }
-					onChange={ ( e ) => setPrompt( e.target.value ) }
-				/>
-				<button
-					type="button"
-					className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-					disabled
-					title={ __( 'Available with Neural Forms Pro', 'neural-forms-lite' ) }
+			<AssistantCard
+				locked
+				subtitle={ __( 'Neural Forms Pro', 'neural-forms-lite' ) }
+				description={ __( 'Create complete forms from a short prompt using Neural Forms Pro.', 'neural-forms-lite' ) }
+			>
+				<a
+					className="nf-inspector-ai-card__cta neural-forms-btn neural-forms-btn--primary"
+					href={ UPGRADE_URL }
+					target="_blank"
+					rel="noopener noreferrer"
 				>
-					{ __( 'Generate form', 'neural-forms-lite' ) }
-				</button>
-			</section>
+					{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
+				</a>
+				<p className="nf-inspector-ai-card__note">
+					{ __( 'Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+				</p>
+			</AssistantCard>
 		);
 	}
 
-	// State 2: Pro installed, cloud / license not connected.
+	// Pro-side setup notices. Each one renders the same assistant card
+	// chrome with a state-specific notice + Open Settings (or pricing)
+	// CTA — no silent failures, no dead disabled buttons.
+	const setupCardFor = ( notice, ctaLabel, ctaHref ) => (
+		<AssistantCard
+			subtitle={ __( 'Powered by Neural Forms AI', 'neural-forms-lite' ) }
+			description={ notice }
+		>
+			<a
+				className="nf-inspector-ai-card__cta neural-forms-btn neural-forms-btn--primary"
+				href={ ctaHref || '#' }
+			>
+				{ ctaLabel }
+			</a>
+		</AssistantCard>
+	);
+
 	if ( ! boot.cloudConnected ) {
-		return (
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">{ __( 'Generate with AI', 'neural-forms-lite' ) }</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( 'Connect Neural Forms Pro to use AI generation.', 'neural-forms-lite' ) }
-				</p>
-				{ boot.settingsUrl ? (
-					<a
-						className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-						href={ boot.settingsUrl }
-					>
-						{ __( 'Connect Pro', 'neural-forms-lite' ) }
-					</a>
-				) : (
-					<button
-						type="button"
-						className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-						disabled
-					>
-						{ __( 'Connect Pro', 'neural-forms-lite' ) }
-					</button>
-				) }
-				<p className="nf-ai-prompt__hint nf-ai-prompt__hint--muted">
-					{ __( 'AI generation is powered by Neural Forms Cloud.', 'neural-forms-lite' ) }
-				</p>
-			</section>
+		return setupCardFor(
+			__( 'AI generation requires your Neural Forms AI connection. Configure it in Settings.', 'neural-forms-lite' ),
+			__( 'Open Settings', 'neural-forms-lite' ),
+			boot.settingsUrl
 		);
 	}
-
-	// State 2b: Cloud AI master toggle is OFF in Settings.
 	if ( ! boot.aiEnabled ) {
-		return (
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">{ __( 'Generate with AI', 'neural-forms-lite' ) }</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( 'Enable Cloud AI in Neural Forms settings to use AI generation.', 'neural-forms-lite' ) }
-				</p>
-				<a
-					className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-					href={ boot.settingsUrl || '#' }
-				>
-					{ __( 'Enable AI in settings', 'neural-forms-lite' ) }
-				</a>
-				<p className="nf-ai-prompt__hint nf-ai-prompt__hint--muted">
-					{ __( 'AI generation is powered by Neural Forms Cloud.', 'neural-forms-lite' ) }
-				</p>
-			</section>
+		return setupCardFor(
+			__( 'Enable Cloud AI in Neural Forms settings to use AI generation.', 'neural-forms-lite' ),
+			__( 'Open Settings', 'neural-forms-lite' ),
+			boot.settingsUrl
 		);
 	}
-
-	// State 3a: License inactive — distinct from plan-not-allowed.
 	if ( ! boot.licenseActive ) {
-		return (
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">{ __( 'Generate with AI', 'neural-forms-lite' ) }</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( 'Activate your Pro license to enable AI generation.', 'neural-forms-lite' ) }
-				</p>
-				<a
-					className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-					href={ boot.settingsUrl || '#' }
-				>
-					{ __( 'Activate license', 'neural-forms-lite' ) }
-				</a>
-				<p className="nf-ai-prompt__hint nf-ai-prompt__hint--muted">
-					{ __( 'AI generation is powered by Neural Forms Cloud.', 'neural-forms-lite' ) }
-				</p>
-			</section>
+		return setupCardFor(
+			__( 'Activate your Pro license to enable AI generation.', 'neural-forms-lite' ),
+			__( 'Open Settings', 'neural-forms-lite' ),
+			boot.settingsUrl
 		);
 	}
-
-	// State 3b: Cloud connected + license active, but the plan tier
-	// doesn't include AI form generation (Lite/free/basic).
-	//
-	// Eligibility is the server's call — we trust `boot.eligible`
-	// over any local plan-string comparison so a future plan rename
-	// (e.g. cloud starts emitting "pro-business" or a new variation
-	// id) can't desync this panel from the entitlement check on the
-	// REST endpoint. Empty `plan` here means PlanNormalizer didn't
-	// recognise the cloud value — also surfaces as not-eligible.
+	// Eligibility check — server-truth flag, see boot.eligible note above.
 	if ( ! boot.eligible && boot.creditsAvailable ) {
-		return (
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">{ __( 'Generate with AI', 'neural-forms-lite' ) }</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( 'Generate with AI requires an active Pro, Yearly, or Enterprise plan.', 'neural-forms-lite' ) }
-				</p>
-				<a
-					className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-					href={ boot.settingsUrl || '#' }
-				>
-					{ __( 'Upgrade plan', 'neural-forms-lite' ) }
-				</a>
-				<p className="nf-ai-prompt__hint nf-ai-prompt__hint--muted">
-					{ __( 'AI generation is powered by Neural Forms Cloud.', 'neural-forms-lite' ) }
-				</p>
-			</section>
+		return setupCardFor(
+			__( 'Generate with AI requires an active Pro, Yearly, or Enterprise plan.', 'neural-forms-lite' ),
+			__( 'Upgrade plan', 'neural-forms-lite' ),
+			UPGRADE_URL
 		);
 	}
-
-	// State 4: Plan is eligible but no credits left.
 	if ( ! boot.creditsAvailable ) {
-		return (
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">{ __( 'Generate with AI', 'neural-forms-lite' ) }</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( "You're out of AI credits.", 'neural-forms-lite' ) }
-				</p>
-				<a
-					className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
-					href={ boot.settingsUrl || '#' }
-				>
-					{ __( 'Manage plan', 'neural-forms-lite' ) }
-				</a>
-				<p className="nf-ai-prompt__hint nf-ai-prompt__hint--muted">
-					{ __( 'AI generation is powered by Neural Forms Cloud.', 'neural-forms-lite' ) }
-				</p>
-			</section>
+		return setupCardFor(
+			__( "You're out of AI credits.", 'neural-forms-lite' ),
+			__( 'Manage plan', 'neural-forms-lite' ),
+			boot.settingsUrl
 		);
 	}
 
-	// State 5: Eligible + credits available — full working flow.
+	// State 5: Pro + cloud connected + license active + plan eligible +
+	// credits available — full working assistant card. Textarea is inline
+	// (no card→expanded indirection); the existing handleGenerate +
+	// PreviewModal flow is unchanged.
 	return (
 		<>
-			<section className="nf-palette__section nf-ai-prompt">
-				<h3 className="nf-palette__title">{ __( 'Generate with AI', 'neural-forms-lite' ) }</h3>
-				<p className="nf-ai-prompt__hint">
-					{ __( 'Describe the form you want and we will draft the fields.', 'neural-forms-lite' ) }
-				</p>
-				<p className="nf-ai-prompt__hint nf-ai-prompt__hint--muted">
-					{ __( 'AI generation is powered by Neural Forms Cloud.', 'neural-forms-lite' ) }
-				</p>
+			<AssistantCard
+				subtitle={ __( 'Powered by Neural Forms AI', 'neural-forms-lite' ) }
+				description={ __( 'Describe the form you need and Neural Forms AI will draft fields, labels, and layout for you.', 'neural-forms-lite' ) }
+			>
 				<textarea
-					className="nf-ai-prompt__input"
-					rows={ 3 }
-					placeholder={ __( 'e.g. Create a dental appointment form with name, email, phone, preferred date, and message.', 'neural-forms-lite' ) }
+					className="nf-inspector-ai-card__input"
+					rows={ 4 }
+					placeholder={ __( 'Example: Create a dental appointment form with name, email, phone, preferred date, and message.', 'neural-forms-lite' ) }
 					value={ prompt }
 					maxLength={ boot.maxPromptChars }
 					onChange={ ( e ) => setPrompt( e.target.value ) }
 					disabled={ loading }
 				/>
-				<div className="nf-ai-prompt__meta">
-					<span className="nf-ai-prompt__count">
+				<div className="nf-inspector-ai-card__meta">
+					<button
+						type="button"
+						className="nf-inspector-ai-card__ideas-toggle"
+						onClick={ () => setShowIdeas( ( v ) => ! v ) }
+						aria-expanded={ showIdeas }
+					>
+						{ __( 'Need ideas?', 'neural-forms-lite' ) }
+					</button>
+					<span className="nf-inspector-ai-card__count">
 						{ prompt.length + ' / ' + boot.maxPromptChars }
 					</span>
 				</div>
+				{ showIdeas && (
+					<ul className="nf-inspector-ai-card__ideas">
+						{ PROMPT_EXAMPLES.map( ( ex, i ) => (
+							<li key={ i }>
+								<button
+									type="button"
+									className="nf-inspector-ai-card__idea-btn"
+									onClick={ () => {
+										setPrompt( ex );
+										setShowIdeas( false );
+									} }
+								>
+									{ ex }
+								</button>
+							</li>
+						) ) }
+					</ul>
+				) }
 				<button
 					type="button"
-					className="neural-forms-btn neural-forms-btn--primary nf-ai-prompt__cta"
+					className="nf-inspector-ai-card__cta neural-forms-btn neural-forms-btn--primary"
 					onMouseDown={ () => nfDebug( 'Generate button mouse down' ) }
 					onClick={ handleGenerate }
 					disabled={ ! promptOk || loading }
@@ -660,16 +656,16 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 				>
 					{ loading
 						? __( 'Generating…', 'neural-forms-lite' )
-						: __( 'Generate form', 'neural-forms-lite' ) }
+						: __( 'Generate Form', 'neural-forms-lite' ) }
 				</button>
 				{ error && (
-					<p className="nf-ai-prompt__error" role="alert">
+					<p className="nf-inspector-ai-card__error" role="alert">
 						{ error }
 						{ errorCta && errorCta.href && (
 							<>
 								{ ' ' }
 								<a
-									className="nf-ai-prompt__error-cta"
+									className="nf-inspector-ai-card__error-cta"
 									href={ errorCta.href }
 									target={ errorCta.href.startsWith( 'http' ) ? '_blank' : undefined }
 									rel={ errorCta.href.startsWith( 'http' ) ? 'noopener noreferrer' : undefined }
@@ -688,28 +684,12 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 				{ ! loading && lastUsage && (
 					<AiUsageNotice
 						usage={ lastUsage }
-						className="nf-ai-prompt__usage"
+						className="nf-inspector-ai-card__usage"
 						style={ { marginTop: 8 } }
 					/>
 				) }
-				{ ! prompt && (
-					<details className="nf-ai-prompt__examples">
-						<summary>{ __( 'Need ideas?', 'neural-forms-lite' ) }</summary>
-						<ul>
-							{ PROMPT_EXAMPLES.map( ( ex, i ) => (
-								<li key={ i }>
-									<button
-										type="button"
-										className="nf-ai-prompt__example-btn"
-										onClick={ () => setPrompt( ex ) }
-									>{ ex }</button>
-								</li>
-							) ) }
-						</ul>
-					</details>
-				) }
 				{ warnings.length > 0 && (
-					<details className="nf-ai-prompt__warnings">
+					<details className="nf-inspector-ai-card__warnings">
 						<summary>
 							{ sprintf(
 								/* translators: %d: warning count */
@@ -720,7 +700,7 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 						<ul>{ warnings.map( ( w, i ) => <li key={ i }>{ w }</li> ) }</ul>
 					</details>
 				) }
-			</section>
+			</AssistantCard>
 
 			<PreviewModal
 				generated={ generated }

@@ -21,6 +21,7 @@ import { useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import { FIELD_TYPES } from './FieldTypes';
 import PollResultsPanel from './PollResultsPanel';
+import AiPromptPanel from './AiPromptPanel';
 import {
 	isRow,
 	isStep,
@@ -1449,17 +1450,13 @@ function RowInspector( { hit, nodes, onChange } ) {
 	);
 }
 
-function EmptyInspector() {
-	// Reads the Pro-capability flag Lite localizes at boot. When Pro is
-	// active (capability true), the left sidebar's AiPromptPanel owns
-	// every state of AI generation — render-as-textarea / connect-cloud
-	// / activate-license / out-of-credits — so a duplicate card here
-	// would either repeat that state or, worse, ship the obsolete
-	// "Soon you will be able…" copy that predates the feature shipping.
-	const root = ( typeof window !== 'undefined' && window.neuralFormsAdmin ) || {};
-	const caps = ( root.plugin && root.plugin.capabilities ) || {};
-	const proInstalled = !! caps.ai_form_generate;
-
+function EmptyInspector( { currentFieldCount, onApplyAiForm } ) {
+	// Render order: title → helper text → AI Form Generator card → Tips.
+	// The AI card was moved here from the left sidebar so the field
+	// palette stays focused on draggable fields/layout blocks. The card
+	// is the same AiPromptPanel that used to live in the sidebar — its
+	// internal state machine (Lite locked / Pro not configured / Pro
+	// ready) renders the right CTA without duplicating any logic.
 	return (
 		<>
 			<h3 className="nf-inspector__title">{ __( 'Inspector', 'neural-forms-lite' ) }</h3>
@@ -1467,38 +1464,19 @@ function EmptyInspector() {
 				{ __( 'Select a field or layout row to edit its settings.', 'neural-forms-lite' ) }
 			</p>
 
+			<AiPromptPanel
+				currentFieldCount={ currentFieldCount }
+				onApplyForm={ onApplyAiForm }
+			/>
+
 			<div className="nf-inspector__tips">
 				<h4 className="nf-inspector__tips-title">{ __( 'Tips', 'neural-forms-lite' ) }</h4>
 				<ul className="nf-inspector__tips-list">
 					<li>{ __( 'Click a field to edit label, placeholder, default value, and help text.', 'neural-forms-lite' ) }</li>
 					<li>{ __( 'Click a row to change its column count or gap.', 'neural-forms-lite' ) }</li>
-					<li>{ __( 'Drag the handle on the left of any field or row to reorder.', 'neural-forms-lite' ) }</li>
+					<li>{ __( 'Drag handles to reorder fields or rows.', 'neural-forms-lite' ) }</li>
 				</ul>
 			</div>
-
-			{ /* Pro-only upsell. When Pro is active, the left sidebar
-			     AiPromptPanel handles every connect/license/credit/
-			     working state — rendering anything here would either
-			     duplicate that or contradict it. */ }
-			{ ! proInstalled && (
-				<div className="nf-inspector__ai-card">
-					<h4 className="nf-inspector__ai-title">
-						{ __( 'AI form generation', 'neural-forms-lite' ) }
-						<span className="nf-inspector__ai-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
-					</h4>
-					<p className="nf-inspector__ai-hint">
-						{ __( 'Generate complete forms from a short prompt with Neural Forms Pro.', 'neural-forms-lite' ) }
-					</p>
-					<a
-						className="neural-forms-btn neural-forms-btn--primary nf-inspector__ai-cta"
-						href="https://neuralforms.ai/pricing"
-						target="_blank"
-						rel="noopener noreferrer"
-					>
-						{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
-					</a>
-				</div>
-			) }
 		</>
 	);
 }
@@ -1683,12 +1661,19 @@ export default function BuilderInspector( {
 	formSchemaSettings,
 	onChangeFormSchemaSettings,
 	formId,
+	currentFieldCount,
+	onApplyAiForm,
 } ) {
 	const hit = findNode( nodes, selectedId );
 
 	return (
 		<aside className="nf-inspector" aria-label={ __( 'Selected element settings', 'neural-forms-lite' ) }>
-			{ ! hit && ! selectedColumnId && ! selectedStepId && <EmptyInspector /> }
+			{ ! hit && ! selectedColumnId && ! selectedStepId && (
+				<EmptyInspector
+					currentFieldCount={ currentFieldCount }
+					onApplyAiForm={ onApplyAiForm }
+				/>
+			) }
 			{ ! hit && selectedColumnId && <ColumnInspector /> }
 			{ ! hit && ! selectedColumnId && selectedStepId && (
 				<StepInspector

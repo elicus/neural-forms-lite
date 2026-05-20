@@ -65,6 +65,12 @@ final class NeuralForms {
 
     private function boot_rest(): void {
         \NeuralForms\Rest\RestAPI::boot();
+
+        // Register cron handlers that need to run outside rest_api_init —
+        // e.g. background plan-cache refresh, which fires from WP-Cron on
+        // a non-REST request and therefore cannot rely on register_routes()
+        // being called first.
+        \NeuralForms\Rest\Endpoints\SettingsEndpoint::register_hooks();
     }
 
     private function boot_admin(): void {

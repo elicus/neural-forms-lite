@@ -58,8 +58,20 @@
 }
 
 /* ── Page container ─────────────────────────────────────────── */
+/* Canonical Neural Forms admin spacing — mirrors Analytics's
+ * #neural-forms-results-app so every screen lines up to the same
+ * top + left edge inside .wrap. */
 .neural-forms-integrations {
-	max-width: 960px;
+	max-width: 1200px;
+	margin: 0;
+	padding: 28px 24px 48px;
+	box-sizing: border-box;
+}
+
+@media ( max-width: 782px ) {
+	.neural-forms-integrations {
+		padding: 20px 16px 40px;
+	}
 }
 
 /* ── Header ─────────────────────────────────────────────────── */
@@ -67,18 +79,22 @@
 	margin-bottom: 28px;
 }
 
-.neural-forms-integrations__page-title {
-	color: var( --f-gray-900 );
-	font-size: 22px;
-	font-weight: 600;
-	line-height: 1.3;
-	margin: 0 0 6px;
+/* Canonical hero typography — `#neural-forms-app` prefix bumps
+ * specificity to (1,1,0) to beat WP core's `.wrap h1` (0,1,1). */
+#neural-forms-app .neural-forms-integrations__page-title {
+	color: var( --f-blue-600 );
+	font-size: 26px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	margin: 0 0 8px;
 }
 
-.neural-forms-integrations__page-desc {
-	color: var( --f-gray-500 );
-	font-size: 13px;
-	margin: 0;
+#neural-forms-app .neural-forms-integrations__page-desc {
+	color: #4b5563;
+	font-size: 14px;
+	line-height: 1.5;
+	max-width: none;	margin: 0;
 }
 
 /* ── Provider visual mark (one-letter monogram) ─────────────── */
@@ -296,6 +312,45 @@
 .neural-forms-integrations__tab--active .neural-forms-integrations__provider-mark {
 	background: var( --f-blue-600 );
 	color: #fff;
+}
+
+/*
+ * Per-tab status dot. Placed at-a-glance to the LEFT of the provider
+ * icon so users can scan the tab row and see configured / not /
+ * unknown at a glance:
+ *   green (#15db95) — provider is configured / connected
+ *   red   (#ef4444) — provider has no saved credentials yet
+ *   gray  (#9ca3af) — status hasn't loaded yet (initial paint)
+ * The white outer ring (box-shadow) makes the dot legible on the
+ * active-tab navy underline AND on the gray inactive background.
+ */
+.neural-forms-integrations__tab .nf-status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	display: inline-block;
+	flex: 0 0 auto;
+	box-shadow: 0 0 0 2px #fff;
+	margin-right: 4px;
+}
+
+.neural-forms-integrations__tab .nf-status-dot--connected {
+	background: #15db95;
+}
+
+.neural-forms-integrations__tab .nf-status-dot--not-configured {
+	background: #ef4444;
+}
+
+.neural-forms-integrations__tab .nf-status-dot--unknown {
+	background: #9ca3af;
+}
+
+/* Subtle outer halo on the green dot inside the active tab — adds a
+   gentle "this provider IS the one you're looking at AND it's
+   connected" emphasis without becoming noisy. */
+.neural-forms-integrations__tab--active .nf-status-dot--connected {
+	box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba( 21, 219, 149, 0.22 );
 }
 
 /* ── Unlocked: tab panel + provider card ────────────────────── */
@@ -688,7 +743,146 @@
 
 .neural-forms-integrations__zap-form-actions {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 8px;
+	/* Action row sits below the form grid; the larger top margin
+	   separates it visually from the last field row even when the
+	   grid is sparse (e.g. HubSpot has just two fields). */
+	margin-top: 8px;
+	padding-top: 12px;
+	border-top: 1px solid var( --f-gray-100 );
+}
+
+/*
+ * Two-column credential form grid.
+ *
+ * Wraps a row of .neural-forms-integrations__zap-field elements.
+ * Long / sensitive fields (Access Token, API Key, Client Secret,
+ * Redirect URI, Webhook URL) carry the `.nf-field-full` modifier so
+ * they span both columns and never get squashed at desktop widths.
+ *
+ * At wp-admin's mobile breakpoint (782px) the grid collapses to one
+ * column and `.nf-field-full` becomes a no-op so layout flows
+ * naturally without re-ordering fields.
+ */
+.nf-integration-form-grid {
+	display: grid;
+	grid-template-columns: repeat( 2, minmax( 0, 1fr ) );
+	gap: 18px 24px;
+}
+
+.nf-integration-form-grid .nf-field-full {
+	grid-column: 1 / -1;
+}
+
+@media ( max-width: 782px ) {
+	.nf-integration-form-grid {
+		grid-template-columns: 1fr;
+	}
+	.nf-integration-form-grid .nf-field-full {
+		grid-column: auto;
+	}
+}
+
+/*
+ * Connected summary card — used by every provider that surfaces
+ * a saved-credentials read-only view. Light navy-tinted background,
+ * uppercase labels with letter-spacing, larger / darker values.
+ * Sensitive values stay masked at the panel level (we never paint
+ * a raw token here — the masking is server-side).
+ */
+.nf-connection-summary {
+	background: #f7f8fb;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-xl );
+	padding: 18px 20px;
+}
+
+.nf-connection-summary__title {
+	color: var( --f-blue-600 );
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	margin: 0 0 12px;
+}
+
+.nf-connection-summary__grid {
+	display: grid;
+	grid-template-columns: repeat( 2, minmax( 0, 1fr ) );
+	gap: 12px 24px;
+	margin: 0;
+}
+
+@media ( max-width: 600px ) {
+	.nf-connection-summary__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.nf-connection-summary__grid dt {
+	color: var( --f-gray-500 );
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	margin: 0 0 2px;
+}
+
+.nf-connection-summary__grid dd {
+	color: var( --f-gray-900 );
+	font-size: 13px;
+	font-weight: 500;
+	margin: 0;
+	word-break: break-word;
+}
+
+/*
+ * Polished Zapier empty state. Centered card with a big Z mark,
+ * heading, helper text, and a single primary CTA. Used in place of
+ * the old "No connections yet" line.
+ */
+.nf-zapier-empty {
+	background: #fff;
+	border: 1px dashed var( --f-gray-300 );
+	border-radius: var( --f-radius-xl );
+	padding: 40px 24px;
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+}
+
+.nf-zapier-empty__mark {
+	width: 56px;
+	height: 56px;
+	border-radius: 999px;
+	background: var( --f-blue-50 );
+	color: var( --f-blue-600 );
+	font-size: 26px;
+	font-weight: 700;
+	line-height: 56px;
+	letter-spacing: -0.02em;
+}
+
+.nf-zapier-empty__title {
+	color: var( --f-gray-900 );
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0;
+}
+
+.nf-zapier-empty__desc {
+	color: var( --f-gray-500 );
+	font-size: 13px;
+	margin: 0;
+	max-width: 44ch;
+	line-height: 1.5;
+}
+
+.nf-zapier-empty__cta {
+	margin-top: 4px;
 }
 
 /* ── Google Forms panel ─────────────────────────────────────── */
@@ -706,16 +900,19 @@
 }
 
 .neural-forms-integrations__gf-connected {
+	/* Same neutral light card as the HubSpot / WhatsApp / Mailchimp
+	   summary so all four connected-state cards look like one
+	   family. */
 	align-items: center;
-	background: var( --f-blue-50 );
-	border: 1px solid var( --f-blue-100 );
-	border-radius: var( --f-radius-md );
+	background: #f7f8fb;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-xl );
 	display: flex;
 	flex-wrap: wrap;
 	gap: 12px;
 	justify-content: space-between;
 	margin-bottom: 16px;
-	padding: 12px 14px;
+	padding: 16px 20px;
 }
 
 .neural-forms-integrations__gf-modal {
@@ -1064,14 +1261,19 @@
 }
 
 .neural-forms-integrations__hs-status-grid {
-	background: var( --f-blue-50 );
-	border: 1px solid var( --f-blue-100 );
-	border-radius: var( --f-radius-md );
+	/* Neutral light-navy card per the spec. Replaces the older
+	   blue-tinted card so the summary doesn't fight with surrounding
+	   admin chrome. The class name stays (HubSpot, WhatsApp, and
+	   Mailchimp all reuse it via shared JSX) — only the look
+	   changes. */
+	background: #f7f8fb;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-xl );
 	display: grid;
 	gap: 14px 24px;
-	grid-template-columns: repeat( auto-fit, minmax( 200px, 1fr ) );
+	grid-template-columns: repeat( auto-fit, minmax( 220px, 1fr ) );
 	margin: 0;
-	padding: 14px 16px;
+	padding: 18px 20px;
 }
 
 .neural-forms-integrations__hs-status-grid > div {
@@ -1082,9 +1284,9 @@
 
 .neural-forms-integrations__hs-status-grid dt {
 	color: var( --f-gray-500 );
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.04em;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
 	margin: 0;
 	text-transform: uppercase;
 }
@@ -1092,8 +1294,9 @@
 .neural-forms-integrations__hs-status-grid dd {
 	color: var( --f-gray-900 );
 	font-size: 13px;
+	font-weight: 500;
 	margin: 0;
-	word-break: break-all;
+	word-break: break-word;
 }
 
 .neural-forms-integrations__hs-status-grid dd code {

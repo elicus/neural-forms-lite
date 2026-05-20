@@ -693,6 +693,35 @@ export default function Builder( { formId, isNew } ) {
 							onAddRow={ addRow }
 							onAddStep={ addStep }
 							onAddSection={ addSection }
+						/>
+						<main className="nf-builder-main">
+							<BuilderCanvas
+								nodes={ fields }
+								onChange={ setFields }
+								selectedId={ selectedId }
+								onSelect={ selectNode }
+								selectedColumnId={ selectedColumnId }
+								onSelectColumn={ selectColumn }
+								selectedStepId={ selectedStepId }
+								onSelectStep={ selectStep }
+								onAddBlankStarter={ addBlankStarter }
+								onAddMultistepStarter={ addMultistepStarter }
+								onApplyTemplate={ applyTemplate }
+								templateId={ currentTemplateId }
+								formId={ liveFormId }
+								onRequestChangeTemplate={ () => setTemplateModalOpen( true ) }
+								onRequestClear={ clearForm }
+							/>
+						</main>
+						<BuilderInspector
+							nodes={ fields }
+							selectedId={ selectedId }
+							selectedColumnId={ selectedColumnId }
+							selectedStepId={ selectedStepId }
+							onChange={ setFields }
+							formSchemaSettings={ formSchemaSettings }
+							onChangeFormSchemaSettings={ setFormSchemaSettings }
+							formId={ liveFormId }
 							currentFieldCount={ fields.length }
 							onApplyAiForm={ ( generated, mode ) => {
 								// AI form generator hand-off. mode = 'append' | 'replace'.
@@ -725,36 +754,7 @@ export default function Builder( { formId, isNew } ) {
 										settings: ( generated.form_schema && generated.form_schema.settings ) || ( form.form_schema && form.form_schema.settings ) || {},
 									},
 								} );
-													} }
-						/>
-						<main className="nf-builder-main">
-							<BuilderCanvas
-								nodes={ fields }
-								onChange={ setFields }
-								selectedId={ selectedId }
-								onSelect={ selectNode }
-								selectedColumnId={ selectedColumnId }
-								onSelectColumn={ selectColumn }
-								selectedStepId={ selectedStepId }
-								onSelectStep={ selectStep }
-								onAddBlankStarter={ addBlankStarter }
-								onAddMultistepStarter={ addMultistepStarter }
-								onApplyTemplate={ applyTemplate }
-								templateId={ currentTemplateId }
-								formId={ liveFormId }
-								onRequestChangeTemplate={ () => setTemplateModalOpen( true ) }
-								onRequestClear={ clearForm }
-							/>
-						</main>
-						<BuilderInspector
-							nodes={ fields }
-							selectedId={ selectedId }
-							selectedColumnId={ selectedColumnId }
-							selectedStepId={ selectedStepId }
-							onChange={ setFields }
-							formSchemaSettings={ formSchemaSettings }
-							onChangeFormSchemaSettings={ setFormSchemaSettings }
-							formId={ liveFormId }
+							} }
 						/>
 					</div>
 				</BuilderDndProvider>

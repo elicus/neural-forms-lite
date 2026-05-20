@@ -71,6 +71,22 @@
 	border-color: var( --nf-primary-hover );
 }
 
+/* Mint-accented primary button — used by the Generate-with-AI card's
+ * CTA in the Pro state. Same shape as --primary so disabled/hover
+ * transitions read as the same family; brand accent #15db95 swaps the
+ * fill so the AI entry point pops against the navy palette. */
+#neural-forms-app .neural-forms-btn--accent {
+	background: var( --nf-accent );
+	border-color: var( --nf-accent );
+	color: #052b1f;
+}
+
+#neural-forms-app .neural-forms-btn--accent:hover {
+	background: #10c483;
+	border-color: #10c483;
+	color: #052b1f;
+}
+
 /* Results header link: an <a> styled as a button. WP admin's default
  * link styles (blue underline) would otherwise leak through and clash
  * with the surrounding button cluster. */
@@ -1207,6 +1223,16 @@
 	font-weight: 600;
 }
 
+/* Mint variant — used by the AI badge on the Generate-with-AI card
+ * when Pro is unlocked. Solid #15db95 fill + white text so the badge
+ * reads as a brand mark instead of a muted pill (the navy --primary-
+ * soft variant is too quiet for the active state). */
+#neural-forms-app .nf-palette__title-badge--accent {
+	background: var( --nf-accent );
+	color: #ffffff;
+	letter-spacing: 0.04em;
+}
+
 #neural-forms-app .nf-palette__grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
@@ -1267,92 +1293,6 @@
 	font-size: 9px;
 	font-weight: 600;
 	text-transform: uppercase;
-}
-
-/* AI prompt placeholder */
-
-#neural-forms-app .nf-ai-prompt__hint {
-	margin: 0 0 8px;
-	color: #6b7280;
-	font-size: 12px;
-}
-
-#neural-forms-app .nf-ai-prompt__input {
-	width: 100%;
-	padding: 8px 10px;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
-	font-size: 12px;
-	resize: vertical;
-	box-sizing: border-box;
-	background: #fff;
-}
-
-#neural-forms-app .nf-ai-prompt__cta {
-	width: 100%;
-	margin-top: 8px;
-	justify-content: center;
-}
-
-#neural-forms-app .nf-ai-prompt__hint--muted {
-	margin-top: 8px;
-	font-size: 11px;
-	font-style: italic;
-	color: #9ca3af;
-}
-
-#neural-forms-app .nf-ai-prompt__meta {
-	display: flex;
-	justify-content: flex-end;
-	margin-top: 4px;
-	font-size: 11px;
-	color: #6b7280;
-}
-
-#neural-forms-app .nf-ai-prompt__error {
-	margin: 8px 0 0;
-	padding: 8px 10px;
-	font-size: 12px;
-	color: #b91c1c;
-	background: #fef2f2;
-	border: 1px solid #fecaca;
-	border-radius: 6px;
-}
-
-#neural-forms-app .nf-ai-prompt__examples,
-#neural-forms-app .nf-ai-prompt__warnings {
-	margin-top: 10px;
-	font-size: 12px;
-	color: #6b7280;
-}
-
-#neural-forms-app .nf-ai-prompt__examples summary,
-#neural-forms-app .nf-ai-prompt__warnings summary {
-	cursor: pointer;
-	font-weight: 600;
-	color: #4b5563;
-}
-
-#neural-forms-app .nf-ai-prompt__examples ul,
-#neural-forms-app .nf-ai-prompt__warnings ul {
-	margin: 6px 0 0;
-	padding: 0;
-	list-style: none;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-#neural-forms-app .nf-ai-prompt__example-btn {
-	background: transparent;
-	border: 0;
-	padding: 4px 0;
-	color: #080f5b;
-	cursor: pointer;
-	font-size: 12px;
-	text-align: left;
-	text-decoration: underline;
-	text-underline-offset: 2px;
 }
 
 /* AI preview modal — dashboard-style review of generated schema */
@@ -1609,16 +1549,18 @@
 
 #neural-forms-app .nf-inspector__tips {
 	margin-top: 16px;
-	padding: 12px;
-	background: #f9fafb;
-	border-radius: 8px;
+	padding: 12px 14px;
+	background: #f8fafc;
+	border-radius: 10px;
 }
 
 #neural-forms-app .nf-inspector__tips-title {
 	margin: 0 0 6px;
-	font-size: 12px;
+	font-size: 11px;
 	font-weight: 600;
-	color: #374151;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #6b7280;
 }
 
 #neural-forms-app .nf-inspector__tips-list {
@@ -1626,59 +1568,249 @@
 	padding-left: 16px;
 	color: #4b5563;
 	font-size: 12px;
+	line-height: 1.55;
 }
 
 #neural-forms-app .nf-inspector__tips-list li {
 	margin-bottom: 4px;
 }
 
-#neural-forms-app .nf-inspector__ai-card {
-	margin-top: 16px;
-	padding: 14px;
-	background: linear-gradient( 135deg, var( --nf-accent-soft ) 0%, var( --nf-primary-soft ) 100% );
-	border: 1px solid var( --nf-primary-ring );
-	border-radius: 10px;
+#neural-forms-app .nf-inspector__tips-list li:last-child {
+	margin-bottom: 0;
 }
 
-#neural-forms-app .nf-inspector__ai-title {
-	margin: 0 0 6px;
-	font-size: 13px;
-	font-weight: 700;
-	color: var( --nf-primary );
+/* ─── Inspector AI assistant card ─────────────────────────────
+ *
+ * Lives in BuilderInspector::EmptyInspector — the empty-state panel
+ * shown when no field/row/section/step is selected. Polished compact
+ * surface that hosts the Generate-with-AI flow (Pro) or the
+ * Upgrade-to-Pro upsell (Lite). The card carries its own title +
+ * subtitle + optional PRO badge inside the header row, so the
+ * inspector no longer needs a separate "GENERATE WITH AI" section
+ * label above it. */
+#neural-forms-app .nf-inspector-ai-card {
+	margin-top: 16px;
+	padding: 16px;
+	background: linear-gradient( 180deg, #ffffff 0%, #f7fffc 100% );
+	border: 1px solid rgba( 21, 219, 149, 0.28 );
+	border-radius: 14px;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
+}
+
+#neural-forms-app .nf-inspector-ai-card--locked {
+	background: linear-gradient( 180deg, #ffffff 0%, #f5f7fc 100% );
+	border-color: rgba( 8, 15, 91, 0.14 );
+}
+
+#neural-forms-app .nf-inspector-ai-card__head {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	gap: 10px;
 }
 
-#neural-forms-app .nf-inspector__ai-badge {
+#neural-forms-app .nf-inspector-ai-card__icon {
+	flex: 0 0 auto;
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: var( --nf-accent );
+	color: var( --nf-primary );
+	border-radius: 8px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	line-height: 1;
+}
+
+#neural-forms-app .nf-inspector-ai-card__heading {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector-ai-card__title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nf-primary );
+	letter-spacing: -0.01em;
+	line-height: 1.3;
+}
+
+#neural-forms-app .nf-inspector-ai-card__sub {
+	margin: 2px 0 0;
+	font-size: 11px;
+	color: #6b7280;
+	line-height: 1.3;
+}
+
+#neural-forms-app .nf-inspector-ai-card__badge {
+	flex: 0 0 auto;
 	background: var( --nf-primary );
 	color: #fff;
 	border-radius: 999px;
-	padding: 1px 8px;
+	padding: 2px 8px;
 	font-size: 10px;
-	font-weight: 600;
+	font-weight: 700;
+	letter-spacing: 0.06em;
 }
 
-#neural-forms-app .nf-inspector__ai-hint {
-	margin: 0;
-	color: var( --nf-primary );
+#neural-forms-app .nf-inspector-ai-card__desc {
+	margin: 12px 0 0;
 	font-size: 12px;
+	line-height: 1.55;
+	color: #4b5563;
 }
 
-#neural-forms-app .nf-inspector__ai-cta {
+#neural-forms-app .nf-inspector-ai-card__input {
+	width: 100%;
+	min-height: 88px;
+	margin-top: 12px;
+	padding: 10px 12px;
+	font-size: 13px;
+	color: #1f2937;
+	background: #fff;
+	border: 1px solid #d8dee8;
+	border-radius: 10px;
+	box-sizing: border-box;
+	resize: vertical;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#neural-forms-app .nf-inspector-ai-card__input:focus {
+	outline: none;
+	border-color: var( --nf-accent );
+	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.18 );
+}
+
+#neural-forms-app .nf-inspector-ai-card__input:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-inspector-ai-card__meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__ideas-toggle {
+	background: transparent;
+	border: 0;
+	padding: 0;
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	color: var( --nf-primary );
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__ideas-toggle:hover,
+#neural-forms-app .nf-inspector-ai-card__ideas-toggle:focus-visible {
+	color: #050942;
+	outline: none;
+}
+
+#neural-forms-app .nf-inspector-ai-card__count {
+	font-size: 11px;
+	color: #6b7280;
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-app .nf-inspector-ai-card__ideas {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__idea-btn {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 8px 10px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: #374151;
+	cursor: pointer;
+	transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#neural-forms-app .nf-inspector-ai-card__idea-btn:hover,
+#neural-forms-app .nf-inspector-ai-card__idea-btn:focus-visible {
+	background: #fff;
+	border-color: var( --nf-accent );
+	outline: none;
+}
+
+#neural-forms-app .nf-inspector-ai-card__cta {
 	display: inline-flex;
 	align-items: center;
-	margin-top: 10px;
+	justify-content: center;
+	width: 100%;
+	margin-top: 12px;
+	padding: 9px 14px;
+	font-size: 13px;
+	font-weight: 600;
 	text-decoration: none;
 }
 
-#neural-forms-app .nf-ai-prompt__error-cta {
-	display: inline-block;
-	margin-left: 4px;
+#neural-forms-app .nf-inspector-ai-card__note {
+	margin: 8px 0 0;
+	font-size: 11px;
+	color: #6b7280;
+	text-align: center;
+}
+
+#neural-forms-app .nf-inspector-ai-card__error {
+	margin: 10px 0 0;
+	padding: 8px 10px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-inspector-ai-card__error-cta {
 	font-weight: 600;
 	color: #b91c1c;
 	text-decoration: underline;
 	text-underline-offset: 2px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__warnings {
+	margin-top: 8px;
+	font-size: 12px;
+	color: #4b5563;
+}
+
+#neural-forms-app .nf-inspector-ai-card__warnings summary {
+	cursor: pointer;
+	color: var( --nf-primary );
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-inspector-ai-card__warnings ul {
+	margin: 6px 0 0;
+	padding-left: 16px;
+}
+
+/* Tips card sits below the AI card. Same gap on both sides keeps the
+ * empty-state column visually rhythmic. */
+#neural-forms-app .nf-inspector-ai-card + .nf-inspector__tips {
+	margin-top: 16px;
 }
 
 /* Preview modal additions: device toggle + stage */
