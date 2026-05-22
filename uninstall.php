@@ -33,12 +33,12 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		// without this a reinstall picks up the old schedule and fires actions
 		// whose handlers no longer exist. Safe to run regardless of the
 		// data-retention preference — these are runtime artefacts, not user data.
-		$hooks = [
+		$hooks = array(
 			'neural_forms_log_cleanup',
 			'neural_forms_ai_draft_purge',
 			'neural_forms_process_ai_queue',
 			'neural_forms_process_queue',
-		];
+		);
 		foreach ( $hooks as $hook ) {
 			wp_clear_scheduled_hook( $hook );
 		}
@@ -56,7 +56,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		// data on delete unless they explicitly opt in via the
 		// deactivation-options page or the 'delete plugin data on
 		// uninstall' setting.
-		$settings = get_option( 'neural_forms_settings', [] );
+		$settings = get_option( 'neural_forms_settings', array() );
 		$delete   = is_array( $settings ) && ! empty( $settings['delete_data_on_uninstall'] );
 
 		if ( ! $delete ) {
@@ -68,7 +68,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		// ── Destructive cleanup (only when user opted in) ────────────
 
 		// Capabilities.
-		$roles = [ 'administrator' ];
+		$roles = array( 'administrator' );
 		foreach ( $roles as $role_name ) {
 			$role = get_role( $role_name );
 			if ( $role ) {
@@ -88,14 +88,14 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		// Tables. Keep this list in sync with Database::create_tables() -
 		// leftover AI tables collide with dbDelta on reinstall because their
 		// columns may differ between versions.
-		$tables = [
+		$tables = array(
 			$wpdb->prefix . 'neural_forms_forms',
 			$wpdb->prefix . 'neural_forms_entries',
 			$wpdb->prefix . 'neural_forms_logs',
 			$wpdb->prefix . 'neural_forms_queue',
 			$wpdb->prefix . 'neural_forms_entry_messages',
 			$wpdb->prefix . 'neural_forms_entry_ai_responses',
-		];
+		);
 		foreach ( $tables as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
 			$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $table ) );
