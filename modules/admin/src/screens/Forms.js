@@ -33,6 +33,7 @@
 import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import api from '../api';
+import TemplateLibraryModal from '../templates/TemplateLibraryModal';
 
 const TABS = [
 	{ id: 'active',   label: __( 'Active',   'neural-forms-lite' ), statuses: [ 'active'   ] },
@@ -45,8 +46,29 @@ export default function Forms() {
 	const [ items,   setItems   ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ error,   setError   ] = useState( '' );
+	const [ isTemplateModalOpen, setTemplateModalOpen ] = useState( false );
 
 	const activeTab = TABS.find( ( t ) => t.id === tab ) || TABS[ 0 ];
+
+	// The "+ New Form → Use Template" item is rendered by an inline
+	// JS injector in AdminPanel.php (outside the React tree). It
+	// dispatches `neural-forms:open-template-library` on the document
+	// instead of navigating to the Templates admin page so the form-
+	// builder flow stays in-context.
+	useEffect( () => {
+		function openTemplateModal() {
+			setTemplateModalOpen( true );
+		}
+		document.addEventListener( 'neural-forms:open-template-library', openTemplateModal );
+		// Advertise that an in-page modal listener exists so the
+		// injector knows it can dispatch instead of falling back to a
+		// page redirect.
+		window.neuralFormsTemplateModalReady = true;
+		return () => {
+			document.removeEventListener( 'neural-forms:open-template-library', openTemplateModal );
+			window.neuralFormsTemplateModalReady = false;
+		};
+	}, [] );
 
 	useEffect( () => {
 		let cancelled = false;
@@ -167,6 +189,17 @@ export default function Forms() {
 					</tbody>
 				</table>
 			) }
+
+			{ /* Template library popup. Opened by the "+ New Form →
+			     Use Template" dropdown item (inline JS injector in
+			     AdminPanel.php dispatches `neural-forms:open-template-
+			     library` which the effect above subscribes to). The
+			     modal short-circuits to null when isOpen=false, so this
+			     line is free when the popup isn't visible. */ }
+			<TemplateLibraryModal
+				isOpen={ isTemplateModalOpen }
+				onClose={ () => setTemplateModalOpen( false ) }
+			/>
 		</div>
 	);
 }

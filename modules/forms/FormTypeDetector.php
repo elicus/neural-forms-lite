@@ -43,30 +43,44 @@ class FormTypeDetector {
 		if ( ! is_array( $schema ) ) {
 			return self::TYPE_SIMPLE;
 		}
-		$fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : [];
+		$fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
 		if ( empty( $fields ) ) {
 			return self::TYPE_SIMPLE;
 		}
 
-		$has_poll      = false;
-		$has_quiz      = false;
-		$has_rating    = false;
-		$has_feedback  = false;
+		$has_poll     = false;
+		$has_quiz     = false;
+		$has_rating   = false;
+		$has_feedback = false;
 
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $field ) {
 			$type = (string) ( $field['type'] ?? '' );
-			if ( $type === 'poll' )          { $has_poll = true;   continue; }
-			if ( $type === 'quiz_question' ) { $has_quiz = true;   continue; }
-			if ( $type === 'rating' )        { $has_rating = true; continue; }
+			if ( $type === 'poll' ) {
+				$has_poll = true;
+				continue; }
+			if ( $type === 'quiz_question' ) {
+				$has_quiz = true;
+				continue; }
+			if ( $type === 'rating' ) {
+				$has_rating = true;
+				continue; }
 			if ( self::is_feedback_field( $field ) ) {
 				$has_feedback = true;
 			}
 		}
 
-		if ( $has_quiz && $has_poll ) return self::TYPE_MIXED;
-		if ( $has_quiz )              return self::TYPE_QUIZ;
-		if ( $has_poll )              return self::TYPE_POLL;
-		if ( $has_rating && $has_feedback ) return self::TYPE_SURVEY;
+		if ( $has_quiz && $has_poll ) {
+			return self::TYPE_MIXED;
+		}
+		if ( $has_quiz ) {
+			return self::TYPE_QUIZ;
+		}
+		if ( $has_poll ) {
+			return self::TYPE_POLL;
+		}
+		if ( $has_rating && $has_feedback ) {
+			return self::TYPE_SURVEY;
+		}
 		return self::TYPE_SIMPLE;
 	}
 
@@ -76,12 +90,17 @@ class FormTypeDetector {
 	 */
 	public static function label( string $type ): string {
 		switch ( $type ) {
-			case self::TYPE_POLL:   return __( 'Poll',   'neural-forms-lite' );
-			case self::TYPE_QUIZ:   return __( 'Quiz',   'neural-forms-lite' );
-			case self::TYPE_SURVEY: return __( 'Survey', 'neural-forms-lite' );
-			case self::TYPE_MIXED:  return __( 'Mixed',  'neural-forms-lite' );
+			case self::TYPE_POLL:
+				return __( 'Poll', 'neural-forms-lite' );
+			case self::TYPE_QUIZ:
+				return __( 'Quiz', 'neural-forms-lite' );
+			case self::TYPE_SURVEY:
+				return __( 'Survey', 'neural-forms-lite' );
+			case self::TYPE_MIXED:
+				return __( 'Mixed', 'neural-forms-lite' );
 			case self::TYPE_SIMPLE:
-			default:                return __( 'Simple', 'neural-forms-lite' );
+			default:
+				return __( 'Simple', 'neural-forms-lite' );
 		}
 	}
 
@@ -100,11 +119,13 @@ class FormTypeDetector {
 			return false;
 		}
 		$haystack = strtolower(
-			( (string) ( $field['id']    ?? '' ) ) . ' ' .
+			( (string) ( $field['id'] ?? '' ) ) . ' ' .
 			( (string) ( $field['label'] ?? '' ) )
 		);
-		if ( $haystack === ' ' ) return false;
-		foreach ( [ 'feedback', 'comment', 'review', 'thought', 'experience' ] as $needle ) {
+		if ( $haystack === ' ' ) {
+			return false;
+		}
+		foreach ( array( 'feedback', 'comment', 'review', 'thought', 'experience' ) as $needle ) {
 			if ( strpos( $haystack, $needle ) !== false ) {
 				return true;
 			}

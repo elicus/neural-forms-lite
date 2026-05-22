@@ -64,7 +64,7 @@ class SubmissionValidator {
 	 *
 	 * @var array
 	 */
-	public const ACCEPTED_CHECKBOX_VALUES = [ 0, 1, true, false, '0', '1', '', null ];
+	public const ACCEPTED_CHECKBOX_VALUES = array( 0, 1, true, false, '0', '1', '', null );
 
 	/**
 	 * The subset of ACCEPTED_CHECKBOX_VALUES that mean "checked".
@@ -74,7 +74,7 @@ class SubmissionValidator {
 	 *
 	 * @var array
 	 */
-	public const CHECKED_CHECKBOX_VALUES = [ 1, '1', true ];
+	public const CHECKED_CHECKBOX_VALUES = array( 1, '1', true );
 
 	// Types whose string values are trimmed before validation
 	//
@@ -82,7 +82,7 @@ class SubmissionValidator {
 	// validation - same as how sanitize_text_field() etc. behave at store time.
 	// Trimming here is for validation only; the endpoint sanitizes independently.
 
-	private const TRIMMABLE_TYPES = [ 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date', 'rating', 'poll', 'quiz_question' ];
+	private const TRIMMABLE_TYPES = array( 'text', 'email', 'textarea', 'phone', 'tel', 'url', 'number', 'date', 'rating', 'poll', 'quiz_question' );
 
 	// Public API
 
@@ -98,7 +98,7 @@ class SubmissionValidator {
 	 * @return true|\WP_Error
 	 */
 	public static function validate( array $schema_fields, array $submitted_data ) {
-		$errors = [];
+		$errors = array();
 
 		foreach ( $schema_fields as $field ) {
 			$field = (array) $field;
@@ -128,9 +128,9 @@ class SubmissionValidator {
 
 			// ' Required check '
 			$required_error = self::check_required( $field, $check_value );
-			if ( $required_error !== null ) {
+			if ( null !== $required_error ) {
 				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, ...] }
-				$errors[ $field_id ] = [ $required_error ];
+				$errors[ $field_id ] = array( $required_error );
 				// Do not run type checks - there is nothing meaningful to check.
 				continue;
 			}
@@ -144,9 +144,9 @@ class SubmissionValidator {
 
 			// ' Type-specific format checks '
 			$type_error = self::check_type( $field, $check_value );
-			if ( $type_error !== null ) {
+			if ( null !== $type_error ) {
 				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, ...] }
-				$errors[ $field_id ] = [ $type_error ];
+				$errors[ $field_id ] = array( $type_error );
 				// Skip the hook for fields that already failed - providing a
 				// malformed value to extensions would produce misleading results.
 				continue;
@@ -160,10 +160,12 @@ class SubmissionValidator {
 
 			if ( is_wp_error( $hook_result ) ) {
 				// Wrap in array: JS showFieldErrors expects { fieldId: [{code, message}, ...] }
-				$errors[ $field_id ] = [ [
-					'code'    => $hook_result->get_error_code(),
-					'message' => $hook_result->get_error_message(),
-				] ];
+				$errors[ $field_id ] = array(
+					array(
+						'code'    => $hook_result->get_error_code(),
+						'message' => $hook_result->get_error_message(),
+					),
+				);
 			}
 		}
 
@@ -177,10 +179,10 @@ class SubmissionValidator {
 		return new \WP_Error(
 			'invalid_submission',
 			__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-			[
+			array(
 				'status' => 422,
 				'fields' => $errors,
-			]
+			)
 		);
 	}
 
@@ -201,11 +203,11 @@ class SubmissionValidator {
 	 * @return array|null
 	 */
 	public static function validate_single_field( array $field, $value ): ?array {
-		$type = $field['type'] ?? 'text';
+		$type        = $field['type'] ?? 'text';
 		$check_value = self::maybe_trim( $value, $type );
 
 		$required_error = self::check_required( $field, $check_value );
-		if ( $required_error !== null ) {
+		if ( null !== $required_error ) {
 			return $required_error;
 		}
 
@@ -217,16 +219,16 @@ class SubmissionValidator {
 		}
 
 		$type_error = self::check_type( $field, $check_value );
-		if ( $type_error !== null ) {
+		if ( null !== $type_error ) {
 			return $type_error;
 		}
 
 		$hook_result = apply_filters( 'neural_forms_validate_submission_field', null, $field, $check_value );
 		if ( is_wp_error( $hook_result ) ) {
-			return [
+			return array(
 				'code'    => $hook_result->get_error_code(),
 				'message' => $hook_result->get_error_message(),
-			];
+			);
 		}
 		return null;
 	}
@@ -258,22 +260,22 @@ class SubmissionValidator {
 
 		if ( $type === 'checkbox' || $type === 'acceptance' ) {
 			if ( ! self::is_checkbox_checked( $value ) ) {
-				return [
+				return array(
 					'code'    => 'required',
 					/* translators: %s: field label */
 					'message' => sprintf( __( '%s must be checked.', 'neural-forms-lite' ), $label ),
-				];
+				);
 			}
 			return null;
 		}
 
 		if ( $type === 'checkboxes' ) {
 			if ( ! is_array( $value ) || count( $value ) === 0 ) {
-				return [
+				return array(
 					'code'    => 'required',
 					/* translators: %s: field label */
 					'message' => sprintf( __( 'Please select at least one option for %s.', 'neural-forms-lite' ), $label ),
-				];
+				);
 			}
 			return null;
 		}
@@ -284,27 +286,27 @@ class SubmissionValidator {
 			// rows need at least one non-empty array entry. Unknown row keys
 			// in the submitted payload are not counted toward coverage —
 			// they are silently ignored by check_type/sanitization.
-			$settings    = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
-			$selection   = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
+			$settings     = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+			$selection    = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
 			$allowed_rows = self::get_matrix_row_values( $field );
 
 			if ( empty( $allowed_rows ) ) {
 				// Matrix with zero configured rows can never accept input.
 				// Treat as required-failure rather than silently passing so
 				// authors notice the misconfiguration on first submission.
-				return [
+				return array(
 					'code'    => 'required',
 					/* translators: %s: field label */
 					'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
-				];
+				);
 			}
 
 			if ( ! is_array( $value ) ) {
-				return [
+				return array(
 					'code'    => 'required',
 					/* translators: %s: field label */
 					'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
-				];
+				);
 			}
 
 			// Required-check rule for matrix: a row is "missing" only if the
@@ -314,20 +316,20 @@ class SubmissionValidator {
 			// `invalid_matrix` error instead of a misleading `required`.
 			foreach ( $allowed_rows as $row_key ) {
 				if ( ! array_key_exists( $row_key, $value ) ) {
-					return [
+					return array(
 						'code'    => 'required',
 						/* translators: %s: field label */
 						'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				$row_val = $value[ $row_key ];
 
-				if ( $row_val === null || $row_val === '' ) {
-					return [
+				if ( null === $row_val || $row_val === '' ) {
+					return array(
 						'code'    => 'required',
 						/* translators: %s: field label */
 						'message' => sprintf( __( 'Please complete all rows for %s.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 
 				// Checkbox-specific empty: array with no non-empty entries.
@@ -340,11 +342,11 @@ class SubmissionValidator {
 						}
 					}
 					if ( ! $has_any ) {
-						return [
+						return array(
 							'code'    => 'required',
 							/* translators: %s: field label */
 							'message' => sprintf( __( 'Please select at least one option for each row in %s.', 'neural-forms-lite' ), $label ),
-						];
+						);
 					}
 				}
 			}
@@ -358,12 +360,12 @@ class SubmissionValidator {
 			// still demands a single submitted iteration to satisfy the
 			// required-ness contract. The per-iteration child required
 			// checks run in check_type below.
-			$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
-			$min      = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 1;
-			$rows     = is_array( $value ) ? array_values( $value ) : [];
+			$settings  = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+			$min       = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 1;
+			$rows      = is_array( $value ) ? array_values( $value ) : array();
 			$threshold = max( 1, $min );
 			if ( count( $rows ) < $threshold ) {
-				return [
+				return array(
 					'code'    => 'required',
 					'message' => sprintf(
 						/* translators: 1: field label, 2: minimum iteration count */
@@ -371,17 +373,17 @@ class SubmissionValidator {
 						$label,
 						$threshold
 					),
-				];
+				);
 			}
 			return null;
 		}
 
-		if ( $value === null || $value === '' ) {
-			return [
+		if ( null === $value || $value === '' ) {
+			return array(
 				'code'    => 'required',
 				/* translators: %s: field label */
 				'message' => sprintf( __( '%s is required.', 'neural-forms-lite' ), $label ),
-			];
+			);
 		}
 
 		return null;
@@ -409,11 +411,11 @@ class SubmissionValidator {
 
 			case 'email':
 				if ( ! is_email( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_email',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a valid email address.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
@@ -431,21 +433,21 @@ class SubmissionValidator {
 					|| strlen( $digits ) < 7
 					|| strlen( $digits ) > 15
 				) {
-					return [
+					return array(
 						'code'    => 'invalid_phone',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a valid phone number.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
 			case 'number':
 				if ( ! is_numeric( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_number',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
@@ -463,100 +465,102 @@ class SubmissionValidator {
 				// time, enforce that via the 'neural_forms_validate_field' hook in
 				// FormValidator rather than silently rejecting every submission.
 				if ( ! empty( $allowed ) && ! in_array( (string) $value, $allowed, true ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_option',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s contains an invalid selection.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
 			case 'url':
 				if ( filter_var( $value, FILTER_VALIDATE_URL ) === false ) {
-					return [
+					return array(
 						'code'    => 'invalid_url',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a valid URL.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
 			case 'date':
 				// Accept YYYY-MM-DD format (HTML date input standard).
 				if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $value ) || ! strtotime( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_date',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a valid date.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
 			case 'range':
 				if ( ! is_numeric( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_range',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				$num = (float) $value;
 				$min = isset( $field['min'] ) && $field['min'] !== '' ? (float) $field['min'] : null;
 				$max = isset( $field['max'] ) && $field['max'] !== '' ? (float) $field['max'] : null;
-				if ( $min !== null && $num < $min ) {
-					return [
+				if ( null !== $min && $num < $min ) {
+					return array(
 						'code'    => 'range_below_min',
 						/* translators: 1: field label, 2: minimum value */
 						'message' => sprintf( __( '%1$s must be at least %2$s.', 'neural-forms-lite' ), $label, $min ),
-					];
+					);
 				}
-				if ( $max !== null && $num > $max ) {
-					return [
+				if ( null !== $max && $num > $max ) {
+					return array(
 						'code'    => 'range_above_max',
 						/* translators: 1: field label, 2: maximum value */
 						'message' => sprintf( __( '%1$s must be at most %2$s.', 'neural-forms-lite' ), $label, $max ),
-					];
+					);
 				}
 				break;
 
 			case 'rating':
 				if ( ! is_numeric( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_rating',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				$num   = (int) $value;
 				$stars = isset( $field['stars'] ) ? (int) $field['stars'] : 5;
-				if ( $stars < 1 ) { $stars = 1; }
-				if ( $stars > 10 ) { $stars = 10; }
+				if ( $stars < 1 ) {
+					$stars = 1; }
+				if ( $stars > 10 ) {
+					$stars = 10; }
 				if ( $num < 1 || $num > $stars ) {
-					return [
+					return array(
 						'code'    => 'invalid_rating',
 						/* translators: 1: field label, 2: max stars */
 						'message' => sprintf( __( '%1$s must be between 1 and %2$d.', 'neural-forms-lite' ), $label, $stars ),
-					];
+					);
 				}
 				break;
 
 			case 'checkboxes':
 				if ( ! is_array( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_checkboxes',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be an array of selections.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				$allowed = self::get_select_option_values( $field );
 				if ( ! empty( $allowed ) ) {
 					foreach ( $value as $v ) {
 						if ( ! in_array( (string) $v, $allowed, true ) ) {
-							return [
+							return array(
 								'code'    => 'invalid_option',
 								/* translators: %s: field label */
 								'message' => sprintf( __( '%s contains an invalid selection.', 'neural-forms-lite' ), $label ),
-							];
+							);
 						}
 					}
 				}
@@ -567,35 +571,35 @@ class SubmissionValidator {
 				// Value is present (not absent) but may still be outside the
 				// accepted set - e.g. a client sent "yes" or an arbitrary string.
 				if ( ! self::is_valid_checkbox_value( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_checkbox',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s contains an invalid value.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 				break;
 
 			case 'matrix':
 				// Shape:
-				//   radio:    row_value => "column_value"
-				//   checkbox: row_value => ["col_a","col_b",...]
+				// radio:    row_value => "column_value"
+				// checkbox: row_value => ["col_a","col_b",...]
 				// The validator only rejects:
-				//   - non-array root value (e.g. someone POSTed a string)
-				//   - wrong inner shape for the configured selection mode
-				//     (array under radio, scalar under checkbox)
-				//   - column value not in the allowed columns allowlist
+				// - non-array root value (e.g. someone POSTed a string)
+				// - wrong inner shape for the configured selection mode
+				// (array under radio, scalar under checkbox)
+				// - column value not in the allowed columns allowlist
 				// Unknown row keys are silently ignored (per spec) — the
 				// sanitizer drops them before storage. Empty rows are
 				// already gated by check_required for required matrices.
 				if ( ! is_array( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_matrix',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a set of row selections.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
 
-				$settings_m   = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+				$settings_m   = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
 				$selection_m  = ( ( $settings_m['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
 				$allowed_rows = self::get_matrix_row_values( $field );
 				$allowed_cols = self::get_matrix_column_values( $field );
@@ -614,62 +618,62 @@ class SubmissionValidator {
 						// NOT silently promote it to a one-item array —
 						// that would mask client tampering.
 						if ( ! is_array( $row_val ) ) {
-							return [
+							return array(
 								'code'    => 'invalid_matrix',
 								/* translators: %s: field label */
 								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
-							];
+							);
 						}
 						foreach ( $row_val as $rv ) {
 							if ( ! is_scalar( $rv ) ) {
-								return [
+								return array(
 									'code'    => 'invalid_matrix',
 									/* translators: %s: field label */
 									'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
-								];
+								);
 							}
 							$rv_s = (string) $rv;
 							if ( $rv_s === '' ) {
 								continue;
 							}
 							if ( ! empty( $allowed_cols ) && ! in_array( $rv_s, $allowed_cols, true ) ) {
-								return [
+								return array(
 									'code'    => 'invalid_option',
 									/* translators: %s: field label */
 									'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
-								];
+								);
 							}
 						}
 					} else {
 						// radio: array under radio is invalid.
 						if ( is_array( $row_val ) ) {
-							return [
+							return array(
 								'code'    => 'invalid_matrix',
 								/* translators: %s: field label */
 								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
-							];
+							);
 						}
-						if ( $row_val === null ) {
+						if ( null === $row_val ) {
 							// Optional matrix may carry null rows — ignore.
 							continue;
 						}
 						if ( ! is_scalar( $row_val ) ) {
-							return [
+							return array(
 								'code'    => 'invalid_matrix',
 								/* translators: %s: field label */
 								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
-							];
+							);
 						}
 						$row_val_str = (string) $row_val;
 						if ( $row_val_str === '' ) {
 							continue;
 						}
 						if ( ! empty( $allowed_cols ) && ! in_array( $row_val_str, $allowed_cols, true ) ) {
-							return [
+							return array(
 								'code'    => 'invalid_option',
 								/* translators: %s: field label */
 								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
-							];
+							);
 						}
 					}
 				}
@@ -687,31 +691,35 @@ class SubmissionValidator {
 				// Shape: numeric-keyed array of per-iteration children
 				// objects. The wire format (from form-submit.js's
 				// bracket-aware serializer) is
-				//     { repeater_id: { '0': { child_id: ... }, '1': {...} } }
+				// { repeater_id: { '0': { child_id: ... }, '1': {...} } }
 				// which PHP's json_decode delivers as a plain array.
 				//
 				// Rules:
-				//   - root must be an array.
-				//   - count <= max_items (hard cap re-enforced here in
-				//     case a tampered submission tries to overflow).
-				//   - per-iteration: each schema child template runs
-				//     through validate_single_field with the
-				//     iteration's value for that child id.
+				// - root must be an array.
+				// - count <= max_items (hard cap re-enforced here in
+				// case a tampered submission tries to overflow).
+				// - per-iteration: each schema child template runs
+				// through validate_single_field with the
+				// iteration's value for that child id.
 				if ( ! is_array( $value ) ) {
-					return [
+					return array(
 						'code'    => 'invalid_repeater',
 						/* translators: %s: field label */
 						'message' => sprintf( __( '%s must be a list of items.', 'neural-forms-lite' ), $label ),
-					];
+					);
 				}
-				$settings_r   = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
-				$max_items    = isset( $settings_r['max_items'] ) ? (int) $settings_r['max_items'] : 5;
-				if ( $max_items < 1 )  $max_items = 1;
-				if ( $max_items > 20 ) $max_items = 20;
-				$rows         = array_values( $value );
-				$row_count    = count( $rows );
+				$settings_r = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+				$max_items  = isset( $settings_r['max_items'] ) ? (int) $settings_r['max_items'] : 5;
+				if ( $max_items < 1 ) {
+					$max_items = 1;
+				}
+				if ( $max_items > 20 ) {
+					$max_items = 20;
+				}
+				$rows      = array_values( $value );
+				$row_count = count( $rows );
 				if ( $row_count > $max_items ) {
-					return [
+					return array(
 						'code'    => 'invalid_repeater',
 						'message' => sprintf(
 							/* translators: 1: field label, 2: max iteration count */
@@ -719,13 +727,13 @@ class SubmissionValidator {
 							$label,
 							$max_items
 						),
-					];
+					);
 				}
-				$children_schema = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+				$children_schema = is_array( $field['fields'] ?? null ) ? $field['fields'] : array();
 				foreach ( $rows as $row_idx => $row ) {
 					if ( ! is_array( $row ) ) {
 						// Tampered scalar inside an iteration slot.
-						return [
+						return array(
 							'code'    => 'invalid_repeater',
 							'message' => sprintf(
 								/* translators: 1: field label, 2: row index */
@@ -733,17 +741,19 @@ class SubmissionValidator {
 								$label,
 								(int) $row_idx + 1
 							),
-						];
+						);
 					}
 					foreach ( $children_schema as $child ) {
-						if ( ! is_array( $child ) || empty( $child['id'] ) ) continue;
+						if ( ! is_array( $child ) || empty( $child['id'] ) ) {
+							continue;
+						}
 						$child_id    = (string) $child['id'];
 						$child_value = array_key_exists( $child_id, $row ) ? $row[ $child_id ] : null;
 						$child_err   = self::validate_single_field( $child, $child_value );
-						if ( $child_err !== null ) {
+						if ( null !== $child_err ) {
 							// Prefix the message with "Item N: " so the
 							// admin / visitor can locate which row failed.
-							return [
+							return array(
 								'code'    => $child_err['code'],
 								'message' => sprintf(
 									/* translators: 1: row index, 2: field label, 3: child error message */
@@ -752,7 +762,7 @@ class SubmissionValidator {
 									(int) $row_idx + 1,
 									$child_err['message']
 								),
-							];
+							);
 						}
 					}
 				}
@@ -796,7 +806,7 @@ class SubmissionValidator {
 	 * @return bool
 	 */
 	private static function is_absent( $value ): bool {
-		return $value === null || $value === '';
+		return null === $value || $value === '';
 	}
 
 	/**
@@ -852,17 +862,17 @@ class SubmissionValidator {
 	 * @return string[]
 	 */
 	private static function get_select_option_values( array $field ): array {
-		$options = $field['options'] ?? [];
+		$options = $field['options'] ?? array();
 
 		if ( ! is_array( $options ) || empty( $options ) ) {
-			return [];
+			return array();
 		}
 
-		$values = [];
+		$values = array();
 		foreach ( $options as $opt ) {
 			$opt     = (array) $opt;
 			$raw_val = (string) ( $opt['value'] ?? '' );
-			$label   = (string) ( $opt['label']  ?? '' );
+			$label   = (string) ( $opt['label'] ?? '' );
 			// Mirror FormRenderer: if value is empty, use label as the effective
 			// value. This ensures the allowed-values list matches what the renderer
 			// emits in the <option value="..."> attribute.
@@ -886,9 +896,9 @@ class SubmissionValidator {
 	 * @return string[]
 	 */
 	private static function get_matrix_row_values( array $field ): array {
-		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
-		$rows     = is_array( $settings['rows'] ?? null ) ? $settings['rows'] : [];
-		$out      = [];
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+		$rows     = is_array( $settings['rows'] ?? null ) ? $settings['rows'] : array();
+		$out      = array();
 		foreach ( $rows as $row ) {
 			$row = (array) $row;
 			$v   = (string) ( $row['value'] ?? '' );
@@ -912,9 +922,9 @@ class SubmissionValidator {
 	 * @return string[]
 	 */
 	private static function get_matrix_column_values( array $field ): array {
-		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
-		$cols     = is_array( $settings['columns'] ?? null ) ? $settings['columns'] : [];
-		$out      = [];
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+		$cols     = is_array( $settings['columns'] ?? null ) ? $settings['columns'] : array();
+		$out      = array();
 		foreach ( $cols as $col ) {
 			$col = (array) $col;
 			$v   = (string) ( $col['value'] ?? '' );

@@ -72,7 +72,7 @@ class PlanManager {
 	 * Returns true when the capability is unknown (fail-open).
 	 */
 	public static function can( string $feature ): bool {
-		$caps = self::get_plan()['capabilities'] ?? [];
+		$caps = self::get_plan()['capabilities'] ?? array();
 
 		if ( ! array_key_exists( $feature, $caps ) ) {
 			return true;
@@ -86,23 +86,28 @@ class PlanManager {
 	 * keys so callers can dereference fields without null checks.
 	 */
 	public static function get_plan(): array {
-		$stored = Config::get( 'cloud_plan', [] );
+		$stored = Config::get( 'cloud_plan', array() );
 
 		if ( ! is_array( $stored ) ) {
-			$stored = [];
+			$stored = array();
 		}
 
-		return [
-			'plan'         => is_array( $stored['plan'] ?? null )         ? $stored['plan']         : [],
-			'capabilities' => is_array( $stored['capabilities'] ?? null ) ? $stored['capabilities'] : [],
-			'quota'        => is_array( $stored['quota'] ?? null )        ? $stored['quota']        : [],
-			'balance'      => is_array( $stored['balance'] ?? null )      ? $stored['balance']      : [ 'credits' => 0, 'plan_credits' => 0, 'topup_credits' => 0, 'lifetime_topup_credits' => 0 ],
+		return array(
+			'plan'         => is_array( $stored['plan'] ?? null ) ? $stored['plan'] : array(),
+			'capabilities' => is_array( $stored['capabilities'] ?? null ) ? $stored['capabilities'] : array(),
+			'quota'        => is_array( $stored['quota'] ?? null ) ? $stored['quota'] : array(),
+			'balance'      => is_array( $stored['balance'] ?? null ) ? $stored['balance'] : array(
+				'credits'                => 0,
+				'plan_credits'           => 0,
+				'topup_credits'          => 0,
+				'lifetime_topup_credits' => 0,
+			),
 			'subscription' => is_array( $stored['subscription'] ?? null ) ? $stored['subscription'] : self::default_subscription(),
 			'upgrade_url'  => (string) ( $stored['upgrade_url'] ?? '' ) !== ''
 								? (string) $stored['upgrade_url']
 								: self::DEFAULT_UPGRADE_URL,
 			'fetched_at'   => (int) ( $stored['fetched_at'] ?? 0 ),
-		];
+		);
 	}
 
 	/**
@@ -110,11 +115,11 @@ class PlanManager {
 	 * when the Cloud response omits the block (older API versions).
 	 */
 	private static function default_subscription(): array {
-		return [
+		return array(
 			'status'           => 'active',
 			'period_end'       => null,
 			'grace_expires_at' => null,
-		];
+		);
 	}
 
 	/**
@@ -160,7 +165,7 @@ class PlanManager {
 	public static function public_payload(): array {
 		$plan = self::get_plan();
 
-		return [
+		return array(
 			'plan'         => $plan['plan'],
 			'capabilities' => (object) $plan['capabilities'], // force JS object for stable iteration
 			'quota'        => $plan['quota'],
@@ -168,7 +173,7 @@ class PlanManager {
 			'subscription' => $plan['subscription'],
 			'upgrade_url'  => $plan['upgrade_url'],
 			'fetched_at'   => $plan['fetched_at'],
-		];
+		);
 	}
 
 	/**
@@ -189,9 +194,11 @@ class PlanManager {
 	 * the next /v1/auth/me refresh.
 	 */
 	public static function mark_feature_locked( string $feature ): void {
-		if ( $feature === '' ) return;
+		if ( $feature === '' ) {
+			return;
+		}
 
-		$plan = self::get_plan();
+		$plan                             = self::get_plan();
 		$plan['capabilities'][ $feature ] = false;
 		Config::set( 'cloud_plan', $plan );
 	}
@@ -201,7 +208,7 @@ class PlanManager {
 	 * UI can show current usage without refetching.
 	 */
 	public static function mark_quota_exceeded( array $quota ): void {
-		$plan = self::get_plan();
+		$plan          = self::get_plan();
 		$plan['quota'] = array_merge( $plan['quota'], self::normalize_quota( $quota ) );
 		Config::set( 'cloud_plan', $plan );
 	}
@@ -214,15 +221,17 @@ class PlanManager {
 	 * @param array $payload Error body with keys: status, period_end, grace_expires_at.
 	 */
 	public static function mark_subscription_expired( array $payload ): void {
-		$plan = self::get_plan();
-		$plan['subscription'] = self::normalize_subscription( array_merge(
-			$plan['subscription'],
-			[
-				'status'           => $payload['status'] ?? 'expired',
-				'period_end'       => $payload['period_end'] ?? $plan['subscription']['period_end'] ?? null,
-				'grace_expires_at' => $payload['grace_expires_at'] ?? $plan['subscription']['grace_expires_at'] ?? null,
-			]
-		) );
+		$plan                 = self::get_plan();
+		$plan['subscription'] = self::normalize_subscription(
+			array_merge(
+				$plan['subscription'],
+				array(
+					'status'           => $payload['status'] ?? 'expired',
+					'period_end'       => $payload['period_end'] ?? $plan['subscription']['period_end'] ?? null,
+					'grace_expires_at' => $payload['grace_expires_at'] ?? $plan['subscription']['grace_expires_at'] ?? null,
+				)
+			)
+		);
 		Config::set( 'cloud_plan', $plan );
 	}
 
@@ -231,7 +240,7 @@ class PlanManager {
 	 * is toggled off so stale plan data never leaks into a disconnected UI.
 	 */
 	public static function clear(): void {
-		Config::set( 'cloud_plan', [] );
+		Config::set( 'cloud_plan', array() );
 	}
 
 	/**
@@ -245,9 +254,9 @@ class PlanManager {
 	 * /v1/auth/me hasn't run yet doesn't get false-positive blocked.
 	 */
 	public static function is_credits_exhausted(): bool {
-		$plan = self::get_plan();
+		$plan    = self::get_plan();
 		$fetched = (int) ( $plan['fetched_at'] ?? 0 );
-		if ( $fetched === 0 ) {
+		if ( 0 === $fetched ) {
 			return false;
 		}
 		$credits = (float) ( $plan['balance']['credits'] ?? 0 );
@@ -273,11 +282,17 @@ class PlanManager {
 	 * or `credits_deducted` is false (e.g. SafetyGate refusal).
 	 */
 	public static function apply_usage( array $usage ): void {
-		if ( empty( $usage ) ) return;
-		if ( ! ( $usage['credits_deducted'] ?? false ) ) return;
-		if ( ! array_key_exists( 'credits_remaining', $usage ) ) return;
+		if ( empty( $usage ) ) {
+			return;
+		}
+		if ( ! ( $usage['credits_deducted'] ?? false ) ) {
+			return;
+		}
+		if ( ! array_key_exists( 'credits_remaining', $usage ) ) {
+			return;
+		}
 
-		$plan = self::get_plan();
+		$plan                       = self::get_plan();
 		$plan['balance']['credits'] = max( 0.0, (float) $usage['credits_remaining'] );
 		Config::set( 'cloud_plan', $plan );
 	}
@@ -285,62 +300,64 @@ class PlanManager {
 	// Normalization
 
 	private static function normalize_response( array $body ): array {
-		$plan_raw    = is_array( $body['plan'] ?? null ) ? $body['plan'] : [];
-		$caps_raw    = is_array( $body['capabilities'] ?? null ) ? $body['capabilities'] : [];
-		$quota_raw   = is_array( $body['quota'] ?? null ) ? $body['quota'] : [];
-		$balance_raw = is_array( $body['balance'] ?? null ) ? $body['balance'] : [];
-		$sub_raw     = is_array( $body['subscription'] ?? null ) ? $body['subscription'] : [];
+		$plan_raw    = is_array( $body['plan'] ?? null ) ? $body['plan'] : array();
+		$caps_raw    = is_array( $body['capabilities'] ?? null ) ? $body['capabilities'] : array();
+		$quota_raw   = is_array( $body['quota'] ?? null ) ? $body['quota'] : array();
+		$balance_raw = is_array( $body['balance'] ?? null ) ? $body['balance'] : array();
+		$sub_raw     = is_array( $body['subscription'] ?? null ) ? $body['subscription'] : array();
 
-		$caps = [];
+		$caps = array();
 		foreach ( $caps_raw as $key => $val ) {
-			if ( ! is_string( $key ) ) continue;
+			if ( ! is_string( $key ) ) {
+				continue;
+			}
 			$caps[ sanitize_key( $key ) ] = (bool) $val;
 		}
 
-		return [
-			'plan' => [
-				'id'   => sanitize_key( (string) ( $plan_raw['id']   ?? '' ) ),
+		return array(
+			'plan'         => array(
+				'id'   => sanitize_key( (string) ( $plan_raw['id'] ?? '' ) ),
 				'name' => sanitize_text_field( (string) ( $plan_raw['name'] ?? '' ) ),
-			],
+			),
 			'capabilities' => $caps,
 			'quota'        => self::normalize_quota( $quota_raw ),
 			'balance'      => self::normalize_balance( $balance_raw ),
 			'subscription' => self::normalize_subscription( $sub_raw ),
 			'upgrade_url'  => esc_url_raw( (string) ( $body['upgrade_url'] ?? '' ) ),
 			'fetched_at'   => time(),
-		];
+		);
 	}
 
 	private static function normalize_subscription( array $sub ): array {
-		$status = sanitize_key( (string) ( $sub['status'] ?? 'active' ) );
-		$allowed = [ 'active', 'trialing', 'pending_cancel', 'expired', 'cancelled' ];
+		$status  = sanitize_key( (string) ( $sub['status'] ?? 'active' ) );
+		$allowed = array( 'active', 'trialing', 'pending_cancel', 'expired', 'cancelled' );
 		if ( ! in_array( $status, $allowed, true ) ) {
 			$status = 'active';
 		}
 		$grace = $sub['grace_expires_at'] ?? null;
-		return [
+		return array(
 			'status'           => $status,
 			'period_end'       => isset( $sub['period_end'] ) && is_string( $sub['period_end'] )
 									? sanitize_text_field( $sub['period_end'] )
 									: null,
-			'grace_expires_at' => $grace === null ? null : (int) $grace,
-		];
+			'grace_expires_at' => null === $grace ? null : (int) $grace,
+		);
 	}
 
 	private static function normalize_balance( array $balance ): array {
-		return [
-			'credits'                => max( 0.0, (float) ( $balance['credits']                ?? 0 ) ),
-			'plan_credits'           => max( 0.0, (float) ( $balance['plan_credits']           ?? 0 ) ),
-			'topup_credits'          => max( 0.0, (float) ( $balance['topup_credits']          ?? 0 ) ),
+		return array(
+			'credits'                => max( 0.0, (float) ( $balance['credits'] ?? 0 ) ),
+			'plan_credits'           => max( 0.0, (float) ( $balance['plan_credits'] ?? 0 ) ),
+			'topup_credits'          => max( 0.0, (float) ( $balance['topup_credits'] ?? 0 ) ),
 			'lifetime_topup_credits' => max( 0.0, (float) ( $balance['lifetime_topup_credits'] ?? 0 ) ),
-		];
+		);
 	}
 
 	private static function normalize_quota( array $quota ): array {
-		return [
+		return array(
 			'used'     => max( 0.0, (float) ( $quota['used'] ?? 0 ) ),
 			'limit'    => max( 0.0, (float) ( $quota['limit'] ?? 0 ) ),
 			'reset_at' => sanitize_text_field( (string) ( $quota['reset_at'] ?? '' ) ),
-		];
+		);
 	}
 }

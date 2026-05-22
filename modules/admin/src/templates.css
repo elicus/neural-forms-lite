@@ -722,3 +722,177 @@
 		right: 12px;
 	}
 }
+
+/*
+ * ─── Template Library popup (opened from Forms → "+ New Form → Use Template") ──
+ *
+ * The same TemplateLibrary component drives both the admin Templates
+ * page and this modal — the modal chrome is just an overlay/panel/
+ * header shell wrapped around it. Selectors are scoped under
+ * `#neural-forms-app` to keep them from leaking into surrounding
+ * wp-admin chrome, identical to the page-mode rules above.
+ *
+ * Brand colors:
+ *   --nf-primary  #080f5b
+ *   --nf-accent   #15db95
+ */
+#neural-forms-app .nf-template-modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba( 8, 15, 91, 0.42 );
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 32px;
+	overscroll-behavior: contain;
+}
+
+#neural-forms-app .nf-template-modal {
+	width: min( 1180px, calc( 100vw - 64px ) );
+	max-height: 86vh;
+	background: #fff;
+	border-radius: 18px;
+	box-shadow: 0 24px 70px rgba( 8, 15, 91, 0.22 );
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	outline: none;
+}
+
+#neural-forms-app .nf-template-modal-header {
+	padding: 22px 28px;
+	border-bottom: 1px solid #e5e7eb;
+	display: flex;
+	justify-content: space-between;
+	gap: 20px;
+	align-items: flex-start;
+	background: linear-gradient( 135deg, #f5f6fb 0%, #ffffff 100% );
+}
+
+#neural-forms-app .nf-template-modal-header__text {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-template-modal-header__title {
+	margin: 0 0 6px;
+	font-size: 22px;
+	font-weight: 700;
+	color: #080f5b;
+	letter-spacing: -0.01em;
+}
+
+#neural-forms-app .nf-template-modal-header__subtitle {
+	margin: 0;
+	color: #4b5563;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+#neural-forms-app .nf-template-modal-header__actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-shrink: 0;
+}
+
+#neural-forms-app .nf-template-modal-header__updated {
+	font-size: 12px;
+	color: #6b7280;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-template-modal-header__refresh.components-button {
+	background: #080f5b;
+	color: #fff;
+	border: 1px solid #080f5b;
+	box-shadow: none;
+	border-radius: 4px;
+	padding: 8px 16px;
+	height: auto;
+	font-weight: 500;
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#neural-forms-app .nf-template-modal-header__refresh.components-button:hover:not(:disabled),
+#neural-forms-app .nf-template-modal-header__refresh.components-button:focus:not(:disabled) {
+	background: #050a45;
+	border-color: #050a45;
+	color: #fff;
+	box-shadow: none;
+}
+
+#neural-forms-app .nf-template-modal-header__refresh.components-button:disabled,
+#neural-forms-app .nf-template-modal-header__refresh.components-button[aria-disabled="true"] {
+	background: #080f5b;
+	border-color: #080f5b;
+	color: #fff;
+	opacity: 0.6;
+}
+
+#neural-forms-app .nf-template-modal-close {
+	appearance: none;
+	-webkit-appearance: none;
+	background: transparent;
+	border: 0;
+	width: 32px;
+	height: 32px;
+	border-radius: 6px;
+	cursor: pointer;
+	color: #4b5563;
+	font-size: 22px;
+	line-height: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#neural-forms-app .nf-template-modal-close:hover,
+#neural-forms-app .nf-template-modal-close:focus-visible {
+	background: rgba( 8, 15, 91, 0.08 );
+	color: #080f5b;
+	outline: none;
+}
+
+#neural-forms-app .nf-template-modal-body {
+	padding: 24px 28px 28px;
+	overflow: auto;
+	flex: 1 1 auto;
+}
+
+/*
+ * Modal-scoped tweaks for the shared TemplateLibrary:
+ *   - Drop the outer padding (the modal body already pads).
+ *   - Suppress the page-mode hero (the modal chrome carries title +
+ *     subtitle + refresh + close).
+ *   - Tighten the grid to fit comfortably inside ~1100-1180px.
+ */
+#neural-forms-app .neural-forms-templates--modal {
+	padding: 0;
+	background: transparent;
+}
+
+#neural-forms-app .neural-forms-templates--modal .neural-forms-templates__grid {
+	grid-template-columns: repeat( auto-fill, minmax( 260px, 1fr ) );
+	gap: 22px;
+}
+
+@media ( max-width: 720px ) {
+	#neural-forms-app .nf-template-modal-overlay {
+		padding: 16px;
+	}
+	#neural-forms-app .nf-template-modal {
+		width: 100%;
+		max-height: calc( 100vh - 32px );
+		border-radius: 12px;
+	}
+	#neural-forms-app .nf-template-modal-header {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	#neural-forms-app .nf-template-modal-header__actions {
+		justify-content: flex-end;
+	}
+}

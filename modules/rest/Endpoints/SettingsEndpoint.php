@@ -43,58 +43,74 @@ class SettingsEndpoint {
 	 * no-op because add_action() de-duplicates identical callbacks.
 	 */
 	public static function register_hooks(): void {
-		add_action( self::PLAN_REFRESH_HOOK, [ self::class, 'refresh_plan_cache_now' ] );
+		add_action( self::PLAN_REFRESH_HOOK, array( self::class, 'refresh_plan_cache_now' ) );
 	}
 
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/settings', [
-			[
-				'methods'             => 'GET',
-				'callback'            => [ $this, 'get_settings' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-			[
-				'methods'             => 'PATCH',
-				'callback'            => [ $this, 'update_settings' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => $this->patch_args(),
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/settings',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_settings' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+				array(
+					'methods'             => 'PATCH',
+					'callback'            => array( $this, 'update_settings' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => $this->patch_args(),
+				),
+			)
+		);
 
-		register_rest_route( $ns, '/settings/test-connection', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'test_connection' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'api_key' => [
-					'required'          => false,
-					'sanitize_callback' => 'sanitize_text_field',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/settings/test-connection',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'test_connection' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'api_key' => array(
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
+			)
+		);
 
-		register_rest_route( $ns, '/settings/revoke-connection', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'revoke_connection' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/settings/revoke-connection',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'revoke_connection' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 
-		register_rest_route( $ns, '/settings/test-email', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'send_test_email' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'email' => [
-					'required'          => true,
-					'sanitize_callback' => 'sanitize_email',
-					'validate_callback' => static function ( $value ): bool {
-						return is_email( sanitize_email( (string) $value ) );
-					},
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/settings/test-email',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'send_test_email' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'email' => array(
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_email',
+						'validate_callback' => static function ( $value ): bool {
+							return is_email( sanitize_email( (string) $value ) );
+						},
+					),
+				),
+			)
+		);
 	}
 
 	// Handlers
@@ -111,9 +127,9 @@ class SettingsEndpoint {
 		// Each AI call already mirrors usage.credits_remaining into the
 		// local cache via PlanManager::apply_usage(), so the periodic
 		// round-trip is only needed to catch:
-		//   - usage block missing from a pre-fix cloud response
-		//   - the user topped up credits in another tab
-		//   - the plan changed (cancelled / renewed) outside this admin
+		// - usage block missing from a pre-fix cloud response
+		// - the user topped up credits in another tab
+		// - the plan changed (cancelled / renewed) outside this admin
 		// Worst case: the user sees a one-navigation-stale balance after a
 		// long gap, instead of a blocked page load.
 		$this->maybe_schedule_plan_refresh();
@@ -127,40 +143,42 @@ class SettingsEndpoint {
 			|| ! empty( $all['cloud_api_key'] )
 			|| (bool) get_option( self::REVOKE_SNAPSHOT_OPTION, false );
 
-		return rest_ensure_response( [
-			'ai_auto_process'       => (bool) ( $all['ai_auto_process']       ?? true ),
-			'privacy_mode'          => (bool) ( $all['privacy_mode']          ?? false ),
-			'sender_name'           => (string) ( $all['sender_name']         ?? '' ),
-			'sender_email'          => (string) ( $all['sender_email']        ?? '' ),
-			'reply_subject_pattern' => (string) ( $all['reply_subject_pattern'] ?? 'Re: Your submission' ),
+		return rest_ensure_response(
+			array(
+				'ai_auto_process'               => (bool) ( $all['ai_auto_process'] ?? true ),
+				'privacy_mode'                  => (bool) ( $all['privacy_mode'] ?? false ),
+				'sender_name'                   => (string) ( $all['sender_name'] ?? '' ),
+				'sender_email'                  => (string) ( $all['sender_email'] ?? '' ),
+				'reply_subject_pattern'         => (string) ( $all['reply_subject_pattern'] ?? 'Re: Your submission' ),
 
-			// Notifications
-			'enable_admin_notification' => (bool) ( $all['enable_admin_notification'] ?? true ),
-			'admin_notification_email'  => (string) ( $all['admin_notification_email'] ?? '' ),
-			'enable_autoresponder'      => (bool) ( $all['enable_autoresponder']       ?? false ),
-			'autoresponder_subject'     => (string) ( $all['autoresponder_subject']    ?? 'Thank you for your submission' ),
-			'autoresponder_body'        => (string) ( $all['autoresponder_body']       ?? '' ),
+				// Notifications
+				'enable_admin_notification'     => (bool) ( $all['enable_admin_notification'] ?? true ),
+				'admin_notification_email'      => (string) ( $all['admin_notification_email'] ?? '' ),
+				'enable_autoresponder'          => (bool) ( $all['enable_autoresponder'] ?? false ),
+				'autoresponder_subject'         => (string) ( $all['autoresponder_subject'] ?? 'Thank you for your submission' ),
+				'autoresponder_body'            => (string) ( $all['autoresponder_body'] ?? '' ),
 
-			// AI spam detection
-			'ai_spam_enabled'              => (bool) ( $all['ai_spam_enabled']              ?? false ),
-			'ai_spam_mode'                 => (string) ( $all['ai_spam_mode']               ?? 'suggest' ),
-			'ai_spam_threshold'            => (int) ( $all['ai_spam_threshold']             ?? 85 ),
-			'email_skip_spam_notifications' => (bool) ( $all['email_skip_spam_notifications'] ?? false ),
+				// AI spam detection
+				'ai_spam_enabled'               => (bool) ( $all['ai_spam_enabled'] ?? false ),
+				'ai_spam_mode'                  => (string) ( $all['ai_spam_mode'] ?? 'suggest' ),
+				'ai_spam_threshold'             => (int) ( $all['ai_spam_threshold'] ?? 85 ),
+				'email_skip_spam_notifications' => (bool) ( $all['email_skip_spam_notifications'] ?? false ),
 
-			// CAPTCHA - secret key is write-only; only a boolean "is it set?" is returned.
-			'captcha_provider'        => (string) ( $all['captcha_provider']   ?? 'none' ),
-			'captcha_site_key'        => (string) ( $all['captcha_site_key']   ?? '' ),
-			'captcha_secret_key_set'  => ! empty( $all['captcha_secret_key'] ),
+				// CAPTCHA - secret key is write-only; only a boolean "is it set?" is returned.
+				'captcha_provider'              => (string) ( $all['captcha_provider'] ?? 'none' ),
+				'captcha_site_key'              => (string) ( $all['captcha_site_key'] ?? '' ),
+				'captcha_secret_key_set'        => ! empty( $all['captcha_secret_key'] ),
 
-			// Neural Forms Cloud AI - cloud key is write-only.
-			'cloud_ai_enabled'       => (bool) ( $all['cloud_ai_enabled']    ?? false ),
-			'cloud_api_key_set'      => ! empty( $all['cloud_api_key'] ),
-			'cloud_signup_complete'  => $signup_complete,
+				// Neural Forms Cloud AI - cloud key is write-only.
+				'cloud_ai_enabled'              => (bool) ( $all['cloud_ai_enabled'] ?? false ),
+				'cloud_api_key_set'             => ! empty( $all['cloud_api_key'] ),
+				'cloud_signup_complete'         => $signup_complete,
 
-			// Plan + capabilities. Sourced entirely from the Cloud API; the plugin
-			// never hardcodes tier logic. See PlanManager for the shape.
-			'cloud_plan'             => PlanManager::public_payload(),
-		] );
+				// Plan + capabilities. Sourced entirely from the Cloud API; the plugin
+				// never hardcodes tier logic. See PlanManager for the shape.
+				'cloud_plan'                    => PlanManager::public_payload(),
+			)
+		);
 	}
 
 	/**
@@ -177,8 +195,12 @@ class SettingsEndpoint {
 	 * GET /settings whenever the cache aged out.
 	 */
 	private function maybe_schedule_plan_refresh(): void {
-		if ( ! Config::get( 'cloud_ai_enabled' ) ) return;
-		if ( Config::get( 'cloud_api_key' ) === '' ) return;
+		if ( ! Config::get( 'cloud_ai_enabled' ) ) {
+			return;
+		}
+		if ( Config::get( 'cloud_api_key' ) === '' ) {
+			return;
+		}
 
 		$plan       = PlanManager::get_plan();
 		$fetched_at = (int) ( $plan['fetched_at'] ?? 0 );
@@ -207,8 +229,12 @@ class SettingsEndpoint {
 	 * cron pass.
 	 */
 	public static function refresh_plan_cache_now(): void {
-		if ( ! Config::get( 'cloud_ai_enabled' ) ) return;
-		if ( Config::get( 'cloud_api_key' ) === '' ) return;
+		if ( ! Config::get( 'cloud_ai_enabled' ) ) {
+			return;
+		}
+		if ( Config::get( 'cloud_api_key' ) === '' ) {
+			return;
+		}
 
 		try {
 			$provider = \NeuralForms\AI\AiManager::resolve();
@@ -226,7 +252,7 @@ class SettingsEndpoint {
 	}
 
 	public function update_settings( WP_REST_Request $request ) {
-		$updates = [];
+		$updates = array();
 
 		if ( null !== $request->get_param( 'ai_enabled' ) ) {
 			$updates['ai_enabled'] = (bool) $request->get_param( 'ai_enabled' );
@@ -250,7 +276,13 @@ class SettingsEndpoint {
 			$updates['enable_admin_notification'] = (bool) $request->get_param( 'enable_admin_notification' );
 		}
 		if ( null !== $request->get_param( 'admin_notification_email' ) ) {
-			$updates['admin_notification_email'] = sanitize_email( (string) $request->get_param( 'admin_notification_email' ) );
+			// Comma-separated list support (1.1.0+). Parse to a list of
+			// valid addresses, drop invalid entries, then re-join so
+			// the option stays a flat string the React UI can edit.
+			$valid_list                          = \NeuralForms\Notifications\NotificationService::parse_recipient_list(
+				(string) $request->get_param( 'admin_notification_email' )
+			);
+			$updates['admin_notification_email'] = implode( ', ', $valid_list );
 		}
 		if ( null !== $request->get_param( 'enable_autoresponder' ) ) {
 			$updates['enable_autoresponder'] = (bool) $request->get_param( 'enable_autoresponder' );
@@ -301,7 +333,7 @@ class SettingsEndpoint {
 			return new WP_Error(
 				'no_settings',
 				__( 'No settings provided.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -310,7 +342,7 @@ class SettingsEndpoint {
 		// CAPTCHA: reject enabling a provider when keys are missing.
 		$captcha_provider = $updates['captcha_provider'] ?? (string) Config::get( 'captcha_provider' );
 		if ( $captcha_provider !== 'none' ) {
-			$site_key   = $updates['captcha_site_key']   ?? (string) Config::get( 'captcha_site_key' );
+			$site_key   = $updates['captcha_site_key'] ?? (string) Config::get( 'captcha_site_key' );
 			$secret_set = isset( $updates['captcha_secret_key'] )
 				? ( trim( (string) $updates['captcha_secret_key'] ) !== '' )
 				: ! empty( Config::get( 'captcha_secret_key' ) );
@@ -319,7 +351,7 @@ class SettingsEndpoint {
 				return new WP_Error(
 					'captcha_keys_required',
 					__( 'CAPTCHA cannot be enabled without both a Site Key and a Secret Key.', 'neural-forms-lite' ),
-					[ 'status' => 422 ]
+					array( 'status' => 422 )
 				);
 			}
 		}
@@ -334,8 +366,8 @@ class SettingsEndpoint {
 			if ( $cloud_key_value === '' ) {
 				return new WP_Error(
 					'cloud_api_key_required',
-					__( 'Cloud AI cannot be enabled without an API key. Add a key first.', 'neural-forms-lite' ),
-					[ 'status' => 422 ]
+					__( 'Neural AI Cloud cannot be enabled without an API key. Add a key first.', 'neural-forms-lite' ),
+					array( 'status' => 422 )
 				);
 			}
 
@@ -352,10 +384,10 @@ class SettingsEndpoint {
 						'cloud_api_key_invalid',
 						sprintf(
 							/* translators: %s: error detail from the Cloud API */
-							__( 'Cloud AI key validation failed: %s', 'neural-forms-lite' ),
+							__( 'Neural AI Cloud key validation failed: %s', 'neural-forms-lite' ),
 							$test_result->get_error_message()
 						),
-						[ 'status' => 422 ]
+						array( 'status' => 422 )
 					);
 				}
 
@@ -396,11 +428,11 @@ class SettingsEndpoint {
 			return new WP_Error(
 				'pro_feature_locked',
 				__( 'Spam detection requires Neural Forms Pro.', 'neural-forms-lite' ),
-				[
+				array(
 					'status'       => 422,
 					'feature'      => Capabilities::AI_SPAM_DETECT,
 					'requires_pro' => true,
-				]
+				)
 			);
 		}
 
@@ -456,7 +488,7 @@ class SettingsEndpoint {
 			return new WP_Error(
 				'missing_key',
 				__( 'No API key provided and no saved key found.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -464,19 +496,22 @@ class SettingsEndpoint {
 		// AiManager uses on every request.
 		$base_url = \NeuralForms\AI\AiManager::resolve_base_url();
 
-		$response = wp_remote_get( $base_url . '/v1/auth/me', [
-			'timeout' => 15,
-			'headers' => [
-				'Authorization' => 'Bearer ' . $api_key,
-				'Content-Type'  => 'application/json',
-			],
-		] );
+		$response = wp_remote_get(
+			$base_url . '/v1/auth/me',
+			array(
+				'timeout' => 15,
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $api_key,
+					'Content-Type'  => 'application/json',
+				),
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			return new WP_Error(
 				'connection_failed',
 				$response->get_error_message(),
-				[ 'status' => 502 ]
+				array( 'status' => 502 )
 			);
 		}
 
@@ -491,18 +526,20 @@ class SettingsEndpoint {
 				PlanManager::store_from_response( $body );
 			}
 
-			return rest_ensure_response( [
-				'success'        => true,
-				'workspace_name' => $body['site']['name'] ?? '',
-				'plan'           => $body['plan']['name'] ?? '',
-				'cloud_plan'     => PlanManager::public_payload(),
-			] );
+			return rest_ensure_response(
+				array(
+					'success'        => true,
+					'workspace_name' => $body['site']['name'] ?? '',
+					'plan'           => $body['plan']['name'] ?? '',
+					'cloud_plan'     => PlanManager::public_payload(),
+				)
+			);
 		}
 
 		return new WP_Error(
 			'api_error',
 			$body['message'] ?? "API returned HTTP {$code}",
-			[ 'status' => $code >= 400 && $code < 600 ? $code : 502 ]
+			array( 'status' => $code >= 400 && $code < 600 ? $code : 502 )
 		);
 	}
 
@@ -515,13 +552,13 @@ class SettingsEndpoint {
 
 	/** Keys captured on revoke and restored on reconnect. */
 	private static function revoke_snapshot_keys(): array {
-		return [
+		return array(
 			'cloud_ai_enabled',
 			'ai_enabled',
 			'ai_auto_process',
 			'ai_spam_enabled',
 			'email_skip_spam_notifications',
-		];
+		);
 	}
 
 	/**
@@ -539,21 +576,23 @@ class SettingsEndpoint {
 	 * @return \WP_REST_Response
 	 */
 	public function revoke_connection( WP_REST_Request $request ) {
-		$snapshot = [];
+		$snapshot = array();
 		foreach ( self::revoke_snapshot_keys() as $key ) {
 			$snapshot[ $key ] = (bool) Config::get( $key );
 		}
 		update_option( self::REVOKE_SNAPSHOT_OPTION, $snapshot, false );
 
-		Config::update( [
-			'cloud_api_key'                 => '',
-			'cloud_ai_enabled'              => false,
-			'ai_enabled'                    => false,
-			'ai_auto_process'               => false,
-			'ai_spam_enabled'               => false,
-			'email_skip_spam_notifications' => false,
-			'cloud_signup_complete'         => true,
-		] );
+		Config::update(
+			array(
+				'cloud_api_key'                 => '',
+				'cloud_ai_enabled'              => false,
+				'ai_enabled'                    => false,
+				'ai_auto_process'               => false,
+				'ai_spam_enabled'               => false,
+				'email_skip_spam_notifications' => false,
+				'cloud_signup_complete'         => true,
+			)
+		);
 		Config::flush_cache();
 		PlanManager::clear();
 
@@ -580,14 +619,14 @@ class SettingsEndpoint {
 
 		$subject = __( 'Neural Forms Test Email', 'neural-forms-lite' );
 		$message = __( 'This is a test email from Neural Forms. If you received this, email is working.', 'neural-forms-lite' );
-		$headers = [ 'Content-Type: text/plain; charset=UTF-8' ];
+		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
 
 		// Apply configured sender identity when available.
 		$sender_name  = (string) Config::get( 'sender_name', '' );
 		$sender_email = (string) Config::get( 'sender_email', '' );
 
 		if ( $sender_email !== '' && is_email( $sender_email ) ) {
-			$from     = $sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email;
+			$from      = $sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email;
 			$headers[] = 'From: ' . $from;
 		} elseif ( $sender_name !== '' ) {
 			// Name set but no email - use the WordPress admin email with the custom name.
@@ -599,14 +638,16 @@ class SettingsEndpoint {
 		if ( $sent ) {
 			Logger::log( 'test_email', 'info', 'Test email sent to ' . $to );
 
-			return rest_ensure_response( [
-				'success' => true,
-				'message' => sprintf(
+			return rest_ensure_response(
+				array(
+					'success' => true,
+					'message' => sprintf(
 					/* translators: %s: email address */
-					__( 'Test email sent to %s.', 'neural-forms-lite' ),
-					$to
-				),
-			] );
+						__( 'Test email sent to %s.', 'neural-forms-lite' ),
+						$to
+					),
+				)
+			);
 		}
 
 		Logger::log( 'test_email', 'error', 'Test email failed to send to ' . $to );
@@ -618,7 +659,7 @@ class SettingsEndpoint {
 				__( 'wp_mail() returned false for %s. Check your server\'s mail configuration.', 'neural-forms-lite' ),
 				$to
 			),
-			[ 'status' => 500 ]
+			array( 'status' => 500 )
 		);
 	}
 
@@ -632,90 +673,130 @@ class SettingsEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to manage Neural Forms settings.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 
 	// Arg definitions
 
 	private function patch_args(): array {
-		return [
-			'ai_enabled'      => [ 'required' => false, 'type' => 'boolean' ],
-			'ai_auto_process' => [ 'required' => false, 'type' => 'boolean' ],
-			'privacy_mode'    => [ 'required' => false, 'type' => 'boolean' ],
-			'sender_name'           => [
+		return array(
+			'ai_enabled'                    => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'ai_auto_process'               => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'privacy_mode'                  => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'sender_name'                   => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'sender_email'          => [
+			),
+			'sender_email'                  => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_email',
 				'validate_callback' => static function ( $value ): bool {
 					return $value === '' || is_email( sanitize_email( (string) $value ) );
 				},
-			],
-			'reply_subject_pattern' => [
+			),
+			'reply_subject_pattern'         => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'enable_admin_notification' => [ 'required' => false, 'type' => 'boolean' ],
-			'admin_notification_email'  => [
+			),
+			'enable_admin_notification'     => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'admin_notification_email'      => array(
 				'required'          => false,
-				'sanitize_callback' => 'sanitize_email',
-				'validate_callback' => static function ( $value ): bool {
-					return $value === '' || is_email( sanitize_email( (string) $value ) );
+				// Sanitisation happens in the handler via
+				// NotificationService::parse_recipient_list — we
+				// only strip surrounding whitespace here so the
+				// raw comma-separated string survives the args
+				// pipeline. sanitize_email() would strip the
+				// commas before the handler ever saw them.
+				'sanitize_callback' => static function ( $value ): string {
+					return is_string( $value ) ? trim( $value ) : '';
 				},
-			],
-			'enable_autoresponder'  => [ 'required' => false, 'type' => 'boolean' ],
-			'autoresponder_subject' => [
+				// Accept blank OR any string that contains at least
+				// one valid address. The full per-entry validation
+				// lives in the handler; this gate just rejects
+				// pure-garbage input early.
+				'validate_callback' => static function ( $value ): bool {
+					if ( ! is_string( $value ) || trim( $value ) === '' ) {
+						return true;
+					}
+					$valid = \NeuralForms\Notifications\NotificationService::parse_recipient_list( $value );
+					return ! empty( $valid );
+				},
+			),
+			'enable_autoresponder'          => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'autoresponder_subject'         => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'autoresponder_body'    => [
+			),
+			'autoresponder_body'            => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_textarea_field',
-			],
-			'ai_spam_enabled'              => [ 'required' => false, 'type' => 'boolean' ],
-			'email_skip_spam_notifications' => [ 'required' => false, 'type' => 'boolean' ],
-			'ai_spam_mode'      => [
+			),
+			'ai_spam_enabled'               => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'email_skip_spam_notifications' => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'ai_spam_mode'                  => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ): bool {
-					return in_array( $value, [ 'suggest', 'auto' ], true );
+					return in_array( $value, array( 'suggest', 'auto' ), true );
 				},
-			],
-			'ai_spam_threshold' => [
+			),
+			'ai_spam_threshold'             => array(
 				'required'          => false,
 				'sanitize_callback' => 'absint',
 				'validate_callback' => static function ( $value ): bool {
 					$v = (int) $value;
 					return $v >= 60 && $v <= 100;
 				},
-			],
+			),
 
 			// Neural Forms Cloud AI
-			'cloud_ai_enabled'   => [ 'required' => false, 'type' => 'boolean' ],
-			'cloud_api_key'      => [
+			'cloud_ai_enabled'              => array(
+				'required' => false,
+				'type'     => 'boolean',
+			),
+			'cloud_api_key'                 => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
+			),
 
 			// CAPTCHA
-			'captcha_provider' => [
+			'captcha_provider'              => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ): bool {
-					return in_array( $value, [ 'none', 'turnstile', 'recaptcha_v2' ], true );
+					return in_array( $value, array( 'none', 'turnstile', 'recaptcha_v2' ), true );
 				},
-			],
-			'captcha_site_key' => [
+			),
+			'captcha_site_key'              => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'captcha_secret_key' => [
+			),
+			'captcha_secret_key'            => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-		];
+			),
+		);
 	}
 }

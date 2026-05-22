@@ -104,16 +104,16 @@ export default function AiAnalysisCard( {
 				</div>
 			) }
 			<header className="neural-forms-entry-detail__ai-card-header">
-				<h4 className="neural-forms-entry-detail__ai-card-title">{ __( 'AI Analysis', 'neural-forms-lite' ) }</h4>
+				<h4 className="neural-forms-entry-detail__ai-card-title">{ __( 'Neural AI Analysis', 'neural-forms-lite' ) }</h4>
 				<div className="neural-forms-entry-detail__ai-badges">
 					{ tier && (
-						<span className="neural-forms-entries-pill neural-forms-entries-pill--tier" title={ __( 'AI tier used', 'neural-forms-lite' ) }>
+						<span className="neural-forms-entries-pill neural-forms-entries-pill--tier" title={ __( 'Neural AI tier used', 'neural-forms-lite' ) }>
 							{ tierLabel( tier ) }
 						</span>
 					) }
 					{ status === 'queued'     && <span className="neural-forms-entries-pill neural-forms-entries-pill--neutral">{ __( 'Queued', 'neural-forms-lite' ) }</span> }
 					{ status === 'processing' && <span className="neural-forms-entries-pill neural-forms-entries-pill--neutral">{ __( 'Processing...', 'neural-forms-lite' ) }</span> }
-					{ status === 'failed'     && <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'AI failed', 'neural-forms-lite' ) }</span> }
+					{ status === 'failed'     && <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Neural AI failed', 'neural-forms-lite' ) }</span> }
 				</div>
 			</header>
 
@@ -184,27 +184,27 @@ export default function AiAnalysisCard( {
 							type="button"
 							className="neural-forms-entry-detail__ai-rerun-btn"
 							onClick={ () => setShowUpsell( true ) }
-							aria-label={ __( 'Re-analyze with AI (Pro feature)', 'neural-forms-lite' ) }
+							aria-label={ __( 'Re-analyze with Neural AI (Pro feature)', 'neural-forms-lite' ) }
 						>
 							<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
 								<LockIcon />
 							</span>
 							{ hasAnalysis
-								? __( 'Re-analyze with AI', 'neural-forms-lite' )
-								: __( 'Analyze with AI', 'neural-forms-lite' ) }
+								? __( 'Re-analyze with Neural AI', 'neural-forms-lite' )
+								: __( 'Analyze with Neural AI', 'neural-forms-lite' ) }
 						</button>
 						<button
 							type="button"
 							className="neural-forms-entry-detail__ai-rerun-btn"
 							onClick={ () => setShowUpsell( true ) }
-							aria-label={ __( 'Generate reply (Pro feature)', 'neural-forms-lite' ) }
+							aria-label={ __( 'Generate reply with Neural AI (Pro feature)', 'neural-forms-lite' ) }
 						>
 							<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
 								<LockIcon />
 							</span>
 							{ entry.ai_reply_draft
-								? __( 'Regenerate reply', 'neural-forms-lite' )
-								: __( 'Generate reply', 'neural-forms-lite' ) }
+								? __( 'Regenerate with Neural AI', 'neural-forms-lite' )
+								: __( 'Generate with Neural AI', 'neural-forms-lite' ) }
 						</button>
 					</>
 				) }
@@ -217,7 +217,7 @@ export default function AiAnalysisCard( {
 					</span>
 					<div className="neural-forms-entries-pro-notice__body">
 						<p className="neural-forms-entries-pro-notice__title">
-							{ __( 'Upgrade to Pro to use AI', 'neural-forms-lite' ) }
+							{ __( 'Upgrade to Pro to use Neural AI', 'neural-forms-lite' ) }
 						</p>
 						<p className="neural-forms-entries-pro-notice__desc">
 							{ __( 'Re-analyze and generate replies are part of Neural Forms Pro.', 'neural-forms-lite' ) }

@@ -49,49 +49,65 @@ class PollsEndpoint {
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/forms/(?P<id>\d+)/polls/(?P<field_id>[a-z0-9_]+)', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_poll_results' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args' => [
-				'id' => [
-					'validate_callback' => static function ( $v ) { return is_numeric( $v ) && (int) $v > 0; },
-					'sanitize_callback' => 'absint',
-				],
-				'field_id' => [
-					'validate_callback' => static function ( $v ) { return is_string( $v ) && (bool) preg_match( '/^[a-z0-9_]+$/', $v ); },
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/forms/(?P<id>\d+)/polls/(?P<field_id>[a-z0-9_]+)',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_poll_results' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'id'       => array(
+						'validate_callback' => static function ( $v ) {
+							return is_numeric( $v ) && (int) $v > 0; },
+						'sanitize_callback' => 'absint',
+					),
+					'field_id' => array(
+						'validate_callback' => static function ( $v ) {
+							return is_string( $v ) && (bool) preg_match( '/^[a-z0-9_]+$/', $v ); },
+					),
+				),
+			)
+		);
 
 		// All-polls aggregator. Powers the Results screen.
-		register_rest_route( $ns, '/forms/(?P<id>\d+)/polls', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_all_poll_results' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args' => [
-				'id' => [
-					'validate_callback' => static function ( $v ) { return is_numeric( $v ) && (int) $v > 0; },
-					'sanitize_callback' => 'absint',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/forms/(?P<id>\d+)/polls',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_all_poll_results' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'id' => array(
+						'validate_callback' => static function ( $v ) {
+							return is_numeric( $v ) && (int) $v > 0; },
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
 
 		// All-quiz aggregator. Powers the Results screen Quiz section.
 		// Lives on this endpoint class because the data flow is
 		// parallel to polls: same form lookup, same trash exclusion,
 		// same admin-only gate. No registry split needed in v1.
-		register_rest_route( $ns, '/forms/(?P<id>\d+)/quiz', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_all_quiz_results' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args' => [
-				'id' => [
-					'validate_callback' => static function ( $v ) { return is_numeric( $v ) && (int) $v > 0; },
-					'sanitize_callback' => 'absint',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/forms/(?P<id>\d+)/quiz',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_all_quiz_results' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'id' => array(
+						'validate_callback' => static function ( $v ) {
+							return is_numeric( $v ) && (int) $v > 0; },
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
 	}
 
 	public function check_permission(): bool {
@@ -110,12 +126,12 @@ class PollsEndpoint {
 			return new WP_Error(
 				'form_not_found',
 				__( 'Form not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
-		$fields = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		$fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
 
 		$poll_field = null;
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
@@ -129,11 +145,11 @@ class PollsEndpoint {
 			return new WP_Error(
 				'poll_not_found',
 				__( 'Poll field not found on this form.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$result = self::compute_poll_result( $form_id, $poll_field );
+		$result            = self::compute_poll_result( $form_id, $poll_field );
 		$result['form_id'] = $form_id;
 
 		return rest_ensure_response( $result );
@@ -170,32 +186,36 @@ class PollsEndpoint {
 			return new WP_Error(
 				'form_not_found',
 				__( 'Form not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
-		$fields = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		$fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
 
-		$polls = [];
+		$polls            = array();
 		$total_poll_votes = 0;
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
-			if ( ( $f['type'] ?? '' ) !== 'poll' ) continue;
-			$result = self::compute_poll_result( $form_id, $f );
+			if ( ( $f['type'] ?? '' ) !== 'poll' ) {
+				continue;
+			}
+			$result            = self::compute_poll_result( $form_id, $f );
 			$total_poll_votes += (int) $result['total_votes'];
-			$polls[] = $result;
+			$polls[]           = $result;
 		}
 
 		$total_entries = self::count_form_entries( $form_id );
 
-		return rest_ensure_response( [
-			'form_id'          => $form_id,
-			'form_name'        => (string) ( $form['name'] ?? '' ),
-			'total_entries'    => $total_entries,
-			'poll_count'       => count( $polls ),
-			'total_poll_votes' => $total_poll_votes,
-			'polls'            => $polls,
-		] );
+		return rest_ensure_response(
+			array(
+				'form_id'          => $form_id,
+				'form_name'        => (string) ( $form['name'] ?? '' ),
+				'total_entries'    => $total_entries,
+				'poll_count'       => count( $polls ),
+				'total_poll_votes' => $total_poll_votes,
+				'polls'            => $polls,
+			)
+		);
 	}
 
 	/**
@@ -241,15 +261,15 @@ class PollsEndpoint {
 			return new WP_Error(
 				'form_not_found',
 				__( 'Form not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
-		$fields = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		$fields = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
 
 		// Collect quiz fields in schema order.
-		$quiz_fields = [];
+		$quiz_fields = array();
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
 			if ( ( $f['type'] ?? '' ) === 'quiz_question' ) {
 				$quiz_fields[] = $f;
@@ -259,50 +279,66 @@ class PollsEndpoint {
 		$total_entries = self::count_form_entries( $form_id );
 
 		if ( empty( $quiz_fields ) ) {
-			return rest_ensure_response( [
-				'form_id'            => $form_id,
-				'form_name'          => (string) ( $form['name'] ?? '' ),
-				'total_entries'      => $total_entries,
-				'quiz_count'         => 0,
-				'total_attempts'     => 0,
-				'max_score'          => 0,
-				'average_score'      => 0.0,
-				'average_percentage' => 0.0,
-				'questions'          => [],
-			] );
+			return rest_ensure_response(
+				array(
+					'form_id'            => $form_id,
+					'form_name'          => (string) ( $form['name'] ?? '' ),
+					'total_entries'      => $total_entries,
+					'quiz_count'         => 0,
+					'total_attempts'     => 0,
+					'max_score'          => 0,
+					'average_score'      => 0.0,
+					'average_percentage' => 0.0,
+					'questions'          => array(),
+				)
+			);
 		}
 
-		$field_ids = array_map( static function ( $f ) { return (string) ( $f['id'] ?? '' ); }, $quiz_fields );
-		$field_ids = array_filter( $field_ids, static function ( $id ) { return $id !== ''; } );
+		$field_ids = array_map(
+			static function ( $f ) {
+				return (string) ( $f['id'] ?? '' );
+			},
+			$quiz_fields
+		);
+		$field_ids = array_filter(
+			$field_ids,
+			static function ( $id ) {
+				return $id !== '';
+			}
+		);
 
 		$agg = \NeuralForms\Storage\EntryRepository::aggregate_quiz_answers( $form_id, array_values( $field_ids ) );
 
 		// Build per-question payload.
 		$max_score = 0;
-		$questions = [];
+		$questions = array();
 
 		foreach ( $quiz_fields as $field ) {
 			$field_id = (string) ( $field['id'] ?? '' );
-			if ( $field_id === '' ) continue;
+			if ( $field_id === '' ) {
+				continue;
+			}
 
-			$settings = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
-			$points   = (int) $settings['points'];
+			$settings   = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
+			$points     = (int) $settings['points'];
 			$max_score += $points;
 
-			$schema_options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
-			$counts         = is_array( $agg['counts'][ $field_id ] ?? null ) ? $agg['counts'][ $field_id ] : [];
+			$schema_options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+			$counts         = is_array( $agg['counts'][ $field_id ] ?? null ) ? $agg['counts'][ $field_id ] : array();
 			$total_answers  = (int) ( $agg['totals'][ $field_id ] ?? 0 );
 
 			$correct_value = '';
-			$known_values  = [];
-			$response_opts = [];
+			$known_values  = array();
+			$response_opts = array();
 
 			foreach ( $schema_options as $opt ) {
 				$opt   = (array) $opt;
 				$label = (string) ( $opt['label'] ?? '' );
 				$raw   = (string) ( $opt['value'] ?? '' );
 				$value = $raw !== '' ? $raw : $label;
-				if ( $value === '' ) continue;
+				if ( $value === '' ) {
+					continue;
+				}
 
 				$known_values[] = $value;
 				$is_correct     = ! empty( $opt['is_correct'] );
@@ -313,13 +349,13 @@ class PollsEndpoint {
 				$answers = (int) ( $counts[ $value ] ?? 0 );
 				$pct     = $total_answers > 0 ? round( ( $answers / $total_answers ) * 100, 2 ) : 0.0;
 
-				$response_opts[] = [
+				$response_opts[] = array(
 					'label'      => $label !== '' ? $label : $value,
 					'value'      => $value,
 					'is_correct' => $is_correct,
 					'answers'    => $answers,
 					'percentage' => $pct,
-				];
+				);
 			}
 
 			// Other bucket for unknown vote values.
@@ -330,20 +366,20 @@ class PollsEndpoint {
 				}
 			}
 			if ( $other > 0 ) {
-				$response_opts[] = [
+				$response_opts[] = array(
 					'label'      => __( 'Other', 'neural-forms-lite' ),
 					'value'      => '__other__',
 					'is_correct' => false,
 					'answers'    => $other,
 					'percentage' => $total_answers > 0 ? round( ( $other / $total_answers ) * 100, 2 ) : 0.0,
-				];
+				);
 			}
 
 			$correct_answers   = (int) ( $correct_value !== '' && isset( $counts[ $correct_value ] ) ? $counts[ $correct_value ] : 0 );
 			$incorrect_answers = max( 0, $total_answers - $correct_answers );
 			$correct_pct       = $total_answers > 0 ? round( ( $correct_answers / $total_answers ) * 100, 2 ) : 0.0;
 
-			$questions[] = [
+			$questions[] = array(
 				'field_id'           => $field_id,
 				'label'              => (string) ( $field['label'] ?? '' ),
 				'points_possible'    => $points,
@@ -352,7 +388,7 @@ class PollsEndpoint {
 				'incorrect_answers'  => $incorrect_answers,
 				'correct_percentage' => $correct_pct,
 				'options'            => $response_opts,
-			];
+			);
 		}
 
 		// Compute per-entry score, mean across non-trash entries that
@@ -360,25 +396,33 @@ class PollsEndpoint {
 		// the form but skipped every quiz question is NOT an attempt;
 		// excluding it keeps the average meaningful (otherwise an
 		// unrelated submit would dilute the score for everyone).
-		$attempts = 0;
+		$attempts  = 0;
 		$score_sum = 0;
-		foreach ( ( $agg['rows'] ?? [] ) as $row ) {
-			$has_answer = false;
+		foreach ( ( $agg['rows'] ?? array() ) as $row ) {
+			$has_answer  = false;
 			$entry_score = 0;
 			foreach ( $quiz_fields as $field ) {
 				$fid = (string) ( $field['id'] ?? '' );
-				if ( $fid === '' ) continue;
-				if ( ! array_key_exists( $fid, $row ) ) continue;
+				if ( $fid === '' ) {
+					continue;
+				}
+				if ( ! array_key_exists( $fid, $row ) ) {
+					continue;
+				}
 				$val = $row[ $fid ];
-				if ( $val === null || $val === '' || is_array( $val ) ) continue;
+				if ( null === $val || $val === '' || is_array( $val ) ) {
+					continue;
+				}
 				$has_answer = true;
 
 				// Match against this question's correct option.
-				$question_options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
-				$pts = (int) SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null )['points'];
+				$question_options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+				$pts              = (int) SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null )['points'];
 				foreach ( $question_options as $opt ) {
 					$opt = (array) $opt;
-					if ( empty( $opt['is_correct'] ) ) continue;
+					if ( empty( $opt['is_correct'] ) ) {
+						continue;
+					}
 					$opt_label = (string) ( $opt['label'] ?? '' );
 					$opt_raw   = (string) ( $opt['value'] ?? '' );
 					$correct   = $opt_raw !== '' ? $opt_raw : $opt_label;
@@ -389,7 +433,7 @@ class PollsEndpoint {
 				}
 			}
 			if ( $has_answer ) {
-				$attempts++;
+				++$attempts;
 				$score_sum += $entry_score;
 			}
 		}
@@ -408,32 +452,34 @@ class PollsEndpoint {
 		$entries           = \NeuralForms\Storage\EntryRepository::list_form_entries_with_data( $form_id, $attempts_limit );
 
 		// Form-level quiz settings for pass/fail detection.
-		$schema_settings = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : [];
+		$schema_settings    = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : array();
 		$quiz_form_settings = SchemaHelper::normalize_quiz_form_settings( $schema_settings['quiz'] ?? null );
-		$show_pass_fail   = ! empty( $quiz_form_settings['show_pass_fail'] );
-		$passing_score    = (int) $quiz_form_settings['passing_score'];
+		$show_pass_fail     = ! empty( $quiz_form_settings['show_pass_fail'] );
+		$passing_score      = (int) $quiz_form_settings['passing_score'];
 
-		$attempts_payload = [];
+		$attempts_payload = array();
 		$pass_count       = 0;
 		$counted_for_pass = 0;
 		$highest_score    = null;
 		$lowest_score     = null;
 
 		foreach ( $entries as $entry ) {
-			$row = $entry['data'];
+			$row             = $entry['data'];
 			$attempt_score   = 0;
 			$attempt_correct = 0;
 			$attempt_wrong   = 0;
 			$has_quiz_answer = false;
-			$answers_payload = [];
+			$answers_payload = array();
 
 			foreach ( $quiz_fields as $field ) {
 				$fid = (string) ( $field['id'] ?? '' );
-				if ( $fid === '' ) continue;
+				if ( $fid === '' ) {
+					continue;
+				}
 
 				$qsettings   = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
 				$default_pts = (int) $qsettings['points'];
-				$options     = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+				$options     = is_array( $field['options'] ?? null ) ? $field['options'] : array();
 
 				// Detect weighted scoring (any option.points key).
 				$has_weighted = false;
@@ -442,9 +488,13 @@ class PollsEndpoint {
 					$opt = (array) $opt;
 					if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
 						$pts = (int) round( (float) $opt['points'] );
-						if ( $pts < 0 ) $pts = 0;
+						if ( $pts < 0 ) {
+							$pts = 0;
+						}
 						$has_weighted = true;
-						if ( $pts > $option_max ) $option_max = $pts;
+						if ( $pts > $option_max ) {
+							$option_max = $pts;
+						}
 					}
 				}
 				$points_possible = $has_weighted ? $option_max : $default_pts;
@@ -454,30 +504,32 @@ class PollsEndpoint {
 				$correct_label = '';
 				foreach ( $options as $opt ) {
 					$opt = (array) $opt;
-					if ( empty( $opt['is_correct'] ) ) continue;
-					$opt_label = (string) ( $opt['label'] ?? '' );
-					$opt_raw   = (string) ( $opt['value'] ?? '' );
+					if ( empty( $opt['is_correct'] ) ) {
+						continue;
+					}
+					$opt_label     = (string) ( $opt['label'] ?? '' );
+					$opt_raw       = (string) ( $opt['value'] ?? '' );
 					$correct_value = $opt_raw !== '' ? $opt_raw : $opt_label;
 					$correct_label = $opt_label !== '' ? $opt_label : $correct_value;
 					break;
 				}
 
 				// Selected value + label.
-				$raw_sel = $row[ $fid ] ?? null;
-				$selected_value = ( $raw_sel === null || $raw_sel === '' || is_array( $raw_sel ) ) ? null : (string) $raw_sel;
+				$raw_sel        = $row[ $fid ] ?? null;
+				$selected_value = ( null === $raw_sel || $raw_sel === '' || is_array( $raw_sel ) ) ? null : (string) $raw_sel;
 				$selected_label = null;
 				$selected_pts   = null;
-				if ( $selected_value !== null ) {
+				if ( null !== $selected_value ) {
 					$has_quiz_answer = true;
 					foreach ( $options as $opt ) {
-						$opt = (array) $opt;
+						$opt       = (array) $opt;
 						$opt_label = (string) ( $opt['label'] ?? '' );
 						$opt_raw   = (string) ( $opt['value'] ?? '' );
 						$effective = $opt_raw !== '' ? $opt_raw : $opt_label;
 						if ( $effective === $selected_value ) {
 							$selected_label = $opt_label !== '' ? $opt_label : $effective;
 							if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
-								$pts = (int) round( (float) $opt['points'] );
+								$pts          = (int) round( (float) $opt['points'] );
 								$selected_pts = $pts < 0 ? 0 : $pts;
 							}
 							break;
@@ -485,17 +537,20 @@ class PollsEndpoint {
 					}
 				}
 
-				$is_correct = ( $selected_value !== null && $correct_value !== '' && $selected_value === $correct_value );
+				$is_correct     = ( null !== $selected_value && $correct_value !== '' && $selected_value === $correct_value );
 				$points_awarded = $has_weighted
-					? ( $selected_pts !== null ? $selected_pts : 0 )
+					? ( null !== $selected_pts ? $selected_pts : 0 )
 					: ( $is_correct ? $default_pts : 0 );
 				$attempt_score += $points_awarded;
-				if ( $selected_value !== null ) {
-					if ( $is_correct ) $attempt_correct++;
-					else $attempt_wrong++;
+				if ( null !== $selected_value ) {
+					if ( $is_correct ) {
+						++$attempt_correct;
+					} else {
+						++$attempt_wrong;
+					}
 				}
 
-				$answers_payload[] = [
+				$answers_payload[] = array(
 					'field_id'        => $fid,
 					'label'           => (string) ( $field['label'] ?? '' ),
 					'selected_value'  => $selected_value,
@@ -504,31 +559,41 @@ class PollsEndpoint {
 					'correct_label'   => $correct_label,
 					'points_awarded'  => $points_awarded,
 					'points_possible' => $points_possible,
-				];
+				);
 			}
 
-			if ( ! $has_quiz_answer ) continue; // Skip non-attempts.
+			if ( ! $has_quiz_answer ) {
+				continue; // Skip non-attempts.
+			}
 
-			$attempt_pct = $max_score > 0 ? round( ( $attempt_score / $max_score ) * 100, 2 ) : 0.0;
+			$attempt_pct    = $max_score > 0 ? round( ( $attempt_score / $max_score ) * 100, 2 ) : 0.0;
 			$attempt_passed = $show_pass_fail ? ( $attempt_pct >= (float) $passing_score ) : null;
 			if ( $show_pass_fail ) {
-				$counted_for_pass++;
-				if ( $attempt_passed ) $pass_count++;
+				++$counted_for_pass;
+				if ( $attempt_passed ) {
+					++$pass_count;
+				}
 			}
-			if ( $highest_score === null || $attempt_score > $highest_score ) $highest_score = $attempt_score;
-			if ( $lowest_score  === null || $attempt_score < $lowest_score  ) $lowest_score  = $attempt_score;
+			if ( null === $highest_score || $attempt_score > $highest_score ) {
+				$highest_score = $attempt_score;
+			}
+			if ( null === $lowest_score || $attempt_score < $lowest_score ) {
+				$lowest_score = $attempt_score;
+			}
 
 			// Identity: email > name > Entry #ID.
 			$identity = '';
 			if ( $identity_field_id !== '' && isset( $row[ $identity_field_id ] ) ) {
 				$candidate = $row[ $identity_field_id ];
-				if ( is_string( $candidate ) && trim( $candidate ) !== '' ) $identity = trim( $candidate );
+				if ( is_string( $candidate ) && trim( $candidate ) !== '' ) {
+					$identity = trim( $candidate );
+				}
 			}
 			if ( $identity === '' ) {
 				$identity = sprintf( /* translators: %d: entry id */ __( 'Entry #%d', 'neural-forms-lite' ), $entry['id'] );
 			}
 
-			$attempt_entry = [
+			$attempt_entry = array(
 				'entry_id'        => $entry['id'],
 				'submitted_at'    => $entry['submitted_at'],
 				'identity'        => $identity,
@@ -538,8 +603,10 @@ class PollsEndpoint {
 				'correct_count'   => $attempt_correct,
 				'incorrect_count' => $attempt_wrong,
 				'answers'         => $answers_payload,
-			];
-			if ( $show_pass_fail ) $attempt_entry['passed'] = $attempt_passed;
+			);
+			if ( $show_pass_fail ) {
+				$attempt_entry['passed'] = $attempt_passed;
+			}
 			$attempts_payload[] = $attempt_entry;
 		}
 
@@ -550,7 +617,7 @@ class PollsEndpoint {
 		// ── Insights (rule-based, no AI) ──────────────────────────
 		$insights = self::build_quiz_insights( $questions, $attempts, $average_percentage, $show_pass_fail, $pass_rate, $passing_score );
 
-		$response = [
+		$response = array(
 			'form_id'            => $form_id,
 			'form_name'          => (string) ( $form['name'] ?? '' ),
 			'total_entries'      => $total_entries,
@@ -559,14 +626,14 @@ class PollsEndpoint {
 			'max_score'          => $max_score,
 			'average_score'      => $average_score,
 			'average_percentage' => $average_percentage,
-			'highest_score'      => $highest_score === null ? 0 : (int) $highest_score,
-			'lowest_score'       => $lowest_score  === null ? 0 : (int) $lowest_score,
+			'highest_score'      => null === $highest_score ? 0 : (int) $highest_score,
+			'lowest_score'       => null === $lowest_score ? 0 : (int) $lowest_score,
 			'questions'          => $questions,
 			'attempts'           => $attempts_payload,
 			'attempts_limit'     => $attempts_limit,
 			'attempts_total'     => $attempts,
 			'insights'           => $insights,
-		];
+		);
 		if ( $show_pass_fail ) {
 			$response['pass_rate']     = $pass_rate;
 			$response['passing_score'] = $passing_score;
@@ -591,9 +658,11 @@ class PollsEndpoint {
 		// Pass 2: name-ish text/text-like fields.
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
 			$type = $f['type'] ?? '';
-			if ( ! in_array( $type, [ 'text', 'textarea' ], true ) ) continue;
-			$id   = strtolower( (string) ( $f['id']    ?? '' ) );
-			$lbl  = strtolower( (string) ( $f['label'] ?? '' ) );
+			if ( ! in_array( $type, array( 'text', 'textarea' ), true ) ) {
+				continue;
+			}
+			$id  = strtolower( (string) ( $f['id'] ?? '' ) );
+			$lbl = strtolower( (string) ( $f['label'] ?? '' ) );
 			if ( strpos( $id, 'name' ) !== false || strpos( $lbl, 'name' ) !== false ) {
 				return (string) $f['id'];
 			}
@@ -617,20 +686,20 @@ class PollsEndpoint {
 		$pass_rate,
 		int $passing_score
 	): array {
-		$out = [];
+		$out = array();
 
-		if ( $attempts === 0 ) {
-			$out[] = [
+		if ( 0 === $attempts ) {
+			$out[] = array(
 				'type'    => 'info',
 				'title'   => __( 'No responses yet', 'neural-forms-lite' ),
 				'message' => __( 'Once people submit this quiz, insights will appear here.', 'neural-forms-lite' ),
-			];
+			);
 			return $out;
 		}
 
 		// Overall performance.
 		if ( $average_percentage >= 80 ) {
-			$out[] = [
+			$out[] = array(
 				'type'    => 'success',
 				'title'   => __( 'Strong performance', 'neural-forms-lite' ),
 				'message' => sprintf(
@@ -638,9 +707,9 @@ class PollsEndpoint {
 					__( 'Average score is %s%% — most users are answering correctly.', 'neural-forms-lite' ),
 					(string) $average_percentage
 				),
-			];
+			);
 		} elseif ( $average_percentage < 50 ) {
-			$out[] = [
+			$out[] = array(
 				'type'    => 'warning',
 				'title'   => __( 'Average score is low', 'neural-forms-lite' ),
 				'message' => sprintf(
@@ -648,60 +717,69 @@ class PollsEndpoint {
 					__( 'Average score is %s%%. Consider reviewing the quiz wording or content.', 'neural-forms-lite' ),
 					(string) $average_percentage
 				),
-			];
+			);
 		}
 
 		// Pass/fail signal.
 		if ( $show_pass_fail && is_numeric( $pass_rate ) ) {
 			if ( $pass_rate >= 80 ) {
-				$out[] = [
+				$out[] = array(
 					'type'    => 'success',
 					'title'   => __( 'High pass rate', 'neural-forms-lite' ),
 					'message' => sprintf(
 						/* translators: 1: pass rate, 2: passing score */
 						__( '%1$s%% of attempts passed (≥ %2$d%%).', 'neural-forms-lite' ),
-						(string) $pass_rate, $passing_score
+						(string) $pass_rate,
+						$passing_score
 					),
-				];
+				);
 			} elseif ( $pass_rate < 50 ) {
-				$out[] = [
+				$out[] = array(
 					'type'    => 'warning',
 					'title'   => __( 'Low pass rate', 'neural-forms-lite' ),
 					'message' => sprintf(
 						/* translators: 1: pass rate, 2: passing score */
 						__( 'Only %1$s%% of attempts passed (≥ %2$d%%).', 'neural-forms-lite' ),
-						(string) $pass_rate, $passing_score
+						(string) $pass_rate,
+						$passing_score
 					),
-				];
+				);
 			}
 		}
 
 		// Per-question insights.
 		foreach ( $questions as $q ) {
-			$total   = (int) ( $q['total_answers']      ?? 0 );
-			$correct = (int) ( $q['correct_answers']    ?? 0 );
+			$total   = (int) ( $q['total_answers'] ?? 0 );
+			$correct = (int) ( $q['correct_answers'] ?? 0 );
 			$pct     = (float) ( $q['correct_percentage'] ?? 0 );
-			if ( $total === 0 ) continue;
+			if ( 0 === $total ) {
+				continue;
+			}
 
 			$label = (string) ( $q['label'] ?? $q['field_id'] ?? '' );
 			if ( $pct < 50 ) {
-				$out[] = [
+				$out[] = array(
 					'type'    => 'warning',
 					'title'   => __( 'Question needs review', 'neural-forms-lite' ),
 					'message' => sprintf(
 						/* translators: 1: question label, 2: percentage */
 						__( '“%1$s” — only %2$s%% answered correctly.', 'neural-forms-lite' ),
-						$label, (string) $pct
+						$label,
+						(string) $pct
 					),
-				];
+				);
 			}
 
 			// Most-selected wrong answer (if any wrong dominates).
 			$worst_label = '';
 			$worst_count = 0;
-			foreach ( ( $q['options'] ?? [] ) as $opt ) {
-				if ( ! empty( $opt['is_correct'] ) ) continue;
-				if ( ( $opt['value'] ?? '' ) === '__other__' ) continue;
+			foreach ( ( $q['options'] ?? array() ) as $opt ) {
+				if ( ! empty( $opt['is_correct'] ) ) {
+					continue;
+				}
+				if ( ( $opt['value'] ?? '' ) === '__other__' ) {
+					continue;
+				}
 				$cnt = (int) ( $opt['answers'] ?? 0 );
 				if ( $cnt > $worst_count ) {
 					$worst_count = $cnt;
@@ -709,15 +787,16 @@ class PollsEndpoint {
 				}
 			}
 			if ( $worst_count > 0 && $worst_count >= $correct && $worst_label !== '' ) {
-				$out[] = [
+				$out[] = array(
 					'type'    => 'warning',
 					'title'   => __( 'Most-picked wrong answer', 'neural-forms-lite' ),
 					'message' => sprintf(
 						/* translators: 1: question label, 2: option label */
 						__( 'On “%1$s”, the most common wrong answer was “%2$s”.', 'neural-forms-lite' ),
-						$label, $worst_label
+						$label,
+						$worst_label
 					),
-				];
+				);
 			}
 		}
 
@@ -731,32 +810,34 @@ class PollsEndpoint {
 	private static function compute_poll_result( int $form_id, array $poll_field ): array {
 		$field_id = (string) ( $poll_field['id'] ?? '' );
 
-		$agg = EntryRepository::aggregate_poll_votes( $form_id, $field_id );
-		$total  = (int) ( $agg['total']  ?? 0 );
-		$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : [];
+		$agg    = EntryRepository::aggregate_poll_votes( $form_id, $field_id );
+		$total  = (int) ( $agg['total'] ?? 0 );
+		$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : array();
 
-		$options_in   = is_array( $poll_field['options'] ?? null ) ? $poll_field['options'] : [];
-		$known_values = [];
-		$response_options = [];
+		$options_in       = is_array( $poll_field['options'] ?? null ) ? $poll_field['options'] : array();
+		$known_values     = array();
+		$response_options = array();
 
 		foreach ( $options_in as $opt ) {
 			$opt   = (array) $opt;
 			$label = (string) ( $opt['label'] ?? '' );
 			$raw   = (string) ( $opt['value'] ?? '' );
 			$value = $raw !== '' ? $raw : $label;
-			if ( $value === '' ) continue;
+			if ( $value === '' ) {
+				continue;
+			}
 
 			$known_values[] = $value;
 
 			$votes = (int) ( $counts[ $value ] ?? 0 );
 			$pct   = $total > 0 ? round( ( $votes / $total ) * 100, 2 ) : 0.0;
 
-			$response_options[] = [
+			$response_options[] = array(
 				'label'      => $label !== '' ? $label : $value,
 				'value'      => $value,
 				'votes'      => $votes,
 				'percentage' => $pct,
-			];
+			);
 		}
 
 		$other_votes = 0;
@@ -766,20 +847,20 @@ class PollsEndpoint {
 			}
 		}
 		if ( $other_votes > 0 ) {
-			$response_options[] = [
+			$response_options[] = array(
 				'label'      => __( 'Other', 'neural-forms-lite' ),
 				'value'      => '__other__',
 				'votes'      => $other_votes,
 				'percentage' => $total > 0 ? round( ( $other_votes / $total ) * 100, 2 ) : 0.0,
-			];
+			);
 		}
 
-		return [
+		return array(
 			'field_id'    => $field_id,
 			'label'       => (string) ( $poll_field['label'] ?? '' ),
 			'total_votes' => $total,
 			'options'     => $response_options,
-		];
+		);
 	}
 
 	/**
@@ -789,7 +870,9 @@ class PollsEndpoint {
 	 */
 	private static function count_form_entries( int $form_id ): int {
 		global $wpdb;
-		if ( $form_id <= 0 ) return 0;
+		if ( $form_id <= 0 ) {
+			return 0;
+		}
 		// phpcs:ignore WordPress.DB
 		$count = $wpdb->get_var(
 			$wpdb->prepare(

@@ -530,11 +530,11 @@ export default function EntryDetail( {
 					</span>
 					<div className="neural-forms-entries-pro-notice__body">
 						<p className="neural-forms-entries-pro-notice__title">
-							{ __( 'Out of AI credits', 'neural-forms-lite' ) }
+							{ __( 'Out of Neural AI credits', 'neural-forms-lite' ) }
 						</p>
 						<p className="neural-forms-entries-pro-notice__desc">
 							{ creditsExhausted.message
-								|| __( 'You have used all your AI credits. Buy more to continue analyzing entries and generating replies.', 'neural-forms-lite' ) }
+								|| __( 'You have used all your Neural AI credits. Buy more to continue analyzing entries and generating replies.', 'neural-forms-lite' ) }
 						</p>
 					</div>
 					<a

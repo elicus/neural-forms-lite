@@ -14,764 +14,750 @@ defined( 'ABSPATH' ) || exit;
  */
 class AdminPanel {
 
-    /** Slug of the top-level menu item. Used to detect Neural Forms pages. */
-    const MENU_SLUG = 'neural-forms';
-
-    /**
-     * Maps WP page slugs to clean screen identifiers passed to the React app.
-     * The first entry is also the default - no magic string needed anywhere.
-     */
-    const SCREENS = [
-        'neural-forms'              => 'forms',
-        'neural-forms-entries'      => 'entries',
-        'neural-forms-stats'        => 'stats',
-        'neural-forms-settings'     => 'settings',
-        'neural-forms-migration'    => 'migration',
-        'neural-forms-results'      => 'results',
-        // 1.1.0: Integrations page (HubSpot / WhatsApp / Mailchimp /
-        // Google Forms / …). Lite ships the shell + a locked Pro
-        // upsell card; Pro flips Capabilities::INTEGRATIONS true to
-        // unlock the provider tabs (which still show "Coming soon"
-        // until the actual provider work ships).
-        'neural-forms-integrations' => 'integrations',
-        // 1.1.0 (Templates): remote template library page. React grid
-        // backed by GET /templates → fetches templates.neuralforms.ai
-        // catalog, lets the admin import a ready-made Gutenberg page.
-        // Lite-only feature, no Pro gating (capability check is the
-        // same neural_forms_manage_forms used by every Forms screen).
-        'neural-forms-templates'    => 'templates',
-    ];
-
-    public static function boot(): void {
-        add_action( 'admin_menu',            [ self::class, 'register_menus' ] );
-        add_action( 'admin_enqueue_scripts', [ self::class, 'enqueue_assets' ] );
-        add_action( 'in_admin_header',       [ self::class, 'suppress_third_party_notices' ], 1000 );
-    }
-
-    /**
-     * Strip third-party admin_notices on Neural Forms screens so they don't
-     * crash into the React layout. Mirrors the pattern Yoast / Rank Math /
-     * Wordfence use on their own admin pages. We keep WordPress core notices
-     * (security updates, etc.) - only callbacks registered by *other* plugins
-     * are removed.
-     */
-    public static function suppress_third_party_notices(): void {
-        if ( ! function_exists( 'get_current_screen' ) ) {
-            return;
-        }
-        $screen = get_current_screen();
-        if ( ! $screen || strpos( (string) $screen->id, 'neural-forms' ) === false ) {
-            return;
-        }
-        remove_all_actions( 'admin_notices' );
-        remove_all_actions( 'all_admin_notices' );
-    }
-
-    // Menus
-
-    public static function register_menus(): void {
-        // Top-level menu - slug 'neural-forms' so clicking the parent item
-        // opens the Forms screen directly. MENU_SLUG is used by
-        // is_neural_forms_page() for hook detection.
-        add_menu_page(
-            __( 'Neural Forms', 'neural-forms-lite' ),           // page <title>
-            __( 'Neural Forms', 'neural-forms-lite' ),           // menu label
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms',                      // landing page = Forms
-            [ self::class, 'render_page' ],
-            'dashicons-feedback',
-            30
-        );
-
-        // Submenu order is driven by the sequence of add_submenu_page()
-        // calls below. Intentional ordering (Forms first, Import last):
-        //   1. Forms          ← landing page (matches the parent slug)
-        //   2. Templates      ← discover ready-made layouts
-        //   3. Entries        ← submissions inbox (carries unread bubble)
-        //   4. Analytics      ← form-level conversion / drop-off
-        //   5. Stats          ← admin dashboard KPIs
-        //   6. Integrations   ← provider config (Pro-gated, Lite shows shell)
-        //   7. Settings       ← email / CAPTCHA / Cloud AI
-        //   8. Import         ← CF7 migration, conditional on CF7 active
-
-        // 1. Forms — WordPress auto-creates a first submenu item with
-        // slug 'neural-forms'; we re-register it so the label is the
-        // explicit "Forms" string instead of WP's auto-cloned parent
-        // label.
-        add_submenu_page(
-            'neural-forms',
-            __( 'Forms - Neural Forms', 'neural-forms-lite' ),
-            __( 'Forms', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms',
-            [ self::class, 'render_page' ]
-        );
-
-        // 2. Templates (1.1.0). Lite-only remote template library page.
-        // React grid fetches templates.neuralforms.ai catalog via
-        // GET /templates and imports a chosen template as a published
-        // page plus its referenced Neural Forms forms. No Pro gating —
-        // the same neural_forms_manage_forms cap governs every Forms-
-        // related admin screen.
-        add_submenu_page(
-            'neural-forms',
-            __( 'Templates - Neural Forms', 'neural-forms-lite' ),
-            __( 'Templates', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-templates',
-            [ self::class, 'render_page' ]
-        );
-
-        // 3. Entries. Match WP core's Plugins-update bubble: same
-        // markup, same classes, so the existing admin CSS styles it
-        // without any new rules.
-        $unread_count  = self::unread_entries_count();
-        $entries_label = __( 'Entries', 'neural-forms-lite' );
-        if ( $unread_count > 0 ) {
-            $entries_label .= sprintf(
-                ' <span class="awaiting-mod count-%1$d"><span class="pending-count">%2$s</span></span>',
-                (int) $unread_count,
-                esc_html( number_format_i18n( $unread_count ) )
-            );
-        }
-
-        add_submenu_page(
-            'neural-forms',
-            __( 'Entries - Neural Forms', 'neural-forms-lite' ),
-            $entries_label,
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-entries',
-            [ self::class, 'render_page' ]
-        );
-
-        // 4. Analytics screen (1.1.0). Independent split bundle.
-        // render_results_page() emits the #neural-forms-results-app root
-        // that the analytics bundle mounts into; the rest of the screens
-        // (Forms / Entries / Settings / Stats / Import) each have their
-        // own per-screen bundle and mount under #neural-forms-app.
-        //
-        // The route slug stays `neural-forms-results` for backwards
-        // compatibility with any deep links / bookmarks that already
-        // exist in the wild — only the user-facing label moved from
-        // "Results" to "Analytics".
-        add_submenu_page(
-            'neural-forms',
-            __( 'Form Analytics - Neural Forms', 'neural-forms-lite' ),
-            __( 'Analytics', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-results',
-            [ self::class, 'render_results_page' ]
-        );
-
-        // 5. Stats.
-        add_submenu_page(
-            'neural-forms',
-            __( 'Stats - Neural Forms', 'neural-forms-lite' ),
-            __( 'Stats', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-stats',
-            [ self::class, 'render_page' ]
-        );
-
-        // 6. Integrations (1.1.0). Lite always shows the menu entry;
-        // the page renders in a locked Pro-upsell state when
-        // Capabilities::INTEGRATIONS is false (default in Lite). Pro
-        // flips the filter and the provider tabs become live.
-        add_submenu_page(
-            'neural-forms',
-            __( 'Integrations - Neural Forms', 'neural-forms-lite' ),
-            __( 'Integrations', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-integrations',
-            [ self::class, 'render_page' ]
-        );
-
-        // 7. Settings.
-        add_submenu_page(
-            'neural-forms',
-            __( 'Settings - Neural Forms', 'neural-forms-lite' ),
-            __( 'Settings', 'neural-forms-lite' ),
-            NEURAL_FORMS_CAP_MANAGE_FORMS,
-            'neural-forms-settings',
-            [ self::class, 'render_page' ]
-        );
-
-        // Import is only useful when there's something to import from. CF7
-        // is the only supported source today, so hide the menu entry on
-        // sites that don't have it active.
-        if ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ) ) {
-            add_submenu_page(
-                'neural-forms',
-                __( 'Import - Neural Forms', 'neural-forms-lite' ),
-                __( 'Import', 'neural-forms-lite' ),
-                NEURAL_FORMS_CAP_MANAGE_FORMS,
-                'neural-forms-migration',
-                [ self::class, 'render_page' ]
-            );
-        }
-    }
-
-    /**
-     * Unread (status='new') entry count across all forms, for the menu badge.
-     *
-     * Wrapped in try/catch so a DB hiccup during admin_menu (e.g. mid-upgrade
-     * before dbDelta has run) never fatals the menu - we just skip the badge.
-     */
-    private static function unread_entries_count(): int {
-        try {
-            $counts = \NeuralForms\Storage\EntryRepository::count_by_view();
-            return isset( $counts['unread'] ) ? (int) $counts['unread'] : 0;
-        } catch ( \Throwable $e ) {
-            return 0;
-        }
-    }
-
-    // Page renderer
-
-    /**
-     * All Neural Forms pages share one render callback.
-     * The React app reads window.neuralFormsAdmin.screen - set by PHP - to decide
-     * which screen to show. It never parses the URL itself.
-     */
-    public static function render_page(): void {
-        ?>
-        <div class="wrap">
-            <div id="neural-forms-app"></div>
-        </div>
-        <?php
-    }
-
-    /**
-     * Dedicated render callback for the Results / Analytics screen.
-     * Emits #neural-forms-results-app so the analytics bundle mounts
-     * into its own root, isolated from the per-screen bundles that
-     * mount under #neural-forms-app.
-     */
-    public static function render_results_page(): void {
-        $bundle_missing = ! file_exists( NEURAL_FORMS_PATH . 'modules/admin/build/results.js' );
-        ?>
-        <div class="wrap">
-            <?php if ( $bundle_missing ) : ?>
-                <div class="notice notice-warning"><p>
-                    <strong><?php esc_html_e( 'Neural Forms: Results bundle not built.', 'neural-forms-lite' ); ?></strong>
-                    <?php esc_html_e( 'Run', 'neural-forms-lite' ); ?>
-                    <code>npm run build:results</code>
-                    <?php esc_html_e( 'inside modules/admin/ to enable this screen.', 'neural-forms-lite' ); ?>
-                </p></div>
-            <?php endif; ?>
-            <div id="neural-forms-results-app"></div>
-        </div>
-        <?php
-    }
-
-    // Assets
-
-    /**
-     * Enqueue the compiled admin bundle only on Neural Forms screens.
-     *
-     * $hook examples:
-     *   toplevel_page_neural-forms
-     *   neural-forms_page_neural-forms-entries
-     *   neural-forms_page_neural-forms-stats
-     *   neural-forms_page_neural-forms-settings
-     */
-    public static function enqueue_assets( string $hook ): void {
-        if ( ! self::is_neural_forms_page( $hook ) ) {
-            return;
-        }
-
-        $build_dir = NEURAL_FORMS_PATH . 'modules/admin/build/';
-        $build_url = NEURAL_FORMS_URL  . 'modules/admin/build/';
-
-        // Results / Analytics screen — independent bundle mounted on
-        // #neural-forms-results-app. Always short-circuit out of this
-        // function for that screen, even when the bundle is missing,
-        // so the per-screen bundles for Forms / Entries / etc. never
-        // co-mount on a different root. The render callback shows a
-        // graceful "missing bundle" notice instead.
-        if ( self::is_results_screen() ) {
-            if ( file_exists( $build_dir . 'results.js' ) ) {
-                $asset_file = $build_dir . 'results.asset.php';
-                $asset      = file_exists( $asset_file )
-                    ? require $asset_file
-                    : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-                // Defensive: results.asset.php should be an array with
-                // 'dependencies' and 'version' keys, but a malformed
-                // file should never fatal the admin page.
-                if ( ! is_array( $asset ) ) {
-                    $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-                }
-                $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-                $version = isset( $asset['version'] ) && is_string( $asset['version'] ) ? $asset['version'] : NEURAL_FORMS_VERSION;
-
-                wp_enqueue_script(
-                    'neural-forms-results',
-                    $build_url . 'results.js',
-                    $deps,
-                    $version,
-                    true
-                );
-
-                wp_localize_script( 'neural-forms-results', 'neuralFormsAdmin', self::script_data() );
-
-                if ( file_exists( $build_dir . 'results.css' ) ) {
-                    wp_enqueue_style(
-                        'neural-forms-results',
-                        $build_url . 'results.css',
-                        [ 'wp-components' ],
-                        (string) filemtime( $build_dir . 'results.css' )
-                    );
-                }
-            }
-            return;
-        }
-
-        // Entries screen split: build/entries.js + build/entries.css.
-        // Self-contained — every rule the screen needs lives in the
-        // entries bundle.
-        if (
-            self::is_entries_screen()
-            && file_exists( $build_dir . 'entries.js' )
-        ) {
-            $asset_file = $build_dir . 'entries.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'entries.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-entries',
-                $build_url . 'entries.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-entries', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'entries.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-entries',
-                    $build_url . 'entries.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'entries.css' )
-                );
-            }
-
-            return;
-        }
-
-        // Builder screen — when the URL is the form editor
-        // (?page=neural-forms&edit=N or &new=1), enqueue build/builder.js.
-        // The 3-panel builder ships independently from the Forms-list
-        // bundle so a Forms-list visit doesn't pull in the heavier
-        // builder code. The two bundles are never both alive on the
-        // same page.
-
-        $is_builder_screen = self::is_builder_screen();
-        $use_builder_split = $is_builder_screen && file_exists( $build_dir . 'builder.js' );
-
-        if ( $use_builder_split ) {
-            $asset_file = $build_dir . 'builder.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            // Cache-bust: combine webpack's content hash with the file
-            // mtime. The hash alone is supposed to change on every code
-            // change, but a stale `builder.asset.php` (e.g. partial
-            // rebuild, webpack quirk on a no-op recompile, or a
-            // committed older version) can leave the URL unchanged and
-            // make the browser serve the cached bundle. The mtime suffix
-            // guarantees a fresh URL whenever the file actually changes
-            // on disk — at the cost of one extra cache-miss per real
-            // edit, which is what we want during development.
-            $bust    = (string) filemtime( $build_dir . 'builder.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-builder',
-                $build_url . 'builder.js',
-                $asset['dependencies'],
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-builder', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'builder.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-builder',
-                    $build_url . 'builder.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'builder.css' )
-                );
-            }
-
-            return;
-        }
-
-        // Forms-list screen — on ?page=neural-forms (the default
-        // Forms-list view, NOT the Builder edit/new flow above),
-        // enqueue build/forms.js + build/forms.css.
-        //
-        // The Forms-screen-only injectors (shortcode column, builder-
-        // navigation, forms-list-meta, new-form-dropdown) below
-        // target the `.neural-forms-forms-list__*` BEM hooks the
-        // bundle emits, so the PHP-side enhancements work unchanged.
-        if (
-            self::get_current_screen() === 'forms'
-            && ! self::is_builder_screen()
-            && file_exists( $build_dir . 'forms.js' )
-        ) {
-            $asset_file = $build_dir . 'forms.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'forms.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-admin',  // keep handle name so wp_add_inline_*
-                                       // calls elsewhere still attach.
-                $build_url . 'forms.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'forms.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'forms.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'forms.css' )
-                );
-            }
-
-        }
-
-        // Stats screen — enqueue build/stats.js + build/stats.css
-        // on ?page=neural-forms-stats. Handle name `neural-forms-admin`
-        // is shared across the per-screen bundles (one bundle per
-        // request) so wp_add_inline_* attachments and any Stats-screen
-        // injectors target a stable handle.
-        if (
-            self::get_current_screen() === 'stats'
-            && file_exists( $build_dir . 'stats.js' )
-        ) {
-            $asset_file = $build_dir . 'stats.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'stats.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-admin',  // shared handle so wp_add_inline_*
-                                       // attaches; no clash with other screens
-                                       // because each request enqueues only one
-                                       // bundle.
-                $build_url . 'stats.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'stats.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'stats.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'stats.css' )
-                );
-            }
-
-        }
-
-        // Settings screen — enqueue build/settings.js + build/settings.css
-        // on ?page=neural-forms-settings. Same shared `neural-forms-admin`
-        // handle pattern as stats / forms above.
-        if (
-            self::get_current_screen() === 'settings'
-            && file_exists( $build_dir . 'settings.js' )
-        ) {
-            $asset_file = $build_dir . 'settings.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'settings.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-admin',  // shared handle so wp_add_inline_*
-                                       // attaches; no clash with other screens
-                                       // because each request enqueues only one
-                                       // bundle.
-                $build_url . 'settings.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'settings.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'settings.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'settings.css' )
-                );
-            }
-
-        }
-
-        // Import (CF7 migration) screen — enqueue build/import.js +
-        // build/import.css on ?page=neural-forms-migration. Same
-        // shared `neural-forms-admin` handle pattern as the other
-        // per-screen bundles.
-        if (
-            self::get_current_screen() === 'migration'
-            && file_exists( $build_dir . 'import.js' )
-        ) {
-            $asset_file = $build_dir . 'import.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'import.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-admin',  // shared handle so wp_add_inline_*
-                                       // attaches; no clash with other screens
-                                       // because each request enqueues only one
-                                       // bundle.
-                $build_url . 'import.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'import.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'import.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'import.css' )
-                );
-            }
-
-        }
-
-        // Integrations screen — enqueue build/integrations.js +
-        // build/integrations.css on ?page=neural-forms-integrations.
-        // Mirrors the settings / stats / forms / import per-screen
-        // pattern. The React screen reads
-        // window.neuralFormsAdmin.plugin.capabilities.integrations
-        // (localized below via script_data) to choose between the
-        // locked Pro-upsell card (Lite) and the provider tabs (Pro).
-        if (
-            self::get_current_screen() === 'integrations'
-            && file_exists( $build_dir . 'integrations.js' )
-        ) {
-            $asset_file = $build_dir . 'integrations.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'integrations.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-admin',
-                $build_url . 'integrations.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'integrations.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'integrations.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'integrations.css' )
-                );
-            }
-        }
-
-        // Templates screen — enqueue build/templates.js + build/templates.css
-        // on ?page=neural-forms-templates. Same per-screen split-bundle
-        // pattern as forms / entries / settings / stats / import /
-        // integrations. The React grid mounts at #neural-forms-app and
-        // talks to GET /templates and POST /templates/import.
-        if (
-            self::get_current_screen() === 'templates'
-            && file_exists( $build_dir . 'templates.js' )
-        ) {
-            $asset_file = $build_dir . 'templates.asset.php';
-            $asset      = file_exists( $asset_file )
-                ? require $asset_file
-                : [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-
-            if ( ! is_array( $asset ) ) {
-                $asset = [ 'dependencies' => [], 'version' => NEURAL_FORMS_VERSION ];
-            }
-            $deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : [];
-            $bust    = (string) filemtime( $build_dir . 'templates.js' );
-            $version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
-
-            wp_enqueue_script(
-                'neural-forms-admin',
-                $build_url . 'templates.js',
-                $deps,
-                $version,
-                true
-            );
-
-            wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
-
-            if ( file_exists( $build_dir . 'templates.css' ) ) {
-                wp_enqueue_style(
-                    'neural-forms-admin',
-                    $build_url . 'templates.css',
-                    [ 'wp-components' ],
-                    (string) filemtime( $build_dir . 'templates.css' )
-                );
-            }
-        }
-
-        // Page-header unifier — applies the canonical Templates-style
-        // hero card to every Neural Forms admin screen. Attaches to
-        // EACH handle separately because the per-screen bundles use
-        // distinct stylesheet handles:
-        //   - neural-forms-admin   → Forms / Stats / Settings / Import /
-        //                            Integrations / Templates (catch-all
-        //                            handle name used by every split
-        //                            branch above)
-        //   - neural-forms-results → Analytics (own bundle handle)
-        //   - neural-forms-entries → Entries  (own bundle handle)
-        // Without all three attachments the unifier would silently
-        // skip Analytics + Entries, leaving them with plain white
-        // headers instead of the gradient panel.
-        //
-        // wp_add_inline_style is a no-op when the target handle isn't
-        // registered, so calling all three is safe regardless of
-        // which screen is active.
-        $hero_css = self::page_hero_unifier_css();
-        wp_add_inline_style( 'neural-forms-admin',    $hero_css );
-        wp_add_inline_style( 'neural-forms-results',  $hero_css );
-        wp_add_inline_style( 'neural-forms-entries',  $hero_css );
-
-        // Forms-screen-only: inject a Shortcode column into the React-rendered
-        // forms table. Lives outside the React bundle so it can ship without
-        // rebuilding (the Node 18+ toolchain isn't available in every dev env
-        // yet). Removed once the React Forms screen is rebuilt with the column
-        // baked in. The injector reads the slug'->->name map localized below; no
-        // extra REST round-trip on page load.
-        if ( self::get_current_screen() === 'forms' ) {
-            self::enqueue_shortcode_column_injector();
-            self::enqueue_builder_navigation_injector();
-            self::enqueue_forms_list_meta_injector();
-            self::enqueue_new_form_dropdown_injector();
-        }
-
-    }
-
-    /**
-     * Forms-list-only: redirect "+ New Form" and row "Edit" clicks to
-     * the URL query that the 1.1.0 split-bundle enqueue swap recognises
-     * (?new=1 / ?edit=N). Without this, those buttons in the rich 1.0.0
-     * bundle flip an internal React state to render the old inline
-     * editor without changing the URL - so builder.js never loads and
-     * users keep seeing the legacy UI.
-     *
-     * Strategy: localize a slug->id map at PHP enqueue time, then run a
-     * tiny capture-phase delegator on document.click that:
-     *   - intercepts `.neural-forms-forms-list__new-btn` -> goes to ?new=1
-     *   - intercepts `.neural-forms-forms-list__action-btn--edit` and
-     *     `.neural-forms-forms-list__form-name` -> reads the row's
-     *     .neural-forms-forms-list__form-slug, looks up id, goes to ?edit=N
-     *
-     * Capture-phase fires before React's bubble-phase onClick listeners,
-     * so e.preventDefault() + e.stopPropagation() suppresses the rich
-     * bundle's in-page state swap.
-     *
-     * Removed once the rich bundle is replaced with a split forms.js
-     * that uses href URLs natively. Until then, this is the cheapest
-     * non-rebuild fix.
-     */
-    private static function enqueue_builder_navigation_injector(): void {
-        $result = \NeuralForms\Forms\FormRepository::list( [
-            'status'   => 'any',
-            'per_page' => 200,
-            'page'     => 1,
-            'orderby'  => 'name',
-            'order'    => 'ASC',
-        ] );
-
-        $items = is_array( $result['items'] ?? null ) ? $result['items'] : [];
-        $slug_to_id = [];
-        foreach ( $items as $form ) {
-            $slug = (string) ( $form['slug'] ?? '' );
-            $id   = (int) ( $form['id'] ?? 0 );
-            if ( $slug !== '' && $id > 0 ) {
-                $slug_to_id[ $slug ] = $id;
-            }
-        }
-
-        $base = admin_url( 'admin.php?page=neural-forms' );
-        $boot = sprintf(
-            'window.NeuralFormsBuilderNav = { slugToId: %s, base: %s };',
-            wp_json_encode( $slug_to_id ),
-            wp_json_encode( $base )
-        );
-        wp_add_inline_script( 'neural-forms-admin', $boot, 'before' );
-
-        // Note: the delegator binds at script-eval time. The Forms list
-        // is React-rendered async, but document-level capture-phase
-        // listeners persist regardless of when the buttons appear.
-        $delegator = <<<'JS'
+	/** Slug of the top-level menu item. Used to detect Neural Forms pages. */
+	const MENU_SLUG = 'neural-forms';
+
+	/**
+	 * Maps WP page slugs to clean screen identifiers passed to the React app.
+	 * The first entry is also the default - no magic string needed anywhere.
+	 */
+	const SCREENS = array(
+		'neural-forms'              => 'forms',
+		'neural-forms-entries'      => 'entries',
+		'neural-forms-stats'        => 'stats',
+		'neural-forms-settings'     => 'settings',
+		'neural-forms-migration'    => 'migration',
+		'neural-forms-results'      => 'results',
+		// 1.1.0: Integrations page (HubSpot / WhatsApp / Mailchimp /
+		// Google Forms / …). Lite ships the shell + a locked Pro
+		// upsell card; Pro flips Capabilities::INTEGRATIONS true to
+		// unlock the provider tabs (which still show "Coming soon"
+		// until the actual provider work ships).
+		'neural-forms-integrations' => 'integrations',
+	);
+
+	public static function boot(): void {
+		add_action( 'admin_menu', array( self::class, 'register_menus' ) );
+		add_action( 'admin_enqueue_scripts', array( self::class, 'enqueue_assets' ) );
+		add_action( 'in_admin_header', array( self::class, 'suppress_third_party_notices' ), 1000 );
+	}
+
+	/**
+	 * Strip third-party admin_notices on Neural Forms screens so they don't
+	 * crash into the React layout. Mirrors the pattern Yoast / Rank Math /
+	 * Wordfence use on their own admin pages. We keep WordPress core notices
+	 * (security updates, etc.) - only callbacks registered by *other* plugins
+	 * are removed.
+	 */
+	public static function suppress_third_party_notices(): void {
+		if ( ! function_exists( 'get_current_screen' ) ) {
+			return;
+		}
+		$screen = get_current_screen();
+		if ( ! $screen || strpos( (string) $screen->id, 'neural-forms' ) === false ) {
+			return;
+		}
+		remove_all_actions( 'admin_notices' );
+		remove_all_actions( 'all_admin_notices' );
+	}
+
+	// Menus
+
+	public static function register_menus(): void {
+		// Top-level menu - slug 'neural-forms' so clicking the parent item
+		// opens the Forms screen directly. MENU_SLUG is used by
+		// is_neural_forms_page() for hook detection.
+		add_menu_page(
+			__( 'Neural Forms', 'neural-forms-lite' ),           // page <title>
+			__( 'Neural Forms', 'neural-forms-lite' ),           // menu label
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms',                      // landing page = Forms
+			array( self::class, 'render_page' ),
+			'dashicons-feedback',
+			30
+		);
+
+		// Submenu order is driven by the sequence of add_submenu_page()
+		// calls below. Intentional ordering (Forms first, Import last):
+		// 1. Forms          ← landing page (matches the parent slug)
+		// 2. Entries        ← submissions inbox (carries unread bubble)
+		// 3. Analytics      ← form-level conversion / drop-off
+		// 4. Stats          ← admin dashboard KPIs
+		// 5. Integrations   ← provider config (Pro-gated, Lite shows shell)
+		// 6. Settings       ← email / CAPTCHA / Cloud AI
+		// 7. Import         ← CF7 migration, conditional on CF7 active
+		//
+		// Templates used to be its own submenu (slug 'neural-forms-templates')
+		// in 1.1.0 — removed once the popup variant landed on the Forms list.
+		// The library itself (catalog fetch + grid + import flow) still ships
+		// as part of the forms bundle; the TemplateLibraryModal in Forms.js
+		// opens it inline so users don't need to leave the page to start
+		// from a template.
+
+		// 1. Forms — WordPress auto-creates a first submenu item with
+		// slug 'neural-forms'; we re-register it so the label is the
+		// explicit "Forms" string instead of WP's auto-cloned parent
+		// label.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Forms - Neural Forms', 'neural-forms-lite' ),
+			__( 'Forms', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms',
+			array( self::class, 'render_page' )
+		);
+
+		// 3. Entries. Match WP core's Plugins-update bubble: same
+		// markup, same classes, so the existing admin CSS styles it
+		// without any new rules.
+		$unread_count  = self::unread_entries_count();
+		$entries_label = __( 'Entries', 'neural-forms-lite' );
+		if ( $unread_count > 0 ) {
+			$entries_label .= sprintf(
+				' <span class="awaiting-mod count-%1$d"><span class="pending-count">%2$s</span></span>',
+				(int) $unread_count,
+				esc_html( number_format_i18n( $unread_count ) )
+			);
+		}
+
+		add_submenu_page(
+			'neural-forms',
+			__( 'Entries - Neural Forms', 'neural-forms-lite' ),
+			$entries_label,
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-entries',
+			array( self::class, 'render_page' )
+		);
+
+		// 4. Analytics screen (1.1.0). Independent split bundle.
+		// render_results_page() emits the #neural-forms-results-app root
+		// that the analytics bundle mounts into; the rest of the screens
+		// (Forms / Entries / Settings / Stats / Import) each have their
+		// own per-screen bundle and mount under #neural-forms-app.
+		//
+		// The route slug stays `neural-forms-results` for backwards
+		// compatibility with any deep links / bookmarks that already
+		// exist in the wild — only the user-facing label moved from
+		// "Results" to "Analytics".
+		add_submenu_page(
+			'neural-forms',
+			__( 'Form Analytics - Neural Forms', 'neural-forms-lite' ),
+			__( 'Analytics', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-results',
+			array( self::class, 'render_results_page' )
+		);
+
+		// 5. Stats.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Stats - Neural Forms', 'neural-forms-lite' ),
+			__( 'Stats', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-stats',
+			array( self::class, 'render_page' )
+		);
+
+		// 6. Integrations (1.1.0). Lite always shows the menu entry;
+		// the page renders in a locked Pro-upsell state when
+		// Capabilities::INTEGRATIONS is false (default in Lite). Pro
+		// flips the filter and the provider tabs become live.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Integrations - Neural Forms', 'neural-forms-lite' ),
+			__( 'Integrations', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-integrations',
+			array( self::class, 'render_page' )
+		);
+
+		// 7. Settings.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Settings - Neural Forms', 'neural-forms-lite' ),
+			__( 'Settings', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-settings',
+			array( self::class, 'render_page' )
+		);
+
+		// Import is only useful when there's something to import from. CF7
+		// is the only supported source today, so hide the menu entry on
+		// sites that don't have it active.
+		if ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ) ) {
+			add_submenu_page(
+				'neural-forms',
+				__( 'Import - Neural Forms', 'neural-forms-lite' ),
+				__( 'Import', 'neural-forms-lite' ),
+				NEURAL_FORMS_CAP_MANAGE_FORMS,
+				'neural-forms-migration',
+				array( self::class, 'render_page' )
+			);
+		}
+	}
+
+	/**
+	 * Unread (status='new') entry count across all forms, for the menu badge.
+	 *
+	 * Wrapped in try/catch so a DB hiccup during admin_menu (e.g. mid-upgrade
+	 * before dbDelta has run) never fatals the menu - we just skip the badge.
+	 */
+	private static function unread_entries_count(): int {
+		try {
+			$counts = \NeuralForms\Storage\EntryRepository::count_by_view();
+			return isset( $counts['unread'] ) ? (int) $counts['unread'] : 0;
+		} catch ( \Throwable $e ) {
+			return 0;
+		}
+	}
+
+	// Page renderer
+
+	/**
+	 * All Neural Forms pages share one render callback.
+	 * The React app reads window.neuralFormsAdmin.screen - set by PHP - to decide
+	 * which screen to show. It never parses the URL itself.
+	 */
+	public static function render_page(): void {
+		?>
+		<div class="wrap">
+			<div id="neural-forms-app"></div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Dedicated render callback for the Results / Analytics screen.
+	 * Emits #neural-forms-results-app so the analytics bundle mounts
+	 * into its own root, isolated from the per-screen bundles that
+	 * mount under #neural-forms-app.
+	 */
+	public static function render_results_page(): void {
+		$bundle_missing = ! file_exists( NEURAL_FORMS_PATH . 'modules/admin/build/results.js' );
+		?>
+		<div class="wrap">
+			<?php if ( $bundle_missing ) : ?>
+				<div class="notice notice-warning"><p>
+					<strong><?php esc_html_e( 'Neural Forms: Results bundle not built.', 'neural-forms-lite' ); ?></strong>
+					<?php esc_html_e( 'Run', 'neural-forms-lite' ); ?>
+					<code>npm run build:results</code>
+					<?php esc_html_e( 'inside modules/admin/ to enable this screen.', 'neural-forms-lite' ); ?>
+				</p></div>
+			<?php endif; ?>
+			<div id="neural-forms-results-app"></div>
+		</div>
+		<?php
+	}
+
+	// Assets
+
+	/**
+	 * Enqueue the compiled admin bundle only on Neural Forms screens.
+	 *
+	 * $hook examples:
+	 *   toplevel_page_neural-forms
+	 *   neural-forms_page_neural-forms-entries
+	 *   neural-forms_page_neural-forms-stats
+	 *   neural-forms_page_neural-forms-settings
+	 */
+	public static function enqueue_assets( string $hook ): void {
+		if ( ! self::is_neural_forms_page( $hook ) ) {
+			return;
+		}
+
+		$build_dir = NEURAL_FORMS_PATH . 'modules/admin/build/';
+		$build_url = NEURAL_FORMS_URL . 'modules/admin/build/';
+
+		// Results / Analytics screen — independent bundle mounted on
+		// #neural-forms-results-app. Always short-circuit out of this
+		// function for that screen, even when the bundle is missing,
+		// so the per-screen bundles for Forms / Entries / etc. never
+		// co-mount on a different root. The render callback shows a
+		// graceful "missing bundle" notice instead.
+		if ( self::is_results_screen() ) {
+			if ( file_exists( $build_dir . 'results.js' ) ) {
+				$asset_file = $build_dir . 'results.asset.php';
+				$asset      = file_exists( $asset_file )
+					? require $asset_file
+					: array(
+						'dependencies' => array(),
+						'version'      => NEURAL_FORMS_VERSION,
+					);
+
+				// Defensive: results.asset.php should be an array with
+				// 'dependencies' and 'version' keys, but a malformed
+				// file should never fatal the admin page.
+				if ( ! is_array( $asset ) ) {
+					$asset = array(
+						'dependencies' => array(),
+						'version'      => NEURAL_FORMS_VERSION,
+					);
+				}
+				$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+				$version = isset( $asset['version'] ) && is_string( $asset['version'] ) ? $asset['version'] : NEURAL_FORMS_VERSION;
+
+				wp_enqueue_script(
+					'neural-forms-results',
+					$build_url . 'results.js',
+					$deps,
+					$version,
+					true
+				);
+
+				wp_localize_script( 'neural-forms-results', 'neuralFormsAdmin', self::script_data() );
+
+				if ( file_exists( $build_dir . 'results.css' ) ) {
+					wp_enqueue_style(
+						'neural-forms-results',
+						$build_url . 'results.css',
+						array( 'wp-components' ),
+						(string) filemtime( $build_dir . 'results.css' )
+					);
+				}
+			}
+			return;
+		}
+
+		// Entries screen split: build/entries.js + build/entries.css.
+		// Self-contained — every rule the screen needs lives in the
+		// entries bundle.
+		if (
+			self::is_entries_screen()
+			&& file_exists( $build_dir . 'entries.js' )
+		) {
+			$asset_file = $build_dir . 'entries.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			if ( ! is_array( $asset ) ) {
+				$asset = array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'entries.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-entries',
+				$build_url . 'entries.js',
+				$deps,
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-entries', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'entries.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-entries',
+					$build_url . 'entries.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'entries.css' )
+				);
+			}
+
+			return;
+		}
+
+		// Builder screen — when the URL is the form editor
+		// (?page=neural-forms&edit=N or &new=1), enqueue build/builder.js.
+		// The 3-panel builder ships independently from the Forms-list
+		// bundle so a Forms-list visit doesn't pull in the heavier
+		// builder code. The two bundles are never both alive on the
+		// same page.
+
+		$is_builder_screen = self::is_builder_screen();
+		$use_builder_split = $is_builder_screen && file_exists( $build_dir . 'builder.js' );
+
+		if ( $use_builder_split ) {
+			$asset_file = $build_dir . 'builder.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			// Cache-bust: combine webpack's content hash with the file
+			// mtime. The hash alone is supposed to change on every code
+			// change, but a stale `builder.asset.php` (e.g. partial
+			// rebuild, webpack quirk on a no-op recompile, or a
+			// committed older version) can leave the URL unchanged and
+			// make the browser serve the cached bundle. The mtime suffix
+			// guarantees a fresh URL whenever the file actually changes
+			// on disk — at the cost of one extra cache-miss per real
+			// edit, which is what we want during development.
+			$bust    = (string) filemtime( $build_dir . 'builder.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-builder',
+				$build_url . 'builder.js',
+				$asset['dependencies'],
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-builder', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'builder.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-builder',
+					$build_url . 'builder.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'builder.css' )
+				);
+			}
+
+			return;
+		}
+
+		// Forms-list screen — on ?page=neural-forms (the default
+		// Forms-list view, NOT the Builder edit/new flow above),
+		// enqueue build/forms.js + build/forms.css.
+		//
+		// The Forms-screen-only injectors (shortcode column, builder-
+		// navigation, forms-list-meta, new-form-dropdown) below
+		// target the `.neural-forms-forms-list__*` BEM hooks the
+		// bundle emits, so the PHP-side enhancements work unchanged.
+		if (
+			self::get_current_screen() === 'forms'
+			&& ! self::is_builder_screen()
+			&& file_exists( $build_dir . 'forms.js' )
+		) {
+			$asset_file = $build_dir . 'forms.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			if ( ! is_array( $asset ) ) {
+				$asset = array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'forms.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-admin',  // keep handle name so wp_add_inline_*
+				// calls elsewhere still attach.
+				$build_url . 'forms.js',
+				$deps,
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'forms.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-admin',
+					$build_url . 'forms.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'forms.css' )
+				);
+			}
+		}
+
+		// Stats screen — enqueue build/stats.js + build/stats.css
+		// on ?page=neural-forms-stats. Handle name `neural-forms-admin`
+		// is shared across the per-screen bundles (one bundle per
+		// request) so wp_add_inline_* attachments and any Stats-screen
+		// injectors target a stable handle.
+		if (
+			self::get_current_screen() === 'stats'
+			&& file_exists( $build_dir . 'stats.js' )
+		) {
+			$asset_file = $build_dir . 'stats.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			if ( ! is_array( $asset ) ) {
+				$asset = array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'stats.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-admin',  // shared handle so wp_add_inline_*
+				// attaches; no clash with other screens
+										// because each request enqueues only one
+										// bundle.
+				$build_url . 'stats.js',
+				$deps,
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'stats.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-admin',
+					$build_url . 'stats.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'stats.css' )
+				);
+			}
+		}
+
+		// Settings screen — enqueue build/settings.js + build/settings.css
+		// on ?page=neural-forms-settings. Same shared `neural-forms-admin`
+		// handle pattern as stats / forms above.
+		if (
+			self::get_current_screen() === 'settings'
+			&& file_exists( $build_dir . 'settings.js' )
+		) {
+			$asset_file = $build_dir . 'settings.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			if ( ! is_array( $asset ) ) {
+				$asset = array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'settings.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-admin',  // shared handle so wp_add_inline_*
+				// attaches; no clash with other screens
+										// because each request enqueues only one
+										// bundle.
+				$build_url . 'settings.js',
+				$deps,
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'settings.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-admin',
+					$build_url . 'settings.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'settings.css' )
+				);
+			}
+		}
+
+		// Import (CF7 migration) screen — enqueue build/import.js +
+		// build/import.css on ?page=neural-forms-migration. Same
+		// shared `neural-forms-admin` handle pattern as the other
+		// per-screen bundles.
+		if (
+			self::get_current_screen() === 'migration'
+			&& file_exists( $build_dir . 'import.js' )
+		) {
+			$asset_file = $build_dir . 'import.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			if ( ! is_array( $asset ) ) {
+				$asset = array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'import.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-admin',  // shared handle so wp_add_inline_*
+				// attaches; no clash with other screens
+										// because each request enqueues only one
+										// bundle.
+				$build_url . 'import.js',
+				$deps,
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'import.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-admin',
+					$build_url . 'import.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'import.css' )
+				);
+			}
+		}
+
+		// Integrations screen — enqueue build/integrations.js +
+		// build/integrations.css on ?page=neural-forms-integrations.
+		// Mirrors the settings / stats / forms / import per-screen
+		// pattern. The React screen reads
+		// window.neuralFormsAdmin.plugin.capabilities.integrations
+		// (localized below via script_data) to choose between the
+		// locked Pro-upsell card (Lite) and the provider tabs (Pro).
+		if (
+			self::get_current_screen() === 'integrations'
+			&& file_exists( $build_dir . 'integrations.js' )
+		) {
+			$asset_file = $build_dir . 'integrations.asset.php';
+			$asset      = file_exists( $asset_file )
+				? require $asset_file
+				: array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+
+			if ( ! is_array( $asset ) ) {
+				$asset = array(
+					'dependencies' => array(),
+					'version'      => NEURAL_FORMS_VERSION,
+				);
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'integrations.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script(
+				'neural-forms-admin',
+				$build_url . 'integrations.js',
+				$deps,
+				$version,
+				true
+			);
+
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+
+			if ( file_exists( $build_dir . 'integrations.css' ) ) {
+				wp_enqueue_style(
+					'neural-forms-admin',
+					$build_url . 'integrations.css',
+					array( 'wp-components' ),
+					(string) filemtime( $build_dir . 'integrations.css' )
+				);
+			}
+		}
+
+		// Page-header unifier — applies the canonical Templates-style
+		// hero card to every Neural Forms admin screen. Attaches to
+		// EACH handle separately because the per-screen bundles use
+		// distinct stylesheet handles:
+		// - neural-forms-admin   → Forms / Stats / Settings / Import /
+		// Integrations / Templates (catch-all
+		// handle name used by every split
+		// branch above)
+		// - neural-forms-results → Analytics (own bundle handle)
+		// - neural-forms-entries → Entries  (own bundle handle)
+		// Without all three attachments the unifier would silently
+		// skip Analytics + Entries, leaving them with plain white
+		// headers instead of the gradient panel.
+		//
+		// wp_add_inline_style is a no-op when the target handle isn't
+		// registered, so calling all three is safe regardless of
+		// which screen is active.
+		$hero_css = self::page_hero_unifier_css();
+		wp_add_inline_style( 'neural-forms-admin', $hero_css );
+		wp_add_inline_style( 'neural-forms-results', $hero_css );
+		wp_add_inline_style( 'neural-forms-entries', $hero_css );
+
+		// Forms-screen-only: inject a Shortcode column into the React-rendered
+		// forms table. Lives outside the React bundle so it can ship without
+		// rebuilding (the Node 18+ toolchain isn't available in every dev env
+		// yet). Removed once the React Forms screen is rebuilt with the column
+		// baked in. The injector reads the slug'->->name map localized below; no
+		// extra REST round-trip on page load.
+		if ( self::get_current_screen() === 'forms' ) {
+			self::enqueue_shortcode_column_injector();
+			self::enqueue_builder_navigation_injector();
+			self::enqueue_forms_list_meta_injector();
+			self::enqueue_new_form_dropdown_injector();
+		}
+	}
+
+	/**
+	 * Forms-list-only: redirect "+ New Form" and row "Edit" clicks to
+	 * the URL query that the 1.1.0 split-bundle enqueue swap recognises
+	 * (?new=1 / ?edit=N). Without this, those buttons in the rich 1.0.0
+	 * bundle flip an internal React state to render the old inline
+	 * editor without changing the URL - so builder.js never loads and
+	 * users keep seeing the legacy UI.
+	 *
+	 * Strategy: localize a slug->id map at PHP enqueue time, then run a
+	 * tiny capture-phase delegator on document.click that:
+	 *   - intercepts `.neural-forms-forms-list__new-btn` -> goes to ?new=1
+	 *   - intercepts `.neural-forms-forms-list__action-btn--edit` and
+	 *     `.neural-forms-forms-list__form-name` -> reads the row's
+	 *     .neural-forms-forms-list__form-slug, looks up id, goes to ?edit=N
+	 *
+	 * Capture-phase fires before React's bubble-phase onClick listeners,
+	 * so e.preventDefault() + e.stopPropagation() suppresses the rich
+	 * bundle's in-page state swap.
+	 *
+	 * Removed once the rich bundle is replaced with a split forms.js
+	 * that uses href URLs natively. Until then, this is the cheapest
+	 * non-rebuild fix.
+	 */
+	private static function enqueue_builder_navigation_injector(): void {
+		$result = \NeuralForms\Forms\FormRepository::list(
+			array(
+				'status'   => 'any',
+				'per_page' => 200,
+				'page'     => 1,
+				'orderby'  => 'name',
+				'order'    => 'ASC',
+			)
+		);
+
+		$items      = is_array( $result['items'] ?? null ) ? $result['items'] : array();
+		$slug_to_id = array();
+		foreach ( $items as $form ) {
+			$slug = (string) ( $form['slug'] ?? '' );
+			$id   = (int) ( $form['id'] ?? 0 );
+			if ( $slug !== '' && $id > 0 ) {
+				$slug_to_id[ $slug ] = $id;
+			}
+		}
+
+		$base = admin_url( 'admin.php?page=neural-forms' );
+		$boot = sprintf(
+			'window.NeuralFormsBuilderNav = { slugToId: %s, base: %s };',
+			wp_json_encode( $slug_to_id ),
+			wp_json_encode( $base )
+		);
+		wp_add_inline_script( 'neural-forms-admin', $boot, 'before' );
+
+		// Note: the delegator binds at script-eval time. The Forms list
+		// is React-rendered async, but document-level capture-phase
+		// listeners persist regardless of when the buttons appear.
+		$delegator = <<<'JS'
 ( function () {
     var nav = window.NeuralFormsBuilderNav;
     if ( ! nav || ! nav.base ) return;
@@ -811,116 +797,122 @@ class AdminPanel {
     }, true ); // useCapture: true - fires before React's onClick.
 } )();
 JS;
-        wp_add_inline_script( 'neural-forms-admin', $delegator, 'after' );
-    }
+		wp_add_inline_script( 'neural-forms-admin', $delegator, 'after' );
+	}
 
-    /**
-     * Enqueue the inline JS that adds a Shortcode column to the Forms table.
-     *
-     * Runs after the admin bundle (depends on 'neural-forms-admin') so React
-     * has had a tick to mount before the MutationObserver starts watching.
-     * The map of shortcodes is localized as a JS global rather than fetched
-     * via REST - saves a round-trip and avoids a flash of "no shortcode"
-     * before the fetch resolves.
-     */
-    private static function enqueue_shortcode_column_injector(): void {
-        $result = \NeuralForms\Forms\FormRepository::list( [
-            'status'   => 'any',
-            'per_page' => 200,
-            'page'     => 1,
-            'orderby'  => 'name',
-            'order'    => 'ASC',
-        ] );
+	/**
+	 * Enqueue the inline JS that adds a Shortcode column to the Forms table.
+	 *
+	 * Runs after the admin bundle (depends on 'neural-forms-admin') so React
+	 * has had a tick to mount before the MutationObserver starts watching.
+	 * The map of shortcodes is localized as a JS global rather than fetched
+	 * via REST - saves a round-trip and avoids a flash of "no shortcode"
+	 * before the fetch resolves.
+	 */
+	private static function enqueue_shortcode_column_injector(): void {
+		$result = \NeuralForms\Forms\FormRepository::list(
+			array(
+				'status'   => 'any',
+				'per_page' => 200,
+				'page'     => 1,
+				'orderby'  => 'name',
+				'order'    => 'ASC',
+			)
+		);
 
-        $items   = is_array( $result['items'] ?? null ) ? $result['items'] : [];
-        $by_slug = [];
-        $by_id   = [];
-        $name_count = [];
-        $by_name = [];
-        // First pass: count names so we know which are unique. Forms
-        // sharing a name (e.g. three "Contact Form" rows) cannot be
-        // distinguished by name alone, so we MUST drop them from the
-        // byName fallback — keeping them would let a row resolve to
-        // the wrong duplicate and copy the wrong shortcode.
-        foreach ( $items as $form ) {
-            $name = strtolower( (string) ( $form['name'] ?? '' ) );
-            if ( $name === '' ) continue;
-            $name_count[ $name ] = ( $name_count[ $name ] ?? 0 ) + 1;
-        }
-        foreach ( $items as $form ) {
-            $id   = (int) ( $form['id'] ?? 0 );
-            $slug = (string) ( $form['slug'] ?? '' );
-            $name = (string) ( $form['name'] ?? '' );
-            $entry = [
-                'id'        => $id,
-                'slug'      => $slug,
-                'name'      => $name,
-                // 0.2.0: ID-based shortcode is the canonical embed format.
-                // Slugs change (renames) and can collide; ids don't.
-                // ShortcodeHandler::for_form() returns the id form when
-                // possible and falls back to slug only when the row has
-                // no id (shouldn't happen for saved forms — defensive).
-                // ShortcodeHandler::handle() still accepts slug= for
-                // back-compat with pages that embedded slug-shortcodes
-                // before this change.
-                'shortcode' => \NeuralForms\Frontend\ShortcodeHandler::for_form( $form ),
-            ];
-            // Primary key (1.1.0): the row's edit link carries the
-            // form id in its href, so the injector can resolve every
-            // row reliably even when the React UI doesn't render the
-            // slug as plain text. byId is keyed by string so JS
-            // lookup is allocation-free.
-            if ( $id > 0 ) {
-                $by_id[ (string) $id ] = $entry;
-            }
-            if ( $slug !== '' ) {
-                $by_slug[ $slug ] = $entry;
-            }
-            // byName is intentionally LOSSY-SAFE: only populated when
-            // exactly one form bears this name. The previous logic
-            // wrote each duplicate over the last and silently bound
-            // every duplicate row to whichever form was iterated last
-            // — the source of the "every row shows id=33" bug.
-            if ( $name !== '' && ( $name_count[ strtolower( $name ) ] ?? 0 ) === 1 ) {
-                $by_name[ strtolower( $name ) ] = $entry;
-            }
-        }
+		$items      = is_array( $result['items'] ?? null ) ? $result['items'] : array();
+		$by_slug    = array();
+		$by_id      = array();
+		$name_count = array();
+		$by_name    = array();
+		// First pass: count names so we know which are unique. Forms
+		// sharing a name (e.g. three "Contact Form" rows) cannot be
+		// distinguished by name alone, so we MUST drop them from the
+		// byName fallback — keeping them would let a row resolve to
+		// the wrong duplicate and copy the wrong shortcode.
+		foreach ( $items as $form ) {
+			$name = strtolower( (string) ( $form['name'] ?? '' ) );
+			if ( $name === '' ) {
+				continue;
+			}
+			$name_count[ $name ] = ( $name_count[ $name ] ?? 0 ) + 1;
+		}
+		foreach ( $items as $form ) {
+			$id    = (int) ( $form['id'] ?? 0 );
+			$slug  = (string) ( $form['slug'] ?? '' );
+			$name  = (string) ( $form['name'] ?? '' );
+			$entry = array(
+				'id'        => $id,
+				'slug'      => $slug,
+				'name'      => $name,
+				// 0.2.0: ID-based shortcode is the canonical embed format.
+				// Slugs change (renames) and can collide; ids don't.
+				// ShortcodeHandler::for_form() returns the id form when
+				// possible and falls back to slug only when the row has
+				// no id (shouldn't happen for saved forms — defensive).
+				// ShortcodeHandler::handle() still accepts slug= for
+				// back-compat with pages that embedded slug-shortcodes
+				// before this change.
+				'shortcode' => \NeuralForms\Frontend\ShortcodeHandler::for_form( $form ),
+			);
+			// Primary key (1.1.0): the row's edit link carries the
+			// form id in its href, so the injector can resolve every
+			// row reliably even when the React UI doesn't render the
+			// slug as plain text. byId is keyed by string so JS
+			// lookup is allocation-free.
+			if ( $id > 0 ) {
+				$by_id[ (string) $id ] = $entry;
+			}
+			if ( $slug !== '' ) {
+				$by_slug[ $slug ] = $entry;
+			}
+			// byName is intentionally LOSSY-SAFE: only populated when
+			// exactly one form bears this name. The previous logic
+			// wrote each duplicate over the last and silently bound
+			// every duplicate row to whichever form was iterated last
+			// — the source of the "every row shows id=33" bug.
+			if ( $name !== '' && ( $name_count[ strtolower( $name ) ] ?? 0 ) === 1 ) {
+				$by_name[ strtolower( $name ) ] = $entry;
+			}
+		}
 
-        // The injector script is registered against the same handle used as a
-        // dependency, so ordering is deterministic. We use wp_add_inline_script
-        // rather than a separate file so the markup remains a single source of
-        // truth - no extra round-trip, no risk of a stale cached file.
-        $payload = wp_json_encode( [
-            'byId'   => $by_id,
-            'bySlug' => $by_slug,
-            'byName' => $by_name,
-            'i18n'   => [
-                'header' => __( 'Shortcode',          'neural-forms-lite' ),
-                'copy'   => __( 'Copy',               'neural-forms-lite' ),
-                'copied' => __( 'Copied',             'neural-forms-lite' ),
-                'aria'   => __( 'Copy shortcode',     'neural-forms-lite' ),
-            ],
-        ] );
+		// The injector script is registered against the same handle used as a
+		// dependency, so ordering is deterministic. We use wp_add_inline_script
+		// rather than a separate file so the markup remains a single source of
+		// truth - no extra round-trip, no risk of a stale cached file.
+		$payload = wp_json_encode(
+			array(
+				'byId'   => $by_id,
+				'bySlug' => $by_slug,
+				'byName' => $by_name,
+				'i18n'   => array(
+					'header' => __( 'Shortcode', 'neural-forms-lite' ),
+					'copy'   => __( 'Copy', 'neural-forms-lite' ),
+					'copied' => __( 'Copied', 'neural-forms-lite' ),
+					'aria'   => __( 'Copy shortcode', 'neural-forms-lite' ),
+				),
+			)
+		);
 
-        $injector = self::shortcode_column_injector_js();
+		$injector = self::shortcode_column_injector_js();
 
-        wp_add_inline_script(
-            'neural-forms-admin',
-            'window.neuralFormsShortcodeData = ' . $payload . ';',
-            'before'
-        );
-        wp_add_inline_script(
-            'neural-forms-admin',
-            $injector,
-            'after'
-        );
+		wp_add_inline_script(
+			'neural-forms-admin',
+			'window.neuralFormsShortcodeData = ' . $payload . ';',
+			'before'
+		);
+		wp_add_inline_script(
+			'neural-forms-admin',
+			$injector,
+			'after'
+		);
 
-        wp_add_inline_style( 'neural-forms-admin', self::shortcode_column_injector_css() );
-    }
+		wp_add_inline_style( 'neural-forms-admin', self::shortcode_column_injector_css() );
+	}
 
-    /** Vanilla-JS injector - no React, walks the DOM produced by the bundle. */
-    private static function shortcode_column_injector_js(): string {
-        return <<<'JS'
+	/** Vanilla-JS injector - no React, walks the DOM produced by the bundle. */
+	private static function shortcode_column_injector_js(): string {
+		return <<<'JS'
 (function () {
     var data = window.neuralFormsShortcodeData;
     if ( ! data || ! data.bySlug ) { return; }
@@ -1175,43 +1167,43 @@ JS;
     observer.observe( mount, { childList: true, subtree: true } );
 })();
 JS;
-    }
+	}
 
-    /**
-     * Unified page-header CSS shipped on every Neural Forms admin
-     * screen. The TEMPLATES screen's `__hero` is now the visual
-     * source of truth (soft gradient panel, navy title, brand
-     * subtitle, subtle 1-px shadow); this CSS applies the same look
-     * to every other admin screen by retargeting their existing
-     * `__header` + `__title` markup.
-     *
-     * Covered screens:
-     *   - Forms list (`.neural-forms-forms-list__*`)
-     *   - Entries    (`.neural-forms-entries-page-header*` — see note)
-     *   - Analytics  (`.nf-analytics-hero*`)
-     *   - Stats      (`.neural-forms-stats__*`)
-     *   - Integrations (`.neural-forms-integrations__*`)
-     *   - Settings   (`.neural-forms-settings__*`)
-     *   - Import     (`.neural-forms-import__*`)
-     *
-     * Templates intentionally owns its OWN copy in
-     * src/templates.css — the unifier mirrors those values; if
-     * Templates' hero is restyled, propagate the change here too.
-     *
-     * Entries note: the existing Gmail-style 2-pane layout doesn't
-     * have a top-of-page card — its inbox header sits INSIDE the
-     * pane frame. We don't retarget any entries class today (would
-     * fight the inbox layout); if a unified entries hero is wanted,
-     * Entries.js needs its own JSX-side change. The exclusion is
-     * documented here so a future contributor doesn't try to add
-     * `.neural-forms-entries-*` and discover the conflict at
-     * runtime.
-     */
-    private static function page_hero_unifier_css(): string {
-        // Single source of truth — values copied from
-        // .neural-forms-templates__hero / __title / __subtitle in
-        // modules/admin/src/templates.css. Keep in sync.
-        return <<<'CSS'
+	/**
+	 * Unified page-header CSS shipped on every Neural Forms admin
+	 * screen. The TEMPLATES screen's `__hero` is now the visual
+	 * source of truth (soft gradient panel, navy title, brand
+	 * subtitle, subtle 1-px shadow); this CSS applies the same look
+	 * to every other admin screen by retargeting their existing
+	 * `__header` + `__title` markup.
+	 *
+	 * Covered screens:
+	 *   - Forms list (`.neural-forms-forms-list__*`)
+	 *   - Entries    (`.neural-forms-entries-page-header*` — see note)
+	 *   - Analytics  (`.nf-analytics-hero*`)
+	 *   - Stats      (`.neural-forms-stats__*`)
+	 *   - Integrations (`.neural-forms-integrations__*`)
+	 *   - Settings   (`.neural-forms-settings__*`)
+	 *   - Import     (`.neural-forms-import__*`)
+	 *
+	 * Templates intentionally owns its OWN copy in
+	 * src/templates.css — the unifier mirrors those values; if
+	 * Templates' hero is restyled, propagate the change here too.
+	 *
+	 * Entries note: the existing Gmail-style 2-pane layout doesn't
+	 * have a top-of-page card — its inbox header sits INSIDE the
+	 * pane frame. We don't retarget any entries class today (would
+	 * fight the inbox layout); if a unified entries hero is wanted,
+	 * Entries.js needs its own JSX-side change. The exclusion is
+	 * documented here so a future contributor doesn't try to add
+	 * `.neural-forms-entries-*` and discover the conflict at
+	 * runtime.
+	 */
+	private static function page_hero_unifier_css(): string {
+		// Single source of truth — values copied from
+		// .neural-forms-templates__hero / __title / __subtitle in
+		// modules/admin/src/templates.css. Keep in sync.
+		return <<<'CSS'
 /* ── Shared hero card (canonical class names) ──────────────────── */
 #neural-forms-app .nf-page-hero,
 #neural-forms-results-app .nf-page-hero {
@@ -1364,11 +1356,11 @@ JS;
     }
 }
 CSS;
-    }
+	}
 
-    /** Scoped CSS for the injected column. */
-    private static function shortcode_column_injector_css(): string {
-        return <<<'CSS'
+	/** Scoped CSS for the injected column. */
+	private static function shortcode_column_injector_css(): string {
+		return <<<'CSS'
 /* Shortcode column header.
  * Compact, fixed width so the table doesn't visually split into two
  * sections. text-align matches the other forms-list headers.
@@ -1493,119 +1485,119 @@ CSS;
     }
 }
 CSS;
-    }
+	}
 
-    /**
-     * Forms-list-only: turn the rich bundle's "+ New Form" button into
-     * a split dropdown when Neural Forms Pro + AI form-generation are
-     * available.
-     *
-     *   Lite-only / Pro inactive          → no change. The plain
-     *                                       "+ New Form" button stays.
-     *   Pro + AI configured + eligible    → dropdown with three items:
-     *                                         Blank Form
-     *                                         Use Template
-     *                                         Create Form with AI ✨
-     *   Pro installed but AI not ready    → AI item visible but
-     *                                       disabled, with a "Connect
-     *                                       Neural Forms Cloud..."
-     *                                       hint pointing at Settings.
-     *
-     * Same vanilla-JS DOM-augmentation pattern as the shortcode column
-     * injector. The rich bundle's React tree is not modified — we
-     * locate the original button via its title/aria text, render a
-     * sibling caret button, and emit a dropdown menu rooted in
-     * #neural-forms-app.
-     *
-     * The "Create with AI" flow opens its own modal (rendered into a
-     * portal under document.body so it isn't constrained by the rich
-     * bundle's container CSS). The modal POSTs the prompt to Pro's
-     * /neural-forms-pro/v1/ai/generate-form endpoint, then on Create
-     * persists the returned schema via /neural-forms/v1/forms with
-     * status=draft and redirects to ?page=neural-forms&edit=N so the
-     * builder split-bundle picks up where the user left off.
-     */
-    private static function enqueue_new_form_dropdown_injector(): void {
-        $cloud_ai_enabled = (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' );
-        $cloud_key_set    = \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '';
-        $can_generate     = \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::AI_FORM_GENERATE );
-        $pro_installed    = class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' );
+	/**
+	 * Forms-list-only: turn the rich bundle's "+ New Form" button into
+	 * a split dropdown when Neural Forms Pro + AI form-generation are
+	 * available.
+	 *
+	 *   Lite-only / Pro inactive          → no change. The plain
+	 *                                       "+ New Form" button stays.
+	 *   Pro + AI configured + eligible    → dropdown with three items:
+	 *                                         Blank Form
+	 *                                         Use Template
+	 *                                         Create Form with AI ✨
+	 *   Pro installed but AI not ready    → AI item visible but
+	 *                                       disabled, with a "Connect
+	 *                                       Neural Forms Cloud..."
+	 *                                       hint pointing at Settings.
+	 *
+	 * Same vanilla-JS DOM-augmentation pattern as the shortcode column
+	 * injector. The rich bundle's React tree is not modified — we
+	 * locate the original button via its title/aria text, render a
+	 * sibling caret button, and emit a dropdown menu rooted in
+	 * #neural-forms-app.
+	 *
+	 * The "Create with AI" flow opens its own modal (rendered into a
+	 * portal under document.body so it isn't constrained by the rich
+	 * bundle's container CSS). The modal POSTs the prompt to Pro's
+	 * /neural-forms-pro/v1/ai/generate-form endpoint, then on Create
+	 * persists the returned schema via /neural-forms/v1/forms with
+	 * status=draft and redirects to ?page=neural-forms&edit=N so the
+	 * builder split-bundle picks up where the user left off.
+	 */
+	private static function enqueue_new_form_dropdown_injector(): void {
+		$cloud_ai_enabled = (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' );
+		$cloud_key_set    = \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '';
+		$can_generate     = \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::AI_FORM_GENERATE );
+		$pro_installed    = class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' );
 
-        // Don't bother shipping any of this for Lite-only installs.
-        // Pro flips ai_form_generate to true; without Pro the original
-        // "+ New Form" button is the right UX (no dropdown clutter).
-        if ( ! $pro_installed && ! $can_generate ) {
-            return;
-        }
+		// The dropdown ships on every install — Lite users still need
+		// access to Blank Form + Use Template (the Template Library
+		// hosts the Block Editor catalog Lite ships). The "Create Form
+		// with AI" item is gated separately below: enabled = full AI
+		// flow, locked = PRO badge + click routes to the pricing page.
 
-        $payload = wp_json_encode( [
-            'available'      => $can_generate && $cloud_ai_enabled && $cloud_key_set,
-            'proInstalled'   => $pro_installed,
-            'canGenerate'    => $can_generate,
-            'cloudConnected' => $cloud_ai_enabled && $cloud_key_set,
-            'cloudKeySet'    => $cloud_key_set,
-            'cloudAiEnabled' => $cloud_ai_enabled,
-            'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
-            'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
-            'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
-            // Templates admin page slug — generated through admin_url
-            // so it picks up the install's actual wp-admin path
-            // (subdir installs, custom admin URLs, etc.). The dropdown
-            // injector reads this when the "Use Template" item is
-            // clicked. Kept alongside the other admin URLs so the
-            // payload stays one flat object.
-            'templatesUrl'   => esc_url_raw( admin_url( 'admin.php?page=neural-forms-templates' ) ),
-            'i18n' => [
-                'caretLabel'   => __( 'New form options',           'neural-forms-lite' ),
-                'blank'        => __( 'Blank Form',                  'neural-forms-lite' ),
-                'template'     => __( 'Use Template',                'neural-forms-lite' ),
-                'ai'           => __( 'Create Form with AI',         'neural-forms-lite' ),
-                'aiBadge'      => __( 'AI',                          'neural-forms-lite' ),
-                'aiSetup'      => __( 'Connect Neural Forms Cloud to use AI', 'neural-forms-lite' ),
-                'modalTitle'   => __( 'Create form with AI',         'neural-forms-lite' ),
-                'modalDesc'    => __( 'Describe the form you want. Neural Forms will draft the fields for you.', 'neural-forms-lite' ),
-                'placeholder'  => __( 'e.g. Create a dental appointment form with name, email, phone, preferred date, and message.', 'neural-forms-lite' ),
-                'cancel'       => __( 'Cancel',                      'neural-forms-lite' ),
-                'generate'     => __( 'Generate form',               'neural-forms-lite' ),
-                'generating'   => __( 'Generating...',               'neural-forms-lite' ),
-                'creating'     => __( 'Creating draft...',           'neural-forms-lite' ),
-                'createDraft'  => __( 'Create draft and edit',       'neural-forms-lite' ),
-                'editPrompt'   => __( 'Edit prompt',                 'neural-forms-lite' ),
-                /* translators: %d is the number of form fields the AI just generated, e.g. "12 fields generated". */
-                'fieldsCount'  => __( '%d fields generated',         'neural-forms-lite' ),
-                'genericError' => __( 'AI generation failed. Please try again.', 'neural-forms-lite' ),
-                'createError'  => __( 'Could not create the form. Please try again.', 'neural-forms-lite' ),
-                'safetyBlock'  => __( 'AI skipped this prompt because it appears unsafe.', 'neural-forms-lite' ),
-                'safetyDown'   => __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' ),
-                'noCharge'     => __( 'No credits were deducted.',   'neural-forms-lite' ),
-                /* translators: %s is the number of credits this AI call consumed, e.g. "0.30 credits used". */
-                'creditsUsed'  => __( '%s credits used',             'neural-forms-lite' ),
-                /* translators: %s is the number of credits remaining on the plan after the call, e.g. "· 1,993.70 remaining". */
-                'creditsLeft'  => __( '· %s remaining',              'neural-forms-lite' ),
-            ],
-        ] );
+		$payload = wp_json_encode(
+			array(
+				'available'      => $can_generate && $cloud_ai_enabled && $cloud_key_set,
+				'proInstalled'   => $pro_installed,
+				'canGenerate'    => $can_generate,
+				'cloudConnected' => $cloud_ai_enabled && $cloud_key_set,
+				'cloudKeySet'    => $cloud_key_set,
+				'cloudAiEnabled' => $cloud_ai_enabled,
+				'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
+				'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
+				'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
+				// Canonical upgrade URL — matches every other "Upgrade
+				// to Pro" call-to-action across the admin (Integrations,
+				// EntryDetail, BuilderInspector's AI card, Settings).
+				'upgradeUrl'     => esc_url_raw( 'https://neuralforms.ai/pricing' ),
+				'i18n'           => array(
+					'caretLabel'   => __( 'New form options', 'neural-forms-lite' ),
+					'blank'        => __( 'Blank Form', 'neural-forms-lite' ),
+					'template'     => __( 'Use Template', 'neural-forms-lite' ),
+					'ai'           => __( 'Create form with Neural AI', 'neural-forms-lite' ),
+					'aiBadge'      => __( 'AI', 'neural-forms-lite' ),
+					'proBadge'     => __( 'PRO', 'neural-forms-lite' ),
+					'aiLocked'     => __( 'Available in Neural Forms Pro', 'neural-forms-lite' ),
+					'aiSetup'      => __( 'Connect Neural Forms Cloud to use Neural AI', 'neural-forms-lite' ),
+					'modalTitle'   => __( 'Create form with Neural AI', 'neural-forms-lite' ),
+					'modalDesc'    => __( 'Describe the form you want. Neural Forms will draft the fields for you.', 'neural-forms-lite' ),
+					'placeholder'  => __( 'e.g. Create a dental appointment form with name, email, phone, preferred date, and message.', 'neural-forms-lite' ),
+					'cancel'       => __( 'Cancel', 'neural-forms-lite' ),
+					'generate'     => __( 'Generate form', 'neural-forms-lite' ),
+					'generating'   => __( 'Generating...', 'neural-forms-lite' ),
+					'creating'     => __( 'Creating draft...', 'neural-forms-lite' ),
+					'createDraft'  => __( 'Create draft and edit', 'neural-forms-lite' ),
+					'editPrompt'   => __( 'Edit prompt', 'neural-forms-lite' ),
+					/* translators: %d is the number of form fields the AI just generated, e.g. "12 fields generated". */
+					'fieldsCount'  => __( '%d fields generated', 'neural-forms-lite' ),
+					'genericError' => __( 'Neural AI generation failed. Please try again.', 'neural-forms-lite' ),
+					'createError'  => __( 'Could not create the form. Please try again.', 'neural-forms-lite' ),
+					'safetyBlock'  => __( 'Neural AI skipped this prompt because it appears unsafe.', 'neural-forms-lite' ),
+					'safetyDown'   => __( 'Neural AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' ),
+					'noCharge'     => __( 'No credits were deducted.', 'neural-forms-lite' ),
+					/* translators: %s is the number of credits this AI call consumed, e.g. "0.30 credits used". */
+					'creditsUsed'  => __( '%s credits used', 'neural-forms-lite' ),
+					/* translators: %s is the number of credits remaining on the plan after the call, e.g. "· 1,993.70 remaining". */
+					'creditsLeft'  => __( '· %s remaining', 'neural-forms-lite' ),
+				),
+			)
+		);
 
-        wp_add_inline_script(
-            'neural-forms-admin',
-            'window.neuralFormsNewFormDropdown = ' . $payload . ';',
-            'before'
-        );
-        wp_add_inline_script(
-            'neural-forms-admin',
-            self::new_form_dropdown_injector_js(),
-            'after'
-        );
-        wp_add_inline_style(
-            'neural-forms-admin',
-            self::new_form_dropdown_injector_css()
-        );
-    }
+		wp_add_inline_script(
+			'neural-forms-admin',
+			'window.neuralFormsNewFormDropdown = ' . $payload . ';',
+			'before'
+		);
+		wp_add_inline_script(
+			'neural-forms-admin',
+			self::new_form_dropdown_injector_js(),
+			'after'
+		);
+		wp_add_inline_style(
+			'neural-forms-admin',
+			self::new_form_dropdown_injector_css()
+		);
+	}
 
-    /**
-     * Vanilla-JS DOM augmentation for the "+ New Form" button.
-     */
-    private static function new_form_dropdown_injector_js(): string {
-        return <<<'JS'
+	/**
+	 * Vanilla-JS DOM augmentation for the "+ New Form" button.
+	 */
+	private static function new_form_dropdown_injector_js(): string {
+		return <<<'JS'
 (function () {
     var data = window.neuralFormsNewFormDropdown;
     if ( ! data ) { return; }
@@ -1657,7 +1649,7 @@ CSS;
         wrap.className = 'nf-aiform-modal';
         wrap.setAttribute( 'role', 'dialog' );
         wrap.setAttribute( 'aria-modal', 'true' );
-        wrap.setAttribute( 'aria-label', i18n.modalTitle || 'Create form with AI' );
+        wrap.setAttribute( 'aria-label', i18n.modalTitle || 'Create form with Neural AI' );
         document.body.appendChild( wrap );
 
         function close() {
@@ -1943,28 +1935,72 @@ CSS;
         wrapper.appendChild( menu );
 
         // Build menu items.
-        // "template" navigates to the Templates admin page rather
-        // than firing the underlying "+ New Form" button. Falls back
-        // to a relative admin URL if the localized value is missing
-        // (defensive — the PHP side always sets it, but a malformed
-        // payload shouldn't crash the dropdown).
-        var templatesUrl = ( data && data.templatesUrl ) || 'admin.php?page=neural-forms-templates';
+        // "template" opens the in-page Template Library popup rendered
+        // by the Forms React bundle (TemplateLibraryModal). Forms.js
+        // signals readiness via window.neuralFormsTemplateModalReady so
+        // this injector can dispatch the open event instead of
+        // navigating away. The legacy navigation is intentionally
+        // dropped — the Templates admin page no longer exists.
+        function openTemplateLibrary() {
+            try {
+                document.dispatchEvent(
+                    new CustomEvent( 'neural-forms:open-template-library' )
+                );
+            } catch ( e ) {
+                // CustomEvent is supported everywhere we care about,
+                // but if a polyfill is missing fall back to a no-op
+                // rather than throwing inside the dropdown click
+                // handler.
+            }
+        }
         var items = [
             { id: 'blank',    label: data.i18n.blank,    enabled: true,  action: function () { btn.click(); } },
-            { id: 'template', label: data.i18n.template, enabled: true,  action: function () { window.location.href = templatesUrl; } },
+            { id: 'template', label: data.i18n.template, enabled: true,  action: openTemplateLibrary },
         ];
 
-        var aiEnabled  = !! data.available;
-        var aiHint     = aiEnabled ? '' : data.i18n.aiSetup;
+        // Three AI-item states, in priority order:
+        //   1. Lite install (no capability)        → PRO badge, click → upgrade page
+        //   2. Pro installed but cloud not set up  → AI badge, hint, click → Settings
+        //   3. Pro + cloud ready                   → AI badge, click → AI modal
+        // The item is always visible so Lite users discover the Pro
+        // feature; the locked state is communicated via the PRO pill
+        // + secondary hint rather than hiding the row entirely.
+        var aiCanGenerate = !! data.canGenerate;
+        var aiReady       = !! data.available;
+        var aiBadges      = [];
+        var aiHint        = '';
+        var aiAction;
+
+        if ( ! aiCanGenerate ) {
+            // Lite — no Pro. Surface PRO + AI pills so the user sees
+            // both that this is the AI flow and that it's gated.
+            aiBadges.push( data.i18n.proBadge || 'PRO' );
+            aiBadges.push( data.i18n.aiBadge  || 'AI' );
+            aiHint   = data.i18n.aiLocked || 'Available in Neural Forms Pro';
+            aiAction = function () {
+                window.open( data.upgradeUrl || 'https://neuralforms.ai/pricing', '_blank', 'noopener' );
+            };
+        } else if ( ! aiReady ) {
+            // Pro installed but Cloud not connected — route to Settings.
+            aiBadges.push( data.i18n.aiBadge || 'AI' );
+            aiHint   = data.i18n.aiSetup || '';
+            aiAction = function () { window.location.href = data.settingsUrl; };
+        } else {
+            aiBadges.push( data.i18n.aiBadge || 'AI' );
+            aiAction = openAiModal;
+        }
+
         items.push( {
             id: 'ai',
             label: data.i18n.ai,
-            enabled: aiEnabled,
-            badge: data.i18n.aiBadge,
-            hint: aiHint,
-            action: aiEnabled
-                ? openAiModal
-                : function () { window.location.href = data.settingsUrl; }
+            // `enabled` is now purely a click-state concern. The
+            // locked-PRO row is still clickable (it opens the upgrade
+            // page), so we keep enabled=true and only flip false when
+            // the action is missing entirely.
+            enabled: typeof aiAction === 'function',
+            badges:  aiBadges,
+            hint:    aiHint,
+            action:  aiAction
         } );
 
         items.forEach( function ( it ) {
@@ -1976,7 +2012,29 @@ CSS;
             b.setAttribute( 'role', 'menuitem' );
             b.className = 'nf-newform-split__menuitem';
             var html = '<span class="nf-newform-split__label">' + safeEscape( it.label ) + '</span>';
-            if ( it.badge ) html += '<span class="nf-newform-split__badge">' + safeEscape( it.badge ) + '</span>';
+            // Render every badge in declaration order so PRO sits to
+            // the left of AI when both apply. Older callers that pass
+            // a single `badge` string still render via the same loop.
+            // Badges live inside a single .nf-newform-split__badges
+            // wrapper so the menuitem's flex-column layout treats
+            // them as ONE row — without the wrapper each badge would
+            // claim its own line and stack vertically.
+            var badgeList = Array.isArray( it.badges )
+                ? it.badges
+                : ( it.badge ? [ it.badge ] : [] );
+            if ( badgeList.length > 0 ) {
+                html += '<span class="nf-newform-split__badges">';
+                for ( var bi = 0; bi < badgeList.length; bi++ ) {
+                    var badgeText = badgeList[ bi ];
+                    if ( ! badgeText ) continue;
+                    var badgeClass = 'nf-newform-split__badge';
+                    if ( String( badgeText ).toUpperCase() === 'PRO' ) {
+                        badgeClass += ' nf-newform-split__badge--pro';
+                    }
+                    html += '<span class="' + badgeClass + '">' + safeEscape( badgeText ) + '</span>';
+                }
+                html += '</span>';
+            }
             if ( it.hint  ) html += '<span class="nf-newform-split__hint">'  + safeEscape( it.hint  ) + '</span>';
             b.innerHTML = html;
             b.addEventListener( 'click', function ( e ) {
@@ -2020,10 +2078,10 @@ CSS;
     observer.observe( mount, { childList: true, subtree: true } );
 })();
 JS;
-    }
+	}
 
-    private static function new_form_dropdown_injector_css(): string {
-        return <<<'CSS'
+	private static function new_form_dropdown_injector_css(): string {
+		return <<<'CSS'
 /* Split button for "+ New Form".
  *
  * The wrapper holds the rich bundle's original primary button on the
@@ -2118,9 +2176,19 @@ JS;
 #neural-forms-app .nf-newform-split__label {
     font-weight: 500;
 }
+/* Wrapper that groups every badge into a single flex-item so the
+ * parent .nf-newform-split__menuitem (flex-direction: column) doesn't
+ * stack badges vertically. `gap` controls the horizontal spacing
+ * between sibling badges; `margin-left` is zeroed below because the
+ * old single-badge layout used left-margin off the label. */
+#neural-forms-app .nf-newform-split__badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
 #neural-forms-app .nf-newform-split__badge {
     display: inline-block;
-    margin-left: 6px;
     padding: 1px 6px;
     border-radius: 999px;
     background: linear-gradient(90deg, #6366f1, #d946ef);
@@ -2128,6 +2196,13 @@ JS;
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
+}
+/* PRO variant — solid navy fill to match every other PRO pill across
+ * the admin (BuilderInspector AI card, Templates Divi tab, integrations
+ * locked card). Keeps the AI badge's purple gradient for the actual
+ * AI-flow signal and reserves navy for the plan/capability signal. */
+#neural-forms-app .nf-newform-split__badge--pro {
+    background: #080f5b;
 }
 #neural-forms-app .nf-newform-split__hint {
     font-size: 11px;
@@ -2341,95 +2416,140 @@ JS;
     font-size: 12px;
 }
 CSS;
-    }
+	}
 
-    /**
-     * Forms-list-only: inject auto-detected type badge + submission /
-     * spam counts under the form name, and an "Analytics" action link
-     * into the row's actions cell. The rich 1.0.0 admin bundle does
-     * not surface these natively and we cannot rebuild it (see
-     * "Admin build warning" in CLAUDE.md), so the metadata is
-     * delivered via a vanilla-JS injector + MutationObserver — same
-     * pattern as enqueue_shortcode_column_injector().
-     *
-     * Data flows from FormsEndpoint::get_forms() (which already
-     * computes detected_type / entry_count / spam_count for every
-     * row) — but the rich bundle's existing forms-list fetch does
-     * not redraw to consume those new keys. So we localise our own
-     * slug -> meta map at PHP enqueue time, identical in spirit to
-     * the shortcode payload, and bind row-level rendering against it.
-     *
-     * Removed once the rich bundle is replaced by a split forms.js
-     * that renders these chips natively.
-     */
-    private static function enqueue_forms_list_meta_injector(): void {
-        $result = \NeuralForms\Forms\FormRepository::list( [
-            'status'   => 'any',
-            'per_page' => 200,
-            'page'     => 1,
-            'orderby'  => 'name',
-            'order'    => 'ASC',
-        ] );
+	/**
+	 * Forms-list-only: inject auto-detected type badge + submission /
+	 * spam counts under the form name, and an "Analytics" action link
+	 * into the row's actions cell. The rich 1.0.0 admin bundle does
+	 * not surface these natively and we cannot rebuild it (see
+	 * "Admin build warning" in CLAUDE.md), so the metadata is
+	 * delivered via a vanilla-JS injector + MutationObserver — same
+	 * pattern as enqueue_shortcode_column_injector().
+	 *
+	 * Data flows from FormsEndpoint::get_forms() (which already
+	 * computes detected_type / entry_count / spam_count for every
+	 * row) — but the rich bundle's existing forms-list fetch does
+	 * not redraw to consume those new keys. So we localise our own
+	 * slug -> meta map at PHP enqueue time, identical in spirit to
+	 * the shortcode payload, and bind row-level rendering against it.
+	 *
+	 * Removed once the rich bundle is replaced by a split forms.js
+	 * that renders these chips natively.
+	 */
+	private static function enqueue_forms_list_meta_injector(): void {
+		$result = \NeuralForms\Forms\FormRepository::list(
+			array(
+				'status'   => 'any',
+				'per_page' => 200,
+				'page'     => 1,
+				'orderby'  => 'name',
+				'order'    => 'ASC',
+			)
+		);
 
-        $items = is_array( $result['items'] ?? null ) ? $result['items'] : [];
-        $ids   = [];
-        foreach ( $items as $form ) {
-            $fid = (int) ( $form['id'] ?? 0 );
-            if ( $fid > 0 ) $ids[] = $fid;
-        }
-        $totals = ! empty( $ids )
-            ? \NeuralForms\Storage\EntryRepository::count_form_totals( $ids )
-            : [];
+		$items = is_array( $result['items'] ?? null ) ? $result['items'] : array();
+		$ids   = array();
+		foreach ( $items as $form ) {
+			$fid = (int) ( $form['id'] ?? 0 );
+			if ( $fid > 0 ) {
+				$ids[] = $fid;
+			}
+		}
+		$totals = ! empty( $ids )
+			? \NeuralForms\Storage\EntryRepository::count_form_totals( $ids )
+			: array();
 
-        $by_slug = [];
-        $by_name = [];
-        foreach ( $items as $form ) {
-            $slug = (string) ( $form['slug'] ?? '' );
-            if ( $slug === '' ) continue;
-            $fid  = (int) ( $form['id'] ?? 0 );
-            $name = (string) ( $form['name'] ?? '' );
-            $type = \NeuralForms\Forms\FormTypeDetector::detect( $form['form_schema'] ?? null );
-            $row  = $totals[ $fid ] ?? [ 'entry_count' => 0, 'spam_count' => 0 ];
-            $entry = [
-                'id'           => $fid,
-                'slug'         => $slug,
-                'name'         => $name,
-                'type'         => $type,
-                'typeLabel'    => \NeuralForms\Forms\FormTypeDetector::label( $type ),
-                'entryCount'   => (int) $row['entry_count'],
-                'spamCount'    => (int) $row['spam_count'],
-                'analyticsUrl' => admin_url( 'admin.php?page=neural-forms-results&form_id=' . $fid ),
-            ];
-            $by_slug[ $slug ] = $entry;
-            if ( $name !== '' ) {
-                $by_name[ strtolower( $name ) ] = $entry;
-            }
-        }
+		// Poll/Quiz submission cap. Pro flips the capability via
+		// `neural_forms_can_poll_quiz_unlimited_submissions`, so when
+		// $cap_unlimited is true the cap notice is suppressed in the
+		// UI. $cap_limit mirrors SubmitEndpoint::check_poll_quiz_
+		// submission_limit() so the displayed limit always matches
+		// the enforced one (filter override included).
+		$cap_unlimited = \NeuralForms\Core\Capabilities::can(
+			\NeuralForms\Core\Capabilities::POLL_QUIZ_UNLIMITED_SUBMISSIONS
+		);
+		$cap_limit     = (int) apply_filters( 'neural_forms_poll_quiz_submission_limit', 1000 );
+		// A 0/negative filter return means "no cap" — same semantics
+		// the enforcer uses.
+		if ( $cap_limit <= 0 ) {
+			$cap_unlimited = true;
+		}
 
-        $payload = wp_json_encode( [
-            'bySlug' => $by_slug,
-            'byName' => $by_name,
-            'i18n'   => [
-                'analytics'    => __( 'Analytics',   'neural-forms-lite' ),
-                'submissions'  => __( 'submissions', 'neural-forms-lite' ),
-                'submission'   => __( 'submission',  'neural-forms-lite' ),
-                'spam'         => __( 'spam',        'neural-forms-lite' ),
-                'analyticsAria'=> __( 'Open analytics for this form', 'neural-forms-lite' ),
-            ],
-        ] );
+		$capped_types = array(
+			\NeuralForms\Forms\FormTypeDetector::TYPE_POLL,
+			\NeuralForms\Forms\FormTypeDetector::TYPE_QUIZ,
+			\NeuralForms\Forms\FormTypeDetector::TYPE_MIXED,
+		);
 
-        wp_add_inline_script(
-            'neural-forms-admin',
-            'window.neuralFormsListMeta = ' . $payload . ';',
-            'before'
-        );
-        wp_add_inline_script( 'neural-forms-admin', self::forms_list_meta_injector_js(), 'after' );
-        wp_add_inline_style(  'neural-forms-admin', self::forms_list_meta_injector_css() );
-    }
+		$by_slug = array();
+		$by_name = array();
+		foreach ( $items as $form ) {
+			$slug = (string) ( $form['slug'] ?? '' );
+			if ( $slug === '' ) {
+				continue;
+			}
+			$fid              = (int) ( $form['id'] ?? 0 );
+			$name             = (string) ( $form['name'] ?? '' );
+			$type             = \NeuralForms\Forms\FormTypeDetector::detect( $form['form_schema'] ?? null );
+			$row              = $totals[ $fid ] ?? array(
+				'entry_count' => 0,
+				'spam_count'  => 0,
+			);
+			$is_capped_type   = in_array( $type, $capped_types, true );
+			$entry            = array(
+				'id'           => $fid,
+				'slug'         => $slug,
+				'name'         => $name,
+				'type'         => $type,
+				'typeLabel'    => \NeuralForms\Forms\FormTypeDetector::label( $type ),
+				'entryCount'   => (int) $row['entry_count'],
+				'spamCount'    => (int) $row['spam_count'],
+				'analyticsUrl' => admin_url( 'admin.php?page=neural-forms-results&form_id=' . $fid ),
+				// Lite poll/quiz cap fields. `showCap` is the single
+				// flag the JS injector reads; everything else is the
+				// data the notice renders. Pro installs always get
+				// showCap=false so the row stays clean.
+				'showCap'      => $is_capped_type && ! $cap_unlimited,
+				'capLimit'     => $is_capped_type ? $cap_limit : 0,
+			);
+			$by_slug[ $slug ] = $entry;
+			if ( $name !== '' ) {
+				$by_name[ strtolower( $name ) ] = $entry;
+			}
+		}
 
-    /** Vanilla-JS injector that paints the badge + counts + Analytics action. */
-    private static function forms_list_meta_injector_js(): string {
-        return <<<'JS'
+		$payload = wp_json_encode(
+			array(
+				'bySlug' => $by_slug,
+				'byName' => $by_name,
+				'i18n'   => array(
+					'analytics'     => __( 'Analytics', 'neural-forms-lite' ),
+					'submissions'   => __( 'submissions', 'neural-forms-lite' ),
+					'submission'    => __( 'submission', 'neural-forms-lite' ),
+					'spam'          => __( 'spam', 'neural-forms-lite' ),
+					'analyticsAria' => __( 'Open analytics for this form', 'neural-forms-lite' ),
+					/* translators: 1: current entry count, 2: cap (e.g. "1,000"). */
+					'capNotice'     => __( '%1$s of %2$s entries used (Lite limit).', 'neural-forms-lite' ),
+					'capReached'    => __( 'Lite entry limit reached.', 'neural-forms-lite' ),
+					'capUpgrade'    => __( 'Upgrade to Pro for unlimited entries.', 'neural-forms-lite' ),
+				),
+				'upgradeUrl' => esc_url_raw( 'https://neuralforms.ai/pricing' ),
+			)
+		);
+
+		wp_add_inline_script(
+			'neural-forms-admin',
+			'window.neuralFormsListMeta = ' . $payload . ';',
+			'before'
+		);
+		wp_add_inline_script( 'neural-forms-admin', self::forms_list_meta_injector_js(), 'after' );
+		wp_add_inline_style( 'neural-forms-admin', self::forms_list_meta_injector_css() );
+	}
+
+	/** Vanilla-JS injector that paints the badge + counts + Analytics action. */
+	private static function forms_list_meta_injector_js(): string {
+		return <<<'JS'
 ( function () {
     var data = window.neuralFormsListMeta;
     if ( ! data || ! data.bySlug ) return;
@@ -2494,6 +2614,46 @@ CSS;
         } else {
             nameCell.appendChild( meta );
         }
+
+        // Lite poll/quiz cap notice. PHP sets showCap=true only when
+        // the form is poll/quiz/mixed AND the unlimited capability is
+        // off — Pro installs (or filter-overridden cap of 0) never
+        // get here. We render a small mint-tinted notice below the
+        // count + a "Upgrade to Pro" link to the pricing page.
+        if ( form.showCap ) {
+            var notice = document.createElement( 'div' );
+            notice.className = 'nf-list-meta__cap';
+            var cap     = form.capLimit | 0;
+            var reached = n >= cap;
+
+            // Format numbers with the browser's locale separators so
+            // "1,000" reads naturally (CSV-friendly comma) without
+            // forking the PHP-side i18n string.
+            var nFmt   = ( typeof n.toLocaleString === 'function' )   ? n.toLocaleString()   : String( n );
+            var capFmt = ( typeof cap.toLocaleString === 'function' ) ? cap.toLocaleString() : String( cap );
+
+            var notice_text = reached
+                ? ( i18n.capReached || 'Lite entry limit reached.' )
+                : ( i18n.capNotice || '%1$s of %2$s entries used (Lite limit).' )
+                    .replace( '%1$s', nFmt )
+                    .replace( '%2$s', capFmt );
+
+            notice.appendChild( document.createTextNode( notice_text + ' ' ) );
+
+            var link = document.createElement( 'a' );
+            link.className = 'nf-list-meta__cap-link';
+            link.href = data.upgradeUrl || 'https://neuralforms.ai/pricing';
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = i18n.capUpgrade || 'Upgrade to Pro for unlimited entries.';
+            notice.appendChild( link );
+
+            if ( reached ) {
+                notice.classList.add( 'nf-list-meta__cap--reached' );
+            }
+
+            meta.appendChild( notice );
+        }
     }
 
     function paintAction( row, form ) {
@@ -2533,14 +2693,14 @@ CSS;
     observer.observe( mount, { childList: true, subtree: true } );
 } )();
 JS;
-    }
+	}
 
-    /** Scoped CSS for the badge / counts / Analytics action chips and the
-     *  surrounding Forms-list layout polish (wider container, balanced
-     *  columns, action button rhythm). All overrides are scoped under
-     *  #neural-forms-app so they cannot bleed onto other admin screens. */
-    private static function forms_list_meta_injector_css(): string {
-        return <<<'CSS'
+	/** Scoped CSS for the badge / counts / Analytics action chips and the
+	 *  surrounding Forms-list layout polish (wider container, balanced
+	 *  columns, action button rhythm). All overrides are scoped under
+	 *  #neural-forms-app so they cannot bleed onto other admin screens. */
+	private static function forms_list_meta_injector_css(): string {
+		return <<<'CSS'
 /* Container widening — the rich bundle caps .neural-forms-forms-list at
  * --f-content-width (960px), which makes the table stop ~900px wide
  * even on a 1600px screen. Override to 1440px so wide screens use the
@@ -2683,6 +2843,43 @@ JS;
     font-weight: 600;
 }
 
+/* Poll/quiz Lite-cap notice. Sits on its own line below the count
+ * so the regular meta row stays compact. Mint-tinted background +
+ * navy text mirrors the AI card on the empty inspector — same
+ * "this is a Pro feature heads-up" visual family. The --reached
+ * modifier swaps to the warning palette when the form already hit
+ * the 1,000 entry cap and submissions are being rejected. */
+#neural-forms-app .nf-list-meta__cap {
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: #ecfdf5;
+    border: 1px solid rgba( 21, 219, 149, 0.35 );
+    border-radius: 6px;
+    color: #064e3b;
+    font-size: 11px;
+    line-height: 1.4;
+    display: inline-block;
+}
+#neural-forms-app .nf-list-meta__cap--reached {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+#neural-forms-app .nf-list-meta__cap-link {
+    color: #080f5b;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+#neural-forms-app .nf-list-meta__cap-link:hover,
+#neural-forms-app .nf-list-meta__cap-link:focus-visible {
+    color: #050942;
+    outline: none;
+}
+#neural-forms-app .nf-list-meta__cap--reached .nf-list-meta__cap-link {
+    color: #991b1b;
+}
+
 /* Tablet — give the shortcode column a bit more room than the bundle's
  * default and keep the name column readable. */
 @media ( max-width: 1280px ) {
@@ -2711,159 +2908,159 @@ JS;
     }
 }
 CSS;
-    }
+	}
 
-    // Helpers
+	// Helpers
 
-    /**
-     * True if the current screen belongs to Neural Forms.
-     */
-    private static function is_neural_forms_page( string $hook ): bool {
-        return strpos( $hook, self::MENU_SLUG ) !== false;
-    }
+	/**
+	 * True if the current screen belongs to Neural Forms.
+	 */
+	private static function is_neural_forms_page( string $hook ): bool {
+		return strpos( $hook, self::MENU_SLUG ) !== false;
+	}
 
-    /**
-     * True when the URL identifies the form-builder editor screen
-     * (?page=neural-forms&edit=N or &new=1). Used by enqueue_assets()
-     * to swap to the split-bundle builder instead of the rich admin
-     * bundle. Capability is enforced upstream by add_menu_page().
-     */
-    private static function is_builder_screen(): bool {
+	/**
+	 * True when the URL identifies the form-builder editor screen
+	 * (?page=neural-forms&edit=N or &new=1). Used by enqueue_assets()
+	 * to swap to the split-bundle builder instead of the rich admin
+	 * bundle. Capability is enforced upstream by add_menu_page().
+	 */
+	private static function is_builder_screen(): bool {
         // phpcs:disable WordPress.Security.NonceVerification.Recommended
-        $page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-        $edit   = isset( $_GET['edit'] ) ? (int) $_GET['edit']                         : 0;
-        $is_new = isset( $_GET['new']  ) && $_GET['new'] === '1';
+		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		$edit   = isset( $_GET['edit'] ) ? (int) $_GET['edit'] : 0;
+		$is_new = isset( $_GET['new'] ) && $_GET['new'] === '1';
         // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
-        return $page === self::MENU_SLUG && ( $edit > 0 || $is_new );
-    }
+		return $page === self::MENU_SLUG && ( $edit > 0 || $is_new );
+	}
 
-    /**
-     * True when ?page=neural-forms-results. The results / analytics
-     * screen ships as its own split bundle and mounts on
-     * #neural-forms-results-app — separate root from the per-screen
-     * bundles which all mount under #neural-forms-app.
-     */
-    private static function is_results_screen(): bool {
+	/**
+	 * True when ?page=neural-forms-results. The results / analytics
+	 * screen ships as its own split bundle and mounts on
+	 * #neural-forms-results-app — separate root from the per-screen
+	 * bundles which all mount under #neural-forms-app.
+	 */
+	private static function is_results_screen(): bool {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-        return $page === 'neural-forms-results';
-    }
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		return $page === 'neural-forms-results';
+	}
 
-    /**
-     * True when ?page=neural-forms-entries. The entries screen ships
-     * as its own split bundle in 1.1.0+ (build/entries.js +
-     * build/entries.css) so the inbox UI can iterate independently of
-     * the other admin screens.
-     */
-    private static function is_entries_screen(): bool {
+	/**
+	 * True when ?page=neural-forms-entries. The entries screen ships
+	 * as its own split bundle in 1.1.0+ (build/entries.js +
+	 * build/entries.css) so the inbox UI can iterate independently of
+	 * the other admin screens.
+	 */
+	private static function is_entries_screen(): bool {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-        return $page === 'neural-forms-entries';
-    }
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		return $page === 'neural-forms-entries';
+	}
 
-    /**
-     * Resolve the current screen identifier from the ?page= query parameter.
-     *
-     * Falls back to the first entry in SCREENS - no magic string.
-     * If new screens are added to SCREENS, the fallback updates automatically.
-     */
-    private static function get_current_screen(): string {
-        // The ?page= param is WordPress's own admin-router input, not a
-        // submitted form field. Capability is enforced by add_menu_page()
-        // before this runs, and the value is whitelisted against SCREENS.
+	/**
+	 * Resolve the current screen identifier from the ?page= query parameter.
+	 *
+	 * Falls back to the first entry in SCREENS - no magic string.
+	 * If new screens are added to SCREENS, the fallback updates automatically.
+	 */
+	private static function get_current_screen(): string {
+		// The ?page= param is WordPress's own admin-router input, not a
+		// submitted form field. Capability is enforced by add_menu_page()
+		// before this runs, and the value is whitelisted against SCREENS.
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
 
-        // PHP 8.x: reset() requires a variable (pass-by-reference). A class
-        // constant cannot be referenced directly, so copy SCREENS into a
-        // local first. array_key_first() would also work but reset() keeps
-        // the "first declared entry is the default" invariant explicit.
-        $screens = self::SCREENS;
-        return $screens[ $page ] ?? reset( $screens );
-    }
+		// PHP 8.x: reset() requires a variable (pass-by-reference). A class
+		// constant cannot be referenced directly, so copy SCREENS into a
+		// local first. array_key_first() would also work but reset() keeps
+		// the "first declared entry is the default" invariant explicit.
+		$screens = self::SCREENS;
+		return $screens[ $page ] ?? reset( $screens );
+	}
 
-    /**
-     * Data passed to window.neuralFormsAdmin in the browser.
-     * Grouped by concern so each consumer (middleware, router, UI) reads
-     * only its own namespace without touching unrelated values.
-     */
-    private static function script_data(): array {
-        $data = [
-            'screen' => self::get_current_screen(),
+	/**
+	 * Data passed to window.neuralFormsAdmin in the browser.
+	 * Grouped by concern so each consumer (middleware, router, UI) reads
+	 * only its own namespace without touching unrelated values.
+	 */
+	private static function script_data(): array {
+		$data = array(
+			'screen'    => self::get_current_screen(),
 
-            'api' => [
-                // Lite-namespace base for default short-form paths like '/forms'.
-                'url'   => esc_url_raw( rest_url( \NeuralForms\Rest\RestAPI::NAMESPACE ) ),
-                // REST root, used by the middleware when a caller passes a path
-                // that already includes its own namespace (e.g. Pro's
-                // '/neural-forms-pro/v1/...'). Without this, those paths get
-                // double-prefixed against `url` and 404.
-                'root'  => esc_url_raw( rest_url() ),
-                'nonce' => wp_create_nonce( 'wp_rest' ),
-            ],
+			'api'       => array(
+				// Lite-namespace base for default short-form paths like '/forms'.
+				'url'   => esc_url_raw( rest_url( \NeuralForms\Rest\RestAPI::NAMESPACE ) ),
+				// REST root, used by the middleware when a caller passes a path
+				// that already includes its own namespace (e.g. Pro's
+				// '/neural-forms-pro/v1/...'). Without this, those paths get
+				// double-prefixed against `url` and 404.
+				'root'  => esc_url_raw( rest_url() ),
+				'nonce' => wp_create_nonce( 'wp_rest' ),
+			),
 
-            'admin' => [
-                'ajaxUrl'    => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
-                'adminEmail' => (string) get_option( 'admin_email' ),
-                'siteName'   => (string) get_bloginfo( 'name' ),
-            ],
+			'admin'     => array(
+				'ajaxUrl'    => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
+				'adminEmail' => (string) get_option( 'admin_email' ),
+				'siteName'   => (string) get_bloginfo( 'name' ),
+			),
 
-            'user' => [
-                'id'   => get_current_user_id(),
-                'caps' => [
-                    'manageForms' => current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ),
-                ],
-            ],
+			'user'      => array(
+				'id'   => get_current_user_id(),
+				'caps' => array(
+					'manageForms' => current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ),
+				),
+			),
 
-            'plugin' => [
-                'version'  => NEURAL_FORMS_VERSION,
-                'features' => \NeuralForms\Core\Config::features(),
-                'cloudAiEnabled' => (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' ),
-                'cloudApiKeySet' => \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '',
-                'aiSpam'   => [
-                    'enabled'   => (bool)   \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
-                    'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),
-                    'threshold' => (int)    \NeuralForms\Core\Config::get( 'ai_spam_threshold' ),
-                ],
-                // Plugin-level capability snapshot ("is Pro installed?"). The
-                // React bundle consults this to pick the right upsell vs.
-                // unlocked UI. Cloud-plan gating remains on the `plan` key.
-                'capabilities' => \NeuralForms\Core\Capabilities::all(),
-                // True when Pro is active. When the user's cloud plan already
-                // includes Pro features but the Pro plugin isn't installed,
-                // the upsell modal swaps "Upgrade plan" for "Download Pro".
-                'proInstalled' => class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' ),
-                'proDownloadUrl' => 'https://neuralforms.ai/my-account/downloads/',
-            ],
+			'plugin'    => array(
+				'version'        => NEURAL_FORMS_VERSION,
+				'features'       => \NeuralForms\Core\Config::features(),
+				'cloudAiEnabled' => (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' ),
+				'cloudApiKeySet' => \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '',
+				'aiSpam'         => array(
+					'enabled'   => (bool) \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
+					'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),
+					'threshold' => (int) \NeuralForms\Core\Config::get( 'ai_spam_threshold' ),
+				),
+				// Plugin-level capability snapshot ("is Pro installed?"). The
+				// React bundle consults this to pick the right upsell vs.
+				// unlocked UI. Cloud-plan gating remains on the `plan` key.
+				'capabilities'   => \NeuralForms\Core\Capabilities::all(),
+				// True when Pro is active. When the user's cloud plan already
+				// includes Pro features but the Pro plugin isn't installed,
+				// the upsell modal swaps "Upgrade plan" for "Download Pro".
+				'proInstalled'   => class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' ),
+				'proDownloadUrl' => 'https://neuralforms.ai/my-account/downloads/',
+			),
 
-            // Plan + capabilities, identical shape to GET /settings.cloud_plan.
-            // The JS PlanStore seeds from this on boot.
-            'plan' => \NeuralForms\Plan\PlanManager::public_payload(),
+			// Plan + capabilities, identical shape to GET /settings.cloud_plan.
+			// The JS PlanStore seeds from this on boot.
+			'plan'      => \NeuralForms\Plan\PlanManager::public_payload(),
 
-            'captcha' => [
-                'configured'  => \NeuralForms\Captcha\CaptchaManager::is_configured(),
-                'settingsUrl' => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
-            ],
+			'captcha'   => array(
+				'configured'  => \NeuralForms\Captcha\CaptchaManager::is_configured(),
+				'settingsUrl' => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
+			),
 
-            'migration' => [
-                'cf7Active' => is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ),
-            ],
-        ];
+			'migration' => array(
+				'cf7Active' => is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ),
+			),
+		);
 
-        /**
-         * Filter the boot data localized into window.neuralFormsAdmin.
-         *
-         * Add-on plugins (e.g. Neural Forms Pro) can attach their own namespaced
-         * data here - e.g. $data['pro'] = [ 'license' => ..., 'slots' => [...] ] -
-         * so they can share the same localized payload rather than enqueuing an
-         * additional script just to carry a few values.
-         *
-         * Keep added keys namespaced to avoid colliding with Lite's existing
-         * shape. Never mutate or remove Lite's own keys.
-         *
-         * @param array $data The full localized payload.
-         */
-        return apply_filters( 'neural_forms_admin_script_data', $data );
-    }
+		/**
+		 * Filter the boot data localized into window.neuralFormsAdmin.
+		 *
+		 * Add-on plugins (e.g. Neural Forms Pro) can attach their own namespaced
+		 * data here - e.g. $data['pro'] = [ 'license' => ..., 'slots' => [...] ] -
+		 * so they can share the same localized payload rather than enqueuing an
+		 * additional script just to carry a few values.
+		 *
+		 * Keep added keys namespaced to avoid colliding with Lite's existing
+		 * shape. Never mutate or remove Lite's own keys.
+		 *
+		 * @param array $data The full localized payload.
+		 */
+		return apply_filters( 'neural_forms_admin_script_data', $data );
+	}
 }

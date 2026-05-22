@@ -251,8 +251,8 @@ function CloudAiSection( {
 
 	return (
 		<Section
-			title={ __( 'Neural Forms Cloud AI', 'neural-forms-lite' ) }
-			description={ __( 'Connect to Neural Forms Cloud to enable AI-powered entry analysis, suggested replies, and spam detection.', 'neural-forms-lite' ) }
+			title={ __( 'Neural AI Cloud', 'neural-forms-lite' ) }
+			description={ __( 'Connect to Neural AI Cloud to enable Neural AI-powered entry analysis, suggested replies, and spam detection.', 'neural-forms-lite' ) }
 		>
 			<Field
 				label={ __( 'API Key', 'neural-forms-lite' ) }
@@ -330,7 +330,7 @@ function CloudAiSection( {
 			) }
 
 			<ToggleField
-				label={ __( 'Enable AI', 'neural-forms-lite' ) }
+				label={ __( 'Enable Neural AI', 'neural-forms-lite' ) }
 				checked={ form.cloud_ai_enabled }
 				onChange={ ( v ) => set( { cloud_ai_enabled: v } ) }
 			/>
@@ -344,7 +344,7 @@ function CloudAiSection( {
 
 			<Field
 				label={ __( 'Process queue', 'neural-forms-lite' ) }
-				hint={ __( 'Trigger an immediate AI queue run. Useful on local/dev where WP-Cron may not fire automatically.', 'neural-forms-lite' ) }
+				hint={ __( 'Trigger an immediate Neural AI queue run. Useful on local/dev where WP-Cron may not fire automatically.', 'neural-forms-lite' ) }
 			>
 				<div className="neural-forms-settings__queue-row">
 					<button
@@ -503,12 +503,16 @@ function NotificationsSection( { form, set } ) {
 
 			<Field
 				label={ __( 'Notify address', 'neural-forms-lite' ) }
-				hint={ __( 'Leave blank to use the WordPress admin email.', 'neural-forms-lite' ) }
+				hint={ __( 'Separate multiple email addresses with commas. Leave blank to use the WordPress admin email.', 'neural-forms-lite' ) }
 			>
+				{ /* type="text" rather than type="email" so the browser
+				     doesn't reject commas. The server splits the list and
+				     re-joins valid addresses on save. */ }
 				<TextInput
-					type="email"
+					type="text"
 					value={ form.admin_notification_email || '' }
 					onChange={ ( e ) => set( { admin_notification_email: e.target.value } ) }
+					placeholder={ __( 'you@example.com, manager@example.com', 'neural-forms-lite' ) }
 				/>
 			</Field>
 
@@ -605,9 +609,9 @@ function GeneralPrivacySection( { form, set } ) {
 
 			{ !! form.cloud_ai_enabled && (
 				<div className="neural-forms-settings__notice neural-forms-settings__notice--warn">
-					<strong>{ __( 'AI & Privacy:', 'neural-forms-lite' ) }</strong>
+					<strong>{ __( 'Neural AI & Privacy:', 'neural-forms-lite' ) }</strong>
 					{ ' ' }
-					{ __( 'When AI is on, submission content is sent to Neural Forms Cloud for processing. Ensure this aligns with your privacy policy and any applicable data regulations (e.g. GDPR).', 'neural-forms-lite' ) }
+					{ __( 'When Neural AI is on, submission content is sent to Neural Forms Cloud for processing. Ensure this aligns with your privacy policy and any applicable data regulations (e.g. GDPR).', 'neural-forms-lite' ) }
 				</div>
 			) }
 		</Section>
@@ -772,7 +776,7 @@ export default function Settings() {
 	};
 
 	const onRevokeConnection = () => {
-		if ( ! window.confirm( __( 'Revoke the saved Cloud API key? AI features will stop working until a new key is connected.', 'neural-forms-lite' ) ) ) {
+		if ( ! window.confirm( __( 'Revoke the saved Cloud API key? Neural AI features will stop working until a new key is connected.', 'neural-forms-lite' ) ) ) {
 			return;
 		}
 		setConnectionState( { testing: false, revoking: true, message: '', error: false } );
@@ -907,7 +911,7 @@ export default function Settings() {
 						{ __( 'Settings', 'neural-forms-lite' ) }
 					</h1>
 					<p className="neural-forms-settings__page-desc">
-						{ __( 'Configure AI, notifications, email, and privacy options for Neural Forms.', 'neural-forms-lite' ) }
+						{ __( 'Configure Neural AI, notifications, email, and privacy options for Neural Forms.', 'neural-forms-lite' ) }
 					</p>
 				</div>
 				{ renderSaveBar( 'top' ) }

@@ -4,9 +4,9 @@
 // This repository owns the wp_neural_forms_* tables and runs typed CRUD
 // against them. Object caching is intentionally not used here:
 // - REST handlers fetch fresh per request; entries / forms see frequent
-//   writes, so a stale cache would surface in the admin UI.
+// writes, so a stale cache would surface in the admin UI.
 // - Cache invalidation across the create/update/delete + bulk paths
-//   would add more risk than the few percent of latency it would save.
+// would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Storage;
 
 use NeuralForms\Core\Logger;
@@ -48,19 +48,19 @@ class EntryRepository {
 	 * }
 	 * @return int|\WP_Error  New entry ID on success, WP_Error on failure.
 	 */
-	public static function create( int $form_id, array $sanitized_data, array $context = [] ) {
+	public static function create( int $form_id, array $sanitized_data, array $context = array() ) {
 		global $wpdb;
 
 		$now = current_time( 'mysql', true );  // UTC
 
 		$context = array_merge(
-			[
+			array(
 				'ip'           => '',
 				'user_agent'   => '',
 				'page_url'     => '',
 				'submitted_at' => $now,
 				'form_version' => '',
-			],
+			),
 			$context
 		);
 
@@ -75,32 +75,32 @@ class EntryRepository {
 		// wp_json_encode falls back to false on failure (malformed UTF-8, etc.).
 		$json = wp_json_encode( $sanitized_data );
 
-		if ( $json === false ) {
+		if ( false === $json ) {
 			Logger::file( 'storage', 'error', sprintf( 'wp_json_encode() returned false for form %d', $form_id ) );
 			return new \WP_Error(
 				'entry_encode_failed',
 				__( 'Could not encode submission data.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		$inserted = $wpdb->insert(
 			self::table(),
-			[
+			array(
 				'form_id'      => $form_id,
 				'form_version' => substr( $context['form_version'], 0, 32 ),
 				'status'       => 'new',
 				'data'         => $json,
-				'ip_address'   => substr( $context['ip'],         0, 45 ),
+				'ip_address'   => substr( $context['ip'], 0, 45 ),
 				'user_agent'   => $context['user_agent'],
 				'page_url'     => $context['page_url'],
 				'submitted_at' => $context['submitted_at'],
 				'created_at'   => $now,
-			],
-			[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
+			),
+			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
-		if ( $inserted === false ) {
+		if ( false === $inserted ) {
 			$db_err = $wpdb->last_error ?: '(no wpdb error message)';
 			Logger::file(
 				'storage',
@@ -111,7 +111,7 @@ class EntryRepository {
 			return new \WP_Error(
 				'entry_save_failed',
 				__( 'Could not save the entry.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -135,8 +135,8 @@ class EntryRepository {
 	public static function update( int $id, array $fields ): bool {
 		global $wpdb;
 
-		$data   = [];
-		$format = [];
+		$data   = array();
+		$format = array();
 
 		if ( isset( $fields['status'] ) ) {
 			$data['status'] = self::valid_status( $fields['status'] );
@@ -162,12 +162,12 @@ class EntryRepository {
 		$result = $wpdb->update(
 			self::table(),
 			$data,
-			[ 'id' => $id ],
+			array( 'id' => $id ),
 			$format,
-			[ '%d' ]
+			array( '%d' )
 		);
 
-		return $result !== false;
+		return false !== $result;
 	}
 
 	/**
@@ -180,7 +180,7 @@ class EntryRepository {
 	 * @return bool
 	 */
 	public static function update_status( int $id, string $status ): bool {
-		return self::update( $id, [ 'status' => $status ] );
+		return self::update( $id, array( 'status' => $status ) );
 	}
 
 	/**
@@ -201,12 +201,12 @@ class EntryRepository {
 		$ids = array_filter( array_map( 'intval', $ids ) );
 
 		if ( empty( $ids ) ) {
-			return [];
+			return array();
 		}
 
 		// Build SET clause from the same allowlist as update().
-		$set_parts  = [];
-		$set_values = [];
+		$set_parts  = array();
+		$set_values = array();
 
 		if ( isset( $fields['status'] ) ) {
 			$set_parts[]  = 'status = %s';
@@ -222,7 +222,7 @@ class EntryRepository {
 		}
 
 		if ( empty( $set_parts ) ) {
-			return [];
+			return array();
 		}
 
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
@@ -235,21 +235,21 @@ class EntryRepository {
 		$query = $wpdb->prepare(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			"UPDATE %i SET {$set_clause} WHERE id IN ({$placeholders})",
-			...array_merge( [ $table ], $set_values, $ids )
+			...array_merge( array( $table ), $set_values, $ids )
 		);
 		$wpdb->query( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		// Return the subset of requested IDs that actually exist in the table.
 		$confirmed_placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
-		$confirmed = $wpdb->get_col(
+		$confirmed              = $wpdb->get_col(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
 				"SELECT id FROM %i WHERE id IN ({$confirmed_placeholders})",
-				...array_merge( [ $table ], $ids )
+				...array_merge( array( $table ), $ids )
 			)
 		);
 
-		return array_map( 'intval', $confirmed ?: [] );
+		return array_map( 'intval', $confirmed ?: array() );
 	}
 
 	/**
@@ -266,7 +266,7 @@ class EntryRepository {
 	 * @param int|null $form_id  If non-null, scope counts to a single form.
 	 * @return array { inbox: int, unread: int, starred: int, needs_reply: int, spam: int, trash: int, high_priority: int, spam_suspected: int }
 	 */
-	public static function count_by_view( ?int $form_id = null, array $args = [] ): array {
+	public static function count_by_view( ?int $form_id = null, array $args = array() ): array {
 		global $wpdb;
 
 		$table        = self::table();
@@ -280,10 +280,14 @@ class EntryRepository {
 		// (All Forms → Inbox excluding poll/quiz/mixed), we layer those
 		// onto the AND-chain of every per-view count.
 		if ( isset( $args['form_ids'] ) && is_array( $args['form_ids'] ) ) {
-			$ids = array_values( array_unique( array_filter(
-				array_map( 'intval', $args['form_ids'] ),
-				static fn ( $id ) => $id > 0
-			) ) );
+			$ids = array_values(
+				array_unique(
+					array_filter(
+						array_map( 'intval', $args['form_ids'] ),
+						static fn ( $id ) => $id > 0
+					)
+				)
+			);
 			if ( empty( $ids ) ) {
 				// No matching forms → all counts zero. Short-circuit
 				// with a literal false predicate.
@@ -299,10 +303,14 @@ class EntryRepository {
 			}
 		}
 		if ( isset( $args['exclude_form_ids'] ) && is_array( $args['exclude_form_ids'] ) ) {
-			$exclude = array_values( array_unique( array_filter(
-				array_map( 'intval', $args['exclude_form_ids'] ),
-				static fn ( $id ) => $id > 0
-			) ) );
+			$exclude = array_values(
+				array_unique(
+					array_filter(
+						array_map( 'intval', $args['exclude_form_ids'] ),
+						static fn ( $id ) => $id > 0
+					)
+				)
+			);
 			if ( ! empty( $exclude ) ) {
 				$placeholders = implode( ', ', array_fill( 0, count( $exclude ), '%d' ) );
 				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
@@ -318,7 +326,7 @@ class EntryRepository {
 			return (int) $value;
 		};
 
-		return [
+		return array(
 			'inbox'          => $count( "status IN ('new','read')" ),
 			'unread'         => $count( "status = 'new'" ),
 			'starred'        => $count( 'is_starred = 1' ),
@@ -327,7 +335,7 @@ class EntryRepository {
 			'trash'          => $count( "status = 'trash'" ),
 			'high_priority'  => $count( "ai_priority = 'high' AND status IN ('new','read')" ),
 			'spam_suspected' => $count( "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')" ),
-		];
+		);
 	}
 
 	/**
@@ -345,26 +353,30 @@ class EntryRepository {
 	 * @return array{ polls:int, quizzes:int }
 	 */
 	public static function count_smart_folders(): array {
-		$poll_ids = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'poll' ] );
-		$quiz_ids = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( [ 'quiz', 'mixed' ] );
+		$poll_ids = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( array( 'poll' ) );
+		$quiz_ids = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( array( 'quiz', 'mixed' ) );
 
 		$tally = static function ( array $ids ) {
-			if ( empty( $ids ) ) return 0;
+			if ( empty( $ids ) ) {
+				return 0;
+			}
 			global $wpdb;
 			$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
 			$table        = self::table();
-			$args         = array_merge( [ $table ], $ids );
+			$args         = array_merge( array( $table ), $ids );
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			return (int) $wpdb->get_var( $wpdb->prepare(
-				"SELECT COUNT(*) FROM %i WHERE status IN ('new','read') AND form_id IN ({$placeholders})",
-				...$args
-			) );
+			return (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM %i WHERE status IN ('new','read') AND form_id IN ({$placeholders})",
+					...$args
+				)
+			);
 		};
 
-		return [
+		return array(
 			'polls'   => $tally( $poll_ids ),
 			'quizzes' => $tally( $quiz_ids ),
-		];
+		);
 	}
 
 	/**
@@ -379,13 +391,17 @@ class EntryRepository {
 	 * @return int
 	 */
 	public static function count_non_trash_entries_for_form( int $form_id ): int {
-		if ( $form_id < 1 ) return 0;
+		if ( $form_id < 1 ) {
+			return 0;
+		}
 		global $wpdb;
-		$count = $wpdb->get_var( $wpdb->prepare(
-			"SELECT COUNT(*) FROM %i WHERE form_id = %d AND status != 'trash'",
-			self::table(),
-			$form_id
-		) );
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM %i WHERE form_id = %d AND status != 'trash'",
+				self::table(),
+				$form_id
+			)
+		);
 		return (int) $count;
 	}
 
@@ -406,17 +422,24 @@ class EntryRepository {
 	public static function count_form_totals( array $form_ids ): array {
 		global $wpdb;
 
-		$ids = array_values( array_unique( array_filter(
-			array_map( 'intval', $form_ids ),
-			static fn ( $id ) => $id > 0
-		) ) );
+		$ids = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'intval', $form_ids ),
+					static fn ( $id ) => $id > 0
+				)
+			)
+		);
 		if ( empty( $ids ) ) {
-			return [];
+			return array();
 		}
 
-		$out = [];
+		$out = array();
 		foreach ( $ids as $id ) {
-			$out[ $id ] = [ 'entry_count' => 0, 'spam_count' => 0 ];
+			$out[ $id ] = array(
+				'entry_count' => 0,
+				'spam_count'  => 0,
+			);
 		}
 
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
@@ -433,18 +456,20 @@ class EntryRepository {
 				 FROM %i
 				 WHERE form_id IN ({$placeholders})
 				 GROUP BY form_id",
-				...array_merge( [ $table ], $ids )
+				...array_merge( array( $table ), $ids )
 			),
 			ARRAY_A
 		);
 
 		foreach ( (array) $rows as $row ) {
 			$fid = (int) ( $row['form_id'] ?? 0 );
-			if ( ! isset( $out[ $fid ] ) ) continue;
-			$out[ $fid ] = [
+			if ( ! isset( $out[ $fid ] ) ) {
+				continue;
+			}
+			$out[ $fid ] = array(
 				'entry_count' => (int) ( $row['entry_count'] ?? 0 ),
-				'spam_count'  => (int) ( $row['spam_count']  ?? 0 ),
-			];
+				'spam_count'  => (int) ( $row['spam_count'] ?? 0 ),
+			);
 		}
 
 		return $out;
@@ -464,11 +489,11 @@ class EntryRepository {
 
 		$result = $wpdb->delete(
 			self::table(),
-			[ 'id' => $id ],
-			[ '%d' ]
+			array( 'id' => $id ),
+			array( '%d' )
 		);
 
-		return $result !== false;
+		return false !== $result;
 	}
 
 	/**
@@ -486,7 +511,7 @@ class EntryRepository {
 		$ids = array_filter( array_map( 'intval', $ids ) );
 
 		if ( empty( $ids ) ) {
-			return [];
+			return array();
 		}
 
 		// Capture which IDs actually exist before deleting them.
@@ -497,14 +522,14 @@ class EntryRepository {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
 				"SELECT id FROM %i WHERE id IN ({$placeholders})",
-				...array_merge( [ $table ], $ids )
+				...array_merge( array( $table ), $ids )
 			)
 		);
 
-		$existing = array_map( 'intval', $existing ?: [] );
+		$existing = array_map( 'intval', $existing ?: array() );
 
 		if ( empty( $existing ) ) {
-			return [];
+			return array();
 		}
 
 		$del_placeholders = implode( ',', array_fill( 0, count( $existing ), '%d' ) );
@@ -513,7 +538,7 @@ class EntryRepository {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
 				"DELETE FROM %i WHERE id IN ({$del_placeholders})",
-				...array_merge( [ $table ], $existing )
+				...array_merge( array( $table ), $existing )
 			)
 		);
 
@@ -543,7 +568,7 @@ class EntryRepository {
 	 * System view identifiers and the WHERE clauses they expand to.
 	 * Used by list() and count_by_view().
 	 */
-	public const VALID_VIEWS = [ 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected' ];
+	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected' );
 
 	/**
 	 * Return a paginated list of entries.
@@ -566,10 +591,10 @@ class EntryRepository {
 	 * }
 	 * @return array { items: array[], total: int }
 	 */
-	public static function list( int $form_id, array $args = [] ): array {
+	public static function list( int $form_id, array $args = array() ): array {
 		global $wpdb;
 
-		$defaults = [
+		$defaults = array(
 			'view'       => '',
 			'status'     => 'any',
 			'per_page'   => 20,
@@ -578,23 +603,23 @@ class EntryRepository {
 			'order'      => 'DESC',
 			'search'     => '',
 			'sort_order' => '',
-		];
-		$args = array_merge( $defaults, $args );
+		);
+		$args     = array_merge( $defaults, $args );
 
 		// sort_order is a convenience alias: when present it forces submitted_at
 		// as the sort column and overrides the legacy orderby/order args.
 		if ( $args['sort_order'] !== '' ) {
 			$sort_order = strtolower( (string) $args['sort_order'] );
 			$orderby    = 'submitted_at';
-			$order      = in_array( $sort_order, [ 'asc', 'desc' ], true )
+			$order      = in_array( $sort_order, array( 'asc', 'desc' ), true )
 				? strtoupper( $sort_order )
 				: 'DESC';
 		} else {
-			$allowed_columns = [ 'id', 'status', 'submitted_at', 'created_at' ];
-			$orderby = in_array( $args['orderby'], $allowed_columns, true )
+			$allowed_columns = array( 'id', 'status', 'submitted_at', 'created_at' );
+			$orderby         = in_array( $args['orderby'], $allowed_columns, true )
 				? $args['orderby']
 				: 'submitted_at';
-			$order = strtoupper( $args['order'] ) === 'ASC' ? 'ASC' : 'DESC';
+			$order           = strtoupper( $args['order'] ) === 'ASC' ? 'ASC' : 'DESC';
 		}
 
 		$per_page = min( 100, max( 1, (int) $args['per_page'] ) );
@@ -610,16 +635,16 @@ class EntryRepository {
 
 		// COUNT query - table flows through %i; $where_plain is composed
 		// from method-internal whitelists in build_filter_clauses().
-		$count_args = array_merge( [ $entries_table ], $values );
+		$count_args = array_merge( array( $entries_table ), $values );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$total      = (int) $wpdb->get_var(
+		$total = (int) $wpdb->get_var(
 			$wpdb->prepare( "SELECT COUNT(*) FROM %i {$where_plain}", ...$count_args )
 		);
 
 		// Main SELECT - both table names flow through %i; $orderby is
 		// whitelisted against $allowed_columns and $order is forced to
 		// ASC|DESC, so they are safe to interpolate.
-		$main_args = array_merge( [ $entries_table, $forms_table ], $values, [ $per_page, $offset ] );
+		$main_args = array_merge( array( $entries_table, $forms_table ), $values, array( $per_page, $offset ) );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -649,10 +674,10 @@ class EntryRepository {
 			unset( $r );
 		}
 
-		return [
-			'items' => array_map( [ self::class, 'decode' ], $rows ?: [] ),
+		return array(
+			'items' => array_map( array( self::class, 'decode' ), $rows ?: array() ),
 			'total' => $total,
-		];
+		);
 	}
 
 	/**
@@ -669,12 +694,12 @@ class EntryRepository {
 
 		$entry_ids = array_filter( array_map( 'intval', $entry_ids ), static fn( $id ) => $id > 0 );
 		if ( ! $entry_ids ) {
-			return [];
+			return array();
 		}
 
 		$messages_table = $wpdb->prefix . 'neural_forms_entry_messages';
 		$placeholders   = implode( ',', array_fill( 0, count( $entry_ids ), '%d' ) );
-		$args           = array_merge( [ $messages_table ], $entry_ids );
+		$args           = array_merge( array( $messages_table ), $entry_ids );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$ids = $wpdb->get_col(
@@ -684,7 +709,7 @@ class EntryRepository {
 			)
 		);
 
-		$set = [];
+		$set = array();
 		foreach ( (array) $ids as $id ) {
 			$set[ (int) $id ] = true;
 		}
@@ -706,14 +731,14 @@ class EntryRepository {
 	 * }
 	 * @return array  Flat array of decoded entry rows (form_name included).
 	 */
-	public static function list_for_export( int $form_id, array $args = [] ): array {
+	public static function list_for_export( int $form_id, array $args = array() ): array {
 		global $wpdb;
 
 		$entries_table = self::table();
 		$forms_table   = $wpdb->prefix . 'neural_forms_forms';
 
 		$sort_order_raw = strtolower( (string) ( $args['sort_order'] ?? 'desc' ) );
-		$export_order   = in_array( $sort_order_raw, [ 'asc', 'desc' ], true )
+		$export_order   = in_array( $sort_order_raw, array( 'asc', 'desc' ), true )
 			? strtoupper( $sort_order_raw )
 			: 'DESC';
 
@@ -722,7 +747,7 @@ class EntryRepository {
 		$values  = $clauses['values'];
 
 		// Hard cap at 5 000 rows - prevents runaway memory on large installs.
-		$cap_args = array_merge( [ $entries_table, $forms_table ], $values, [ 5000 ] );
+		$cap_args = array_merge( array( $entries_table, $forms_table ), $values, array( 5000 ) );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -737,7 +762,7 @@ class EntryRepository {
 			ARRAY_A
 		);
 
-		return array_map( [ self::class, 'decode' ], $rows ?: [] );
+		return array_map( array( self::class, 'decode' ), $rows ?: array() );
 	}
 
 	// Helpers
@@ -763,9 +788,9 @@ class EntryRepository {
 
 		$forms_table = $wpdb->prefix . 'neural_forms_forms';
 
-		$plain_parts   = [];
-		$aliased_parts = [];
-		$values        = [];
+		$plain_parts   = array();
+		$aliased_parts = array();
+		$values        = array();
 
 		// Optional form scope.
 		if ( $form_id > 0 ) {
@@ -784,15 +809,19 @@ class EntryRepository {
 		// query returns zero rows + zero count without dropping the
 		// rest of the WHERE chain.
 		if ( isset( $args['form_ids'] ) && is_array( $args['form_ids'] ) ) {
-			$ids = array_values( array_unique( array_filter(
-				array_map( 'intval', $args['form_ids'] ),
-				static fn ( $id ) => $id > 0
-			) ) );
+			$ids = array_values(
+				array_unique(
+					array_filter(
+						array_map( 'intval', $args['form_ids'] ),
+						static fn ( $id ) => $id > 0
+					)
+				)
+			);
 			if ( empty( $ids ) ) {
 				$plain_parts[]   = '0 = 1';
 				$aliased_parts[] = '0 = 1';
 			} else {
-				$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+				$placeholders    = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
 				$plain_parts[]   = "form_id IN ({$placeholders})";
 				$aliased_parts[] = "e.form_id IN ({$placeholders})";
 				// Same placeholders, same values, twice (once for the
@@ -810,15 +839,19 @@ class EntryRepository {
 		// Exclude-list scoping. Used by the All Forms → Inbox folder
 		// to hide poll/quiz/mixed entries (the smart folders own them).
 		if ( isset( $args['exclude_form_ids'] ) && is_array( $args['exclude_form_ids'] ) ) {
-			$exclude = array_values( array_unique( array_filter(
-				array_map( 'intval', $args['exclude_form_ids'] ),
-				static fn ( $id ) => $id > 0
-			) ) );
+			$exclude = array_values(
+				array_unique(
+					array_filter(
+						array_map( 'intval', $args['exclude_form_ids'] ),
+						static fn ( $id ) => $id > 0
+					)
+				)
+			);
 			if ( ! empty( $exclude ) ) {
-				$placeholders = implode( ', ', array_fill( 0, count( $exclude ), '%d' ) );
+				$placeholders    = implode( ', ', array_fill( 0, count( $exclude ), '%d' ) );
 				$plain_parts[]   = "form_id NOT IN ({$placeholders})";
 				$aliased_parts[] = "e.form_id NOT IN ({$placeholders})";
-				$values = array_merge( $values, $exclude );
+				$values          = array_merge( $values, $exclude );
 			}
 		}
 
@@ -887,7 +920,7 @@ class EntryRepository {
 		// These args are only populated by list_for_export(); list() never passes
 		// them, so the conditions are simply absent for normal inbox queries.
 		$date_from = $args['date_from'] ?? '';
-		$date_to   = $args['date_to']   ?? '';
+		$date_to   = $args['date_to'] ?? '';
 
 		if ( $date_from !== '' ) {
 			$plain_parts[]   = 'submitted_at >= %s';
@@ -900,11 +933,11 @@ class EntryRepository {
 			$values[]        = $date_to . ' 23:59:59';
 		}
 
-		return [
-			'plain'   => $plain_parts   ? 'WHERE ' . implode( ' AND ', $plain_parts )   : '',
+		return array(
+			'plain'   => $plain_parts ? 'WHERE ' . implode( ' AND ', $plain_parts ) : '',
 			'aliased' => $aliased_parts ? 'WHERE ' . implode( ' AND ', $aliased_parts ) : '',
 			'values'  => $values,
-		];
+		);
 	}
 
 	/**
@@ -917,16 +950,16 @@ class EntryRepository {
 	private static function decode( array $row ): array {
 		$row['id']          = (int) $row['id'];
 		$row['form_id']     = (int) $row['form_id'];
-		$row['is_starred']  = isset( $row['is_starred']  ) ? (int) $row['is_starred']  : 0;
+		$row['is_starred']  = isset( $row['is_starred'] ) ? (int) $row['is_starred'] : 0;
 		$row['needs_reply'] = isset( $row['needs_reply'] ) ? (int) $row['needs_reply'] : 0;
-		$row['ai_score']    = isset( $row['ai_score'] ) && $row['ai_score'] !== null
+		$row['ai_score']    = isset( $row['ai_score'] ) && null !== $row['ai_score']
 			? (int) $row['ai_score']
 			: null;
 
 		// AI spam detection columns.
-		$row['ai_is_spam']           = isset( $row['ai_is_spam'] )           ? (int) $row['ai_is_spam']           : 0;
-		$row['ai_spam_confidence']   = isset( $row['ai_spam_confidence'] )   ? (int) $row['ai_spam_confidence']   : 0;
-		$row['ai_spam_reason']       = isset( $row['ai_spam_reason'] )       ? (string) $row['ai_spam_reason']    : '';
+		$row['ai_is_spam']           = isset( $row['ai_is_spam'] ) ? (int) $row['ai_is_spam'] : 0;
+		$row['ai_spam_confidence']   = isset( $row['ai_spam_confidence'] ) ? (int) $row['ai_spam_confidence'] : 0;
+		$row['ai_spam_reason']       = isset( $row['ai_spam_reason'] ) ? (string) $row['ai_spam_reason'] : '';
 		$row['ai_auto_spam_applied'] = isset( $row['ai_auto_spam_applied'] ) ? (int) $row['ai_auto_spam_applied'] : 0;
 
 		// has_reply is computed by list() via an EXISTS() subquery against
@@ -944,7 +977,7 @@ class EntryRepository {
 
 		$decoded = json_decode( $row['data'] ?? '{}', true );
 
-		if ( $decoded === null && json_last_error() !== JSON_ERROR_NONE ) {
+		if ( null === $decoded && json_last_error() !== JSON_ERROR_NONE ) {
 			// The row exists but the data column is corrupt. Fall back to an
 			// empty array so callers can still render the row (id, status, etc.)
 			// without crashing. Log the raw error so the issue is not silent.
@@ -953,10 +986,10 @@ class EntryRepository {
 				'error',
 				sprintf( 'Corrupt JSON in entry %d: %s', $row['id'], json_last_error_msg() )
 			);
-			$decoded = [];
+			$decoded = array();
 		}
 
-		$row['data'] = $decoded ?: [];
+		$row['data'] = $decoded ?: array();
 
 		return $row;
 	}
@@ -972,7 +1005,7 @@ class EntryRepository {
 	 *   spam   - flagged by the spam check hook
 	 *   trash  - soft-deleted, pending permanent removal
 	 */
-	public const VALID_STATUSES = [ 'new', 'read', 'spam', 'trash' ];
+	public const VALID_STATUSES = array( 'new', 'read', 'spam', 'trash' );
 
 	/**
 	 * Returns the value if it is a known status, otherwise 'new'.
@@ -1003,7 +1036,7 @@ class EntryRepository {
 	 * schema before sanitization runs.
 	 */
 	private static function strip_layout_keys( array $data ): array {
-		$out = [];
+		$out = array();
 		foreach ( $data as $key => $value ) {
 			$k = (string) $key;
 			if ( strpos( $k, 'row_' ) === 0
@@ -1055,7 +1088,10 @@ class EntryRepository {
 	public static function aggregate_poll_votes( int $form_id, string $field_id ): array {
 		global $wpdb;
 
-		$out = [ 'total' => 0, 'counts' => [] ];
+		$out = array(
+			'total'  => 0,
+			'counts' => array(),
+		);
 
 		if ( $form_id <= 0 || $field_id === '' ) {
 			return $out;
@@ -1075,20 +1111,30 @@ class EntryRepository {
 		}
 
 		foreach ( $rows as $json ) {
-			if ( ! is_string( $json ) || $json === '' ) continue;
+			if ( ! is_string( $json ) || $json === '' ) {
+				continue;
+			}
 			$decoded = json_decode( $json, true );
-			if ( ! is_array( $decoded ) ) continue;
-			if ( ! array_key_exists( $field_id, $decoded ) ) continue;
+			if ( ! is_array( $decoded ) ) {
+				continue;
+			}
+			if ( ! array_key_exists( $field_id, $decoded ) ) {
+				continue;
+			}
 
 			$value = $decoded[ $field_id ];
 			// Single-choice poll v1: ignore array (multi) values
 			// defensively. Phase 2 of allow_multiple will revisit.
-			if ( is_array( $value ) ) continue;
-			if ( $value === null || $value === '' ) continue;
+			if ( is_array( $value ) ) {
+				continue;
+			}
+			if ( null === $value || $value === '' ) {
+				continue;
+			}
 
-			$key = (string) $value;
+			$key                   = (string) $value;
 			$out['counts'][ $key ] = ( $out['counts'][ $key ] ?? 0 ) + 1;
-			$out['total']++;
+			++$out['total'];
 		}
 
 		return $out;
@@ -1111,7 +1157,9 @@ class EntryRepository {
 	 */
 	public static function list_form_entries_with_data( int $form_id, int $limit = 50, int $offset = 0 ): array {
 		global $wpdb;
-		if ( $form_id <= 0 || $limit <= 0 ) return [];
+		if ( $form_id <= 0 || $limit <= 0 ) {
+			return array();
+		}
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -1127,16 +1175,18 @@ class EntryRepository {
 			),
 			ARRAY_A
 		);
-		if ( ! is_array( $rows ) ) return [];
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
 
-		$out = [];
+		$out = array();
 		foreach ( $rows as $r ) {
 			$decoded = is_string( $r['data'] ?? '' ) ? json_decode( $r['data'], true ) : null;
-			$out[] = [
+			$out[]   = array(
 				'id'           => (int) ( $r['id'] ?? 0 ),
 				'submitted_at' => (string) ( $r['submitted_at'] ?? '' ),
-				'data'         => is_array( $decoded ) ? $decoded : [],
-			];
+				'data'         => is_array( $decoded ) ? $decoded : array(),
+			);
 		}
 		return $out;
 	}
@@ -1173,12 +1223,12 @@ class EntryRepository {
 	public static function aggregate_quiz_answers( int $form_id, array $field_ids ): array {
 		global $wpdb;
 
-		$out = [
-			'rows'        => [],
-			'counts'      => [],
-			'totals'      => [],
+		$out = array(
+			'rows'        => array(),
+			'counts'      => array(),
+			'totals'      => array(),
 			'entry_count' => 0,
-		];
+		);
 
 		if ( $form_id <= 0 || empty( $field_ids ) ) {
 			return $out;
@@ -1186,7 +1236,7 @@ class EntryRepository {
 
 		// Initialise zero counts so the caller doesn't have to default.
 		foreach ( $field_ids as $fid ) {
-			$out['counts'][ $fid ] = [];
+			$out['counts'][ $fid ] = array();
 			$out['totals'][ $fid ] = 0;
 		}
 
@@ -1204,23 +1254,33 @@ class EntryRepository {
 		}
 
 		foreach ( $rows as $json ) {
-			if ( ! is_string( $json ) || $json === '' ) continue;
+			if ( ! is_string( $json ) || $json === '' ) {
+				continue;
+			}
 			$decoded = json_decode( $json, true );
-			if ( ! is_array( $decoded ) ) continue;
+			if ( ! is_array( $decoded ) ) {
+				continue;
+			}
 
 			$out['rows'][] = $decoded;
-			$out['entry_count']++;
+			++$out['entry_count'];
 
 			foreach ( $field_ids as $fid ) {
-				if ( ! array_key_exists( $fid, $decoded ) ) continue;
+				if ( ! array_key_exists( $fid, $decoded ) ) {
+					continue;
+				}
 				$value = $decoded[ $fid ];
 				// Single-choice quiz v1: arrays defensively ignored.
-				if ( is_array( $value ) ) continue;
-				if ( $value === null || $value === '' ) continue;
+				if ( is_array( $value ) ) {
+					continue;
+				}
+				if ( null === $value || $value === '' ) {
+					continue;
+				}
 
-				$key = (string) $value;
+				$key                           = (string) $value;
 				$out['counts'][ $fid ][ $key ] = ( $out['counts'][ $fid ][ $key ] ?? 0 ) + 1;
-				$out['totals'][ $fid ]++;
+				++$out['totals'][ $fid ];
 			}
 		}
 

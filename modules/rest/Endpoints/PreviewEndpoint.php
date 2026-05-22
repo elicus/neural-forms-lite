@@ -34,36 +34,36 @@ class PreviewEndpoint {
 		register_rest_route(
 			\NeuralForms\Rest\RestAPI::NAMESPACE,
 			'/forms/preview',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'preview' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => [
-					'form_schema' => [
+				'callback'            => array( $this, 'preview' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'form_schema' => array(
 						'required'          => true,
 						'validate_callback' => static fn( $v ) => is_array( $v ),
-					],
-					'settings' => [
+					),
+					'settings'    => array(
 						'required'          => false,
 						'validate_callback' => static fn( $v ) => is_array( $v ),
-					],
-					'options' => [
+					),
+					'options'     => array(
 						'required'          => false,
 						'validate_callback' => static fn( $v ) => is_array( $v ),
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 	}
 
 	public function preview( WP_REST_Request $request ) {
 		$schema   = $request->get_param( 'form_schema' );
-		$settings = $request->get_param( 'settings' ) ?: [];
-		$options  = $request->get_param( 'options' )  ?: [];
+		$settings = $request->get_param( 'settings' ) ?: array();
+		$options  = $request->get_param( 'options' ) ?: array();
 
 		// Validate the schema first so a malformed builder state surfaces
 		// the same field-level error the user sees on save.
-		$validation = FormValidator::validate_schema( is_array( $schema ) ? $schema : [] );
+		$validation = FormValidator::validate_schema( is_array( $schema ) ? $schema : array() );
 		if ( is_wp_error( $validation ) ) {
 			return $validation;
 		}
@@ -71,19 +71,19 @@ class PreviewEndpoint {
 		// Build a synthetic form row that FormRenderer can consume. No DB
 		// write happens - this row is constructed in memory and discarded
 		// after the response is sent.
-		$synthetic = [
+		$synthetic = array(
 			'id'          => 0,
 			'name'        => (string) ( $request->get_param( 'name' ) ?: __( 'Preview', 'neural-forms-lite' ) ),
 			'status'      => 'active',
 			'form_schema' => $schema,
 			'settings'    => $settings,
-		];
+		);
 
 		// FormRenderer's render_preview() bypasses asset enqueuing and the
 		// active-status check, exactly what we want for an editor preview.
 		$html = FormRenderer::render_preview_form( $synthetic, $options );
 
-		return rest_ensure_response( [ 'html' => $html ] );
+		return rest_ensure_response( array( 'html' => $html ) );
 	}
 
 	public function check_permission() {
@@ -93,7 +93,7 @@ class PreviewEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to preview forms.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 }

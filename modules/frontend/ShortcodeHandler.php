@@ -45,7 +45,7 @@ class ShortcodeHandler {
 	 * add_shortcode() must fire on or before `init` - never in a later hook.
 	 */
 	public static function boot(): void {
-		add_shortcode( 'neural-forms', [ static::class, 'handle' ] );
+		add_shortcode( 'neural-forms', array( static::class, 'handle' ) );
 	}
 
 	// Shortcode callback
@@ -61,10 +61,10 @@ class ShortcodeHandler {
 	 */
 	public static function handle( $atts ): string {
 		$atts = shortcode_atts(
-			[
+			array(
 				'id'   => '',
 				'slug' => '',
-			],
+			),
 			$atts,
 			'neural-forms'
 		);

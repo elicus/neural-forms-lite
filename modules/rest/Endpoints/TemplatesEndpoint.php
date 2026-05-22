@@ -23,47 +23,66 @@ class TemplatesEndpoint {
 	public function register_routes(): void {
 		$ns = RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/templates', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'list_templates' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				// Optional `refresh=1` busts the 6-hour catalog cache.
-				// Not used by the MVP UI but exposed for future
-				// "Refresh catalog" buttons / cron warmers.
-				'refresh' => [
-					'type'              => 'boolean',
-					'required'          => false,
-					'default'           => false,
-					'sanitize_callback' => 'rest_sanitize_boolean',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/templates',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_templates' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					// Optional `refresh=1` busts the 6-hour catalog cache.
+					// Not used by the MVP UI but exposed for future
+					// "Refresh catalog" buttons / cron warmers.
+					'refresh' => array(
+						'type'              => 'boolean',
+						'required'          => false,
+						'default'           => false,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+					),
+					// Builder slug. The React UI sends 'block-editor'
+					// (matching the new remote catalog path). Older
+					// clients can still pass 'gutenberg' — TemplateLibrary
+					// rewrites that to 'block-editor' for the request.
+					// Anything else is rejected upstream.
+					'builder' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'default'           => 'block-editor',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
 
-		register_rest_route( $ns, '/templates/import', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'import_template' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				// import_url points at one self-contained template
-				// bundle JSON (page + forms inline). Older versions
-				// of the spec used `manifest_url` for a multi-file
-				// fetch chain; for MVP only the bundle path is
-				// supported, but the parameter name keeps the door
-				// open for a future Pro feature that lets sites
-				// import from an arbitrary bundle URL.
-				'import_url' => [
-					'type'              => 'string',
-					'required'          => true,
-					'sanitize_callback' => 'esc_url_raw',
-				],
-				'template_id' => [
-					'type'              => 'string',
-					'required'          => false,
-					'sanitize_callback' => 'sanitize_key',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/templates/import',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import_template' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					// import_url points at one self-contained template
+					// bundle JSON (page + forms inline). Older versions
+					// of the spec used `manifest_url` for a multi-file
+					// fetch chain; for MVP only the bundle path is
+					// supported, but the parameter name keeps the door
+					// open for a future Pro feature that lets sites
+					// import from an arbitrary bundle URL.
+					'import_url'  => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'esc_url_raw',
+					),
+					'template_id' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -73,8 +92,12 @@ class TemplatesEndpoint {
 	 * @return array|WP_Error
 	 */
 	public function list_templates( WP_REST_Request $request ) {
-		$bypass = (bool) $request->get_param( 'refresh' );
-		return TemplateLibrary::fetch_catalog( $bypass );
+		$bypass  = (bool) $request->get_param( 'refresh' );
+		$builder = (string) $request->get_param( 'builder' );
+		if ( '' === $builder ) {
+			$builder = 'block-editor';
+		}
+		return TemplateLibrary::fetch_catalog( $bypass, $builder );
 	}
 
 	/**
@@ -89,7 +112,7 @@ class TemplatesEndpoint {
 			return new WP_Error(
 				'template_missing_import_url',
 				__( 'import_url is required.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 		return TemplateLibrary::import_template( $import_url );
@@ -109,7 +132,7 @@ class TemplatesEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			'You do not have permission to import templates.',
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 }

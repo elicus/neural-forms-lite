@@ -223,12 +223,12 @@ export default function ReplyComposer( {
 						type="button"
 						className="neural-forms-entry-detail__polish-trigger"
 						onClick={ () => setShowUpsell( true ) }
-						aria-label={ __( 'Refine with AI (Pro feature)', 'neural-forms-lite' ) }
+						aria-label={ __( 'Refine with Neural AI (Pro feature)', 'neural-forms-lite' ) }
 					>
 						<span className="neural-forms-entry-detail__polish-trigger-lock" aria-hidden="true">
 							<LockIcon />
 						</span>
-						{ __( 'Refine with AI', 'neural-forms-lite' ) }
+						{ __( 'Refine with Neural AI', 'neural-forms-lite' ) }
 					</button>
 				) }
 			</div>
@@ -247,7 +247,7 @@ export default function ReplyComposer( {
 					</span>
 					<div className="neural-forms-entries-pro-notice__body">
 						<p className="neural-forms-entries-pro-notice__title">
-							{ __( 'Upgrade to Pro to refine with AI', 'neural-forms-lite' ) }
+							{ __( 'Upgrade to Pro to refine with Neural AI', 'neural-forms-lite' ) }
 						</p>
 						<p className="neural-forms-entries-pro-notice__desc">
 							{ __( 'Polish your reply tone and clarity with one click — Pro feature.', 'neural-forms-lite' ) }

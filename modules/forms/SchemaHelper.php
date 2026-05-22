@@ -40,7 +40,7 @@ class SchemaHelper {
 	const MAX_COLUMNS = 4;
 
 	/** Allowed gap presets on a row. */
-	const VALID_GAPS  = [ 'none', 'small', 'medium', 'large' ];
+	const VALID_GAPS  = array( 'none', 'small', 'medium', 'large' );
 	const DEFAULT_GAP = 'medium';
 
 	/** Defaults for a step's settings object. */
@@ -48,26 +48,26 @@ class SchemaHelper {
 	const DEFAULT_STEP_BUTTON_PREVIOUS = 'Back';
 
 	/** Allowed visual styles on a section. */
-	const VALID_SECTION_STYLES  = [ 'default', 'minimal', 'boxed' ];
+	const VALID_SECTION_STYLES  = array( 'default', 'minimal', 'boxed' );
 	const DEFAULT_SECTION_STYLE = 'default';
 
 	/** Poll field's nested `settings` object. Real-field, not a layout. */
-	const POLL_VISIBILITIES        = [ 'after_vote', 'always', 'never' ];
-	const POLL_DEFAULT_VISIBILITY  = 'after_vote';
-	const POLL_CHART_TYPES         = [ 'bar', 'percentage' ];
-	const POLL_DEFAULT_CHART_TYPE  = 'bar';
+	const POLL_VISIBILITIES       = array( 'after_vote', 'always', 'never' );
+	const POLL_DEFAULT_VISIBILITY = 'after_vote';
+	const POLL_CHART_TYPES        = array( 'bar', 'percentage' );
+	const POLL_DEFAULT_CHART_TYPE = 'bar';
 
 	/** Quiz Question field's nested `settings` object. */
-	const QUIZ_SHOW_CORRECT        = [ 'after_submit', 'never' ];
+	const QUIZ_SHOW_CORRECT         = array( 'after_submit', 'never' );
 	const QUIZ_DEFAULT_SHOW_CORRECT = 'after_submit';
-	const QUIZ_DEFAULT_POINTS      = 1;
+	const QUIZ_DEFAULT_POINTS       = 1;
 
 	/**
 	 * Quiz-form-level settings. Phase 3 adds advanced score-quiz config
 	 * at form_schema.settings.quiz (NOT form.settings — that namespace
 	 * is reserved for submission/security/email settings).
 	 */
-	const QUIZ_DEFAULT_PASSING_SCORE = 70;
+	const QUIZ_DEFAULT_PASSING_SCORE  = 70;
 	const QUIZ_DEFAULT_SHOW_PASS_FAIL = false;
 
 	/**
@@ -119,8 +119,12 @@ class SchemaHelper {
 			return false;
 		}
 		$type = $node['type'] ?? '';
-		if ( $type === self::COLUMN_TYPE ) return true;
-		if ( $type !== '' ) return false;
+		if ( $type === self::COLUMN_TYPE ) {
+			return true;
+		}
+		if ( $type !== '' ) {
+			return false;
+		}
 		return is_array( $node['fields'] ?? null );
 	}
 
@@ -137,9 +141,13 @@ class SchemaHelper {
 	 * with a `type` is a real field.
 	 */
 	public static function is_real_field( $node ): bool {
-		if ( ! is_array( $node ) ) return false;
+		if ( ! is_array( $node ) ) {
+			return false;
+		}
 		$type = $node['type'] ?? '';
-		if ( $type === '' ) return false;
+		if ( $type === '' ) {
+			return false;
+		}
 		return $type !== self::ROW_TYPE
 			&& $type !== self::COLUMN_TYPE
 			&& $type !== self::STEP_TYPE
@@ -157,25 +165,25 @@ class SchemaHelper {
 	 * @return array[]      Field arrays.
 	 */
 	public static function flatten_fields( array $nodes ): array {
-		$out = [];
+		$out = array();
 		foreach ( $nodes as $node ) {
 			if ( ! is_array( $node ) ) {
 				continue;
 			}
 			if ( self::is_step( $node ) ) {
-				$step_fields = is_array( $node['fields'] ?? null ) ? $node['fields'] : [];
+				$step_fields = is_array( $node['fields'] ?? null ) ? $node['fields'] : array();
 				foreach ( self::flatten_fields( $step_fields ) as $f ) {
 					$out[] = $f;
 				}
 				continue;
 			}
 			if ( self::is_row( $node ) ) {
-				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : [];
+				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : array();
 				foreach ( $columns as $col ) {
 					if ( ! is_array( $col ) ) {
 						continue;
 					}
-					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
 					foreach ( self::flatten_fields( $col_fields ) as $f ) {
 						$out[] = $f;
 					}
@@ -204,32 +212,38 @@ class SchemaHelper {
 			}
 			if ( self::is_row( $node ) ) {
 				$row_id  = (string) ( $node['id'] ?? '' );
-				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : [];
+				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : array();
 				foreach ( $columns as $col_idx => $col ) {
 					if ( ! is_array( $col ) ) {
 						continue;
 					}
 					$col_id     = (string) ( $col['id'] ?? '' );
-					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
 					foreach ( $col_fields as $f ) {
 						if ( ! is_array( $f ) || empty( $f['type'] ) ) {
 							continue;
 						}
-						$callback( $f, [
-							'row_id'    => $row_id,
-							'col_index' => (int) $col_idx,
-							'col_id'    => $col_id,
-						] );
+						$callback(
+							$f,
+							array(
+								'row_id'    => $row_id,
+								'col_index' => (int) $col_idx,
+								'col_id'    => $col_id,
+							)
+						);
 					}
 				}
 				continue;
 			}
 			if ( ! empty( $node['type'] ) ) {
-				$callback( $node, [
-					'row_id'    => '',
-					'col_index' => -1,
-					'col_id'    => '',
-				] );
+				$callback(
+					$node,
+					array(
+						'row_id'    => '',
+						'col_index' => -1,
+						'col_id'    => '',
+					)
+				);
 			}
 		}
 	}
@@ -264,7 +278,7 @@ class SchemaHelper {
 		}
 
 		$next  = self::normalize_column_count( $next_col_count );
-		$cols  = is_array( $row['columns'] ?? null ) ? array_values( $row['columns'] ) : [];
+		$cols  = is_array( $row['columns'] ?? null ) ? array_values( $row['columns'] ) : array();
 		$count = count( $cols );
 
 		if ( $count > $next ) {
@@ -274,34 +288,34 @@ class SchemaHelper {
 
 			$kept[ $last ]['fields'] = is_array( $kept[ $last ]['fields'] ?? null )
 				? $kept[ $last ]['fields']
-				: [];
+				: array();
 			foreach ( $excess as $col ) {
-				$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+				$col_fields              = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
 				$kept[ $last ]['fields'] = array_merge( $kept[ $last ]['fields'], $col_fields );
 			}
 			$cols = $kept;
 		} elseif ( $count < $next ) {
 			while ( count( $cols ) < $next ) {
-				$cols[] = [
+				$cols[] = array(
 					'id'     => self::generate_column_id(),
-					'fields' => [],
-				];
+					'fields' => array(),
+				);
 			}
 		}
 
-		$row['columns']               = $cols;
-		$row['settings']              = is_array( $row['settings'] ?? null ) ? $row['settings'] : [];
-		$row['settings']['columns']   = $next;
+		$row['columns']             = $cols;
+		$row['settings']            = is_array( $row['settings'] ?? null ) ? $row['settings'] : array();
+		$row['settings']['columns'] = $next;
 
 		return $row;
 	}
 
 	/** Default settings for a freshly-created row. */
 	public static function default_row_settings( int $col_count ): array {
-		return [
+		return array(
 			'columns' => self::normalize_column_count( $col_count ),
 			'gap'     => 'medium',
-		];
+		);
 	}
 
 	/**
@@ -327,7 +341,7 @@ class SchemaHelper {
 
 	/** Default settings for a freshly-created section. */
 	public static function default_section_settings(): array {
-		return [ 'style' => self::DEFAULT_SECTION_STYLE ];
+		return array( 'style' => self::DEFAULT_SECTION_STYLE );
 	}
 
 	/**
@@ -337,12 +351,12 @@ class SchemaHelper {
 	 * in the schema avoids a migration when v2 turns it on.
 	 */
 	public static function default_poll_settings(): array {
-		return [
+		return array(
 			'results_visibility' => self::POLL_DEFAULT_VISIBILITY,
 			'chart_type'         => self::POLL_DEFAULT_CHART_TYPE,
 			'allow_multiple'     => false,
 			'randomize_options'  => false,
-		];
+		);
 	}
 
 	/**
@@ -354,12 +368,12 @@ class SchemaHelper {
 	 * frontend AND in the submit response payload.
 	 */
 	public static function default_quiz_settings(): array {
-		return [
+		return array(
 			'points'              => self::QUIZ_DEFAULT_POINTS,
 			'explanation'         => '',
 			'show_correct_answer' => self::QUIZ_DEFAULT_SHOW_CORRECT,
 			'randomize_options'   => false,
-		];
+		);
 	}
 
 	/**
@@ -368,7 +382,7 @@ class SchemaHelper {
 	 * values fall back to defaults, points coerced to non-negative int.
 	 */
 	public static function normalize_quiz_settings( $settings ): array {
-		$in = is_array( $settings ) ? $settings : [];
+		$in = is_array( $settings ) ? $settings : array();
 
 		$points = isset( $in['points'] ) ? $in['points'] : self::QUIZ_DEFAULT_POINTS;
 		if ( ! is_numeric( $points ) || (int) $points < 0 ) {
@@ -382,12 +396,12 @@ class SchemaHelper {
 			$show = self::QUIZ_DEFAULT_SHOW_CORRECT;
 		}
 
-		return [
+		return array(
 			'points'              => (int) $points,
 			'explanation'         => isset( $in['explanation'] ) && is_string( $in['explanation'] ) ? $in['explanation'] : '',
 			'show_correct_answer' => $show,
 			'randomize_options'   => ! empty( $in['randomize_options'] ),
-		];
+		);
 	}
 
 	/**
@@ -401,13 +415,13 @@ class SchemaHelper {
 	 *   manual          → no automatic AI; admins can analyze on demand
 	 *   final_results   → no per-entry AI; aggregate insights only
 	 */
-	const AI_PROCESSING_MODES = [
+	const AI_PROCESSING_MODES        = array(
 		'inherit',
 		'disabled',
 		'every_entry',
 		'manual',
 		'final_results',
-	];
+	);
 	const AI_PROCESSING_DEFAULT_MODE = 'inherit';
 
 	/**
@@ -424,7 +438,7 @@ class SchemaHelper {
 	 * false. See AiProcessingResolver.
 	 */
 	public static function default_ai_processing_settings(): array {
-		return [ 'mode' => self::AI_PROCESSING_DEFAULT_MODE ];
+		return array( 'mode' => self::AI_PROCESSING_DEFAULT_MODE );
 	}
 
 	/**
@@ -437,12 +451,12 @@ class SchemaHelper {
 	 * - missing/non-array input → defaults.
 	 */
 	public static function normalize_ai_processing_settings( $settings ): array {
-		$in = is_array( $settings ) ? $settings : [];
+		$in   = is_array( $settings ) ? $settings : array();
 		$mode = isset( $in['mode'] ) ? (string) $in['mode'] : self::AI_PROCESSING_DEFAULT_MODE;
 		if ( ! in_array( $mode, self::AI_PROCESSING_MODES, true ) ) {
 			$mode = self::AI_PROCESSING_DEFAULT_MODE;
 		}
-		return [ 'mode' => $mode ];
+		return array( 'mode' => $mode );
 	}
 
 	/**
@@ -454,11 +468,11 @@ class SchemaHelper {
 	 * that haven't opted in to advanced scoring.
 	 */
 	public static function default_quiz_form_settings(): array {
-		return [
+		return array(
 			'show_pass_fail'  => self::QUIZ_DEFAULT_SHOW_PASS_FAIL,
 			'passing_score'   => self::QUIZ_DEFAULT_PASSING_SCORE,
-			'result_messages' => [],
-		];
+			'result_messages' => array(),
+		);
 	}
 
 	/**
@@ -474,46 +488,64 @@ class SchemaHelper {
 	 * Lenient: unknown keys dropped, no fatals on malformed input.
 	 */
 	public static function normalize_quiz_form_settings( $settings ): array {
-		$in = is_array( $settings ) ? $settings : [];
+		$in = is_array( $settings ) ? $settings : array();
 
 		$score = isset( $in['passing_score'] ) ? $in['passing_score'] : self::QUIZ_DEFAULT_PASSING_SCORE;
 		if ( ! is_numeric( $score ) ) {
 			$score = self::QUIZ_DEFAULT_PASSING_SCORE;
 		}
 		$score = (int) round( (float) $score );
-		if ( $score < 0 )   $score = 0;
-		if ( $score > 100 ) $score = 100;
+		if ( $score < 0 ) {
+			$score = 0;
+		}
+		if ( $score > 100 ) {
+			$score = 100;
+		}
 
-		$msgs_in = is_array( $in['result_messages'] ?? null ) ? $in['result_messages'] : [];
-		$msgs    = [];
+		$msgs_in = is_array( $in['result_messages'] ?? null ) ? $in['result_messages'] : array();
+		$msgs    = array();
 		foreach ( $msgs_in as $m ) {
-			if ( ! is_array( $m ) ) continue;
+			if ( ! is_array( $m ) ) {
+				continue;
+			}
 
 			$min = isset( $m['min'] ) && is_numeric( $m['min'] ) ? (int) round( (float) $m['min'] ) : 0;
 			$max = isset( $m['max'] ) && is_numeric( $m['max'] ) ? (int) round( (float) $m['max'] ) : 100;
-			if ( $min < 0 )   $min = 0;
-			if ( $min > 100 ) $min = 100;
-			if ( $max < 0 )   $max = 0;
-			if ( $max > 100 ) $max = 100;
-			if ( $min > $max ) continue; // Unmatchable range — skip.
+			if ( $min < 0 ) {
+				$min = 0;
+			}
+			if ( $min > 100 ) {
+				$min = 100;
+			}
+			if ( $max < 0 ) {
+				$max = 0;
+			}
+			if ( $max > 100 ) {
+				$max = 100;
+			}
+			if ( $min > $max ) {
+				continue; // Unmatchable range — skip.
+			}
 
-			$title   = isset( $m['title'] )   && is_string( $m['title'] )   ? trim( $m['title'] )   : '';
+			$title   = isset( $m['title'] ) && is_string( $m['title'] ) ? trim( $m['title'] ) : '';
 			$message = isset( $m['message'] ) && is_string( $m['message'] ) ? trim( $m['message'] ) : '';
-			if ( $title === '' && $message === '' ) continue;
+			if ( $title === '' && $message === '' ) {
+				continue;
+			}
 
-			$msgs[] = [
+			$msgs[] = array(
 				'min'     => $min,
 				'max'     => $max,
 				'title'   => $title,
 				'message' => $message,
-			];
+			);
 		}
 
-		return [
+		return array(
 			'show_pass_fail'  => ! empty( $in['show_pass_fail'] ),
 			'passing_score'   => $score,
 			'result_messages' => $msgs,
-		];
+		);
 	}
 
 	/**
@@ -524,7 +556,7 @@ class SchemaHelper {
 	 * a misbehaving client doesn't read as truthy.
 	 */
 	public static function normalize_poll_settings( $settings ): array {
-		$in = is_array( $settings ) ? $settings : [];
+		$in = is_array( $settings ) ? $settings : array();
 
 		$visibility = isset( $in['results_visibility'] ) && is_string( $in['results_visibility'] )
 			? $in['results_visibility']
@@ -540,12 +572,12 @@ class SchemaHelper {
 			$chart = self::POLL_DEFAULT_CHART_TYPE;
 		}
 
-		return [
+		return array(
 			'results_visibility' => $visibility,
 			'chart_type'         => $chart,
 			'allow_multiple'     => ! empty( $in['allow_multiple'] ),
 			'randomize_options'  => ! empty( $in['randomize_options'] ),
-		];
+		);
 	}
 
 	/**
@@ -558,16 +590,16 @@ class SchemaHelper {
 	 */
 	public static function normalize_section( $section ): array {
 		if ( ! is_array( $section ) ) {
-			return [
+			return array(
 				'id'          => self::generate_section_id(),
 				'type'        => self::SECTION_TYPE,
 				'title'       => '',
 				'description' => '',
 				'settings'    => self::default_section_settings(),
-			];
+			);
 		}
 
-		$settings_in = is_array( $section['settings'] ?? null ) ? $section['settings'] : [];
+		$settings_in = is_array( $section['settings'] ?? null ) ? $section['settings'] : array();
 		$style       = isset( $settings_in['style'] ) && is_string( $settings_in['style'] ) && $settings_in['style'] !== ''
 			? $settings_in['style']
 			: self::DEFAULT_SECTION_STYLE;
@@ -575,23 +607,23 @@ class SchemaHelper {
 			$style = self::DEFAULT_SECTION_STYLE;
 		}
 
-		return [
+		return array(
 			'id'          => isset( $section['id'] ) && is_string( $section['id'] ) && $section['id'] !== ''
 				? $section['id']
 				: self::generate_section_id(),
 			'type'        => self::SECTION_TYPE,
-			'title'       => isset( $section['title'] )       && is_string( $section['title'] )       ? $section['title']       : '',
+			'title'       => isset( $section['title'] ) && is_string( $section['title'] ) ? $section['title'] : '',
 			'description' => isset( $section['description'] ) && is_string( $section['description'] ) ? $section['description'] : '',
-			'settings'    => [ 'style' => $style ],
-		];
+			'settings'    => array( 'style' => $style ),
+		);
 	}
 
 	/** Default settings for a freshly-created step. */
 	public static function default_step_settings(): array {
-		return [
+		return array(
 			'button_next'     => self::DEFAULT_STEP_BUTTON_NEXT,
 			'button_previous' => self::DEFAULT_STEP_BUTTON_PREVIOUS,
-		];
+		);
 	}
 
 	/**
@@ -607,36 +639,42 @@ class SchemaHelper {
 	 */
 	public static function normalize_step( $step ): array {
 		if ( ! is_array( $step ) ) {
-			return [
+			return array(
 				'id'          => self::generate_step_id(),
 				'type'        => self::STEP_TYPE,
 				'title'       => '',
 				'description' => '',
 				'settings'    => self::default_step_settings(),
-				'fields'      => [],
-			];
+				'fields'      => array(),
+			);
 		}
 
-		$settings_in = is_array( $step['settings'] ?? null ) ? $step['settings'] : [];
-		$settings    = [
+		$settings_in = is_array( $step['settings'] ?? null ) ? $step['settings'] : array();
+		$settings    = array(
 			'button_next'     => isset( $settings_in['button_next'] ) && is_string( $settings_in['button_next'] ) && $settings_in['button_next'] !== ''
 				? $settings_in['button_next']
 				: self::DEFAULT_STEP_BUTTON_NEXT,
 			'button_previous' => isset( $settings_in['button_previous'] ) && is_string( $settings_in['button_previous'] ) && $settings_in['button_previous'] !== ''
 				? $settings_in['button_previous']
 				: self::DEFAULT_STEP_BUTTON_PREVIOUS,
-		];
+		);
 
-		$children_in = is_array( $step['fields'] ?? null ) ? $step['fields'] : [];
+		$children_in = is_array( $step['fields'] ?? null ) ? $step['fields'] : array();
 		// Drop nested steps on lenient normalize. Rows pass through,
 		// real fields pass through, columns at this level (orphan, no
 		// parent row) are dropped because they don't make sense outside
 		// a row.
-		$children = [];
+		$children = array();
 		foreach ( $children_in as $child ) {
-			if ( ! is_array( $child ) ) continue;
-			if ( self::is_step( $child ) ) continue;
-			if ( self::is_column( $child ) && ! self::is_real_field( $child ) ) continue;
+			if ( ! is_array( $child ) ) {
+				continue;
+			}
+			if ( self::is_step( $child ) ) {
+				continue;
+			}
+			if ( self::is_column( $child ) && ! self::is_real_field( $child ) ) {
+				continue;
+			}
 			if ( self::is_row( $child ) ) {
 				$children[] = $child;
 				continue;
@@ -650,7 +688,7 @@ class SchemaHelper {
 			}
 		}
 
-		return [
+		return array(
 			'id'          => isset( $step['id'] ) && is_string( $step['id'] ) && $step['id'] !== ''
 				? $step['id']
 				: self::generate_step_id(),
@@ -659,7 +697,7 @@ class SchemaHelper {
 			'description' => isset( $step['description'] ) && is_string( $step['description'] ) ? $step['description'] : '',
 			'settings'    => $settings,
 			'fields'      => $children,
-		];
+		);
 	}
 
 	/**
@@ -675,18 +713,26 @@ class SchemaHelper {
 	 */
 	public static function normalize_column( $col ): array {
 		if ( ! is_array( $col ) ) {
-			return [ 'id' => self::generate_column_id(), 'fields' => [] ];
+			return array(
+				'id'     => self::generate_column_id(),
+				'fields' => array(),
+			);
 		}
-		$fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
-		$fields = array_values( array_filter( $fields, static function ( $f ) {
-			return is_array( $f ) && ! self::is_row( $f );
-		} ) );
-		$out = [
+		$fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
+		$fields = array_values(
+			array_filter(
+				$fields,
+				static function ( $f ) {
+					return is_array( $f ) && ! self::is_row( $f );
+				}
+			)
+		);
+		$out    = array(
 			'id'     => isset( $col['id'] ) && is_string( $col['id'] ) && $col['id'] !== ''
 				? $col['id']
 				: self::generate_column_id(),
 			'fields' => $fields,
-		];
+		);
 		if ( array_key_exists( 'width', $col ) ) {
 			$out['width'] = $col['width'];
 		}
@@ -705,16 +751,18 @@ class SchemaHelper {
 	 * Pure - returns a new array; the input is not mutated.
 	 */
 	public static function normalize_schema( array $schema ): array {
-		$fields_in = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : [];
-		$out       = [];
+		$fields_in = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
+		$out       = array();
 		foreach ( $fields_in as $node ) {
-			if ( ! is_array( $node ) ) continue;
+			if ( ! is_array( $node ) ) {
+				continue;
+			}
 			if ( self::is_step( $node ) ) {
 				// Steps live only at the top level. Their inner fields
 				// (rows + sections + real fields) are normalized
 				// recursively.
-				$norm = self::normalize_step( $node );
-				$inner = [];
+				$norm  = self::normalize_step( $node );
+				$inner = array();
 				foreach ( $norm['fields'] as $child ) {
 					if ( self::is_row( $child ) ) {
 						$inner[] = self::normalize_row_canonical( $child );
@@ -725,7 +773,7 @@ class SchemaHelper {
 					}
 				}
 				$norm['fields'] = $inner;
-				$out[] = $norm;
+				$out[]          = $norm;
 				continue;
 			}
 			if ( self::is_row( $node ) ) {
@@ -751,8 +799,8 @@ class SchemaHelper {
 	 * delegate to normalize_row() for the column-count resize step.
 	 */
 	private static function normalize_row_canonical( array $row ): array {
-		$layout      = is_array( $row['layout']   ?? null ) ? $row['layout']   : [];
-		$settings_in = is_array( $row['settings'] ?? null ) ? $row['settings'] : [];
+		$layout      = is_array( $row['layout'] ?? null ) ? $row['layout'] : array();
+		$settings_in = is_array( $row['settings'] ?? null ) ? $row['settings'] : array();
 
 		$desired_raw =
 			$settings_in['columns']
@@ -765,24 +813,32 @@ class SchemaHelper {
 		$gap_raw = $settings_in['gap'] ?? $layout['gap'] ?? $row['gap'] ?? self::DEFAULT_GAP;
 		$gap     = in_array( $gap_raw, self::VALID_GAPS, true ) ? $gap_raw : self::DEFAULT_GAP;
 
-		$settings = [ 'columns' => $desired, 'gap' => $gap ];
+		$settings  = array(
+			'columns' => $desired,
+			'gap'     => $gap,
+		);
 		$alignment = $settings_in['alignment'] ?? $layout['alignment'] ?? null;
-		if ( $alignment !== null && $alignment !== '' ) {
+		if ( null !== $alignment && $alignment !== '' ) {
 			$settings['alignment'] = $alignment;
 		}
 
-		$cols_in = is_array( $row['columns'] ?? null ) ? $row['columns'] : [];
+		$cols_in = is_array( $row['columns'] ?? null ) ? $row['columns'] : array();
 		// If row.columns was a number we normalize to an empty array;
 		// resize_row will spawn the right number of empty columns.
-		if ( ! is_array( $cols_in ) ) $cols_in = [];
+		if ( ! is_array( $cols_in ) ) {
+			$cols_in = array();
+		}
 
-		$cols = array_map( [ self::class, 'normalize_column' ], array_values( $cols_in ) );
+		$cols = array_map( array( self::class, 'normalize_column' ), array_values( $cols_in ) );
 
-		$next = array_merge( $row, [
-			'type'     => self::ROW_TYPE,
-			'settings' => $settings,
-			'columns'  => $cols,
-		] );
+		$next = array_merge(
+			$row,
+			array(
+				'type'     => self::ROW_TYPE,
+				'settings' => $settings,
+				'columns'  => $cols,
+			)
+		);
 		unset( $next['layout'], $next['gap'] );
 
 		return self::normalize_row( $next, $desired );

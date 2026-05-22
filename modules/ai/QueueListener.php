@@ -27,7 +27,7 @@ defined( 'ABSPATH' ) || exit;
 class QueueListener {
 
 	public static function boot(): void {
-		add_action( 'neural_forms_queue_ai_processing', [ self::class, 'handle' ], 10, 2 );
+		add_action( 'neural_forms_queue_ai_processing', array( self::class, 'handle' ), 10, 2 );
 	}
 
 	/**
@@ -36,16 +36,22 @@ class QueueListener {
 	 */
 	public static function handle( int $entry_id, int $form_id ): void {
 		// Master gates - without a configured Cloud connection nothing can run.
-		if ( ! Config::get( 'ai_enabled'       ) ) return;
-		if ( ! Config::get( 'cloud_ai_enabled'  ) ) return;
-		if ( ! Config::get( 'cloud_api_key'     ) ) return;
+		if ( ! Config::get( 'ai_enabled' ) ) {
+			return;
+		}
+		if ( ! Config::get( 'cloud_ai_enabled' ) ) {
+			return;
+		}
+		if ( ! Config::get( 'cloud_api_key' ) ) {
+			return;
+		}
 
 		// Per-form "Process with AI" mode (0.2.0). Resolver layers the
 		// AI_PROCESS_ENTRIES capability + cloud connection + form mode.
 		// Anything other than ALLOW_AUTO short-circuits the listener:
-		//   unavailable      — Lite-only install or cloud misconfigured
-		//   skip             — form mode = disabled
-		//   allow_manual_only — form mode = manual / final_results / inherit-with-global-off
+		// unavailable      — Lite-only install or cloud misconfigured
+		// skip             — form mode = disabled
+		// allow_manual_only — form mode = manual / final_results / inherit-with-global-off
 		//
 		// Returns one log line per skipped submission so ops can see
 		// the credit-protection guard firing.
@@ -70,31 +76,41 @@ class QueueListener {
 		// along with the auto-process pipeline.
 		$auto_process = (bool) Config::get( 'ai_auto_process' );
 		$spam_enabled = (bool) Config::get( 'ai_spam_enabled' );
-		if ( ! $auto_process && ! $spam_enabled ) return;
+		if ( ! $auto_process && ! $spam_enabled ) {
+			return;
+		}
 
 		// Plan gate: every analyze_entry job calls the Cloud analyze route.
-		if ( ! PlanManager::can( 'ai_analyze' ) ) return;
+		if ( ! PlanManager::can( 'ai_analyze' ) ) {
+			return;
+		}
 
 		// When only auto-process is the trigger, require its specific cap.
 		// Spam-only triggers need the spam classification cap instead.
-		if ( $auto_process && ! PlanManager::can( 'ai_auto_process' ) ) return;
-		if ( ! $auto_process && $spam_enabled && ! PlanManager::can( 'ai_spam_classify' ) ) return;
+		if ( $auto_process && ! PlanManager::can( 'ai_auto_process' ) ) {
+			return;
+		}
+		if ( ! $auto_process && $spam_enabled && ! PlanManager::can( 'ai_spam_classify' ) ) {
+			return;
+		}
 
 		global $wpdb;
 
 		$inserted = $wpdb->insert(
 			$wpdb->prefix . 'neural_forms_queue',
-			[
+			array(
 				'job_type'     => 'analyze_entry',
-				'payload'      => wp_json_encode( [
-					'entry_id' => $entry_id,
-					'form_id'  => $form_id,
-				] ),
+				'payload'      => wp_json_encode(
+					array(
+						'entry_id' => $entry_id,
+						'form_id'  => $form_id,
+					)
+				),
 				'status'       => 'pending',
 				'attempts'     => 0,
 				'scheduled_at' => current_time( 'mysql', true ),
-			],
-			[ '%s', '%s', '%s', '%d', '%s' ]
+			),
+			array( '%s', '%s', '%s', '%d', '%s' )
 		);
 
 		if ( ! $inserted ) {
@@ -104,7 +120,10 @@ class QueueListener {
 				'ai_queue_insert_failed',
 				'error',
 				sprintf( 'Failed to insert AI job for entry %d: %s', $entry_id, $db_error ),
-				[ 'form_id' => $form_id, 'db_error' => $db_error ],
+				array(
+					'form_id'  => $form_id,
+					'db_error' => $db_error,
+				),
 				$entry_id,
 				'ai_queue'
 			);

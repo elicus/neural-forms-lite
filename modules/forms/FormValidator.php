@@ -30,568 +30,578 @@ defined( 'ABSPATH' ) || exit;
  */
 class FormValidator {
 
-    /**
-     * Valid id pattern: lowercase letters, digits, and underscores only.
-     *
-     * Enforced so ids are safe to use as DB column aliases, JS object
-     * keys, merge tags, and CSS selectors.
-     */
-    const FIELD_ID_PATTERN = '/^[a-z0-9_]+$/';
+	/**
+	 * Valid id pattern: lowercase letters, digits, and underscores only.
+	 *
+	 * Enforced so ids are safe to use as DB column aliases, JS object
+	 * keys, merge tags, and CSS selectors.
+	 */
+	const FIELD_ID_PATTERN = '/^[a-z0-9_]+$/';
 
-    /**
-     * @param array $schema  The decoded form_schema array.
-     * @return true|\WP_Error
-     */
-    public static function validate_schema( array $schema ) {
-        if ( ! isset( $schema['fields'] ) || ! is_array( $schema['fields'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                'Schema must contain a fields array.',
-                [ 'status' => 422 ]
-            );
-        }
+	/**
+	 * @param array $schema  The decoded form_schema array.
+	 * @return true|\WP_Error
+	 */
+	public static function validate_schema( array $schema ) {
+		if ( ! isset( $schema['fields'] ) || ! is_array( $schema['fields'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				'Schema must contain a fields array.',
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( empty( $schema['fields'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                'Schema must contain at least one field.',
-                [ 'status' => 422 ]
-            );
-        }
+		if ( empty( $schema['fields'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				'Schema must contain at least one field.',
+				array( 'status' => 422 )
+			);
+		}
 
-        $seen_ids = [];
+		$seen_ids = array();
 
-        return self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
-    }
+		return self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
+	}
 
-    /**
-     * Recursive walker. $seen_ids is shared across the whole tree so a
-     * field id used inside one column cannot collide with a field id used
-     * inside another, or with a row id at the top level.
-     *
-     * @param array  $nodes
-     * @param array  $seen_ids  Shared id set, by reference.
-     * @param string $path      Human-readable path used in error messages.
-     * @return true|\WP_Error
-     */
-    private static function validate_nodes( array $nodes, array &$seen_ids, string $path, bool $is_top_level = true ) {
-        foreach ( $nodes as $index => $node ) {
-            $node     = (array) $node;
-            $node_path = $path . '[' . $index . ']';
+	/**
+	 * Recursive walker. $seen_ids is shared across the whole tree so a
+	 * field id used inside one column cannot collide with a field id used
+	 * inside another, or with a row id at the top level.
+	 *
+	 * @param array  $nodes
+	 * @param array  $seen_ids  Shared id set, by reference.
+	 * @param string $path      Human-readable path used in error messages.
+	 * @return true|\WP_Error
+	 */
+	private static function validate_nodes( array $nodes, array &$seen_ids, string $path, bool $is_top_level = true ) {
+		foreach ( $nodes as $index => $node ) {
+			$node      = (array) $node;
+			$node_path = $path . '[' . $index . ']';
 
-            if ( SchemaHelper::is_step( $node ) ) {
-                if ( ! $is_top_level ) {
-                    return new \WP_Error(
-                        'invalid_form_data',
-                        sprintf( 'Step at %s cannot be nested. Steps live only at the top level of the form.', $node_path ),
-                        [ 'status' => 422 ]
-                    );
-                }
-                $step_error = self::validate_step( $node, $seen_ids, $node_path );
-                if ( is_wp_error( $step_error ) ) {
-                    return $step_error;
-                }
-                continue;
-            }
+			if ( SchemaHelper::is_step( $node ) ) {
+				if ( ! $is_top_level ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf( 'Step at %s cannot be nested. Steps live only at the top level of the form.', $node_path ),
+						array( 'status' => 422 )
+					);
+				}
+				$step_error = self::validate_step( $node, $seen_ids, $node_path );
+				if ( is_wp_error( $step_error ) ) {
+					return $step_error;
+				}
+				continue;
+			}
 
-            if ( SchemaHelper::is_row( $node ) ) {
-                $row_error = self::validate_row( $node, $seen_ids, $node_path );
-                if ( is_wp_error( $row_error ) ) {
-                    return $row_error;
-                }
-                continue;
-            }
+			if ( SchemaHelper::is_row( $node ) ) {
+				$row_error = self::validate_row( $node, $seen_ids, $node_path );
+				if ( is_wp_error( $row_error ) ) {
+					return $row_error;
+				}
+				continue;
+			}
 
-            if ( SchemaHelper::is_section( $node ) ) {
-                $section_error = self::validate_section( $node, $seen_ids, $node_path );
-                if ( is_wp_error( $section_error ) ) {
-                    return $section_error;
-                }
-                continue;
-            }
+			if ( SchemaHelper::is_section( $node ) ) {
+				$section_error = self::validate_section( $node, $seen_ids, $node_path );
+				if ( is_wp_error( $section_error ) ) {
+					return $section_error;
+				}
+				continue;
+			}
 
-            $field_error = self::validate_field( $node, $seen_ids, $node_path );
-            if ( is_wp_error( $field_error ) ) {
-                return $field_error;
-            }
-        }
-        return true;
-    }
+			$field_error = self::validate_field( $node, $seen_ids, $node_path );
+			if ( is_wp_error( $field_error ) ) {
+				return $field_error;
+			}
+		}
+		return true;
+	}
 
-    /**
-     * Validate a layout section. Sections are leaf content nodes -
-     * id pattern + dup-id namespace check, that's it. They never
-     * contain fields in 1.1.0; any extras (fields[]/columns[]) on
-     * a section node are silently ignored by the renderer.
-     */
-    private static function validate_section( array $section, array &$seen_ids, string $path ) {
-        if ( empty( $section['id'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Section at %s is missing an id.', $path ),
-                [ 'status' => 422 ]
-            );
-        }
+	/**
+	 * Validate a layout section. Sections are leaf content nodes -
+	 * id pattern + dup-id namespace check, that's it. They never
+	 * contain fields in 1.1.0; any extras (fields[]/columns[]) on
+	 * a section node are silently ignored by the renderer.
+	 */
+	private static function validate_section( array $section, array &$seen_ids, string $path ) {
+		if ( empty( $section['id'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Section at %s is missing an id.', $path ),
+				array( 'status' => 422 )
+			);
+		}
 
-        $id = (string) $section['id'];
+		$id = (string) $section['id'];
 
-        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf(
-                    'Section id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
-                    $id
-                ),
-                [ 'status' => 422 ]
-            );
-        }
+		if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Section id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+					$id
+				),
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( in_array( $id, $seen_ids, true ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Duplicate id "%s". Step, row, column, section, and field ids share one namespace.', $id ),
-                [ 'status' => 422 ]
-            );
-        }
-        $seen_ids[] = $id;
+		if ( in_array( $id, $seen_ids, true ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Duplicate id "%s". Step, row, column, section, and field ids share one namespace.', $id ),
+				array( 'status' => 422 )
+			);
+		}
+		$seen_ids[] = $id;
 
-        return true;
-    }
+		return true;
+	}
 
-    /**
-     * Validate a layout step. Steps are top-level only and own a
-     * fields[] array of real fields and rows. Nested steps and orphan
-     * columns inside step.fields are rejected.
-     */
-    private static function validate_step( array $step, array &$seen_ids, string $path ) {
-        if ( empty( $step['id'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Step at %s is missing an id.', $path ),
-                [ 'status' => 422 ]
-            );
-        }
+	/**
+	 * Validate a layout step. Steps are top-level only and own a
+	 * fields[] array of real fields and rows. Nested steps and orphan
+	 * columns inside step.fields are rejected.
+	 */
+	private static function validate_step( array $step, array &$seen_ids, string $path ) {
+		if ( empty( $step['id'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Step at %s is missing an id.', $path ),
+				array( 'status' => 422 )
+			);
+		}
 
-        $id = (string) $step['id'];
+		$id = (string) $step['id'];
 
-        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf(
-                    'Step id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
-                    $id
-                ),
-                [ 'status' => 422 ]
-            );
-        }
+		if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Step id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+					$id
+				),
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( in_array( $id, $seen_ids, true ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Duplicate id "%s". Step, row, column, and field ids share one namespace.', $id ),
-                [ 'status' => 422 ]
-            );
-        }
-        $seen_ids[] = $id;
+		if ( in_array( $id, $seen_ids, true ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Duplicate id "%s". Step, row, column, and field ids share one namespace.', $id ),
+				array( 'status' => 422 )
+			);
+		}
+		$seen_ids[] = $id;
 
-        $children = is_array( $step['fields'] ?? null ) ? $step['fields'] : [];
+		$children = is_array( $step['fields'] ?? null ) ? $step['fields'] : array();
 
-        // Recurse with $is_top_level = false so nested steps are
-        // rejected. Rows + real fields are allowed; orphan columns are
-        // not (they only appear inside rows).
-        return self::validate_nodes( $children, $seen_ids, $path . '.fields', false );
-    }
+		// Recurse with $is_top_level = false so nested steps are
+		// rejected. Rows + real fields are allowed; orphan columns are
+		// not (they only appear inside rows).
+		return self::validate_nodes( $children, $seen_ids, $path . '.fields', false );
+	}
 
-    /**
-     * Validate a layout row: id, settings.columns (1..4), and recurse
-     * into every column's nested fields.
-     */
-    private static function validate_row( array $row, array &$seen_ids, string $path ) {
-        if ( empty( $row['id'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Row at %s is missing an id.', $path ),
-                [ 'status' => 422 ]
-            );
-        }
+	/**
+	 * Validate a layout row: id, settings.columns (1..4), and recurse
+	 * into every column's nested fields.
+	 */
+	private static function validate_row( array $row, array &$seen_ids, string $path ) {
+		if ( empty( $row['id'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Row at %s is missing an id.', $path ),
+				array( 'status' => 422 )
+			);
+		}
 
-        $id = (string) $row['id'];
+		$id = (string) $row['id'];
 
-        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf(
-                    'Row id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
-                    $id
-                ),
-                [ 'status' => 422 ]
-            );
-        }
+		if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Row id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+					$id
+				),
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( in_array( $id, $seen_ids, true ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Duplicate id "%s". Row, column, and field ids share one namespace.', $id ),
-                [ 'status' => 422 ]
-            );
-        }
-        $seen_ids[] = $id;
+		if ( in_array( $id, $seen_ids, true ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Duplicate id "%s". Row, column, and field ids share one namespace.', $id ),
+				array( 'status' => 422 )
+			);
+		}
+		$seen_ids[] = $id;
 
-        $columns = is_array( $row['columns'] ?? null ) ? $row['columns'] : [];
-        if ( empty( $columns ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Row "%s" has no columns.', $id ),
-                [ 'status' => 422 ]
-            );
-        }
+		$columns = is_array( $row['columns'] ?? null ) ? $row['columns'] : array();
+		if ( empty( $columns ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Row "%s" has no columns.', $id ),
+				array( 'status' => 422 )
+			);
+		}
 
-        $declared = isset( $row['settings']['columns'] )
-            ? (int) $row['settings']['columns']
-            : count( $columns );
-        if ( $declared < SchemaHelper::MIN_COLUMNS || $declared > SchemaHelper::MAX_COLUMNS ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf(
-                    'Row "%s" declares %d columns. Allowed range is %d to %d.',
-                    $id,
-                    $declared,
-                    SchemaHelper::MIN_COLUMNS,
-                    SchemaHelper::MAX_COLUMNS
-                ),
-                [ 'status' => 422 ]
-            );
-        }
+		$declared = isset( $row['settings']['columns'] )
+			? (int) $row['settings']['columns']
+			: count( $columns );
+		if ( $declared < SchemaHelper::MIN_COLUMNS || $declared > SchemaHelper::MAX_COLUMNS ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Row "%s" declares %d columns. Allowed range is %d to %d.',
+					$id,
+					$declared,
+					SchemaHelper::MIN_COLUMNS,
+					SchemaHelper::MAX_COLUMNS
+				),
+				array( 'status' => 422 )
+			);
+		}
 
-        foreach ( $columns as $col_idx => $col ) {
-            $col      = (array) $col;
-            $col_path = $path . '.columns[' . $col_idx . ']';
+		foreach ( $columns as $col_idx => $col ) {
+			$col      = (array) $col;
+			$col_path = $path . '.columns[' . $col_idx . ']';
 
-            if ( empty( $col['id'] ) ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Column at %s is missing an id.', $col_path ),
-                    [ 'status' => 422 ]
-                );
-            }
+			if ( empty( $col['id'] ) ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Column at %s is missing an id.', $col_path ),
+					array( 'status' => 422 )
+				);
+			}
 
-            $col_id = (string) $col['id'];
-            if ( ! preg_match( self::FIELD_ID_PATTERN, $col_id ) ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf(
-                        'Column id "%s" is invalid. Only lowercase letters, digits, and underscores are allowed.',
-                        $col_id
-                    ),
-                    [ 'status' => 422 ]
-                );
-            }
+			$col_id = (string) $col['id'];
+			if ( ! preg_match( self::FIELD_ID_PATTERN, $col_id ) ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf(
+						'Column id "%s" is invalid. Only lowercase letters, digits, and underscores are allowed.',
+						$col_id
+					),
+					array( 'status' => 422 )
+				);
+			}
 
-            if ( in_array( $col_id, $seen_ids, true ) ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Duplicate id "%s". Row, column, and field ids share one namespace.', $col_id ),
-                    [ 'status' => 422 ]
-                );
-            }
-            $seen_ids[] = $col_id;
+			if ( in_array( $col_id, $seen_ids, true ) ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Duplicate id "%s". Row, column, and field ids share one namespace.', $col_id ),
+					array( 'status' => 422 )
+				);
+			}
+			$seen_ids[] = $col_id;
 
-            // Empty columns are allowed - the user may have just spawned
-            // the row and not dragged anything in yet. Validate any
-            // fields that are there. Nested rows are NOT supported -
-            // reject so this surface stays simple.
-            $col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
-            foreach ( $col_fields as $f_idx => $nested ) {
-                $nested = (array) $nested;
-                if ( SchemaHelper::is_row( $nested ) ) {
-                    return new \WP_Error(
-                        'invalid_form_data',
-                        sprintf( 'Row at %s.fields[%d] is nested - rows cannot contain other rows.', $col_path, $f_idx ),
-                        [ 'status' => 422 ]
-                    );
-                }
-                if ( SchemaHelper::is_step( $nested ) ) {
-                    return new \WP_Error(
-                        'invalid_form_data',
-                        sprintf( 'Step at %s.fields[%d] is nested - steps live only at the top level of the form.', $col_path, $f_idx ),
-                        [ 'status' => 422 ]
-                    );
-                }
-                if ( SchemaHelper::is_section( $nested ) ) {
-                    $section_error = self::validate_section( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
-                    if ( is_wp_error( $section_error ) ) {
-                        return $section_error;
-                    }
-                    continue;
-                }
-                $field_error = self::validate_field( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
-                if ( is_wp_error( $field_error ) ) {
-                    return $field_error;
-                }
-            }
-        }
+			// Empty columns are allowed - the user may have just spawned
+			// the row and not dragged anything in yet. Validate any
+			// fields that are there. Nested rows are NOT supported -
+			// reject so this surface stays simple.
+			$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
+			foreach ( $col_fields as $f_idx => $nested ) {
+				$nested = (array) $nested;
+				if ( SchemaHelper::is_row( $nested ) ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf( 'Row at %s.fields[%d] is nested - rows cannot contain other rows.', $col_path, $f_idx ),
+						array( 'status' => 422 )
+					);
+				}
+				if ( SchemaHelper::is_step( $nested ) ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf( 'Step at %s.fields[%d] is nested - steps live only at the top level of the form.', $col_path, $f_idx ),
+						array( 'status' => 422 )
+					);
+				}
+				if ( SchemaHelper::is_section( $nested ) ) {
+					$section_error = self::validate_section( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
+					if ( is_wp_error( $section_error ) ) {
+						return $section_error;
+					}
+					continue;
+				}
+				$field_error = self::validate_field( $nested, $seen_ids, $col_path . '.fields[' . $f_idx . ']' );
+				if ( is_wp_error( $field_error ) ) {
+					return $field_error;
+				}
+			}
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    /**
-     * Validate a single leaf field. Same rules as the original
-     * top-level loop, just factored out for the recursive walker.
-     */
-    private static function validate_field( array $field, array &$seen_ids, string $path ) {
-        if ( empty( $field['id'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Field at %s is missing an id.', $path ),
-                [ 'status' => 422 ]
-            );
-        }
+	/**
+	 * Validate a single leaf field. Same rules as the original
+	 * top-level loop, just factored out for the recursive walker.
+	 */
+	private static function validate_field( array $field, array &$seen_ids, string $path ) {
+		if ( empty( $field['id'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Field at %s is missing an id.', $path ),
+				array( 'status' => 422 )
+			);
+		}
 
-        $id = (string) $field['id'];
+		$id = (string) $field['id'];
 
-        if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf(
-                    'Field id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
-                    $id
-                ),
-                [ 'status' => 422 ]
-            );
-        }
+		if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Field id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+					$id
+				),
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( empty( $field['type'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Field "%s" is missing a type.', $id ),
-                [ 'status' => 422 ]
-            );
-        }
+		if ( empty( $field['type'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Field "%s" is missing a type.', $id ),
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( ! FieldRegistry::is_registered( $field['type'] ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf(
-                    'Field "%s" has unregistered type "%s". Registered types: %s.',
-                    $id,
-                    $field['type'],
-                    implode( ', ', FieldRegistry::get_types() )
-                ),
-                [ 'status' => 422 ]
-            );
-        }
+		if ( ! FieldRegistry::is_registered( $field['type'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Field "%s" has unregistered type "%s". Registered types: %s.',
+					$id,
+					$field['type'],
+					implode( ', ', FieldRegistry::get_types() )
+				),
+				array( 'status' => 422 )
+			);
+		}
 
-        if ( in_array( $id, $seen_ids, true ) ) {
-            return new \WP_Error(
-                'invalid_form_data',
-                sprintf( 'Duplicate field id "%s". Each id must be unique across the form.', $id ),
-                [ 'status' => 422 ]
-            );
-        }
-        $seen_ids[] = $id;
+		if ( in_array( $id, $seen_ids, true ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Duplicate field id "%s". Each id must be unique across the form.', $id ),
+				array( 'status' => 422 )
+			);
+		}
+		$seen_ids[] = $id;
 
-        // Quiz-specific: at least 2 usable options, exactly one must
-        // be marked is_correct === true. Points + show_correct_answer
-        // are normalized leniently elsewhere; this gate only rejects
-        // quiz schemas that would render an unscorable form.
-        if ( $field['type'] === 'quiz_question' ) {
-            $options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
-            $usable = array_filter( $options, static function ( $opt ) {
-                if ( ! is_array( $opt ) ) return false;
-                $label = (string) ( $opt['label'] ?? '' );
-                $value = (string) ( $opt['value'] ?? '' );
-                return $label !== '' || $value !== '';
-            } );
-            if ( count( $usable ) < 2 ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Quiz question "%s" must have at least two options.', $id ),
-                    [ 'status' => 422 ]
-                );
-            }
-            $correct_count = 0;
-            foreach ( $usable as $opt ) {
-                if ( ! empty( $opt['is_correct'] ) ) {
-                    $correct_count++;
-                }
-            }
-            if ( $correct_count !== 1 ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Quiz question "%s" must have exactly one correct option (found %d).', $id, $correct_count ),
-                    [ 'status' => 422 ]
-                );
-            }
-        }
+		// Quiz-specific: at least 2 usable options, exactly one must
+		// be marked is_correct === true. Points + show_correct_answer
+		// are normalized leniently elsewhere; this gate only rejects
+		// quiz schemas that would render an unscorable form.
+		if ( $field['type'] === 'quiz_question' ) {
+			$options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+			$usable  = array_filter(
+				$options,
+				static function ( $opt ) {
+					if ( ! is_array( $opt ) ) {
+						return false;
+					}
+					$label = (string) ( $opt['label'] ?? '' );
+					$value = (string) ( $opt['value'] ?? '' );
+					return $label !== '' || $value !== '';
+				}
+			);
+			if ( count( $usable ) < 2 ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Quiz question "%s" must have at least two options.', $id ),
+					array( 'status' => 422 )
+				);
+			}
+			$correct_count = 0;
+			foreach ( $usable as $opt ) {
+				if ( ! empty( $opt['is_correct'] ) ) {
+					++$correct_count;
+				}
+			}
+			if ( 1 !== $correct_count ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Quiz question "%s" must have exactly one correct option (found %d).', $id, $correct_count ),
+					array( 'status' => 422 )
+				);
+			}
+		}
 
-        // Poll-specific: must have at least one configured option, and
-        // every option must have a label or a value (the renderer
-        // promotes label-as-value when value is empty, mirroring radio
-        // / select behaviour).
-        if ( $field['type'] === 'poll' ) {
-            $options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
-            $valid_options = array_filter( $options, static function ( $opt ) {
-                if ( ! is_array( $opt ) ) return false;
-                $label = (string) ( $opt['label'] ?? '' );
-                $value = (string) ( $opt['value'] ?? '' );
-                return $label !== '' || $value !== '';
-            } );
-            if ( empty( $valid_options ) ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Poll field "%s" must have at least one option.', $id ),
-                    [ 'status' => 422 ]
-                );
-            }
-        }
+		// Poll-specific: must have at least one configured option, and
+		// every option must have a label or a value (the renderer
+		// promotes label-as-value when value is empty, mirroring radio
+		// / select behaviour).
+		if ( $field['type'] === 'poll' ) {
+			$options       = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+			$valid_options = array_filter(
+				$options,
+				static function ( $opt ) {
+					if ( ! is_array( $opt ) ) {
+						return false;
+					}
+					$label = (string) ( $opt['label'] ?? '' );
+					$value = (string) ( $opt['value'] ?? '' );
+					return $label !== '' || $value !== '';
+				}
+			);
+			if ( empty( $valid_options ) ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Poll field "%s" must have at least one option.', $id ),
+					array( 'status' => 422 )
+				);
+			}
+		}
 
-        // Repeater-specific: children template validation.
-        //
-        // The repeater's `fields` array carries TEMPLATE field schemas —
-        // not the actual rendered fields on the form. Each rendered
-        // iteration on the frontend stamps these templates with a
-        // per-index id prefix. We enforce three rules at save time:
-        //
-        //   1. Settings clamp: min_items >= 0, max_items >= min_items
-        //      and capped at REPEATER_MAX_ITEMS, columns in [1..4].
-        //   2. Child whitelist: only leaf field types from the safe
-        //      list (text/email/phone/number/url/textarea/select/radio/
-        //      checkbox/checkboxes/date/file). Nested repeater / matrix
-        //      / row / step / section / poll / quiz_question are
-        //      EXPLICITLY rejected — see REPEATER_BLOCKED_CHILD_TYPES.
-        //   3. Each child runs through validate_field with its own
-        //      id-uniqueness scope (child ids only need to be unique
-        //      WITHIN the repeater; they're separate from the top-level
-        //      id namespace because the rendered iteration prefixes
-        //      them).
-        if ( $field['type'] === 'repeater' ) {
-            $settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
-            $min = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 0;
-            $max = isset( $settings['max_items'] ) ? (int) $settings['max_items'] : 5;
-            if ( $min < 0 ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Repeater "%s" min_items cannot be negative.', $id ),
-                    [ 'status' => 422 ]
-                );
-            }
-            if ( $max > self::REPEATER_MAX_ITEMS ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Repeater "%s" max_items cannot exceed %d.', $id, self::REPEATER_MAX_ITEMS ),
-                    [ 'status' => 422 ]
-                );
-            }
-            if ( $max > 0 && $max < $min ) {
-                return new \WP_Error(
-                    'invalid_form_data',
-                    sprintf( 'Repeater "%s" max_items (%d) must be greater than or equal to min_items (%d).', $id, $max, $min ),
-                    [ 'status' => 422 ]
-                );
-            }
+		// Repeater-specific: children template validation.
+		//
+		// The repeater's `fields` array carries TEMPLATE field schemas —
+		// not the actual rendered fields on the form. Each rendered
+		// iteration on the frontend stamps these templates with a
+		// per-index id prefix. We enforce three rules at save time:
+		//
+		// 1. Settings clamp: min_items >= 0, max_items >= min_items
+		// and capped at REPEATER_MAX_ITEMS, columns in [1..4].
+		// 2. Child whitelist: only leaf field types from the safe
+		// list (text/email/phone/number/url/textarea/select/radio/
+		// checkbox/checkboxes/date/file). Nested repeater / matrix
+		// row / step / section / poll / quiz_question are
+		// EXPLICITLY rejected — see REPEATER_BLOCKED_CHILD_TYPES.
+		// 3. Each child runs through validate_field with its own
+		// id-uniqueness scope (child ids only need to be unique
+		// WITHIN the repeater; they're separate from the top-level
+		// id namespace because the rendered iteration prefixes
+		// them).
+		if ( $field['type'] === 'repeater' ) {
+			$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+			$min      = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 0;
+			$max      = isset( $settings['max_items'] ) ? (int) $settings['max_items'] : 5;
+			if ( $min < 0 ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Repeater "%s" min_items cannot be negative.', $id ),
+					array( 'status' => 422 )
+				);
+			}
+			if ( $max > self::REPEATER_MAX_ITEMS ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Repeater "%s" max_items cannot exceed %d.', $id, self::REPEATER_MAX_ITEMS ),
+					array( 'status' => 422 )
+				);
+			}
+			if ( $max > 0 && $max < $min ) {
+				return new \WP_Error(
+					'invalid_form_data',
+					sprintf( 'Repeater "%s" max_items (%d) must be greater than or equal to min_items (%d).', $id, $max, $min ),
+					array( 'status' => 422 )
+				);
+			}
 
-            $children = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
-            $child_ids = [];
-            foreach ( $children as $child_index => $child ) {
-                if ( ! is_array( $child ) ) {
-                    return new \WP_Error(
-                        'invalid_form_data',
-                        sprintf( 'Repeater "%s" child at index %d is malformed.', $id, $child_index ),
-                        [ 'status' => 422 ]
-                    );
-                }
-                $child_type = (string) ( $child['type'] ?? '' );
+			$children  = is_array( $field['fields'] ?? null ) ? $field['fields'] : array();
+			$child_ids = array();
+			foreach ( $children as $child_index => $child ) {
+				if ( ! is_array( $child ) ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf( 'Repeater "%s" child at index %d is malformed.', $id, $child_index ),
+						array( 'status' => 422 )
+					);
+				}
+				$child_type = (string) ( $child['type'] ?? '' );
 
-                if ( in_array( $child_type, self::REPEATER_BLOCKED_CHILD_TYPES, true ) ) {
-                    return new \WP_Error(
-                        'invalid_form_data',
-                        sprintf(
-                            'Repeater "%s" cannot contain "%s" (nested repeater / matrix / layout / poll / quiz fields are not allowed).',
-                            $id,
-                            $child_type
-                        ),
-                        [ 'status' => 422 ]
-                    );
-                }
+				if ( in_array( $child_type, self::REPEATER_BLOCKED_CHILD_TYPES, true ) ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf(
+							'Repeater "%s" cannot contain "%s" (nested repeater / matrix / layout / poll / quiz fields are not allowed).',
+							$id,
+							$child_type
+						),
+						array( 'status' => 422 )
+					);
+				}
 
-                if ( ! in_array( $child_type, self::REPEATER_ALLOWED_CHILD_TYPES, true ) ) {
-                    return new \WP_Error(
-                        'invalid_form_data',
-                        sprintf(
-                            'Repeater "%s" cannot contain "%s". Allowed child types: %s.',
-                            $id,
-                            $child_type !== '' ? $child_type : '(empty)',
-                            implode( ', ', self::REPEATER_ALLOWED_CHILD_TYPES )
-                        ),
-                        [ 'status' => 422 ]
-                    );
-                }
+				if ( ! in_array( $child_type, self::REPEATER_ALLOWED_CHILD_TYPES, true ) ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf(
+							'Repeater "%s" cannot contain "%s". Allowed child types: %s.',
+							$id,
+							$child_type !== '' ? $child_type : '(empty)',
+							implode( ', ', self::REPEATER_ALLOWED_CHILD_TYPES )
+						),
+						array( 'status' => 422 )
+					);
+				}
 
-                // Run the same per-field validation against an isolated
-                // id namespace — child ids only need to be unique within
-                // the repeater (rendered iterations prefix them).
-                $child_err = self::validate_field( $child, $child_ids, $path . '.fields[' . $child_index . ']' );
-                if ( is_wp_error( $child_err ) ) {
-                    return $child_err;
-                }
-            }
-        }
+				// Run the same per-field validation against an isolated
+				// id namespace — child ids only need to be unique within
+				// the repeater (rendered iterations prefix them).
+				$child_err = self::validate_field( $child, $child_ids, $path . '.fields[' . $child_index . ']' );
+				if ( is_wp_error( $child_err ) ) {
+					return $child_err;
+				}
+			}
+		}
 
-        // Extension hook. Fires after all core rules pass for this field.
-        // Return null to pass, or a WP_Error to fail.
-        $extra = apply_filters( 'neural_forms_validate_field', null, $field );
-        if ( is_wp_error( $extra ) ) {
-            return $extra;
-        }
+		// Extension hook. Fires after all core rules pass for this field.
+		// Return null to pass, or a WP_Error to fail.
+		$extra = apply_filters( 'neural_forms_validate_field', null, $field );
+		if ( is_wp_error( $extra ) ) {
+			return $extra;
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    /**
-     * Child-type whitelist for the Repeater field. Kept in sync with
-     * the cloud SchemaNormalizer's matching list (commit 6 of the
-     * Repeater plan). v1 deliberately excludes hidden, range,
-     * acceptance, and rating; add them later only after their
-     * per-iteration rendering and validation have been thought
-     * through.
-     */
-    const REPEATER_ALLOWED_CHILD_TYPES = [
-        'text',
-        'email',
-        'phone',
-        'number',
-        'url',
-        'textarea',
-        'select',
-        'radio',
-        'checkbox',
-        'checkboxes',
-        'date',
-        'file',
-    ];
+	/**
+	 * Child-type whitelist for the Repeater field. Kept in sync with
+	 * the cloud SchemaNormalizer's matching list (commit 6 of the
+	 * Repeater plan). v1 deliberately excludes hidden, range,
+	 * acceptance, and rating; add them later only after their
+	 * per-iteration rendering and validation have been thought
+	 * through.
+	 */
+	const REPEATER_ALLOWED_CHILD_TYPES = array(
+		'text',
+		'email',
+		'phone',
+		'number',
+		'url',
+		'textarea',
+		'select',
+		'radio',
+		'checkbox',
+		'checkboxes',
+		'date',
+		'file',
+	);
 
-    /**
-     * Child types explicitly REJECTED inside a Repeater. The negative
-     * list is checked BEFORE the positive allowlist so the error
-     * message can call out the specific reason — "no nested repeater"
-     * rather than the generic "type not in allowlist".
-     */
-    const REPEATER_BLOCKED_CHILD_TYPES = [
-        'repeater',      // no nested repeaters
-        'matrix',        // matrix-in-repeater is a v1 explicit exclusion
-        'row',           // layout containers don't make sense inside a leaf-shaped repeater iteration
-        'step',
-        'section',
-        'column',
-        'poll',          // public voting fields don't make sense in a repeated personal context
-        'quiz_question',
-    ];
+	/**
+	 * Child types explicitly REJECTED inside a Repeater. The negative
+	 * list is checked BEFORE the positive allowlist so the error
+	 * message can call out the specific reason — "no nested repeater"
+	 * rather than the generic "type not in allowlist".
+	 */
+	const REPEATER_BLOCKED_CHILD_TYPES = array(
+		'repeater',      // no nested repeaters
+		'matrix',        // matrix-in-repeater is a v1 explicit exclusion
+		'row',           // layout containers don't make sense inside a leaf-shaped repeater iteration
+		'step',
+		'section',
+		'column',
+		'poll',          // public voting fields don't make sense in a repeated personal context
+		'quiz_question',
+	);
 
-    /**
-     * Hard ceiling on repeater max_items. Matches the cloud
-     * SchemaNormalizer cap so AI-generated repeaters obey the same
-     * limit. Bumping this requires coordinated changes in the cloud
-     * + the CSV exporter's stable-column model.
-     */
-    const REPEATER_MAX_ITEMS = 20;
+	/**
+	 * Hard ceiling on repeater max_items. Matches the cloud
+	 * SchemaNormalizer cap so AI-generated repeaters obey the same
+	 * limit. Bumping this requires coordinated changes in the cloud
+	 * + the CSV exporter's stable-column model.
+	 */
+	const REPEATER_MAX_ITEMS = 20;
 }

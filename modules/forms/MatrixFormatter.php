@@ -40,11 +40,11 @@ final class MatrixFormatter {
 	 * }
 	 */
 	public static function normalize_settings( array $field ): array {
-		$settings  = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$settings  = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
 		$selection = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
 
-		$rows = [];
-		foreach ( ( $settings['rows'] ?? [] ) as $row ) {
+		$rows = array();
+		foreach ( ( $settings['rows'] ?? array() ) as $row ) {
 			$row   = (array) $row;
 			$value = (string) ( $row['value'] ?? '' );
 			$label = (string) ( $row['label'] ?? '' );
@@ -52,14 +52,14 @@ final class MatrixFormatter {
 			if ( $eff === '' ) {
 				continue;
 			}
-			$rows[] = [
+			$rows[] = array(
 				'value' => $eff,
 				'label' => $label !== '' ? $label : $eff,
-			];
+			);
 		}
 
-		$columns = [];
-		foreach ( ( $settings['columns'] ?? [] ) as $col ) {
+		$columns = array();
+		foreach ( ( $settings['columns'] ?? array() ) as $col ) {
 			$col   = (array) $col;
 			$value = (string) ( $col['value'] ?? '' );
 			$label = (string) ( $col['label'] ?? '' );
@@ -68,18 +68,18 @@ final class MatrixFormatter {
 			if ( $eff === '' ) {
 				continue;
 			}
-			$columns[] = [
+			$columns[] = array(
 				'value' => $eff,
 				'label' => $label !== '' ? $label : $eff,
 				'score' => $score,
-			];
+			);
 		}
 
-		return [
+		return array(
 			'selection_type' => $selection,
 			'rows'           => $rows,
 			'columns'        => $columns,
-		];
+		);
 	}
 
 	/**
@@ -94,14 +94,14 @@ final class MatrixFormatter {
 	 */
 	public static function format_value_lines( $value, array $field ): array {
 		$norm  = self::normalize_settings( $field );
-		$value = is_array( $value ) ? $value : [];
+		$value = is_array( $value ) ? $value : array();
 
-		$col_labels = [];
+		$col_labels = array();
 		foreach ( $norm['columns'] as $c ) {
 			$col_labels[ $c['value'] ] = $c['label'];
 		}
 
-		$lines = [];
+		$lines = array();
 		foreach ( $norm['rows'] as $row ) {
 			$row_val   = $row['value'];
 			$row_label = $row['label'];
@@ -109,7 +109,7 @@ final class MatrixFormatter {
 			$display   = '';
 
 			if ( 'checkbox' === $norm['selection_type'] && is_array( $raw ) ) {
-				$picked = [];
+				$picked = array();
 				foreach ( $raw as $rv ) {
 					if ( ! is_scalar( $rv ) ) {
 						continue;
@@ -128,11 +128,11 @@ final class MatrixFormatter {
 				}
 			}
 
-			$lines[] = [
+			$lines[] = array(
 				'row_value' => $row_val,
 				'row_label' => $row_label,
 				'display'   => $display,
-			];
+			);
 		}
 
 		return $lines;
@@ -155,13 +155,13 @@ final class MatrixFormatter {
 	public static function csv_columns( array $field ): array {
 		$field_id = (string) ( $field['id'] ?? '' );
 		$norm     = self::normalize_settings( $field );
-		$cols     = [];
+		$cols     = array();
 		foreach ( $norm['rows'] as $row ) {
-			$cols[] = [
+			$cols[] = array(
 				'header'    => $field_id . '__' . $row['value'],
 				'row_value' => $row['value'],
 				'row_label' => $row['label'],
-			];
+			);
 		}
 		return $cols;
 	}
@@ -178,16 +178,16 @@ final class MatrixFormatter {
 		$norm = self::normalize_settings( $field );
 
 		// Build column lookup ONCE per field.
-		$col_labels = [];
+		$col_labels = array();
 		foreach ( $norm['columns'] as $c ) {
 			$col_labels[ $c['value'] ] = $c['label'];
 		}
 
-		$value = is_array( $value ) ? $value : [];
+		$value = is_array( $value ) ? $value : array();
 		$raw   = $value[ $row_value ] ?? null;
 
 		if ( 'checkbox' === $norm['selection_type'] && is_array( $raw ) ) {
-			$picked = [];
+			$picked = array();
 			foreach ( $raw as $rv ) {
 				if ( ! is_scalar( $rv ) ) {
 					continue;

@@ -30,7 +30,7 @@ class NotificationService {
 	// Boot
 
 	public static function boot(): void {
-		add_action( 'neural_forms_send_notifications', [ self::class, 'handle' ], 10, 3 );
+		add_action( 'neural_forms_send_notifications', array( self::class, 'handle' ), 10, 3 );
 	}
 
 	// Dispatch
@@ -54,9 +54,9 @@ class NotificationService {
 		// the email summary and the autoresponder email lookup both walk the
 		// resulting flat list.
 		$schema_fields = SchemaHelper::flatten_fields(
-			is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : []
+			is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array()
 		);
-		$data          = $entry['data'] ?? [];
+		$data          = $entry['data'] ?? array();
 
 		if ( ! empty( $settings['enable_admin_notification'] ) ) {
 			self::send_admin_notification( $entry_id, $form, $schema_fields, $data, $settings );
@@ -73,31 +73,54 @@ class NotificationService {
 	 * Sends the "new submission" notification to the configured admin address.
 	 */
 	private static function send_admin_notification(
-		int    $entry_id,
-		array  $form,
-		array  $schema_fields,
-		array  $data,
-		array  $settings
+		int $entry_id,
+		array $form,
+		array $schema_fields,
+		array $data,
+		array $settings
 	): void {
 		$form_name = (string) ( $form['name'] ?? 'Unknown form' );
 
 		// Recipient resolution order:
-		//   1. Per-form notification_email (form settings)
-		//   2. Global admin_notification_email (plugin settings)
-		//   3. WordPress admin email
-		$to = (string) ( $form['settings']['notification_email'] ?? '' );
-		if ( $to === '' || ! is_email( $to ) ) {
-			$to = (string) ( $settings['admin_notification_email'] ?? '' );
-		}
-		if ( $to === '' || ! is_email( $to ) ) {
-			$to = (string) get_option( 'admin_email' );
+		// 1. Per-form admin_notification_email in form_schema.settings
+		//    (the React Form Settings panel writes here)
+		// 2. Per-form notification_email in form.settings (legacy
+		//    shape — kept for back-compat with any old callers that
+		//    set the flat key directly)
+		// 3. Global admin_notification_email (plugin settings)
+		// 4. WordPress admin email
+		//
+		// Each value may be a single email OR a comma-separated list.
+		// parse_recipient_list() splits, sanitises, and drops invalid
+		// entries. We stop at the first source that yields at least
+		// one valid address.
+		$candidates = array(
+			(string) ( $form['form_schema']['settings']['admin_notification_email'] ?? '' ),
+			(string) ( $form['settings']['notification_email'] ?? '' ),
+			(string) ( $settings['admin_notification_email'] ?? '' ),
+			(string) get_option( 'admin_email' ),
+		);
+
+		$recipients = array();
+		foreach ( $candidates as $raw ) {
+			$recipients = self::parse_recipient_list( $raw );
+			if ( ! empty( $recipients ) ) {
+				break;
+			}
 		}
 
-		if ( ! is_email( $to ) ) {
-			Logger::log( 'admin_notification_skipped', 'warning',
-				'Admin notification skipped: no valid recipient email address.', [], $entry_id );
+		if ( empty( $recipients ) ) {
+			Logger::log(
+				'admin_notification_skipped',
+				'warning',
+				'Admin notification skipped: no valid recipient email address.',
+				array(),
+				$entry_id
+			);
 			return;
 		}
+
+		$to = $recipients;
 
 		/* translators: %s: form name */
 		$subject = sprintf( __( 'New submission: %s', 'neural-forms-lite' ), $form_name );
@@ -121,10 +144,10 @@ class NotificationService {
 		// most outbound mail); only Reply-To is rewritten.
 		//
 		// Resolution priority:
-		//   1. Explicit per-form override   $form['settings']['reply_to_email']
-		//   2. Explicit global override     $settings['admin_reply_to_email']
-		//   3. Submitter email field        find_submitter_email()
-		//   4. None                         (no Reply-To header)
+		// 1. Explicit per-form override   $form['settings']['reply_to_email']
+		// 2. Explicit global override     $settings['admin_reply_to_email']
+		// 3. Submitter email field        find_submitter_email()
+		// 4. None                         (no Reply-To header)
 		//
 		// The neural_forms_admin_reply_to filter lets integrations
 		// override or veto the auto Reply-To without changing settings.
@@ -151,31 +174,50 @@ class NotificationService {
 		 * @param array $data
 		 * @param int   $entry_id
 		 */
-		$filtered = apply_filters(
+		$filtered       = apply_filters(
 			'neural_forms_admin_reply_to',
-			[ 'email' => $reply_to_email, 'name' => $reply_to_name ],
+			array(
+				'email' => $reply_to_email,
+				'name'  => $reply_to_name,
+			),
 			$form,
 			$data,
 			$entry_id
 		);
 		$reply_to_email = is_array( $filtered ) ? (string) ( $filtered['email'] ?? '' ) : '';
-		$reply_to_name  = is_array( $filtered ) ? (string) ( $filtered['name']  ?? '' ) : '';
+		$reply_to_name  = is_array( $filtered ) ? (string) ( $filtered['name'] ?? '' ) : '';
 
 		$reply_to_header = self::build_reply_to_header( $reply_to_email, $reply_to_name );
 		if ( $reply_to_header !== '' ) {
 			$headers[] = $reply_to_header;
 		}
 
-		$sent = self::send_with_retry( $to, $subject, $body, $headers );
+		// `$to` is an array since 1.1.0+ (comma-separated lists). The
+		// human-readable join is used in log messages; the structured
+		// `to` key keeps the array shape for any downstream consumer
+		// that parses log payloads.
+		$to_display = is_array( $to ) ? implode( ', ', $to ) : (string) $to;
+		$sent       = self::send_with_retry( $to, $subject, $body, $headers );
 
 		if ( $sent ) {
-			Logger::log( 'admin_notification_sent', 'info',
-				sprintf( 'Admin notification sent to %s.', $to ),
-				[ 'to' => $to, 'reply_to' => $reply_to_email ], $entry_id );
+			Logger::log(
+				'admin_notification_sent',
+				'info',
+				sprintf( 'Admin notification sent to %s.', $to_display ),
+				array(
+					'to'       => $to,
+					'reply_to' => $reply_to_email,
+				),
+				$entry_id
+			);
 		} else {
-			Logger::log( 'admin_notification_failed', 'error',
-				sprintf( 'Admin notification failed for %s - wp_mail() returned false after retry.', $to ),
-				[ 'to' => $to ], $entry_id );
+			Logger::log(
+				'admin_notification_failed',
+				'error',
+				sprintf( 'Admin notification failed for %s - wp_mail() returned false after retry.', $to_display ),
+				array( 'to' => $to ),
+				$entry_id
+			);
 		}
 	}
 
@@ -185,17 +227,22 @@ class NotificationService {
 	 * Sends a confirmation email to the submitter, if a valid email field exists.
 	 */
 	private static function send_autoresponder(
-		int    $entry_id,
-		array  $form,
-		array  $schema_fields,
-		array  $data,
-		array  $settings
+		int $entry_id,
+		array $form,
+		array $schema_fields,
+		array $data,
+		array $settings
 	): void {
 		$to = self::find_submitter_email( $schema_fields, $data );
 
 		if ( $to === '' ) {
-			Logger::log( 'autoresponder_skipped', 'info',
-				'Autoresponder skipped: no valid email field found in submission.', [], $entry_id );
+			Logger::log(
+				'autoresponder_skipped',
+				'info',
+				'Autoresponder skipped: no valid email field found in submission.',
+				array(),
+				$entry_id
+			);
 			return;
 		}
 
@@ -218,13 +265,21 @@ class NotificationService {
 		$sent = self::send_with_retry( $to, $subject, $body, $headers );
 
 		if ( $sent ) {
-			Logger::log( 'autoresponder_sent', 'info',
+			Logger::log(
+				'autoresponder_sent',
+				'info',
 				sprintf( 'Autoresponder sent to %s.', $to ),
-				[ 'to' => $to ], $entry_id );
+				array( 'to' => $to ),
+				$entry_id
+			);
 		} else {
-			Logger::log( 'autoresponder_failed', 'error',
+			Logger::log(
+				'autoresponder_failed',
+				'error',
 				sprintf( 'Autoresponder failed for %s - wp_mail() returned false after retry.', $to ),
-				[ 'to' => $to ], $entry_id );
+				array( 'to' => $to ),
+				$entry_id
+			);
 		}
 	}
 
@@ -261,18 +316,26 @@ class NotificationService {
 	 * @return string
 	 */
 	private static function find_submitter_name( array $schema_fields, array $data ): string {
-		$candidates = [];
+		$candidates = array();
 
 		// Pass A: id/name contains "name".
 		foreach ( $schema_fields as $field ) {
 			$field    = (array) $field;
 			$type     = $field['type'] ?? '';
 			$field_id = (string) ( $field['id'] ?? '' );
-			if ( $field_id === '' ) continue;
-			if ( ! in_array( $type, [ 'text', 'textarea', 'hidden' ], true ) ) continue;
-			if ( stripos( $field_id, 'name' ) === false ) continue;
+			if ( $field_id === '' ) {
+				continue;
+			}
+			if ( ! in_array( $type, array( 'text', 'textarea', 'hidden' ), true ) ) {
+				continue;
+			}
+			if ( stripos( $field_id, 'name' ) === false ) {
+				continue;
+			}
 			$value = (string) ( $data[ $field_id ] ?? '' );
-			if ( $value !== '' ) { $candidates[] = $value; break; }
+			if ( $value !== '' ) {
+				$candidates[] = $value;
+				break; }
 		}
 
 		// Pass B: label contains "name".
@@ -282,11 +345,19 @@ class NotificationService {
 				$type     = $field['type'] ?? '';
 				$field_id = (string) ( $field['id'] ?? '' );
 				$label    = (string) ( $field['label'] ?? '' );
-				if ( $field_id === '' || $label === '' ) continue;
-				if ( ! in_array( $type, [ 'text', 'textarea', 'hidden' ], true ) ) continue;
-				if ( stripos( $label, 'name' ) === false ) continue;
+				if ( $field_id === '' || $label === '' ) {
+					continue;
+				}
+				if ( ! in_array( $type, array( 'text', 'textarea', 'hidden' ), true ) ) {
+					continue;
+				}
+				if ( stripos( $label, 'name' ) === false ) {
+					continue;
+				}
 				$value = (string) ( $data[ $field_id ] ?? '' );
-				if ( $value !== '' ) { $candidates[] = $value; break; }
+				if ( $value !== '' ) {
+					$candidates[] = $value;
+					break; }
 			}
 		}
 
@@ -296,14 +367,22 @@ class NotificationService {
 				$field    = (array) $field;
 				$type     = $field['type'] ?? '';
 				$field_id = (string) ( $field['id'] ?? '' );
-				if ( $field_id === '' ) continue;
-				if ( ! in_array( $type, [ 'text', 'textarea' ], true ) ) continue;
+				if ( $field_id === '' ) {
+					continue;
+				}
+				if ( ! in_array( $type, array( 'text', 'textarea' ), true ) ) {
+					continue;
+				}
 				$value = (string) ( $data[ $field_id ] ?? '' );
-				if ( $value !== '' ) { $candidates[] = $value; break; }
+				if ( $value !== '' ) {
+					$candidates[] = $value;
+					break; }
 			}
 		}
 
-		if ( empty( $candidates ) ) return '';
+		if ( empty( $candidates ) ) {
+			return '';
+		}
 
 		$name = (string) $candidates[0];
 		$name = wp_strip_all_tags( $name );
@@ -311,7 +390,7 @@ class NotificationService {
 		// Defense-in-depth header-injection guards: drop any CR / LF /
 		// NULL plus the structural characters wp_mail header parsers
 		// use (`,`, `<`, `>`, `"`).
-		$name = str_replace( [ "\r", "\n", "\0", ',', '<', '>', '"' ], '', $name );
+		$name = str_replace( array( "\r", "\n", "\0", ',', '<', '>', '"' ), '', $name );
 		$name = trim( $name );
 		if ( strlen( $name ) > 120 ) {
 			$name = substr( $name, 0, 120 );
@@ -327,11 +406,11 @@ class NotificationService {
 	 * injection.
 	 */
 	private static function build_reply_to_header( string $email, string $name ): string {
-		$email = trim( str_replace( [ "\r", "\n", "\0" ], '', sanitize_email( $email ) ) );
+		$email = trim( str_replace( array( "\r", "\n", "\0" ), '', sanitize_email( $email ) ) );
 		if ( $email === '' || ! is_email( $email ) ) {
 			return '';
 		}
-		$name = str_replace( [ "\r", "\n", "\0", ',', '<', '>', '"' ], '', $name );
+		$name = str_replace( array( "\r", "\n", "\0", ',', '<', '>', '"' ), '', $name );
 		$name = trim( $name );
 		if ( $name === '' ) {
 			return 'Reply-To: ' . $email;
@@ -362,10 +441,10 @@ class NotificationService {
 		foreach ( $schema_fields as $field ) {
 			$field    = (array) $field;
 			$type     = $field['type'] ?? '';
-			$field_id = $field['id']   ?? '';
+			$field_id = $field['id'] ?? '';
 
 			// Only consider fields that could plausibly hold an email address.
-			if ( ! in_array( $type, [ 'text', 'textarea', 'url', 'hidden' ], true ) ) {
+			if ( ! in_array( $type, array( 'text', 'textarea', 'url', 'hidden' ), true ) ) {
 				continue;
 			}
 
@@ -389,7 +468,7 @@ class NotificationService {
 	 * @return string  Multi-line text block, newline-terminated.
 	 */
 	private static function build_fields_summary( array $schema_fields, array $data ): string {
-		$lines = [];
+		$lines = array();
 
 		foreach ( $schema_fields as $field ) {
 			$field    = (array) $field;
@@ -417,22 +496,26 @@ class NotificationService {
 				// Repeater renders as a labelled block with one nested
 				// list per submitted iteration:
 				//
-				//   Team Members:
-				//     Item 1:
-				//       - Name: Arif
-				//       - Role: Developer
-				//     Item 2:
-				//       - Name: Sara
-				//       - Role: Designer
-				$items = RepeaterFormatter::format_value_lines( $raw, $field );
-				$rendered = [];
+				// Team Members:
+				// Item 1:
+				// - Name: Arif
+				// - Role: Developer
+				// Item 2:
+				// - Name: Sara
+				// - Role: Designer
+				$items    = RepeaterFormatter::format_value_lines( $raw, $field );
+				$rendered = array();
 				foreach ( $items as $item ) {
-					$child_lines = [];
+					$child_lines = array();
 					foreach ( $item['child_lines'] as $cl ) {
-						if ( $cl['display'] === '' ) continue;
+						if ( $cl['display'] === '' ) {
+							continue;
+						}
 						$child_lines[] = '    - ' . $cl['child_label'] . ': ' . $cl['display'];
 					}
-					if ( empty( $child_lines ) ) continue;
+					if ( empty( $child_lines ) ) {
+						continue;
+					}
 					$rendered[] = '  ' . sprintf(
 						/* translators: %d: 1-based iteration number */
 						__( 'Item %d:', 'neural-forms-lite' ),
@@ -450,11 +533,11 @@ class NotificationService {
 				// the field label so the visual hierarchy mirrors how a
 				// respondent answered the survey:
 				//
-				//   Satisfaction:
-				//     - Purchase: Very Satisfied
-				//     - Service:  Satisfied
+				// Satisfaction:
+				// - Purchase: Very Satisfied
+				// - Service:  Satisfied
 				$matrix_lines = MatrixFormatter::format_value_lines( $raw, $field );
-				$rendered     = [];
+				$rendered     = array();
 				foreach ( $matrix_lines as $ml ) {
 					if ( $ml['display'] === '' ) {
 						continue;
@@ -498,10 +581,10 @@ class NotificationService {
 	 * @return string
 	 */
 	private static function apply_tokens( string $template, string $form_name, array $data ): string {
-		$replacements = [
+		$replacements = array(
 			'{site_name}' => get_bloginfo( 'name' ),
 			'{form_name}' => $form_name,
-		];
+		);
 
 		foreach ( $data as $field_id => $value ) {
 			if ( is_scalar( $value ) ) {
@@ -522,20 +605,20 @@ class NotificationService {
 	 * @return string[]
 	 */
 	private static function build_from_headers( array $settings ): array {
-		$sender_name  = (string) ( $settings['sender_name']  ?? '' );
+		$sender_name  = (string) ( $settings['sender_name'] ?? '' );
 		$sender_email = (string) ( $settings['sender_email'] ?? '' );
 
 		if ( $sender_email === '' || ! is_email( $sender_email ) ) {
 			// No custom sender configured - let wp_mail() use its default.
 			// If only a name is set, we still need an address to form a valid header.
-			return [];
+			return array();
 		}
 
 		$from = $sender_name !== ''
 			? sprintf( '%s <%s>', $sender_name, $sender_email )
 			: $sender_email;
 
-		return [ 'From: ' . $from ];
+		return array( 'From: ' . $from );
 	}
 
 	/**
@@ -545,10 +628,10 @@ class NotificationService {
 	 * often succeed on immediate retry. A single retry keeps things simple
 	 * without needing a full email queue.
 	 *
-	 * @param string          $to
-	 * @param string          $subject
-	 * @param string          $body
-	 * @param string[]        $headers
+	 * @param string   $to
+	 * @param string   $subject
+	 * @param string   $body
+	 * @param string[] $headers
 	 * @return bool
 	 */
 	private static function send_with_retry( string $to, string $subject, string $body, array $headers ): bool {
@@ -573,9 +656,58 @@ class NotificationService {
 	 */
 	private static function get_entry_url( int $entry_id ): string {
 		return add_query_arg(
-			[ 'page' => 'neural-forms-entries', 'entry' => $entry_id ],
+			array(
+				'page'  => 'neural-forms-entries',
+				'entry' => $entry_id,
+			),
 			admin_url( 'admin.php' )
 		);
 	}
 
+	/**
+	 * Split a single string into a list of valid recipient addresses.
+	 *
+	 * Accepts either a bare email (`alice@example.com`) or a
+	 * comma-separated list (`alice@example.com, bob@example.com`).
+	 * Each candidate is trimmed, passed through `sanitize_email()`,
+	 * and validated with `is_email()`. Invalid entries are silently
+	 * dropped — we never bubble a "your second address is broken"
+	 * error to the form submitter, who didn't enter the value. The
+	 * admin who set up the form sees the resulting recipient list
+	 * (or its absence) reflected in the entry's neural_forms_logs
+	 * row.
+	 *
+	 * Returns an empty array when nothing in $raw is a valid address.
+	 * Callers should treat the empty case as "no recipient" and fall
+	 * back to the next source in their resolution chain.
+	 *
+	 * Reused by SettingsEndpoint to validate the global `Notify
+	 * address` field on save, so the same comma-list semantics apply
+	 * everywhere a notification recipient is configured.
+	 *
+	 * @param string $raw
+	 * @return array<int, string>  Valid emails, de-duplicated, in input order.
+	 */
+	public static function parse_recipient_list( string $raw ): array {
+		$raw = trim( $raw );
+		if ( $raw === '' ) {
+			return array();
+		}
+
+		$out  = array();
+		$seen = array();
+		foreach ( explode( ',', $raw ) as $candidate ) {
+			$candidate = sanitize_email( trim( $candidate ) );
+			if ( $candidate === '' || ! is_email( $candidate ) ) {
+				continue;
+			}
+			$key = strtolower( $candidate );
+			if ( isset( $seen[ $key ] ) ) {
+				continue;
+			}
+			$seen[ $key ] = true;
+			$out[]        = $candidate;
+		}
+		return $out;
+	}
 }

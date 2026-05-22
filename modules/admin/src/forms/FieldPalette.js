@@ -43,6 +43,14 @@ const BASIC_TYPES = [
 	'range',
 	'file',
 	'hidden',
+	// Poll + Quiz used to live under "Survey Fields" but they're
+	// common enough on lead/landing pages (single-question polls,
+	// score-based quizzes) that hiding them in a secondary section
+	// added friction. Promoted to Basic so they sit next to the rest
+	// of the most-used inputs. Rating + Matrix stay under Survey
+	// because their UX is intentionally specialised.
+	'poll',
+	'quiz_question',
 ];
 
 // Survey-style choice fields. Matrix is gated by the
@@ -51,8 +59,6 @@ const BASIC_TYPES = [
 // like any other field.
 const SURVEY_TYPES = [
 	'rating',
-	'poll',
-	'quiz_question',
 	'matrix',
 ];
 

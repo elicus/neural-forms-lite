@@ -79,7 +79,7 @@ function AssistantCard( { locked = false, subtitle, description, children } ) {
 				<span className="nf-inspector-ai-card__icon" aria-hidden="true">AI</span>
 				<div className="nf-inspector-ai-card__heading">
 					<h4 className="nf-inspector-ai-card__title">
-						{ __( 'Generate with AI', 'neural-forms-lite' ) }
+						{ __( 'Generate with Neural AI', 'neural-forms-lite' ) }
 					</h4>
 					{ subtitle && (
 						<p className="nf-inspector-ai-card__sub">{ subtitle }</p>
@@ -299,15 +299,15 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	const friendlyMessageForCode = ( code, fallback ) => {
 		switch ( code ) {
 			case 'ai_invalid_response':
-				return __( 'AI could not generate a valid form. Please try a more specific prompt.', 'neural-forms-lite' );
+				return __( 'Neural AI could not generate a valid form. Please try a more specific prompt.', 'neural-forms-lite' );
 			case 'ai_provider_timeout':
-				return __( 'The AI request timed out. Please try again.', 'neural-forms-lite' );
+				return __( 'The Neural AI request timed out. Please try again.', 'neural-forms-lite' );
 			case 'ai_provider_error':
-				return __( 'The AI service is temporarily unavailable. Please try again in a moment.', 'neural-forms-lite' );
+				return __( 'The Neural AI service is temporarily unavailable. Please try again in a moment.', 'neural-forms-lite' );
 			case 'blocked_by_safety':
-				return __( 'AI skipped this prompt because it appears unsafe. No credits were deducted.', 'neural-forms-lite' );
+				return __( 'Neural AI skipped this prompt because it appears unsafe. No credits were deducted.', 'neural-forms-lite' );
 			case 'ai_safety_unavailable':
-				return __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' );
+				return __( 'Neural AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' );
 		}
 		return fallback;
 	};
@@ -401,8 +401,8 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 		}
 		if ( ! ready ) {
 			const reason = ! boot.canGenerate
-				? __( 'Generate with AI requires Neural Forms Pro.', 'neural-forms-lite' )
-				: __( 'Generate with AI is not enabled for this site yet. Reload the builder to refresh entitlement.', 'neural-forms-lite' );
+				? __( 'Generate with Neural AI requires Neural Forms Pro.', 'neural-forms-lite' )
+				: __( 'Generate with Neural AI is not enabled for this site yet. Reload the builder to refresh entitlement.', 'neural-forms-lite' );
 			nfDebug( 'Generate aborted', {
 				reason: ! boot.canGenerate ? 'no_capability' : 'not_eligible',
 				canGenerate: boot.canGenerate, eligible: boot.eligible,
@@ -452,15 +452,15 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 				} );
 
 				if ( ! res || typeof res !== 'object' ) {
-					throw new Error( __( 'AI returned an empty response. Please try again.', 'neural-forms-lite' ) );
+					throw new Error( __( 'Neural AI returned an empty response. Please try again.', 'neural-forms-lite' ) );
 				}
 				if ( res.code && ! res.form ) {
 					// Some apiFetch error paths surface as a 200 with an
 					// error envelope instead of a thrown rejection.
-					throw new Error( extractErrorMessage( res, __( 'AI returned an error.', 'neural-forms-lite' ) ) );
+					throw new Error( extractErrorMessage( res, __( 'Neural AI returned an error.', 'neural-forms-lite' ) ) );
 				}
 				if ( ! res.form ) {
-					throw new Error( __( 'AI returned an invalid form. Please try again.', 'neural-forms-lite' ) );
+					throw new Error( __( 'Neural AI returned an invalid form. Please try again.', 'neural-forms-lite' ) );
 				}
 
 				nfDebug( 'opening generated form preview', {
@@ -546,7 +546,7 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	// CTA — no silent failures, no dead disabled buttons.
 	const setupCardFor = ( notice, ctaLabel, ctaHref ) => (
 		<AssistantCard
-			subtitle={ __( 'Powered by Neural Forms AI', 'neural-forms-lite' ) }
+			subtitle={ __( 'Powered by Neural Forms Neural AI', 'neural-forms-lite' ) }
 			description={ notice }
 		>
 			<a
@@ -560,21 +560,21 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 
 	if ( ! boot.cloudConnected ) {
 		return setupCardFor(
-			__( 'AI generation requires your Neural Forms AI connection. Configure it in Settings.', 'neural-forms-lite' ),
+			__( 'Neural AI generation requires your Neural Forms Neural AI connection. Configure it in Settings.', 'neural-forms-lite' ),
 			__( 'Open Settings', 'neural-forms-lite' ),
 			boot.settingsUrl
 		);
 	}
 	if ( ! boot.aiEnabled ) {
 		return setupCardFor(
-			__( 'Enable Cloud AI in Neural Forms settings to use AI generation.', 'neural-forms-lite' ),
+			__( 'Enable Neural AI Cloud in Neural Forms settings to use Neural AI generation.', 'neural-forms-lite' ),
 			__( 'Open Settings', 'neural-forms-lite' ),
 			boot.settingsUrl
 		);
 	}
 	if ( ! boot.licenseActive ) {
 		return setupCardFor(
-			__( 'Activate your Pro license to enable AI generation.', 'neural-forms-lite' ),
+			__( 'Activate your Pro license to enable Neural AI generation.', 'neural-forms-lite' ),
 			__( 'Open Settings', 'neural-forms-lite' ),
 			boot.settingsUrl
 		);
@@ -582,14 +582,14 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	// Eligibility check — server-truth flag, see boot.eligible note above.
 	if ( ! boot.eligible && boot.creditsAvailable ) {
 		return setupCardFor(
-			__( 'Generate with AI requires an active Pro, Yearly, or Enterprise plan.', 'neural-forms-lite' ),
+			__( 'Generate with Neural AI requires an active Pro, Yearly, or Enterprise plan.', 'neural-forms-lite' ),
 			__( 'Upgrade plan', 'neural-forms-lite' ),
 			UPGRADE_URL
 		);
 	}
 	if ( ! boot.creditsAvailable ) {
 		return setupCardFor(
-			__( "You're out of AI credits.", 'neural-forms-lite' ),
+			__( "You're out of Neural AI credits.", 'neural-forms-lite' ),
 			__( 'Manage plan', 'neural-forms-lite' ),
 			boot.settingsUrl
 		);
@@ -602,8 +602,8 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	return (
 		<>
 			<AssistantCard
-				subtitle={ __( 'Powered by Neural Forms AI', 'neural-forms-lite' ) }
-				description={ __( 'Describe the form you need and Neural Forms AI will draft fields, labels, and layout for you.', 'neural-forms-lite' ) }
+				subtitle={ __( 'Powered by Neural Forms Neural AI', 'neural-forms-lite' ) }
+				description={ __( 'Describe the form you need and Neural Forms Neural AI will draft fields, labels, and layout for you.', 'neural-forms-lite' ) }
 			>
 				<textarea
 					className="nf-inspector-ai-card__input"

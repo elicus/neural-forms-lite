@@ -46,7 +46,7 @@ class PublicForms {
 	 */
 	public static function boot(): void {
 		// Shortcode - must be registered on or before `init`.
-		add_action( 'init', [ ShortcodeHandler::class, 'boot' ] );
+		add_action( 'init', array( ShortcodeHandler::class, 'boot' ) );
 
 		// Block type - runs in both frontend and admin contexts so the block editor
 		// can discover the block, and so it renders correctly on the frontend.
@@ -54,7 +54,7 @@ class PublicForms {
 
 		// Asset registration - wp_enqueue_scripts fires on the frontend only.
 		// Handles are registered here; enqueue happens inside FormRenderer::render().
-		add_action( 'wp_enqueue_scripts', [ static::class, 'register_assets' ] );
+		add_action( 'wp_enqueue_scripts', array( static::class, 'register_assets' ) );
 	}
 
 	// Asset registration
@@ -90,13 +90,13 @@ class PublicForms {
 		$css_path = NEURAL_FORMS_PATH . 'modules/frontend/assets/css/form.css';
 		$js_path  = NEURAL_FORMS_PATH . 'modules/frontend/assets/js/form-submit.js';
 		$css_ver  = file_exists( $css_path ) ? (string) filemtime( $css_path ) : NEURAL_FORMS_VERSION;
-		$js_ver   = file_exists( $js_path )  ? (string) filemtime( $js_path )  : NEURAL_FORMS_VERSION;
+		$js_ver   = file_exists( $js_path ) ? (string) filemtime( $js_path ) : NEURAL_FORMS_VERSION;
 
 		// ' Style '
 		wp_register_style(
 			'neural-forms-form',
 			NEURAL_FORMS_URL . 'modules/frontend/assets/css/form.css',
-			[],
+			array(),
 			$css_ver
 		);
 
@@ -106,7 +106,7 @@ class PublicForms {
 		wp_register_script(
 			'neural-forms-form-submit',
 			NEURAL_FORMS_URL . 'modules/frontend/assets/js/form-submit.js',
-			[],
+			array(),
 			$js_ver,
 			true
 		);
@@ -121,14 +121,16 @@ class PublicForms {
 		// build endpoint URLs without knowing the WP install root.
 		//
 		// Example output:
-		//   window.neuralFormsPublic = {"api":{"url":"https://example.com/wp-json/neural-forms/v1/"}};
+		// window.neuralFormsPublic = {"api":{"url":"https://example.com/wp-json/neural-forms/v1/"}};
 		wp_add_inline_script(
 			'neural-forms-form-submit',
-			'window.neuralFormsPublic = ' . wp_json_encode( [
-				'api' => [
-					'url' => rest_url( \NeuralForms\Rest\RestAPI::NAMESPACE ),
-				],
-			] ) . ';',
+			'window.neuralFormsPublic = ' . wp_json_encode(
+				array(
+					'api' => array(
+						'url' => rest_url( \NeuralForms\Rest\RestAPI::NAMESPACE ),
+					),
+				)
+			) . ';',
 			'before'
 		);
 	}

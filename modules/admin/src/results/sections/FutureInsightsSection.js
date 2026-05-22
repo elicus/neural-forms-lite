@@ -47,7 +47,7 @@ import { __ } from '@wordpress/i18n';
 
 export default function FutureInsightsSection() {
 	const rows = [
-		{ id: 'ai-summary',   label: __( 'AI summary',          'neural-forms-lite' ) },
+		{ id: 'ai-summary',   label: __( 'Neural AI summary',          'neural-forms-lite' ) },
 		{ id: 'sentiment',    label: __( 'Sentiment & themes',  'neural-forms-lite' ) },
 		{ id: 'demographics', label: __( 'Country & device',    'neural-forms-lite' ) },
 		{ id: 'source',       label: __( 'Traffic source',      'neural-forms-lite' ) },

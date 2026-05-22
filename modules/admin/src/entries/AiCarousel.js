@@ -92,7 +92,7 @@ export default function AiCarousel( {
 				</div>
 			) }
 			<header className="neural-forms-entry-detail__ai-carousel-header">
-				<h4 className="neural-forms-entry-detail__ai-carousel-kind">{ __( 'AI drafts', 'neural-forms-lite' ) }</h4>
+				<h4 className="neural-forms-entry-detail__ai-carousel-kind">{ __( 'Neural AI drafts', 'neural-forms-lite' ) }</h4>
 				<div className="neural-forms-entry-detail__ai-carousel-nav">
 					<button
 						type="button"

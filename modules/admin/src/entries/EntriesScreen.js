@@ -74,17 +74,17 @@ const DEFAULT_SELECTION = {
 function aiErrorMessage( err, fallback ) {
 	const credits = creditsExhaustedPayload( err );
 	if ( credits ) {
-		return credits.message || __( 'You have used all your AI credits. Buy more to continue.', 'neural-forms-lite' );
+		return credits.message || __( 'You have used all your Neural AI credits. Buy more to continue.', 'neural-forms-lite' );
 	}
 	const safety = safetyErrorPayload( err );
 	if ( safety ) {
 		if ( safety.kind === 'unavailable' ) {
-			return __( 'AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' );
+			return __( 'Neural AI safety check is temporarily unavailable. Please try again in a few minutes.', 'neural-forms-lite' );
 		}
 		const noCharge = safety.usage && safety.usage.credits_deducted === false
 			? ' ' + __( 'No credits were deducted.', 'neural-forms-lite' )
 			: '';
-		return __( 'AI skipped this content because it appears unsafe.', 'neural-forms-lite' ) + noCharge;
+		return __( 'Neural AI skipped this content because it appears unsafe.', 'neural-forms-lite' ) + noCharge;
 	}
 	const plan = planErrorPayload( err );
 	if ( plan ) return plan.message || errorMessage( err, fallback );

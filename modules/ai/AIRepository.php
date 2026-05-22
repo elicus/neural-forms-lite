@@ -4,9 +4,9 @@
 // This repository owns the wp_neural_forms_* tables and runs typed CRUD
 // against them. Object caching is intentionally not used here:
 // - REST handlers fetch fresh per request; entries / forms see frequent
-//   writes, so a stale cache would surface in the admin UI.
+// writes, so a stale cache would surface in the admin UI.
 // - Cache invalidation across the create/update/delete + bulk paths
-//   would add more risk than the few percent of latency it would save.
+// would add more risk than the few percent of latency it would save.
 namespace NeuralForms\AI;
 
 defined( 'ABSPATH' ) || exit;
@@ -20,16 +20,16 @@ defined( 'ABSPATH' ) || exit;
 class AIRepository {
 
 	/** Valid values for the ai_status column. */
-	const VALID_AI_STATUSES = [ 'none', 'queued', 'processing', 'complete', 'failed' ];
+	const VALID_AI_STATUSES = array( 'none', 'queued', 'processing', 'complete', 'failed' );
 
 	/** Valid values for ai_category - reflects Neural Forms's inbox workflow. */
-	const VALID_CATEGORIES = [ 'sales', 'support', 'partnership', 'hiring', 'spam', 'general', 'other' ];
+	const VALID_CATEGORIES = array( 'sales', 'support', 'partnership', 'hiring', 'spam', 'general', 'other' );
 
 	/** Valid values for ai_priority. */
-	const VALID_PRIORITIES = [ 'low', 'medium', 'high' ];
+	const VALID_PRIORITIES = array( 'low', 'medium', 'high' );
 
 	/** Valid values for ai_tier - mirrors the API's model-registry. */
-	const VALID_TIERS = [ 'fast', 'balanced', 'smart', 'premium' ];
+	const VALID_TIERS = array( 'fast', 'balanced', 'smart', 'premium' );
 
 	// Write operations
 
@@ -49,8 +49,8 @@ class AIRepository {
 			$status = 'failed';
 		}
 
-		$data    = [ 'ai_status' => $status ];
-		$formats = [ '%s' ];
+		$data    = array( 'ai_status' => $status );
+		$formats = array( '%s' );
 
 		// Persist error reason on failure; clear it on success.
 		if ( $status === 'failed' && $error_reason !== '' ) {
@@ -64,12 +64,12 @@ class AIRepository {
 		$result = $wpdb->update(
 			self::table(),
 			$data,
-			[ 'id' => $entry_id ],
+			array( 'id' => $entry_id ),
 			$formats,
-			[ '%d' ]
+			array( '%d' )
 		);
 
-		return $result !== false;
+		return false !== $result;
 	}
 
 	/**
@@ -91,31 +91,31 @@ class AIRepository {
 
 		$updated = $wpdb->update(
 			self::table(),
-			[
+			array(
 				'ai_status'          => 'complete',
-				'ai_summary'         => (string) ( $result['summary']          ?? '' ),
-				'ai_category'        => (string) ( $result['category']         ?? 'general' ),
-				'ai_priority'        => (string) ( $result['priority']         ?? 'medium' ),
-				'ai_reply_draft'     => (string) ( $result['reply_draft']      ?? '' ),
-				'ai_score'           => (int)    ( $result['score']            ?? 50 ),
-				'ai_provider'        => (string) ( $result['ai_provider']      ?? '' ),
-				'ai_model'           => (string) ( $result['ai_model']         ?? '' ),
-				'ai_is_spam'         => (int) (bool) ( $result['is_spam']      ?? false ),
-				'ai_spam_confidence' => (int)    ( $result['spam_confidence']  ?? 0 ),
-				'ai_spam_reason'     => (string) ( $result['spam_reason']      ?? '' ),
+				'ai_summary'         => (string) ( $result['summary'] ?? '' ),
+				'ai_category'        => (string) ( $result['category'] ?? 'general' ),
+				'ai_priority'        => (string) ( $result['priority'] ?? 'medium' ),
+				'ai_reply_draft'     => (string) ( $result['reply_draft'] ?? '' ),
+				'ai_score'           => (int) ( $result['score'] ?? 50 ),
+				'ai_provider'        => (string) ( $result['ai_provider'] ?? '' ),
+				'ai_model'           => (string) ( $result['ai_model'] ?? '' ),
+				'ai_is_spam'         => (int) (bool) ( $result['is_spam'] ?? false ),
+				'ai_spam_confidence' => (int) ( $result['spam_confidence'] ?? 0 ),
+				'ai_spam_reason'     => (string) ( $result['spam_reason'] ?? '' ),
 				'ai_tier'            => $tier,
 				'ai_error_reason'    => '',
-			],
-			[ 'id' => $entry_id ],
-			[ '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s', '%s' ],
-			[ '%d' ]
+			),
+			array( 'id' => $entry_id ),
+			array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s', '%s' ),
+			array( '%d' )
 		);
 
-		if ( $updated !== false ) {
+		if ( false !== $updated ) {
 			self::fire_analysis_completed( $entry_id, $result );
 		}
 
-		return $updated !== false;
+		return false !== $updated;
 	}
 
 	/**
@@ -131,25 +131,25 @@ class AIRepository {
 
 		$updated = $wpdb->update(
 			self::table(),
-			[
+			array(
 				'ai_status'          => 'complete',
-				'ai_is_spam'         => (int) (bool) ( $result['is_spam']      ?? false ),
-				'ai_spam_confidence' => (int)    ( $result['spam_confidence']  ?? 0 ),
-				'ai_spam_reason'     => (string) ( $result['spam_reason']      ?? '' ),
-				'ai_provider'        => (string) ( $result['ai_provider']      ?? '' ),
-				'ai_model'           => (string) ( $result['ai_model']         ?? '' ),
+				'ai_is_spam'         => (int) (bool) ( $result['is_spam'] ?? false ),
+				'ai_spam_confidence' => (int) ( $result['spam_confidence'] ?? 0 ),
+				'ai_spam_reason'     => (string) ( $result['spam_reason'] ?? '' ),
+				'ai_provider'        => (string) ( $result['ai_provider'] ?? '' ),
+				'ai_model'           => (string) ( $result['ai_model'] ?? '' ),
 				'ai_error_reason'    => '',
-			],
-			[ 'id' => $entry_id ],
-			[ '%s', '%d', '%d', '%s', '%s', '%s', '%s' ],
-			[ '%d' ]
+			),
+			array( 'id' => $entry_id ),
+			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s' ),
+			array( '%d' )
 		);
 
-		if ( $updated !== false ) {
+		if ( false !== $updated ) {
 			self::fire_analysis_completed( $entry_id, $result );
 		}
 
-		return $updated !== false;
+		return false !== $updated;
 	}
 
 	/**
@@ -172,12 +172,20 @@ class AIRepository {
 	 * breaking change for Pro's WhatsAppDispatcher::on_entry_analysis_completed.
 	 */
 	private static function fire_analysis_completed( int $entry_id, array $result ): void {
-		if ( $entry_id <= 0 ) return;
-		if ( ! class_exists( '\\NeuralForms\\Storage\\EntryRepository' ) ) return;
+		if ( $entry_id <= 0 ) {
+			return;
+		}
+		if ( ! class_exists( '\\NeuralForms\\Storage\\EntryRepository' ) ) {
+			return;
+		}
 		$entry = \NeuralForms\Storage\EntryRepository::get( $entry_id );
-		if ( ! is_array( $entry ) ) return;
+		if ( ! is_array( $entry ) ) {
+			return;
+		}
 		$form_id = (int) ( $entry['form_id'] ?? 0 );
-		if ( $form_id <= 0 ) return;
+		if ( $form_id <= 0 ) {
+			return;
+		}
 
 		do_action( 'neural_forms_entry_analysis_completed', $entry_id, $form_id, $result );
 	}
@@ -194,10 +202,13 @@ class AIRepository {
 	public static function update_reply_draft( int $entry_id, string $reply, ?string $tier = null ): bool {
 		global $wpdb;
 
-		$data    = [ 'ai_status' => 'complete', 'ai_reply_draft' => $reply ];
-		$formats = [ '%s', '%s' ];
+		$data    = array(
+			'ai_status'      => 'complete',
+			'ai_reply_draft' => $reply,
+		);
+		$formats = array( '%s', '%s' );
 
-		if ( $tier !== null && in_array( $tier, self::VALID_TIERS, true ) ) {
+		if ( null !== $tier && in_array( $tier, self::VALID_TIERS, true ) ) {
 			$data['ai_tier'] = $tier;
 			$formats[]       = '%s';
 		}
@@ -205,12 +216,12 @@ class AIRepository {
 		$result = $wpdb->update(
 			self::table(),
 			$data,
-			[ 'id' => $entry_id ],
+			array( 'id' => $entry_id ),
 			$formats,
-			[ '%d' ]
+			array( '%d' )
 		);
 
-		return $result !== false;
+		return false !== $result;
 	}
 
 	/**
@@ -224,13 +235,13 @@ class AIRepository {
 
 		$result = $wpdb->update(
 			self::table(),
-			[ 'ai_selected_response_id' => $response_id ],
-			[ 'id' => $entry_id ],
-			[ '%d' ],
-			[ '%d' ]
+			array( 'ai_selected_response_id' => $response_id ),
+			array( 'id' => $entry_id ),
+			array( '%d' ),
+			array( '%d' )
 		);
 
-		return $result !== false;
+		return false !== $result;
 	}
 
 	// Read operations
@@ -263,12 +274,12 @@ class AIRepository {
 			return null;
 		}
 
-		$row['ai_score']           = $row['ai_score'] !== null ? (int) $row['ai_score'] : null;
-		$row['ai_is_spam']         = (int) ( $row['ai_is_spam']         ?? 0 );
-		$row['ai_spam_confidence'] = (int) ( $row['ai_spam_confidence'] ?? 0 );
-		$row['ai_auto_spam_applied'] = (int) ( $row['ai_auto_spam_applied'] ?? 0 );
-		$row['ai_tier']            = (string) ( $row['ai_tier'] ?? 'fast' );
-		$row['ai_selected_response_id'] = $row['ai_selected_response_id'] !== null
+		$row['ai_score']                = null !== $row['ai_score'] ? (int) $row['ai_score'] : null;
+		$row['ai_is_spam']              = (int) ( $row['ai_is_spam'] ?? 0 );
+		$row['ai_spam_confidence']      = (int) ( $row['ai_spam_confidence'] ?? 0 );
+		$row['ai_auto_spam_applied']    = (int) ( $row['ai_auto_spam_applied'] ?? 0 );
+		$row['ai_tier']                 = (string) ( $row['ai_tier'] ?? 'fast' );
+		$row['ai_selected_response_id'] = null !== $row['ai_selected_response_id']
 			? (int) $row['ai_selected_response_id']
 			: null;
 

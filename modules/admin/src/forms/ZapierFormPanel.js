@@ -251,7 +251,7 @@ export default function ZapierFormPanel( { zapier, onChange, capUnlocked } ) {
 						) ) }
 					</select>
 					<p className="nf-form-settings__hs-cell-sub">
-						{ __( 'v1 fires on every submission. AI-conditional triggers will activate once the analyzed-entry hook is wired into the Zapier dispatcher.', 'neural-forms-lite' ) }
+						{ __( 'v1 fires on every submission. Neural AI-conditional triggers will activate once the analyzed-entry hook is wired into the Zapier dispatcher.', 'neural-forms-lite' ) }
 					</p>
 				</div>
 

@@ -52,10 +52,13 @@ class TemplateLibrary {
 	 *  plugin only fetches the one it needs. */
 	const CATALOG_BASE = 'https://templates.neuralforms.ai/';
 
-	/** Builders we support fetching for. MVP is Gutenberg only; the
-	 *  list is here so divi / elementor can be added by adding the
-	 *  string here without touching call sites. */
-	const SUPPORTED_BUILDERS = [ 'gutenberg' ];
+	/** Builders we support fetching for. The remote catalog host moved
+	 *  from /gutenberg/ to /block-editor/ in 2026-05; we keep
+	 *  'gutenberg' in the allow-list as a back-compat alias that
+	 *  rewrites to 'block-editor' before the URL is built (see
+	 *  fetch_catalog). divi / elementor slugs can be added here as
+	 *  catalogs ship without touching call sites. */
+	const SUPPORTED_BUILDERS = array( 'block-editor', 'gutenberg' );
 
 	/** Transient key prefix for the catalog cache. Suffixed by builder
 	 *  so a future divi/elementor cache doesn't collide. */
@@ -75,14 +78,22 @@ class TemplateLibrary {
 	 * @param bool $bypass_cache When true, skips the transient lookup.
 	 * @return array|WP_Error
 	 */
-	public static function fetch_catalog( bool $bypass_cache = false, string $builder = 'gutenberg' ) {
+	public static function fetch_catalog( bool $bypass_cache = false, string $builder = 'block-editor' ) {
 		if ( ! in_array( $builder, self::SUPPORTED_BUILDERS, true ) ) {
 			return new WP_Error(
 				'template_unsupported_builder',
 				/* translators: %s: builder slug requested by the client. */
 				sprintf( __( 'Template builder "%s" is not supported.', 'neural-forms-lite' ), $builder ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
+		}
+
+		// Back-compat: the catalog host moved from /gutenberg/ to
+		// /block-editor/ in 2026-05. Older clients that still send
+		// `?builder=gutenberg` get rewritten here so the request hits
+		// the live catalog instead of a 404.
+		if ( 'gutenberg' === $builder ) {
+			$builder = 'block-editor';
 		}
 
 		$transient_key = self::CATALOG_TRANSIENT_PREFIX . $builder;
@@ -105,41 +116,45 @@ class TemplateLibrary {
 		// TTL) so repeated screen visits don't hammer the network with
 		// retries while the remote is down.
 		if ( is_wp_error( $catalog ) ) {
-			$payload = [
+			$payload = array(
 				'version'             => '',
 				'builder'             => $builder,
 				'updated_at'          => '',
-				'templates'           => [],
+				'templates'           => array(),
 				'service_unavailable' => true,
-			];
+			);
 			set_transient( $transient_key, $payload, 5 * MINUTE_IN_SECONDS );
 			return $payload;
 		}
 
 		$templates = isset( $catalog['templates'] ) && is_array( $catalog['templates'] )
 			? $catalog['templates']
-			: [];
+			: array();
 
 		// Filter to compatible templates only. Catalog entries
 		// without a `compatibility` array, or whose array doesn't
 		// include this builder, are excluded so a malformed row
 		// doesn't render as a broken card in the UI.
-		$visible = [];
+		$visible = array();
 		foreach ( $templates as $row ) {
-			if ( ! is_array( $row ) ) continue;
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
 			$compat = isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
 				? array_map( 'strval', $row['compatibility'] )
-				: [];
-			if ( ! in_array( $builder, $compat, true ) ) continue;
+				: array();
+			if ( ! in_array( $builder, $compat, true ) ) {
+				continue;
+			}
 			$visible[] = self::normalize_catalog_row( $row );
 		}
 
-		$payload = [
+		$payload = array(
 			'version'    => isset( $catalog['version'] ) ? (string) $catalog['version'] : '',
 			'builder'    => isset( $catalog['builder'] ) ? (string) $catalog['builder'] : $builder,
 			'updated_at' => isset( $catalog['updated_at'] ) ? (string) $catalog['updated_at'] : '',
 			'templates'  => $visible,
-		];
+		);
 
 		set_transient( $transient_key, $payload, self::CATALOG_TTL );
 
@@ -190,12 +205,14 @@ class TemplateLibrary {
 			return new WP_Error(
 				'template_disallowed_host',
 				__( 'Template import URL is not on the allow-list.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
 		$bundle = self::request_json( $import_url );
-		if ( is_wp_error( $bundle ) ) return $bundle;
+		if ( is_wp_error( $bundle ) ) {
+			return $bundle;
+		}
 
 		// Structural validation BEFORE we touch any value. Even though
 		// the catalog server is first-party, we treat its payloads as
@@ -203,7 +220,9 @@ class TemplateLibrary {
 		// just a typo in template authoring shouldn't be enough to
 		// poison a downstream install.
 		$shape_err = self::validate_bundle_shape( $bundle );
-		if ( $shape_err ) return $shape_err;
+		if ( $shape_err ) {
+			return $shape_err;
+		}
 
 		// Builder gate — only Gutenberg bundles are imported by Lite.
 		$builder = isset( $bundle['builder'] ) ? (string) $bundle['builder'] : '';
@@ -212,24 +231,26 @@ class TemplateLibrary {
 				'template_unsupported_builder',
 				/* translators: %s: builder slug from the remote bundle. */
 				sprintf( __( 'Template builder "%s" is not supported yet.', 'neural-forms-lite' ), $builder ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
-		$page  = isset( $bundle['page'] ) && is_array( $bundle['page'] ) ? $bundle['page'] : [];
-		$forms = isset( $bundle['forms'] ) && is_array( $bundle['forms'] ) ? $bundle['forms'] : [];
+		$page  = isset( $bundle['page'] ) && is_array( $bundle['page'] ) ? $bundle['page'] : array();
+		$forms = isset( $bundle['forms'] ) && is_array( $bundle['forms'] ) ? $bundle['forms'] : array();
 
 		// Import forms first so the formId map is ready before we
 		// rewrite the page content. Each row carries the form payload
 		// inline (the older multi-file layout had a `file` URL here
 		// instead — we no longer fetch that for MVP).
-		$id_map            = [];
-		$imported_form_ids = [];
+		$id_map            = array();
+		$imported_form_ids = array();
 		foreach ( $forms as $form_ref ) {
-			if ( ! is_array( $form_ref ) ) continue;
+			if ( ! is_array( $form_ref ) ) {
+				continue;
+			}
 			$source_id = isset( $form_ref['sourceFormId'] ) ? (int) $form_ref['sourceFormId'] : 0;
 			$form_data = isset( $form_ref['form'] ) && is_array( $form_ref['form'] ) ? $form_ref['form'] : null;
-			if ( $source_id <= 0 || $form_data === null ) {
+			if ( $source_id <= 0 || null === $form_data ) {
 				// Skip — without a sourceFormId we can't remap, and
 				// without an inline form payload there's nothing to
 				// import. A malformed row shouldn't fail the whole
@@ -243,12 +264,12 @@ class TemplateLibrary {
 				return new WP_Error(
 					'template_form_insert_failed',
 					__( 'Failed to import a form referenced by the template.', 'neural-forms-lite' ),
-					[ 'status' => 500 ]
+					array( 'status' => 500 )
 				);
 			}
 
-			$id_map[ $source_id ]  = (int) $new_id;
-			$imported_form_ids[]   = (int) $new_id;
+			$id_map[ $source_id ] = (int) $new_id;
+			$imported_form_ids[]  = (int) $new_id;
 		}
 
 		// Rewrite the page content with new local form IDs, then strip
@@ -263,30 +284,33 @@ class TemplateLibrary {
 		$rewrote_content = self::replace_form_ids_in_content( $raw_content, $id_map );
 		$safe_content    = wp_kses_post( $rewrote_content );
 
-		$title  = isset( $page['title'] ) ? (string) $page['title'] : ( isset( $bundle['name'] ) ? (string) $bundle['name'] : __( 'Imported Template', 'neural-forms-lite' ) );
-		$slug   = isset( $page['slug'] ) ? sanitize_title( (string) $page['slug'] ) : '';
+		$title = isset( $page['title'] ) ? (string) $page['title'] : ( isset( $bundle['name'] ) ? (string) $bundle['name'] : __( 'Imported Template', 'neural-forms-lite' ) );
+		$slug  = isset( $page['slug'] ) ? sanitize_title( (string) $page['slug'] ) : '';
 		// Force draft regardless of what the bundle says — never
 		// auto-publish imported content; the admin should review first.
 		$status = 'draft';
 
-		$post_id = wp_insert_post( [
-			'post_title'   => sanitize_text_field( $title ),
-			'post_name'    => $slug,
-			'post_status'  => $status,
-			'post_type'    => 'page',
-			'post_content' => $safe_content,
-		], true );
+		$post_id = wp_insert_post(
+			array(
+				'post_title'   => sanitize_text_field( $title ),
+				'post_name'    => $slug,
+				'post_status'  => $status,
+				'post_type'    => 'page',
+				'post_content' => $safe_content,
+			),
+			true
+		);
 
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
 		}
 
-		return [
+		return array(
 			'page_id'           => (int) $post_id,
 			'edit_url'          => get_edit_post_link( (int) $post_id, 'raw' ),
 			'view_url'          => get_permalink( (int) $post_id ),
 			'imported_form_ids' => $imported_form_ids,
-		];
+		);
 	}
 
 	/**
@@ -330,21 +354,21 @@ class TemplateLibrary {
 		// specifiers); deep sanitize here defends the rendering layer.
 		$schema = isset( $form['form_schema'] ) && is_array( $form['form_schema'] )
 			? self::sanitize_recursive_strings( $form['form_schema'] )
-			: [];
+			: array();
 
-		$raw_settings = isset( $form['settings'] ) && is_array( $form['settings'] ) ? $form['settings'] : [];
-		$clean_settings = [];
+		$raw_settings   = isset( $form['settings'] ) && is_array( $form['settings'] ) ? $form['settings'] : array();
+		$clean_settings = array();
 
 		// Whitelist of safe settings keys. The template author can
 		// pre-fill these for the receiving site without exposing
 		// any secrets or recipients.
-		$safe_keys = [
+		$safe_keys = array(
 			'success_message',
 			'error_message',
 			'submit_button_text',
 			'success_redirect',          // legacy alias
 			'thanks_page_message',
-		];
+		);
 		foreach ( $safe_keys as $key ) {
 			if ( array_key_exists( $key, $raw_settings ) ) {
 				$clean_settings[ $key ] = is_scalar( $raw_settings[ $key ] )
@@ -367,7 +391,7 @@ class TemplateLibrary {
 			}
 		}
 
-		return [
+		return array(
 			'name'        => sanitize_text_field( $name ),
 			'description' => sanitize_textarea_field( $desc ),
 			'form_schema' => $schema,
@@ -376,7 +400,7 @@ class TemplateLibrary {
 			// the form goes live. They can flip it to active in the
 			// builder.
 			'status'      => 'draft',
-		];
+		);
 	}
 
 	/**
@@ -393,12 +417,12 @@ class TemplateLibrary {
 	 */
 	private static function sanitize_recursive_strings( $value ) {
 		if ( is_array( $value ) ) {
-			$out = [];
+			$out = array();
 			foreach ( $value as $k => $v ) {
 				// Sanitize the key too — array keys end up in option
 				// names / column lookups downstream and shouldn't
 				// carry markup. Numeric keys are preserved as-is.
-				$safe_key = is_int( $k ) ? $k : sanitize_text_field( (string) $k );
+				$safe_key         = is_int( $k ) ? $k : sanitize_text_field( (string) $k );
 				$out[ $safe_key ] = self::sanitize_recursive_strings( $v );
 			}
 			return $out;
@@ -406,7 +430,7 @@ class TemplateLibrary {
 		if ( is_string( $value ) ) {
 			return sanitize_text_field( $value );
 		}
-		if ( is_int( $value ) || is_float( $value ) || is_bool( $value ) || $value === null ) {
+		if ( is_int( $value ) || is_float( $value ) || is_bool( $value ) || null === $value ) {
 			return $value;
 		}
 		// Objects / resources / closures are not valid in a JSON-
@@ -428,19 +452,19 @@ class TemplateLibrary {
 	 */
 	private static function validate_bundle_shape( $bundle ) {
 		if ( ! is_array( $bundle ) ) {
-			return new WP_Error( 'template_bundle_invalid', __( 'Template bundle is not a valid object.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+			return new WP_Error( 'template_bundle_invalid', __( 'Template bundle is not a valid object.', 'neural-forms-lite' ), array( 'status' => 502 ) );
 		}
 		if ( empty( $bundle['builder'] ) || ! is_string( $bundle['builder'] ) ) {
-			return new WP_Error( 'template_bundle_missing_builder', __( 'Template bundle is missing the builder field.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+			return new WP_Error( 'template_bundle_missing_builder', __( 'Template bundle is missing the builder field.', 'neural-forms-lite' ), array( 'status' => 502 ) );
 		}
 		if ( ! isset( $bundle['page'] ) || ! is_array( $bundle['page'] ) ) {
-			return new WP_Error( 'template_bundle_missing_page', __( 'Template bundle is missing the page object.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+			return new WP_Error( 'template_bundle_missing_page', __( 'Template bundle is missing the page object.', 'neural-forms-lite' ), array( 'status' => 502 ) );
 		}
 		if ( ! isset( $bundle['page']['post_content'] ) || ! is_string( $bundle['page']['post_content'] ) ) {
-			return new WP_Error( 'template_bundle_missing_content', __( 'Template bundle page is missing post_content.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+			return new WP_Error( 'template_bundle_missing_content', __( 'Template bundle page is missing post_content.', 'neural-forms-lite' ), array( 'status' => 502 ) );
 		}
 		if ( isset( $bundle['forms'] ) && ! is_array( $bundle['forms'] ) ) {
-			return new WP_Error( 'template_bundle_forms_invalid', __( 'Template bundle "forms" is not an array.', 'neural-forms-lite' ), [ 'status' => 502 ] );
+			return new WP_Error( 'template_bundle_forms_invalid', __( 'Template bundle "forms" is not an array.', 'neural-forms-lite' ), array( 'status' => 502 ) );
 		}
 		return null;
 	}
@@ -471,7 +495,7 @@ class TemplateLibrary {
 
 		// Coerce keys + values to int to make the lookup robust against
 		// JSON-decoded values arriving as strings.
-		$normalized = [];
+		$normalized = array();
 		foreach ( $id_map as $src => $dst ) {
 			$normalized[ (int) $src ] = (int) $dst;
 		}
@@ -481,13 +505,13 @@ class TemplateLibrary {
 			return self::regex_replace_form_ids( $content, $normalized );
 		}
 
-		$rewritten = self::walk_blocks_swap_form_id( $blocks, $normalized );
+		$rewritten  = self::walk_blocks_swap_form_id( $blocks, $normalized );
 		$serialized = serialize_blocks( $rewritten );
 
 		// If the serialized output is empty (shouldn't happen but
 		// guard against it), fall back to the regex pass rather than
 		// blanking the imported page.
-		if ( $serialized === '' || $serialized === null ) {
+		if ( $serialized === '' || null === $serialized ) {
 			return self::regex_replace_form_ids( $content, $normalized );
 		}
 
@@ -503,17 +527,19 @@ class TemplateLibrary {
 	 */
 	private static function walk_blocks_swap_form_id( array $blocks, array $id_map ): array {
 		foreach ( $blocks as $i => $block ) {
-			if ( ! is_array( $block ) ) continue;
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
 
 			$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
 			// Cover every Neural Forms block kind that carries a
 			// formId attribute (form / quiz / multi-step / poll).
 			if ( $name !== '' && strpos( $name, 'neural-forms/' ) === 0 ) {
-				$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : [];
+				$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
 				if ( isset( $attrs['formId'] ) ) {
 					$src = (int) $attrs['formId'];
 					if ( $src > 0 && isset( $id_map[ $src ] ) ) {
-						$attrs['formId'] = $id_map[ $src ];
+						$attrs['formId']       = $id_map[ $src ];
 						$blocks[ $i ]['attrs'] = $attrs;
 					}
 				}
@@ -563,15 +589,21 @@ class TemplateLibrary {
 	 */
 	public static function is_allowed_url( string $url ): bool {
 		$url = trim( $url );
-		if ( $url === '' ) return false;
+		if ( $url === '' ) {
+			return false;
+		}
 		$host = wp_parse_url( $url, PHP_URL_HOST );
-		if ( ! is_string( $host ) || $host === '' ) return false;
+		if ( ! is_string( $host ) || $host === '' ) {
+			return false;
+		}
 		$scheme = wp_parse_url( $url, PHP_URL_SCHEME );
-		if ( $scheme !== 'https' ) return false;
+		if ( $scheme !== 'https' ) {
+			return false;
+		}
 
 		$allowed = (array) apply_filters(
 			'neural_forms_template_library_allowed_hosts',
-			[ self::DEFAULT_HOST ]
+			array( self::DEFAULT_HOST )
 		);
 		$allowed = array_map( 'strtolower', array_map( 'strval', $allowed ) );
 		return in_array( strtolower( $host ), $allowed, true );
@@ -587,22 +619,22 @@ class TemplateLibrary {
 	 */
 	private static function normalize_catalog_row( array $row ): array {
 		// Field names mirror the templates.json contract:
-		//   name         (card title, was "title" in the older layout)
-		//   preview_url  (HTML demo page opened in a new tab — was "preview")
-		//   import_url   (the single self-contained template JSON the
-		//                 Import button POSTs through — was "manifest")
+		// name         (card title, was "title" in the older layout)
+		// preview_url  (HTML demo page opened in a new tab — was "preview")
+		// import_url   (the single self-contained template JSON the
+		// Import button POSTs through — was "manifest")
 		// thumbnail / category / compatibility / tags / description are
 		// unchanged. Any URL that fails the allow-list check is dropped
 		// to '' so the card still renders (just without that image /
 		// action) rather than failing the whole grid.
-		return [
+		return array(
 			'id'            => isset( $row['id'] ) ? sanitize_key( (string) $row['id'] ) : '',
 			'name'          => isset( $row['name'] ) ? (string) $row['name'] : '',
 			'description'   => isset( $row['description'] ) ? (string) $row['description'] : '',
 			'category'      => isset( $row['category'] ) ? (string) $row['category'] : '',
 			'compatibility' => isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
 				? array_map( 'strval', $row['compatibility'] )
-				: [],
+				: array(),
 			'thumbnail'     => isset( $row['thumbnail'] ) && self::is_allowed_url( (string) $row['thumbnail'] )
 				? esc_url_raw( (string) $row['thumbnail'] )
 				: '',
@@ -614,8 +646,8 @@ class TemplateLibrary {
 				: '',
 			'tags'          => isset( $row['tags'] ) && is_array( $row['tags'] )
 				? array_values( array_map( 'sanitize_text_field', array_map( 'strval', $row['tags'] ) ) )
-				: [],
-		];
+				: array(),
+		);
 	}
 
 	/**
@@ -627,13 +659,16 @@ class TemplateLibrary {
 	 * @return array|WP_Error
 	 */
 	private static function request_json( string $url ) {
-		$response = wp_remote_get( $url, [
-			'timeout'    => self::REQUEST_TIMEOUT,
-			'redirection' => 2,
-			'headers'    => [
-				'Accept' => 'application/json',
-			],
-		] );
+		$response = wp_remote_get(
+			$url,
+			array(
+				'timeout'     => self::REQUEST_TIMEOUT,
+				'redirection' => 2,
+				'headers'     => array(
+					'Accept' => 'application/json',
+				),
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			// Don't surface the raw transport message (e.g. "cURL
@@ -649,17 +684,17 @@ class TemplateLibrary {
 			return new WP_Error(
 				'template_remote_failed',
 				__( 'Couldn\'t reach the template library right now. Please try again later.', 'neural-forms-lite' ),
-				[ 'status' => 502 ]
+				array( 'status' => 502 )
 			);
 		}
 
 		$code = (int) wp_remote_retrieve_response_code( $response );
-		if ( $code !== 200 ) {
+		if ( 200 !== $code ) {
 			return new WP_Error(
 				'template_remote_status',
 				/* translators: %d: HTTP status code returned by the remote template host. */
 				sprintf( __( 'Template host returned HTTP %d.', 'neural-forms-lite' ), $code ),
-				[ 'status' => 502 ]
+				array( 'status' => 502 )
 			);
 		}
 
@@ -669,7 +704,7 @@ class TemplateLibrary {
 			return new WP_Error(
 				'template_remote_json',
 				__( 'Template host returned an invalid JSON payload.', 'neural-forms-lite' ),
-				[ 'status' => 502 ]
+				array( 'status' => 502 )
 			);
 		}
 

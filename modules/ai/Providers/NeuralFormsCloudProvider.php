@@ -70,17 +70,17 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * @throws \RuntimeException
 	 */
 	public function analyze( array $entry, array $form ): array {
-		$payload = [
+		$payload = array(
 			'site_url' => site_url(),
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
 			'entry'    => $this->format_entry( $entry, $form ),
 			'form'     => $this->format_form( $form ),
-		];
+		);
 
 		// Reanalyze promotion context - the API uses these to step up the tier
 		// ladder (plan-clamped server-side). First analyze sends neither; the
 		// API treats that as "first pass" and runs the cheap fast tier.
-		$prev_tier     = isset( $entry['ai_tier'] )     ? (string) $entry['ai_tier']     : '';
+		$prev_tier     = isset( $entry['ai_tier'] ) ? (string) $entry['ai_tier'] : '';
 		$prev_priority = isset( $entry['ai_priority'] ) ? (string) $entry['ai_priority'] : '';
 		if ( $prev_tier !== '' ) {
 			$payload['previous_tier'] = $prev_tier;
@@ -99,7 +99,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		// Cloud's user-facing usage block — used by PlanManager::apply_usage
 		// to keep the local credit balance in sync with the authoritative
 		// cloud counter without an extra /v1/auth/me round-trip.
-		$result['usage']       = is_array( $body['usage'] ?? null ) ? $body['usage'] : [];
+		$result['usage'] = is_array( $body['usage'] ?? null ) ? $body['usage'] : array();
 
 		return $result;
 	}
@@ -124,13 +124,13 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * @throws \RuntimeException
 	 */
 	public function regenerate_reply( array $entry, array $form ): array {
-		$payload = [
+		$payload = array(
 			'site_url' => site_url(),
 			// Sent for cloud-side request logging; not used to gate anything.
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
 			'entry'    => $this->format_entry( $entry, $form ),
 			'form'     => $this->format_form( $form ),
-		];
+		);
 
 		$cur_tier = isset( $entry['ai_tier'] ) ? (string) $entry['ai_tier'] : '';
 		if ( $cur_tier !== '' ) {
@@ -139,11 +139,11 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 		$body = $this->post( '/v1/ai/reply/regenerate', $payload );
 
-		return [
+		return array(
 			'reply_draft' => sanitize_textarea_field( (string) ( $body['reply_draft'] ?? '' ) ),
 			'tier_used'   => $this->normalize_tier( $body['tier_used'] ?? null ),
-			'usage'       => is_array( $body['usage'] ?? null ) ? $body['usage'] : [],
-		];
+			'usage'       => is_array( $body['usage'] ?? null ) ? $body['usage'] : array(),
+		);
 	}
 
 	/**
@@ -162,12 +162,12 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * @throws \RuntimeException
 	 */
 	public function polish_reply( string $draft, array $entry, array $form ): array {
-		$payload = [
+		$payload = array(
 			'text'     => $draft,
 			// Sent for cloud-side request logging; not used to gate anything.
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
 			'site_url' => site_url(),
-		];
+		);
 
 		$cur_tier = isset( $entry['ai_tier'] ) ? (string) $entry['ai_tier'] : '';
 		if ( $cur_tier !== '' ) {
@@ -176,11 +176,11 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 		$body = $this->post( '/v1/ai/reply/polish', $payload );
 
-		return [
+		return array(
 			'polished_reply' => sanitize_textarea_field( (string) ( $body['polished_reply'] ?? '' ) ),
 			'tier_used'      => $this->normalize_tier( $body['tier_used'] ?? null ),
-			'usage'          => is_array( $body['usage'] ?? null ) ? $body['usage'] : [],
-		];
+			'usage'          => is_array( $body['usage'] ?? null ) ? $body['usage'] : array(),
+		);
 	}
 
 	/**
@@ -210,11 +210,14 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	private function post( string $path, array $payload ): array {
 		$url = $this->base_url . $path;
 
-		$response = wp_remote_post( $url, [
-			'timeout' => self::TIMEOUT,
-			'headers' => $this->headers(),
-			'body'    => wp_json_encode( $payload ),
-		] );
+		$response = wp_remote_post(
+			$url,
+			array(
+				'timeout' => self::TIMEOUT,
+				'headers' => $this->headers(),
+				'body'    => wp_json_encode( $payload ),
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			throw new \RuntimeException(
@@ -235,18 +238,18 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			// can mark the entry blocked_by_safety instead of failed (no
 			// retry, no credit deduction). Both block and unavailable
 			// codes flow through this branch with the cloud's flat payload.
-			if ( in_array( $body_code, [ 'blocked_by_safety', 'ai_safety_unavailable' ], true ) ) {
-				$safety   = is_array( $data['safety'] ?? null ) ? $data['safety'] : [];
-				$usage    = is_array( $data['usage']  ?? null ) ? $data['usage']  : [];
+			if ( in_array( $body_code, array( 'blocked_by_safety', 'ai_safety_unavailable' ), true ) ) {
+				$safety   = is_array( $data['safety'] ?? null ) ? $data['safety'] : array();
+				$usage    = is_array( $data['usage'] ?? null ) ? $data['usage'] : array();
 				$category = isset( $safety['category'] ) && is_string( $safety['category'] )
 					? $safety['category'] : null;
-				$action   = isset( $safety['action'] )   && is_string( $safety['action'] )
-					? $safety['action']   : 'block';
+				$action   = isset( $safety['action'] ) && is_string( $safety['action'] )
+					? $safety['action'] : 'block';
 				throw new CloudSafetyException(
 					esc_html( (string) ( $data['message'] ?? $body_code ) ),
 					esc_html( $body_code ),
 					(int) $code,
-					$category !== null ? esc_html( $category ) : null,
+					null !== $category ? esc_html( $category ) : null,
 					esc_html( $action ),
 					// $usage is a structured data array (credits_used,
 					// credits_remaining, credits_deducted) stored as a
@@ -258,13 +261,13 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 				);
 			}
 
-			if ( in_array( $body_code, [ 'feature_locked', 'quota_exceeded' ], true ) ) {
-				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : [];
+			if ( in_array( $body_code, array( 'feature_locked', 'quota_exceeded' ), true ) ) {
+				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : array();
 				throw new CloudPlanException(
 					esc_html( (string) ( $data['message'] ?? $body_code ) ),
 					esc_html( $body_code ),
 					(int) $code,
-					esc_html( (string) ( $data['feature']     ?? '' ) ),
+					esc_html( (string) ( $data['feature'] ?? '' ) ),
 					// self::esc_quota() recursively esc_html()s every scalar
 					// inside the quota array; phpcs can't see across method
 					// boundaries, so suppress the false positive here.
@@ -307,10 +310,13 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * @throws \RuntimeException | CloudPlanException
 	 */
 	private function get( string $path ): array {
-		$response = wp_remote_get( $this->base_url . $path, [
-			'timeout' => self::TIMEOUT,
-			'headers' => $this->headers(),
-		] );
+		$response = wp_remote_get(
+			$this->base_url . $path,
+			array(
+				'timeout' => self::TIMEOUT,
+				'headers' => $this->headers(),
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			throw new \RuntimeException(
@@ -324,13 +330,13 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 		if ( $code < 200 || $code >= 300 ) {
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
-			if ( in_array( $body_code, [ 'feature_locked', 'quota_exceeded' ], true ) ) {
-				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : [];
+			if ( in_array( $body_code, array( 'feature_locked', 'quota_exceeded' ), true ) ) {
+				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : array();
 				throw new CloudPlanException(
 					esc_html( (string) ( $data['message'] ?? $body_code ) ),
 					esc_html( $body_code ),
 					(int) $code,
-					esc_html( (string) ( $data['feature']     ?? '' ) ),
+					esc_html( (string) ( $data['feature'] ?? '' ) ),
 					// self::esc_quota() recursively esc_html()s every scalar
 					// inside the quota array; phpcs can't see across method
 					// boundaries, so suppress the false positive here.
@@ -365,12 +371,12 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * behaved filter can never silently remove them.
 	 */
 	private function headers(): array {
-		$headers = [
+		$headers = array(
 			'Authorization'         => 'Bearer ' . $this->api_key,
 			'Content-Type'          => 'application/json',
 			'X-NeuralForms-Version' => defined( 'NEURAL_FORMS_VERSION' ) ? NEURAL_FORMS_VERSION : '',
 			'X-NeuralForms-Site'    => site_url(),
-		];
+		);
 
 		$filtered = apply_filters( 'neural_forms_cloud_request_headers', $headers );
 
@@ -395,16 +401,16 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * Non-matrix fields pass through untouched so the wire shape for
 	 * every other field type stays the same.
 	 */
-	private function format_entry( array $entry, array $form = [] ): array {
-		$fields = is_array( $entry['data'] ?? null ) ? $entry['data'] : [];
+	private function format_entry( array $entry, array $form = array() ): array {
+		$fields = is_array( $entry['data'] ?? null ) ? $entry['data'] : array();
 		if ( ! empty( $fields ) && ! empty( $form ) ) {
 			$fields = $this->enrich_matrix_fields( $fields, $form );
 		}
-		return [
+		return array(
 			'id'           => (int) ( $entry['id'] ?? 0 ),
 			'fields'       => $fields,
 			'submitted_at' => (string) ( $entry['created_at'] ?? '' ),
-		];
+		);
 	}
 
 	/**
@@ -430,8 +436,8 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * an array, are skipped (no envelope written).
 	 */
 	private function enrich_matrix_fields( array $fields, array $form ): array {
-		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
-		$nodes  = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		$nodes  = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
 		$out    = $fields;
 		$this->enrich_matrix_walk( $nodes, $out );
 		return $out;
@@ -454,15 +460,17 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 			// Layout containers — recurse into children.
 			if ( 'step' === $type || 'section' === $type ) {
-				$children = is_array( $node['fields'] ?? null ) ? $node['fields'] : [];
+				$children = is_array( $node['fields'] ?? null ) ? $node['fields'] : array();
 				$this->enrich_matrix_walk( $children, $values );
 				continue;
 			}
 			if ( 'row' === $type ) {
-				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : [];
+				$columns = is_array( $node['columns'] ?? null ) ? $node['columns'] : array();
 				foreach ( $columns as $col ) {
-					if ( ! is_array( $col ) ) continue;
-					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
+					if ( ! is_array( $col ) ) {
+						continue;
+					}
+					$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
 					$this->enrich_matrix_walk( $col_fields, $values );
 				}
 				continue;
@@ -483,44 +491,48 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 				continue;
 			}
 
-			$settings  = is_array( $node['settings'] ?? null ) ? $node['settings'] : [];
+			$settings  = is_array( $node['settings'] ?? null ) ? $node['settings'] : array();
 			$selection = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
 
-			$rows = [];
-			foreach ( ( is_array( $settings['rows'] ?? null ) ? $settings['rows'] : [] ) as $row ) {
+			$rows = array();
+			foreach ( ( is_array( $settings['rows'] ?? null ) ? $settings['rows'] : array() ) as $row ) {
 				$row = (array) $row;
 				$rv  = (string) ( $row['value'] ?? '' );
 				$rl  = (string) ( $row['label'] ?? '' );
-				if ( $rv === '' && $rl === '' ) continue;
-				$rows[] = [
+				if ( $rv === '' && $rl === '' ) {
+					continue;
+				}
+				$rows[] = array(
 					'label' => $rl !== '' ? $rl : $rv,
 					'value' => $rv !== '' ? $rv : $rl,
-				];
+				);
 			}
-			$columns = [];
-			foreach ( ( is_array( $settings['columns'] ?? null ) ? $settings['columns'] : [] ) as $col ) {
+			$columns = array();
+			foreach ( ( is_array( $settings['columns'] ?? null ) ? $settings['columns'] : array() ) as $col ) {
 				$col = (array) $col;
 				$cv  = (string) ( $col['value'] ?? '' );
 				$cl  = (string) ( $col['label'] ?? '' );
-				if ( $cv === '' && $cl === '' ) continue;
-				$entry = [
+				if ( $cv === '' && $cl === '' ) {
+					continue;
+				}
+				$entry = array(
 					'label' => $cl !== '' ? $cl : $cv,
 					'value' => $cv !== '' ? $cv : $cl,
-				];
+				);
 				if ( isset( $col['score'] ) && is_numeric( $col['score'] ) ) {
 					$entry['score'] = (int) $col['score'];
 				}
 				$columns[] = $entry;
 			}
 
-			$values[ $field_id ] = [
+			$values[ $field_id ] = array(
 				'_matrix'        => true,
 				'label'          => (string) ( $node['label'] ?? '' ),
 				'selection_type' => $selection,
 				'rows'           => $rows,
 				'columns'        => $columns,
 				'value'          => $stored,
-			];
+			);
 		}
 	}
 
@@ -528,10 +540,10 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * Flatten a form row to the shape the cloud API expects.
 	 */
 	private function format_form( array $form ): array {
-		return [
+		return array(
 			'id'   => (int) ( $form['id'] ?? 0 ),
 			'name' => (string) ( $form['title'] ?? '' ),
-		];
+		);
 	}
 
 	// Response normalization
@@ -542,7 +554,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * (which the cloud API never returns under `quota`) are dropped.
 	 */
 	private static function esc_quota( array $quota ): array {
-		$out = [];
+		$out = array();
 		foreach ( $quota as $key => $value ) {
 			$safe_key = is_string( $key ) ? esc_html( $key ) : $key;
 			if ( is_array( $value ) ) {
@@ -555,7 +567,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	}
 
 	/** Allowed tier slugs mirrored from the API's model-registry. */
-	const VALID_TIERS = [ 'fast', 'balanced', 'smart', 'premium' ];
+	const VALID_TIERS = array( 'fast', 'balanced', 'smart', 'premium' );
 
 	/**
 	 * Clamp the API's tier_used field to a known slug. Null/invalid '->-> 'fast'.
@@ -574,19 +586,19 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * output is identical regardless of which provider produced it.
 	 */
 	private function normalize_analysis( array $data ): array {
-		return [
-			'summary'         => sanitize_textarea_field( (string) ( $data['summary']     ?? '' ) ),
+		return array(
+			'summary'         => sanitize_textarea_field( (string) ( $data['summary'] ?? '' ) ),
 			'category'        => in_array( $data['category'] ?? '', AIRepository::VALID_CATEGORIES, true )
-									 ? $data['category']
-									 : 'general',
+									? $data['category']
+									: 'general',
 			'priority'        => in_array( $data['priority'] ?? '', AIRepository::VALID_PRIORITIES, true )
-									 ? $data['priority']
-									 : 'medium',
+									? $data['priority']
+									: 'medium',
 			'reply_draft'     => sanitize_textarea_field( (string) ( $data['reply_draft'] ?? '' ) ),
 			'score'           => min( 100, max( 0, (int) ( $data['score'] ?? 50 ) ) ),
-			'is_spam'         => (bool) ( $data['is_spam']         ?? false ),
+			'is_spam'         => (bool) ( $data['is_spam'] ?? false ),
 			'spam_confidence' => min( 100, max( 0, (int) ( $data['spam_confidence'] ?? 0 ) ) ),
 			'spam_reason'     => sanitize_text_field( (string) ( $data['spam_reason'] ?? '' ) ),
-		];
+		);
 	}
 }

@@ -396,7 +396,7 @@ function ZapierForm( { initial, forms, onCancel, onSubmit, saving, error } ) {
 						<option value={ ZAPIER_EVENT }>{ __( 'New form submission', 'neural-forms-lite' ) }</option>
 					</select>
 					<p className="neural-forms-integrations__zap-hint">
-						{ __( 'More triggers (spam detected, AI analysed, high priority) will be available in a future release.', 'neural-forms-lite' ) }
+						{ __( 'More triggers (spam detected, Neural AI analysed, high priority) will be available in a future release.', 'neural-forms-lite' ) }
 					</p>
 				</div>
 

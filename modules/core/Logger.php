@@ -46,8 +46,8 @@ class Logger {
 		string $event_type,
 		string $status,
 		string $message,
-		array  $payload  = [],
-		?int   $entry_id = null
+		array $payload = array(),
+		?int $entry_id = null
 	): void {
 		self::write_db( $event_type, $status, $message, $payload, $entry_id );
 	}
@@ -67,7 +67,7 @@ class Logger {
 		string $channel,
 		string $level,
 		string $message,
-		array  $context = []
+		array $context = array()
 	): void {
 		self::write_file( $channel, $level, $message, $context );
 	}
@@ -89,9 +89,9 @@ class Logger {
 		string $event_type,
 		string $status,
 		string $message,
-		array  $payload  = [],
-		?int   $entry_id = null,
-		string $channel  = ''
+		array $payload = array(),
+		?int $entry_id = null,
+		string $channel = ''
 	): void {
 		self::write_db( $event_type, $status, $message, $payload, $entry_id );
 		self::write_file( $channel ?: $event_type, $status, $message, $payload );
@@ -103,8 +103,8 @@ class Logger {
 		string $event_type,
 		string $status,
 		string $message,
-		array  $payload,
-		?int   $entry_id
+		array $payload,
+		?int $entry_id
 	): void {
 		global $wpdb;
 
@@ -112,10 +112,10 @@ class Logger {
 			return;
 		}
 
-		$data    = [];
-		$formats = [];
+		$data    = array();
+		$formats = array();
 
-		if ( $entry_id !== null ) {
+		if ( null !== $entry_id ) {
 			$data['entry_id'] = $entry_id;
 			$formats[]        = '%d';
 		}
@@ -126,7 +126,7 @@ class Logger {
 		$data['message']    = $message;
 		$data['created_at'] = current_time( 'mysql', true );
 
-		$formats = array_merge( $formats, [ '%s', '%s', '%s', '%s', '%s' ] );
+		$formats = array_merge( $formats, array( '%s', '%s', '%s', '%s', '%s' ) );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$wpdb->insert( $wpdb->prefix . 'neural_forms_logs', $data, $formats );
@@ -138,7 +138,7 @@ class Logger {
 		string $channel,
 		string $level,
 		string $message,
-		array  $context
+		array $context
 	): void {
 		try {
 			$dir = self::log_dir();
@@ -187,7 +187,7 @@ class Logger {
 	 */
 	private static function log_dir(): ?string {
 		$dir = self::logs_path();
-		if ( $dir === null ) {
+		if ( null === $dir ) {
 			return null;
 		}
 
@@ -238,7 +238,7 @@ class Logger {
 
 		// Files: remove log files older than 14 days.
 		$dir = self::logs_path();
-		if ( $dir === null || ! is_dir( $dir ) ) {
+		if ( null === $dir || ! is_dir( $dir ) ) {
 			return;
 		}
 

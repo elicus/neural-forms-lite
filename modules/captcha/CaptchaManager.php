@@ -88,7 +88,7 @@ class CaptchaManager {
 	public static function verify( string $token, string $ip ) {
 		$verifier = static::get_verifier();
 
-		if ( $verifier === null ) {
+		if ( null === $verifier ) {
 			return new \WP_Error(
 				'captcha_not_configured',
 				__( 'CAPTCHA is not configured.', 'neural-forms-lite' )

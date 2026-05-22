@@ -64,13 +64,13 @@ class SubmitEndpoint {
 		register_rest_route(
 			\NeuralForms\Rest\RestAPI::NAMESPACE,
 			'/forms/(?P<id>[\d]+)/submit',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'submit' ],
+				'callback'            => array( $this, 'submit' ),
 				// Public - no authentication required.
 				// Abuse prevention happens via the rate-limit and spam-check hooks.
 				'permission_callback' => '__return_true',
-			]
+			)
 		);
 	}
 
@@ -92,7 +92,7 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'form_not_found',
 				__( 'Form not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -104,7 +104,7 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'form_not_active',
 				__( 'This form is not currently accepting submissions.', 'neural-forms-lite' ),
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 
@@ -145,7 +145,7 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'rate_limit_exceeded',
 				__( 'Too many requests. Please wait before submitting again.', 'neural-forms-lite' ),
-				[ 'status' => 429 ]
+				array( 'status' => 429 )
 			);
 		}
 
@@ -163,7 +163,7 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'spam_detected',
 				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -173,13 +173,13 @@ class SubmitEndpoint {
 		// would be silently discarded if we read it any later.
 		//
 		// Fail-closed rules:
-		//   * form captcha_enabled = false '->-> skip entirely (no overhead).
-		//   * form captcha_enabled = true, provider not configured '->-> 400.
-		//   * form captcha_enabled = true, token missing '->-> 400.
-		//   * form captcha_enabled = true, token fails verification '->-> 400 + log.
+		// * form captcha_enabled = false '->-> skip entirely (no overhead).
+		// * form captcha_enabled = true, provider not configured '->-> 400.
+		// * form captcha_enabled = true, token missing '->-> 400.
+		// * form captcha_enabled = true, token fails verification '->-> 400 + log.
 		//
 		// Entry is never written when this block returns a WP_Error.
-		$form_settings   = is_array( $form['settings'] ) ? $form['settings'] : [];
+		$form_settings   = is_array( $form['settings'] ) ? $form['settings'] : array();
 		$captcha_enabled = ! empty( $form_settings['captcha_enabled'] );
 
 		// Only enforce CAPTCHA when the form has it enabled AND the global
@@ -195,7 +195,7 @@ class SubmitEndpoint {
 				return new WP_Error(
 					'captcha_missing',
 					__( 'Please complete the CAPTCHA.', 'neural-forms-lite' ),
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 
@@ -206,19 +206,19 @@ class SubmitEndpoint {
 					'captcha',
 					'warning',
 					sprintf( 'CAPTCHA verification failed for form %d', $form_id ),
-					[
+					array(
 						'provider'   => (string) Config::get( 'captcha_provider' ),
 						'error_code' => $captcha_result->get_error_code(),
 						'error_data' => $captcha_result->get_error_data(),
 						'form_id'    => $form_id,
 						'ip'         => $ip,
-					]
+					)
 				);
 
 				return new WP_Error(
 					'captcha_failed',
 					__( 'CAPTCHA verification failed. Please try again.', 'neural-forms-lite' ),
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 		}
@@ -233,7 +233,7 @@ class SubmitEndpoint {
 		// the leaf fields. Rows and columns are layout containers - they
 		// never appear in the submission pipeline.
 		$schema_fields_pre = SchemaHelper::flatten_fields(
-			is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : []
+			is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array()
 		);
 		// Public submission endpoint - auth is by design open (CAPTCHA + honeypot
 		// + rate limit gate above), so no nonce is sent. $_FILES is read here
@@ -275,11 +275,11 @@ class SubmitEndpoint {
 		//
 		// Fields whose condition evaluates to false are unset from $raw_data here,
 		// before validation. This ensures:
-		//   * Hidden required fields never fail validation.
-		//   * Hidden field values are never stored.
-		//   * Hidden file fields (already uploaded in step 4c) are not validated
-		//     or saved. The file will remain in the media library as an orphan;
-		//     this is an accepted V1 limitation.
+		// * Hidden required fields never fail validation.
+		// * Hidden field values are never stored.
+		// * Hidden file fields (already uploaded in step 4c) are not validated
+		// or saved. The file will remain in the media library as an orphan;
+		// this is an accepted V1 limitation.
 		//
 		// Fallback: if the controlling field is absent from submitted data, treat
 		// the dependent field as visible (do NOT strip it). This avoids silently
@@ -296,7 +296,7 @@ class SubmitEndpoint {
 				? $_cl_field['conditional_logic']
 				: null;
 
-			if ( $_cl === null || empty( $_cl['enabled'] ) || empty( (string) ( $_cl['field'] ?? '' ) ) ) {
+			if ( null === $_cl || empty( $_cl['enabled'] ) || empty( (string) ( $_cl['field'] ?? '' ) ) ) {
 				continue;
 			}
 
@@ -317,7 +317,7 @@ class SubmitEndpoint {
 		// used by the rest of this method, so the validator never sees
 		// the locked field and never produces a required error for it.
 		if ( ! Capabilities::can( Capabilities::FIELD_MATRIX ) ) {
-			$matrix_ids = [];
+			$matrix_ids = array();
 			foreach ( $schema_fields as $_cap_field ) {
 				$_cap_field = (array) $_cap_field;
 				if ( ( $_cap_field['type'] ?? '' ) === 'matrix' && ! empty( $_cap_field['id'] ) ) {
@@ -327,13 +327,15 @@ class SubmitEndpoint {
 			foreach ( $matrix_ids as $_mid ) {
 				unset( $raw_data[ $_mid ] );
 			}
-			$schema_fields = array_values( array_filter(
-				$schema_fields,
-				static function ( $f ) {
-					$f = (array) $f;
-					return ( $f['type'] ?? '' ) !== 'matrix';
-				}
-			) );
+			$schema_fields = array_values(
+				array_filter(
+					$schema_fields,
+					static function ( $f ) {
+						$f = (array) $f;
+						return ( $f['type'] ?? '' ) !== 'matrix';
+					}
+				)
+			);
 		}
 
 		// ' Step 5: Spam-check gate '
@@ -346,7 +348,7 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'spam_detected',
 				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -373,13 +375,13 @@ class SubmitEndpoint {
 		// These values are server-derived, never client-trusted.
 		// form_version is an MD5 of the schema at the moment of submission -
 		// useful later to detect entries captured against an older schema shape.
-		$context = [
+		$context = array(
 			'ip'           => $ip,
 			'user_agent'   => sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
 			'page_url'     => esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ?? '' ) ),
 			'submitted_at' => current_time( 'mysql', true ),   // UTC
 			'form_version' => md5( (string) wp_json_encode( $form['form_schema'] ) ),
-		];
+		);
 
 		// ' Step 9: Persist '
 		// EntryRepository::create() already logs the raw DB error internally.
@@ -390,7 +392,7 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'entry_save_failed',
 				__( 'Could not save your submission. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -399,16 +401,16 @@ class SubmitEndpoint {
 		// None of them can abort the response - the entry is already saved.
 		//
 		// IMPORTANT - hook implementations must be non-blocking:
-		//   * Do not deliver emails synchronously inside the hook.
-		//   * Do not call external AI APIs inline - enqueue a job instead.
-		//   Blocking here delays the HTTP response for every submission.
+		// * Do not deliver emails synchronously inside the hook.
+		// * Do not call external AI APIs inline - enqueue a job instead.
+		// Blocking here delays the HTTP response for every submission.
 		//
 		// IMPORTANT - hook failures are currently silent (fire-and-forget).
 		// When notification and AI listeners are implemented, they must write
 		// failures to neural_forms_logs or update queue row status so that:
-		//   * Failed email deliveries are visible in the admin entries view.
-		//   * Stuck AI jobs can be retried without re-processing the entry.
-		//   * Debugging does not require tailing server error logs.
+		// * Failed email deliveries are visible in the admin entries view.
+		// * Stuck AI jobs can be retried without re-processing the entry.
+		// * Debugging does not require tailing server error logs.
 		// The neural_forms_logs and neural_forms_queue tables already exist for this purpose.
 
 		// Canonical "submission happened" event.
@@ -439,17 +441,17 @@ class SubmitEndpoint {
 		do_action( 'neural_forms_queue_ai_processing', $entry_id, $form_id );
 
 		// ' Step 11: Success response '
-		$body = [
+		$body = array(
 			'success'  => true,
 			'entry_id' => $entry_id,
-		];
+		);
 
 		// Poll Phase 3: piggyback poll results on the submit response so
 		// after_vote / always polls can refresh visually without a second
 		// round-trip. visibility="never" polls are intentionally omitted.
 		// $sanitized_data is the just-saved row's values (entry already
 		// inserted, so the totals reflect THIS submission too).
-		$polls_payload = $this->build_poll_results_payload( $form_id, $form['form_schema'] ?? [] );
+		$polls_payload = $this->build_poll_results_payload( $form_id, $form['form_schema'] ?? array() );
 		if ( ! empty( $polls_payload ) ) {
 			$body['polls'] = $polls_payload;
 		}
@@ -460,8 +462,8 @@ class SubmitEndpoint {
 		// show_correct_answer === 'never', correct_value/correct_label/
 		// explanation are stripped before the response leaves the
 		// server (the user still sees their pass/fail verdict).
-		$quiz_payload = $this->build_quiz_result_payload( $form['form_schema'] ?? [], $sanitized_data );
-		if ( $quiz_payload !== null ) {
+		$quiz_payload = $this->build_quiz_result_payload( $form['form_schema'] ?? array(), $sanitized_data );
+		if ( null !== $quiz_payload ) {
 			$body['quiz'] = $quiz_payload;
 		}
 
@@ -545,12 +547,12 @@ class SubmitEndpoint {
 	 * @return true|\WP_Error
 	 */
 	private function check_poll_quiz_submission_limit( array $form ) {
-		$type = \NeuralForms\Forms\FormTypeDetector::detect( $form['form_schema'] ?? null );
-		$limited_types = [
+		$type          = \NeuralForms\Forms\FormTypeDetector::detect( $form['form_schema'] ?? null );
+		$limited_types = array(
 			\NeuralForms\Forms\FormTypeDetector::TYPE_POLL,
 			\NeuralForms\Forms\FormTypeDetector::TYPE_QUIZ,
 			\NeuralForms\Forms\FormTypeDetector::TYPE_MIXED,
-		];
+		);
 		if ( ! in_array( $type, $limited_types, true ) ) {
 			return true;
 		}
@@ -577,12 +579,12 @@ class SubmitEndpoint {
 				'This poll or quiz has reached the 1,000 submission limit available in Lite. Upgrade to Pro to continue collecting responses.',
 				'neural-forms-lite'
 			),
-			[
+			array(
 				'status'      => 403,
 				'limit'       => $limit,
 				'count'       => $count,
 				'upgrade_url' => 'https://neuralforms.ai/pro/',
-			]
+			)
 		);
 	}
 
@@ -593,49 +595,57 @@ class SubmitEndpoint {
 	 */
 	private function build_poll_results_payload( int $form_id, $form_schema ): array {
 		if ( ! is_array( $form_schema ) ) {
-			return [];
+			return array();
 		}
-		$fields = is_array( $form_schema['fields'] ?? null ) ? $form_schema['fields'] : [];
+		$fields = is_array( $form_schema['fields'] ?? null ) ? $form_schema['fields'] : array();
 		if ( empty( $fields ) ) {
-			return [];
+			return array();
 		}
 
-		$out = [];
+		$out = array();
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $field ) {
-			if ( ( $field['type'] ?? '' ) !== 'poll' ) continue;
+			if ( ( $field['type'] ?? '' ) !== 'poll' ) {
+				continue;
+			}
 
 			$field_id = (string) ( $field['id'] ?? '' );
-			if ( $field_id === '' ) continue;
+			if ( $field_id === '' ) {
+				continue;
+			}
 
 			$settings   = SchemaHelper::normalize_poll_settings( $field['settings'] ?? null );
 			$visibility = $settings['results_visibility'];
-			if ( $visibility === 'never' ) continue;
+			if ( $visibility === 'never' ) {
+				continue;
+			}
 
 			$agg    = EntryRepository::aggregate_poll_votes( $form_id, $field_id );
-			$total  = (int) ( $agg['total']  ?? 0 );
-			$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : [];
+			$total  = (int) ( $agg['total'] ?? 0 );
+			$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : array();
 
-			$schema_options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
-			$known          = [];
-			$response_opts  = [];
+			$schema_options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+			$known          = array();
+			$response_opts  = array();
 
 			foreach ( $schema_options as $opt ) {
 				$opt   = (array) $opt;
 				$label = (string) ( $opt['label'] ?? '' );
 				$raw   = (string) ( $opt['value'] ?? '' );
 				$value = $raw !== '' ? $raw : $label;
-				if ( $value === '' ) continue;
+				if ( $value === '' ) {
+					continue;
+				}
 
 				$known[] = $value;
 				$votes   = (int) ( $counts[ $value ] ?? 0 );
 				$pct     = $total > 0 ? round( ( $votes / $total ) * 100, 2 ) : 0.0;
 
-				$response_opts[] = [
+				$response_opts[] = array(
 					'label'      => $label !== '' ? $label : $value,
 					'value'      => $value,
 					'votes'      => $votes,
 					'percentage' => $pct,
-				];
+				);
 			}
 
 			// Synthetic Other bucket: only emit when > 0.
@@ -646,20 +656,20 @@ class SubmitEndpoint {
 				}
 			}
 			if ( $other > 0 ) {
-				$response_opts[] = [
+				$response_opts[] = array(
 					'label'      => __( 'Other', 'neural-forms-lite' ),
 					'value'      => '__other__',
 					'votes'      => $other,
 					'percentage' => $total > 0 ? round( ( $other / $total ) * 100, 2 ) : 0.0,
-				];
+				);
 			}
 
-			$out[ $field_id ] = [
+			$out[ $field_id ] = array(
 				'total_votes'        => $total,
 				'options'            => $response_opts,
 				'chart_type'         => $settings['chart_type'],
 				'results_visibility' => $visibility,
-			];
+			);
 		}
 
 		return $out;
@@ -692,26 +702,30 @@ class SubmitEndpoint {
 		if ( ! is_array( $form_schema ) ) {
 			return null;
 		}
-		$fields = is_array( $form_schema['fields'] ?? null ) ? $form_schema['fields'] : [];
+		$fields = is_array( $form_schema['fields'] ?? null ) ? $form_schema['fields'] : array();
 		if ( empty( $fields ) ) {
 			return null;
 		}
 
-		$questions = [];
+		$questions = array();
 		$score     = 0;
 		$max_score = 0;
 
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $field ) {
-			if ( ( $field['type'] ?? '' ) !== 'quiz_question' ) continue;
+			if ( ( $field['type'] ?? '' ) !== 'quiz_question' ) {
+				continue;
+			}
 
 			$field_id = (string) ( $field['id'] ?? '' );
-			if ( $field_id === '' ) continue;
+			if ( $field_id === '' ) {
+				continue;
+			}
 
-			$settings    = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
-			$default_pts = (int) $settings['points'];
+			$settings     = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
+			$default_pts  = (int) $settings['points'];
 			$show_correct = $settings['show_correct_answer'] === 'after_submit';
 
-			$options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+			$options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
 
 			// Detect whether this question uses weighted scoring (any
 			// option with numeric `points` >= 0). When weighted, the
@@ -725,9 +739,13 @@ class SubmitEndpoint {
 				$opt = (array) $opt;
 				if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
 					$pts = (int) round( (float) $opt['points'] );
-					if ( $pts < 0 ) $pts = 0;
+					if ( $pts < 0 ) {
+						$pts = 0;
+					}
 					$has_weighted = true;
-					if ( $pts > $option_max ) $option_max = $pts;
+					if ( $pts > $option_max ) {
+						$option_max = $pts;
+					}
 				}
 			}
 			$points_max = $has_weighted ? $option_max : $default_pts;
@@ -740,32 +758,34 @@ class SubmitEndpoint {
 			$correct_label = '';
 			foreach ( $options as $opt ) {
 				$opt = (array) $opt;
-				if ( empty( $opt['is_correct'] ) ) continue;
-				$opt_label = (string) ( $opt['label'] ?? '' );
-				$opt_raw   = (string) ( $opt['value'] ?? '' );
+				if ( empty( $opt['is_correct'] ) ) {
+					continue;
+				}
+				$opt_label     = (string) ( $opt['label'] ?? '' );
+				$opt_raw       = (string) ( $opt['value'] ?? '' );
 				$correct_value = $opt_raw !== '' ? $opt_raw : $opt_label;
 				$correct_label = $opt_label !== '' ? $opt_label : $correct_value;
 				break;
 			}
 
 			// Selected value (may be missing for optional/unanswered).
-			$selected_raw = $sanitized_data[ $field_id ] ?? null;
-			$selected_value = ( $selected_raw === null || $selected_raw === '' ) ? null : (string) $selected_raw;
+			$selected_raw   = $sanitized_data[ $field_id ] ?? null;
+			$selected_value = ( null === $selected_raw || $selected_raw === '' ) ? null : (string) $selected_raw;
 
 			// Selected label: look up the option whose effective
 			// value matches the submission.
 			$selected_label  = null;
 			$selected_points = null; // for weighted scoring
-			if ( $selected_value !== null ) {
+			if ( null !== $selected_value ) {
 				foreach ( $options as $opt ) {
-					$opt = (array) $opt;
+					$opt       = (array) $opt;
 					$opt_label = (string) ( $opt['label'] ?? '' );
 					$opt_raw   = (string) ( $opt['value'] ?? '' );
 					$effective = $opt_raw !== '' ? $opt_raw : $opt_label;
 					if ( $effective === $selected_value ) {
 						$selected_label = $opt_label !== '' ? $opt_label : $effective;
 						if ( array_key_exists( 'points', $opt ) && is_numeric( $opt['points'] ) ) {
-							$pts = (int) round( (float) $opt['points'] );
+							$pts             = (int) round( (float) $opt['points'] );
 							$selected_points = $pts < 0 ? 0 : $pts;
 						}
 						break;
@@ -773,19 +793,19 @@ class SubmitEndpoint {
 				}
 			}
 
-			$is_correct = ( $selected_value !== null && $correct_value !== '' && $selected_value === $correct_value );
+			$is_correct = ( null !== $selected_value && $correct_value !== '' && $selected_value === $correct_value );
 
 			if ( $has_weighted ) {
 				// Weighted: award the selected option's points (default 0
 				// if the chosen option had no `points` key — partial
 				// credit only counts where the schema declared it).
-				$points_awarded = $selected_points !== null ? $selected_points : 0;
+				$points_awarded = null !== $selected_points ? $selected_points : 0;
 			} else {
 				$points_awarded = $is_correct ? $default_pts : 0;
 			}
 			$score += $points_awarded;
 
-			$entry = [
+			$entry = array(
 				'field_id'            => $field_id,
 				'label'               => (string) ( $field['label'] ?? '' ),
 				'selected_value'      => $selected_value,
@@ -794,7 +814,7 @@ class SubmitEndpoint {
 				'points_awarded'      => $points_awarded,
 				'points_possible'     => $points_max,
 				'show_correct_answer' => $show_correct,
-			];
+			);
 
 			if ( $show_correct ) {
 				$entry['correct_value'] = $correct_value;
@@ -811,19 +831,19 @@ class SubmitEndpoint {
 
 		$percentage = $max_score > 0 ? round( ( $score / $max_score ) * 100, 2 ) : 0.0;
 
-		$payload = [
+		$payload = array(
 			'score'      => $score,
 			'max_score'  => $max_score,
 			'percentage' => $percentage,
 			'questions'  => $questions,
-		];
+		);
 
 		// Form-level quiz settings (Phase 3): pass/fail + result
 		// message. Lives at form_schema.settings.quiz so it never
 		// collides with form.settings (submission/security namespace).
 		// Defaults are no-op: show_pass_fail=false leaves the payload
 		// shape identical to Phase 1/2.
-		$schema_settings = is_array( $form_schema['settings'] ?? null ) ? $form_schema['settings'] : [];
+		$schema_settings = is_array( $form_schema['settings'] ?? null ) ? $form_schema['settings'] : array();
 		$quiz_form       = SchemaHelper::normalize_quiz_form_settings( $schema_settings['quiz'] ?? null );
 
 		if ( ! empty( $quiz_form['show_pass_fail'] ) ) {
@@ -836,10 +856,10 @@ class SubmitEndpoint {
 		// want feedback messages without a hard pass/fail badge.
 		foreach ( $quiz_form['result_messages'] as $msg ) {
 			if ( $percentage >= (float) $msg['min'] && $percentage <= (float) $msg['max'] ) {
-				$payload['result_message'] = [
+				$payload['result_message'] = array(
 					'title'   => (string) $msg['title'],
 					'message' => (string) $msg['message'],
-				];
+				);
 				break;
 			}
 		}
@@ -863,7 +883,7 @@ class SubmitEndpoint {
 	 * @return array                Associative array of field_id => sanitized value.
 	 */
 	private function sanitize_fields( array $schema_fields, array $raw_data ): array {
-		$sanitized = [];
+		$sanitized = array();
 
 		foreach ( $schema_fields as $field ) {
 			$field    = (array) $field;
@@ -881,7 +901,7 @@ class SubmitEndpoint {
 			$value = $raw_data[ $field_id ];
 
 			// Null means the client explicitly sent null - treat as absent.
-			if ( $value === null ) {
+			if ( null === $value ) {
 				continue;
 			}
 
@@ -935,7 +955,7 @@ class SubmitEndpoint {
 			case 'checkboxes':
 				// Array of selected option values. Sanitize each element.
 				if ( ! is_array( $value ) ) {
-					return [];
+					return array();
 				}
 				return array_map( 'sanitize_text_field', array_values( $value ) );
 
@@ -955,8 +975,8 @@ class SubmitEndpoint {
 
 			case 'matrix':
 				// Stored shape mirrors what the validator accepted:
-				//   radio:    [ row_key => "col_value" ]
-				//   checkbox: [ row_key => [ "col_a", "col_b" ] ]
+				// radio:    [ row_key => "col_value" ]
+				// checkbox: [ row_key => [ "col_a", "col_b" ] ]
 				// Unknown row keys and unknown column values are dropped
 				// here as a defence-in-depth pass; the validator already
 				// rejected invalid columns in column-tampering cases, but
@@ -967,7 +987,7 @@ class SubmitEndpoint {
 
 			case 'repeater':
 				// Stored shape mirrors what the validator accepted:
-				//   [ { child_id => value, ... }, { child_id => value, ... }, ... ]
+				// [ { child_id => value, ... }, { child_id => value, ... }, ... ]
 				// where each iteration carries every child template's
 				// value. Sanitizer dispatches per-child via
 				// sanitize_value (recursive) so file children carry
@@ -1005,17 +1025,17 @@ class SubmitEndpoint {
 	 */
 	private function sanitize_matrix( $value, array $field ): array {
 		if ( ! is_array( $value ) ) {
-			return [];
+			return array();
 		}
 
-		$settings  = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
+		$settings  = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
 		$selection = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
 
 		// Build the allowlists locally (small, matrix-field-scoped) so
 		// the endpoint does not need to depend on the validator's private
 		// helpers. Same effective-value rule (value || label).
-		$allowed_rows = [];
-		foreach ( ( $settings['rows'] ?? [] ) as $row ) {
+		$allowed_rows = array();
+		foreach ( ( $settings['rows'] ?? array() ) as $row ) {
 			$row = (array) $row;
 			$v   = (string) ( $row['value'] ?? '' );
 			$l   = (string) ( $row['label'] ?? '' );
@@ -1024,8 +1044,8 @@ class SubmitEndpoint {
 				$allowed_rows[ $eff ] = true;
 			}
 		}
-		$allowed_cols = [];
-		foreach ( ( $settings['columns'] ?? [] ) as $col ) {
+		$allowed_cols = array();
+		foreach ( ( $settings['columns'] ?? array() ) as $col ) {
 			$col = (array) $col;
 			$v   = (string) ( $col['value'] ?? '' );
 			$l   = (string) ( $col['label'] ?? '' );
@@ -1035,7 +1055,7 @@ class SubmitEndpoint {
 			}
 		}
 
-		$out = [];
+		$out = array();
 		foreach ( $value as $row_key => $row_val ) {
 			$row_key_str = sanitize_text_field( (string) $row_key );
 			if ( ! isset( $allowed_rows[ $row_key_str ] ) ) {
@@ -1046,7 +1066,7 @@ class SubmitEndpoint {
 				if ( ! is_array( $row_val ) ) {
 					continue;
 				}
-				$picked = [];
+				$picked = array();
 				foreach ( $row_val as $rv ) {
 					if ( ! is_scalar( $rv ) ) {
 						continue;
@@ -1102,26 +1122,30 @@ class SubmitEndpoint {
 	 */
 	private function sanitize_repeater( $value, array $field ): array {
 		if ( ! is_array( $value ) ) {
-			return [];
+			return array();
 		}
-		$children_schema = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+		$children_schema = is_array( $field['fields'] ?? null ) ? $field['fields'] : array();
 		if ( empty( $children_schema ) ) {
-			return [];
+			return array();
 		}
 
-		$out = [];
+		$out = array();
 		foreach ( array_values( $value ) as $row ) {
-			if ( ! is_array( $row ) ) continue;
-			$cleaned = [];
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$cleaned      = array();
 			$has_anything = false;
 			$has_file     = false;
 
 			foreach ( $children_schema as $child ) {
-				if ( ! is_array( $child ) || empty( $child['id'] ) ) continue;
+				if ( ! is_array( $child ) || empty( $child['id'] ) ) {
+					continue;
+				}
 				$child_id    = (string) $child['id'];
 				$child_value = array_key_exists( $child_id, $row ) ? $row[ $child_id ] : null;
 
-				if ( $child_value === null ) {
+				if ( null === $child_value ) {
 					// Optional child absent — skip.
 					continue;
 				}
@@ -1131,7 +1155,7 @@ class SubmitEndpoint {
 				// "Has anything" detection: skip empty strings, empty
 				// arrays, and 0/0.0 numerics so a row full of
 				// uninteresting defaults still drops cleanly.
-				$is_empty = ( $sanitized === '' || $sanitized === null )
+				$is_empty = ( $sanitized === '' || null === $sanitized )
 					|| ( is_array( $sanitized ) && empty( $sanitized ) );
 
 				$is_file = (
@@ -1188,16 +1212,16 @@ class SubmitEndpoint {
 	 * Mirrors JS FILE_TYPE_OPTIONS in FieldItem.js - group slugs must match.
 	 * Used in process_file_fields() to validate uploaded file MIME types.
 	 */
-	private const ALLOWED_MIME_GROUPS = [
-		'image'    => [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ],
-		'pdf'      => [ 'application/pdf' ],
-		'document' => [
+	private const ALLOWED_MIME_GROUPS = array(
+		'image'    => array( 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ),
+		'pdf'      => array( 'application/pdf' ),
+		'document' => array(
 			'application/msword',
 			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 			'application/vnd.oasis.opendocument.text',
-		],
-		'text'     => [ 'text/plain', 'text/csv' ],
-	];
+		),
+		'text'     => array( 'text/plain', 'text/csv' ),
+	);
 
 	/**
 	 * Process file fields from $_FILES, upload them to the WordPress media
@@ -1240,7 +1264,9 @@ class SubmitEndpoint {
 	 */
 	private function process_repeater_file_fields( array $schema_fields, array $raw_body ) {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		if ( empty( $_FILES ) ) return $raw_body;
+		if ( empty( $_FILES ) ) {
+			return $raw_body;
+		}
 
 		// Make sure WP upload functions are loaded — process_file_fields()
 		// already requires them in the flat path but if the flat loop
@@ -1255,16 +1281,23 @@ class SubmitEndpoint {
 
 		foreach ( $schema_fields as $field ) {
 			$field = (array) $field;
-			if ( ( $field['type'] ?? '' ) !== 'repeater' ) continue;
+			if ( ( $field['type'] ?? '' ) !== 'repeater' ) {
+				continue;
+			}
 			$repeater_id = (string) ( $field['id'] ?? '' );
-			if ( $repeater_id === '' ) continue;
+			if ( $repeater_id === '' ) {
+				continue;
+			}
 
-			$children = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
+			$children      = is_array( $field['fields'] ?? null ) ? $field['fields'] : array();
 			$file_children = array_filter(
 				$children,
-				static function ( $c ) { return is_array( $c ) && ( $c['type'] ?? '' ) === 'file'; }
+				static function ( $c ) {
+					return is_array( $c ) && ( $c['type'] ?? '' ) === 'file'; }
 			);
-			if ( empty( $file_children ) ) continue;
+			if ( empty( $file_children ) ) {
+				continue;
+			}
 
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing
 			if ( ! isset( $_FILES[ $repeater_id ] ) || ! is_array( $_FILES[ $repeater_id ] ) ) {
@@ -1286,9 +1319,11 @@ class SubmitEndpoint {
 			}
 
 			foreach ( $file_children as $child ) {
-				$child = (array) $child;
+				$child    = (array) $child;
 				$child_id = (string) ( $child['id'] ?? '' );
-				if ( $child_id === '' ) continue;
+				if ( $child_id === '' ) {
+					continue;
+				}
 
 				foreach ( $files_root['name'] as $idx => $children_names ) {
 					if ( ! is_array( $children_names ) || ! isset( $children_names[ $child_id ] ) ) {
@@ -1303,7 +1338,7 @@ class SubmitEndpoint {
 					// Reconstruct a flat file_info for this cell. Each
 					// of the parallel arrays may or may not have the
 					// matching path — guard each lookup.
-					$file_info = [
+					$file_info = array(
 						// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.NonceVerification.Missing
 						'name'     => sanitize_file_name( wp_unslash( $raw_name ) ),
 						'type'     => isset( $files_root['type'][ $idx ][ $child_id ] )
@@ -1319,7 +1354,7 @@ class SubmitEndpoint {
 						'size'     => isset( $files_root['size'][ $idx ][ $child_id ] )
 							? (int) $files_root['size'][ $idx ][ $child_id ]
 							: 0,
-					];
+					);
 
 					if ( $file_info['error'] === UPLOAD_ERR_NO_FILE ) {
 						continue;
@@ -1328,11 +1363,11 @@ class SubmitEndpoint {
 						return new WP_Error(
 							'file_upload_error',
 							__( 'A file upload error occurred. Please try again.', 'neural-forms-lite' ),
-							[ 'status' => 400 ]
+							array( 'status' => 400 )
 						);
 					}
 
-					$path = $repeater_id . '[' . $idx . '][' . $child_id . ']';
+					$path   = $repeater_id . '[' . $idx . '][' . $child_id . ']';
 					$upload = $this->upload_file_cell( $file_info, $child, $path );
 					if ( is_wp_error( $upload ) ) {
 						return $upload;
@@ -1341,10 +1376,10 @@ class SubmitEndpoint {
 					// Inject into raw_body at the right nested path so
 					// sanitize_repeater finds it later.
 					if ( ! isset( $raw_body[ $repeater_id ] ) || ! is_array( $raw_body[ $repeater_id ] ) ) {
-						$raw_body[ $repeater_id ] = [];
+						$raw_body[ $repeater_id ] = array();
 					}
 					if ( ! isset( $raw_body[ $repeater_id ][ $idx ] ) || ! is_array( $raw_body[ $repeater_id ][ $idx ] ) ) {
-						$raw_body[ $repeater_id ][ $idx ] = [];
+						$raw_body[ $repeater_id ][ $idx ] = array();
 					}
 					$raw_body[ $repeater_id ][ $idx ][ $child_id ] = $upload;
 				}
@@ -1372,40 +1407,42 @@ class SubmitEndpoint {
 	 * @return array|\WP_Error
 	 */
 	private function upload_file_cell( array $file_info, array $field, string $error_field_path ) {
-		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : [];
+		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
 		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
 			? (int) $field['max_file_size']
 			: 5;
-		$max_bytes = $max_mb * 1024 * 1024;
+		$max_bytes     = $max_mb * 1024 * 1024;
 
 		if ( $file_info['size'] > $max_bytes ) {
 			$label = trim( $field['label'] ?? '' ) !== '' ? trim( $field['label'] ) : ( (string) ( $field['id'] ?? 'file' ) );
 			return new WP_Error(
 				'invalid_submission',
 				__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-				[
+				array(
 					'status' => 422,
-					'fields' => [
-						$error_field_path => [ [
-							'code'    => 'file_too_large',
-							'message' => sprintf(
-								/* translators: 1: field label  2: max size in MB */
-								__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
-								$label,
-								$max_mb
+					'fields' => array(
+						$error_field_path => array(
+							array(
+								'code'    => 'file_too_large',
+								'message' => sprintf(
+									/* translators: 1: field label  2: max size in MB */
+									__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
+									$label,
+									$max_mb
+								),
 							),
-						] ],
-					],
-				]
+						),
+					),
+				)
 			);
 		}
 
 		$upload_mimes = $this->build_allowed_mimes( $allowed_types );
-		$check       = wp_check_filetype_and_ext( $file_info['tmp_name'], $file_info['name'], $upload_mimes );
-		$actual_mime = $check['type'] ?: '';
+		$check        = wp_check_filetype_and_ext( $file_info['tmp_name'], $file_info['name'], $upload_mimes );
+		$actual_mime  = $check['type'] ?: '';
 
 		if ( ! empty( $allowed_types ) ) {
-			$allowed_mimes = [];
+			$allowed_mimes = array();
 			foreach ( $allowed_types as $group ) {
 				if ( isset( self::ALLOWED_MIME_GROUPS[ $group ] ) ) {
 					$allowed_mimes = array_merge( $allowed_mimes, self::ALLOWED_MIME_GROUPS[ $group ] );
@@ -1416,27 +1453,29 @@ class SubmitEndpoint {
 				return new WP_Error(
 					'invalid_submission',
 					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-					[
+					array(
 						'status' => 422,
-						'fields' => [
-							$error_field_path => [ [
-								'code'    => 'invalid_file_type',
-								/* translators: %s: field label */
-								'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
-							] ],
-						],
-					]
+						'fields' => array(
+							$error_field_path => array(
+								array(
+									'code'    => 'invalid_file_type',
+									/* translators: %s: field label */
+									'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
+								),
+							),
+						),
+					)
 				);
 			}
 		}
 
 		$upload = wp_handle_upload(
 			$file_info,
-			[
+			array(
 				'test_form'                => false,
 				'mimes'                    => $upload_mimes,
-				'unique_filename_callback' => [ self::class, 'randomize_upload_filename' ],
-			]
+				'unique_filename_callback' => array( self::class, 'randomize_upload_filename' ),
+			)
 		);
 		if ( isset( $upload['error'] ) ) {
 			Logger::file(
@@ -1447,17 +1486,17 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'file_upload_failed',
 				__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		$attachment_id = wp_insert_attachment(
-			[
+			array(
 				'post_mime_type' => $upload['type'],
 				'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
 				'post_content'   => '',
 				'post_status'    => 'inherit',
-			],
+			),
 			$upload['file']
 		);
 		if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
@@ -1470,20 +1509,20 @@ class SubmitEndpoint {
 			return new WP_Error(
 				'file_upload_failed',
 				__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		$attach_data = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
 		wp_update_attachment_metadata( $attachment_id, $attach_data );
 
-		return [
+		return array(
 			'attachment_id' => $attachment_id,
 			'url'           => $upload['url'],
 			'filename'      => sanitize_file_name( (string) $file_info['name'] ),
 			'mime_type'     => $upload['type'],
 			'size'          => (int) filesize( $upload['file'] ),
-		];
+		);
 	}
 
 	private function process_file_fields( array $schema_fields, array $raw_body ) {
@@ -1504,11 +1543,11 @@ class SubmitEndpoint {
 			}
 
 			$required      = ! empty( $field['required'] );
-			$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : [];
+			$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
 			$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
 				? (int) $field['max_file_size']
 				: 5;
-			$max_bytes = $max_mb * 1024 * 1024;
+			$max_bytes     = $max_mb * 1024 * 1024;
 
 			// Public endpoint - see the nonce-ignore on the $_FILES gate above.
 			// File contents are validated below with wp_check_filetype_and_ext()
@@ -1516,14 +1555,14 @@ class SubmitEndpoint {
 			// from $_FILES (name, type) are run through sanitize_text_field()
 			// here so phpcs sees explicit sanitization on the raw input.
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash
-			$raw_file = isset( $_FILES[ $field_id ] ) ? $_FILES[ $field_id ] : null;
-			$file_info = is_array( $raw_file ) ? [
-				'name'     => isset( $raw_file['name'] )     ? sanitize_file_name( wp_unslash( $raw_file['name'] ) )     : '',
-				'type'     => isset( $raw_file['type'] )     ? sanitize_mime_type( wp_unslash( $raw_file['type'] ) )     : '',
-				'tmp_name' => isset( $raw_file['tmp_name'] ) ? $raw_file['tmp_name']                                     : '',
-				'error'    => isset( $raw_file['error'] )    ? (int) $raw_file['error']                                  : UPLOAD_ERR_NO_FILE,
-				'size'     => isset( $raw_file['size'] )     ? (int) $raw_file['size']                                   : 0,
-			] : null;
+			$raw_file  = isset( $_FILES[ $field_id ] ) ? $_FILES[ $field_id ] : null;
+			$file_info = is_array( $raw_file ) ? array(
+				'name'     => isset( $raw_file['name'] ) ? sanitize_file_name( wp_unslash( $raw_file['name'] ) ) : '',
+				'type'     => isset( $raw_file['type'] ) ? sanitize_mime_type( wp_unslash( $raw_file['type'] ) ) : '',
+				'tmp_name' => isset( $raw_file['tmp_name'] ) ? $raw_file['tmp_name'] : '',
+				'error'    => isset( $raw_file['error'] ) ? (int) $raw_file['error'] : UPLOAD_ERR_NO_FILE,
+				'size'     => isset( $raw_file['size'] ) ? (int) $raw_file['size'] : 0,
+			) : null;
 
 			// No file uploaded for this field.
 			if ( ! $file_info || $file_info['error'] === UPLOAD_ERR_NO_FILE || empty( $file_info['name'] ) ) {
@@ -1532,16 +1571,18 @@ class SubmitEndpoint {
 					return new WP_Error(
 						'invalid_submission',
 						__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-						[
+						array(
 							'status' => 422,
-							'fields' => [
-								$field_id => [ [
-									'code'    => 'required',
-									/* translators: %s: field label */
-									'message' => sprintf( __( '%s is required.', 'neural-forms-lite' ), $label ),
-								] ],
-							],
-						]
+							'fields' => array(
+								$field_id => array(
+									array(
+										'code'    => 'required',
+										/* translators: %s: field label */
+										'message' => sprintf( __( '%s is required.', 'neural-forms-lite' ), $label ),
+									),
+								),
+							),
+						)
 					);
 				}
 				// Optional and absent - skip.
@@ -1553,7 +1594,7 @@ class SubmitEndpoint {
 				return new WP_Error(
 					'file_upload_error',
 					__( 'A file upload error occurred. Please try again.', 'neural-forms-lite' ),
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 
@@ -1563,20 +1604,22 @@ class SubmitEndpoint {
 				return new WP_Error(
 					'invalid_submission',
 					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-					[
+					array(
 						'status' => 422,
-						'fields' => [
-							$field_id => [ [
-								'code'    => 'file_too_large',
-								'message' => sprintf(
-									/* translators: 1: field label  2: max size in MB */
-									__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
-									$label,
-									$max_mb
+						'fields' => array(
+							$field_id => array(
+								array(
+									'code'    => 'file_too_large',
+									'message' => sprintf(
+										/* translators: 1: field label  2: max size in MB */
+										__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
+										$label,
+										$max_mb
+									),
 								),
-							] ],
-						],
-					]
+							),
+						),
+					)
 				);
 			}
 
@@ -1599,7 +1642,7 @@ class SubmitEndpoint {
 			$actual_mime = $check['type'] ?: '';
 
 			if ( ! empty( $allowed_types ) ) {
-				$allowed_mimes = [];
+				$allowed_mimes = array();
 				foreach ( $allowed_types as $group ) {
 					if ( isset( self::ALLOWED_MIME_GROUPS[ $group ] ) ) {
 						$allowed_mimes = array_merge( $allowed_mimes, self::ALLOWED_MIME_GROUPS[ $group ] );
@@ -1611,16 +1654,18 @@ class SubmitEndpoint {
 					return new WP_Error(
 						'invalid_submission',
 						__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-						[
+						array(
 							'status' => 422,
-							'fields' => [
-								$field_id => [ [
-									'code'    => 'invalid_file_type',
-									/* translators: %s: field label */
-									'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
-								] ],
-							],
-						]
+							'fields' => array(
+								$field_id => array(
+									array(
+										'code'    => 'invalid_file_type',
+										/* translators: %s: field label */
+										'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
+									),
+								),
+							),
+						)
 					);
 				}
 			}
@@ -1637,11 +1682,11 @@ class SubmitEndpoint {
 			// in the entry's `data` column for admin display + CSV export.
 			$upload = wp_handle_upload(
 				$file_info,
-				[
+				array(
 					'test_form'                => false,
 					'mimes'                    => $upload_mimes,
-					'unique_filename_callback' => [ self::class, 'randomize_upload_filename' ],
-				]
+					'unique_filename_callback' => array( self::class, 'randomize_upload_filename' ),
+				)
 			);
 
 			if ( isset( $upload['error'] ) ) {
@@ -1653,18 +1698,18 @@ class SubmitEndpoint {
 				return new WP_Error(
 					'file_upload_failed',
 					__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
-					[ 'status' => 500 ]
+					array( 'status' => 500 )
 				);
 			}
 
 			// Insert into the media library.
 			$attachment_id = wp_insert_attachment(
-				[
+				array(
 					'post_mime_type' => $upload['type'],
 					'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
 					'post_content'   => '',
 					'post_status'    => 'inherit',
-				],
+				),
 				$upload['file']
 			);
 
@@ -1678,7 +1723,7 @@ class SubmitEndpoint {
 				return new WP_Error(
 					'file_upload_failed',
 					__( 'Could not save the uploaded file. Please try again.', 'neural-forms-lite' ),
-					[ 'status' => 500 ]
+					array( 'status' => 500 )
 				);
 			}
 
@@ -1692,13 +1737,13 @@ class SubmitEndpoint {
 			// `filename` is the human-readable original (kept for admin UI +
 			// CSV export); the on-disk basename is randomized and only
 			// reflected in `url` so it can't be enumerated.
-			$raw_body[ $field_id ] = [
+			$raw_body[ $field_id ] = array(
 				'attachment_id' => $attachment_id,
 				'url'           => $upload['url'],
 				'filename'      => sanitize_file_name( (string) $file_info['name'] ),
 				'mime_type'     => $upload['type'],
 				'size'          => (int) filesize( $upload['file'] ),
-			];
+			);
 		}
 
 		return $raw_body;
@@ -1736,27 +1781,35 @@ class SubmitEndpoint {
 	 * @return array  e.g. ['jpg|jpeg' => 'image/jpeg', ...]
 	 */
 	private function build_allowed_mimes( array $allowed_types ): array {
-		$ext_map = [
-			'image'    => [ 'jpg|jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp' ],
-			'pdf'      => [ 'pdf' => 'application/pdf' ],
-			'document' => [
+		$ext_map = array(
+			'image'    => array(
+				'jpg|jpeg' => 'image/jpeg',
+				'png'      => 'image/png',
+				'gif'      => 'image/gif',
+				'webp'     => 'image/webp',
+			),
+			'pdf'      => array( 'pdf' => 'application/pdf' ),
+			'document' => array(
 				'doc'  => 'application/msword',
 				'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 				'odt'  => 'application/vnd.oasis.opendocument.text',
-			],
-			'text'     => [ 'txt' => 'text/plain', 'csv' => 'text/csv' ],
-		];
+			),
+			'text'     => array(
+				'txt' => 'text/plain',
+				'csv' => 'text/csv',
+			),
+		);
 
 		if ( empty( $allowed_types ) ) {
 			// No restriction - merge all groups.
-			$mimes = [];
+			$mimes = array();
 			foreach ( $ext_map as $group_mimes ) {
 				$mimes = array_merge( $mimes, $group_mimes );
 			}
 			return $mimes;
 		}
 
-		$mimes = [];
+		$mimes = array();
 		foreach ( $allowed_types as $group ) {
 			if ( isset( $ext_map[ $group ] ) ) {
 				$mimes = array_merge( $mimes, $ext_map[ $group ] );
@@ -1785,9 +1838,9 @@ class SubmitEndpoint {
 	 * @return bool
 	 */
 	private function evaluate_conditional( array $logic, array $data ): bool {
-		$control_id = (string) ( $logic['field']    ?? '' );
+		$control_id = (string) ( $logic['field'] ?? '' );
 		$operator   = (string) ( $logic['operator'] ?? '' );
-		$rule_value = (string) ( $logic['value']    ?? '' );
+		$rule_value = (string) ( $logic['value'] ?? '' );
 
 		if ( $control_id === '' || $operator === '' ) {
 			return true;
@@ -1854,11 +1907,11 @@ class SubmitEndpoint {
 		if ( str_contains( $content_type, 'multipart/form-data' ) ) {
 			// For multipart requests, WordPress parses text fields into body params.
 			// File fields arrive separately in $_FILES.
-			return $request->get_body_params() ?? [];
+			return $request->get_body_params() ?? array();
 		}
 
 		// Default: JSON submission.
-		return $request->get_json_params() ?? [];
+		return $request->get_json_params() ?? array();
 	}
 
 	/**

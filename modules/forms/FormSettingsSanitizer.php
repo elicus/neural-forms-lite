@@ -59,27 +59,27 @@ final class FormSettingsSanitizer {
 
 	// HubSpot form IDs are GUID-shaped: alphanumeric + dashes (we also
 	// allow underscores defensively in case HubSpot ever extends it).
-	const HS_FORM_ID_PATTERN    = '/^[A-Za-z0-9_\-]+$/';
+	const HS_FORM_ID_PATTERN = '/^[A-Za-z0-9_\-]+$/';
 	// Google form IDs are URL-safe base64 — alphanumeric + dash +
 	// underscore. Matches the pattern used elsewhere in the Pro
 	// Google Forms layer (GoogleFormsClient::is_valid_form_id).
-	const GF_FORM_ID_PATTERN    = '/^[A-Za-z0-9_\-]+$/';
+	const GF_FORM_ID_PATTERN = '/^[A-Za-z0-9_\-]+$/';
 	// Google form URL must be the docs.google.com host. We don't
 	// require any specific path so both ../forms/d/{id}/edit and
 	// ../forms/d/e/{published-id}/viewform are accepted.
-	const GF_FORM_URL_HOST      = 'docs.google.com';
+	const GF_FORM_URL_HOST = 'docs.google.com';
 	// HubSpot internal property names use snake_case mostly. Allow
 	// letters, digits, underscore, dot (some embedded-form properties),
 	// and dash (defensive).
 	const HS_FIELD_NAME_PATTERN = '/^[A-Za-z0-9_.\-]+$/';
 	// Neural Forms field IDs: alphanumeric, underscore, dash. Matches
 	// the sanitize_title-with-underscores convention the builder uses.
-	const NF_FIELD_ID_PATTERN   = '/^[A-Za-z0-9_\-]+$/';
+	const NF_FIELD_ID_PATTERN = '/^[A-Za-z0-9_\-]+$/';
 
-	const HS_FORM_NAME_MAX  = 200;
-	const HS_FIELD_NAME_MAX = 200;
-	const NF_FIELD_ID_MAX   = 100;
-	const GF_FORM_TITLE_MAX = 200;
+	const HS_FORM_NAME_MAX   = 200;
+	const HS_FIELD_NAME_MAX  = 200;
+	const NF_FIELD_ID_MAX    = 100;
+	const GF_FORM_TITLE_MAX  = 200;
 	const GF_IMPORTED_AT_MAX = 40; // "YYYY-MM-DD HH:MM:SS" fits in 19; cap is generous
 
 	/**
@@ -87,9 +87,11 @@ final class FormSettingsSanitizer {
 	 * stripped from client payloads. Future telemetry (last_sync_at,
 	 * last_checked_at, last_error) will follow the same pattern.
 	 */
-	const GF_TELEMETRY_KEYS = [
-		'last_checked_at', 'last_sync_at', 'last_error',
-	];
+	const GF_TELEMETRY_KEYS = array(
+		'last_checked_at',
+		'last_sync_at',
+		'last_error',
+	);
 
 	/**
 	 * Tokens / secrets are NEVER stored in form.settings. The Google
@@ -98,25 +100,29 @@ final class FormSettingsSanitizer {
 	 * per-form. If a tampered client payload includes any of these
 	 * keys under integrations.google_forms, strip them.
 	 */
-	const GF_FORBIDDEN_KEYS = [
-		'access_token', 'refresh_token', 'client_secret', 'token', 'secret',
-	];
+	const GF_FORBIDDEN_KEYS = array(
+		'access_token',
+		'refresh_token',
+		'client_secret',
+		'token',
+		'secret',
+	);
 
-	const GF_VALID_MODES = [ 'imported_source', 'linked_source' ];
+	const GF_VALID_MODES = array( 'imported_source', 'linked_source' );
 
 	// ── WhatsApp per-form constants ────────────────────────────────
 
-	const WA_TEMPLATE_NAME_MAX     = 100;
-	const WA_RECIPIENT_MIN_DIGITS  = 7;
-	const WA_RECIPIENT_MAX_DIGITS  = 15;
-	const WA_RECIPIENTS_MAX        = 10;
+	const WA_TEMPLATE_NAME_MAX    = 100;
+	const WA_RECIPIENT_MIN_DIGITS = 7;
+	const WA_RECIPIENT_MAX_DIGITS = 15;
+	const WA_RECIPIENTS_MAX       = 10;
 
 	const WA_TEMPLATE_NAME_PATTERN = '/^[A-Za-z0-9_\-]+$/';
 	const WA_TEMPLATE_LANG_PATTERN = '/^[a-z]{2,3}(?:_[A-Z]{2,3})?$/';
 
-	const WA_VALID_TRIGGERS = [
+	const WA_VALID_TRIGGERS = array(
 		'entry_created',
-	];
+	);
 
 	/**
 	 * `send_when` accepted values. For v1 only `all_entries` actually
@@ -127,31 +133,38 @@ final class FormSettingsSanitizer {
 	 * sets one early doesn't have it silently flipped to
 	 * all_entries on every save.
 	 */
-	const WA_VALID_SEND_WHEN = [
+	const WA_VALID_SEND_WHEN = array(
 		'all_entries',
 		'high_priority',
 		'needs_reply',
 		'spam_detected',
 		'not_spam',
-	];
+	);
 
 	/**
 	 * Global-connection / secret keys that MUST NEVER appear in
 	 * per-form WhatsApp settings. Belt-and-braces against client
 	 * payload tampering.
 	 */
-	const WA_FORBIDDEN_KEYS = [
-		'access_token', 'token', 'secret', 'client_secret',
-		'phone_number_id', 'waba_id', 'graph_version',
-	];
+	const WA_FORBIDDEN_KEYS = array(
+		'access_token',
+		'token',
+		'secret',
+		'client_secret',
+		'phone_number_id',
+		'waba_id',
+		'graph_version',
+	);
 
 	/**
 	 * Server-side telemetry — written by the future dispatcher
 	 * helper, never by clients.
 	 */
-	const WA_TELEMETRY_KEYS = [
-		'last_sent_at', 'last_error', 'last_status_code',
-	];
+	const WA_TELEMETRY_KEYS = array(
+		'last_sent_at',
+		'last_error',
+		'last_status_code',
+	);
 
 	// ── Zapier per-form constants ──────────────────────────────────
 
@@ -166,13 +179,13 @@ final class FormSettingsSanitizer {
 	 * the existing `neural_forms_entry_analysis_completed` hook is
 	 * wired into the Zapier dispatcher.
 	 */
-	const ZAP_VALID_SEND_WHEN = [
+	const ZAP_VALID_SEND_WHEN = array(
 		'all_entries',
 		'high_priority',
 		'needs_reply',
 		'spam_detected',
 		'not_spam',
-	];
+	);
 
 	/**
 	 * Global-connection / secret keys that MUST NEVER appear in
@@ -181,30 +194,36 @@ final class FormSettingsSanitizer {
 	 * it into form.settings would multiply the leak surface for no
 	 * gain. The form references hooks by id only.
 	 */
-	const ZAP_FORBIDDEN_KEYS = [
-		'target_url', 'webhook_url', 'url',
-		'secret', 'token', 'client_secret',
-	];
+	const ZAP_FORBIDDEN_KEYS = array(
+		'target_url',
+		'webhook_url',
+		'url',
+		'secret',
+		'token',
+		'client_secret',
+	);
 
 	/**
 	 * Server-side telemetry — written by WebhookRepository::record_delivery
 	 * against the global webhook row, never by clients on the form
 	 * settings blob.
 	 */
-	const ZAP_TELEMETRY_KEYS = [
-		'last_sent_at', 'last_error', 'last_status_code',
-	];
+	const ZAP_TELEMETRY_KEYS = array(
+		'last_sent_at',
+		'last_error',
+		'last_status_code',
+	);
 
 	// ── Mailchimp per-form constants ───────────────────────────────
 
-	const MC_AUDIENCE_ID_PATTERN   = '/^[A-Za-z0-9]{1,32}$/';
-	const MC_FIELD_ID_PATTERN      = '/^[A-Za-z0-9_-]{1,128}$/';
-	const MC_MERGE_TAG_PATTERN     = '/^[A-Z0-9_]{1,10}$/';
-	const MC_AUDIENCE_NAME_MAX     = 200;
-	const MC_TAG_MAX_LENGTH        = 100;
-	const MC_TAGS_MAX_COUNT        = 20;
+	const MC_AUDIENCE_ID_PATTERN = '/^[A-Za-z0-9]{1,32}$/';
+	const MC_FIELD_ID_PATTERN    = '/^[A-Za-z0-9_-]{1,128}$/';
+	const MC_MERGE_TAG_PATTERN   = '/^[A-Z0-9_]{1,10}$/';
+	const MC_AUDIENCE_NAME_MAX   = 200;
+	const MC_TAG_MAX_LENGTH      = 100;
+	const MC_TAGS_MAX_COUNT      = 20;
 
-	const MC_VALID_STATUS = [ 'subscribed', 'pending' ];
+	const MC_VALID_STATUS = array( 'subscribed', 'pending' );
 
 	/**
 	 * Global-connection / secret keys that MUST NEVER appear in
@@ -213,34 +232,46 @@ final class FormSettingsSanitizer {
 	 * payloads that try to bleed any of these into a form row are
 	 * stripped.
 	 */
-	const MC_FORBIDDEN_KEYS = [
-		'api_key', 'key', 'token', 'secret', 'client_secret', 'server_prefix',
-	];
+	const MC_FORBIDDEN_KEYS = array(
+		'api_key',
+		'key',
+		'token',
+		'secret',
+		'client_secret',
+		'server_prefix',
+	);
 
 	/**
 	 * Server-side telemetry — written by C4's dispatcher helper,
 	 * never by clients.
 	 */
-	const MC_TELEMETRY_KEYS = [
-		'last_sent_at', 'last_error', 'last_status_code',
-	];
+	const MC_TELEMETRY_KEYS = array(
+		'last_sent_at',
+		'last_error',
+		'last_status_code',
+	);
 
 	/**
 	 * Keys that MUST NEVER survive a client save. Belt-and-braces
 	 * against a copy-paste mistake or an attacker probing.
 	 */
-	const HS_FORBIDDEN_KEYS = [
-		'access_token', 'token', 'private_app_token',
-		'client_secret', 'secret',
-	];
+	const HS_FORBIDDEN_KEYS = array(
+		'access_token',
+		'token',
+		'private_app_token',
+		'client_secret',
+		'secret',
+	);
 
 	/**
 	 * Delivery telemetry — server-only. The dispatcher updates these
 	 * via a dedicated helper; client payloads cannot touch them.
 	 */
-	const HS_TELEMETRY_KEYS = [
-		'last_sent_at', 'last_error', 'last_status_code',
-	];
+	const HS_TELEMETRY_KEYS = array(
+		'last_sent_at',
+		'last_error',
+		'last_status_code',
+	);
 
 	/**
 	 * Sanitize the entire form.settings blob.
@@ -252,7 +283,9 @@ final class FormSettingsSanitizer {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize( $settings ): array {
-		if ( ! is_array( $settings ) ) return [];
+		if ( ! is_array( $settings ) ) {
+			return array();
+		}
 
 		$out = $settings;
 		if ( array_key_exists( 'integrations', $out ) ) {
@@ -277,9 +310,11 @@ final class FormSettingsSanitizer {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize_integrations( $integrations ): array {
-		if ( ! is_array( $integrations ) ) return [];
+		if ( ! is_array( $integrations ) ) {
+			return array();
+		}
 
-		$out = [];
+		$out = array();
 
 		if ( array_key_exists( 'hubspot', $integrations ) ) {
 			$hubspot = self::sanitize_hubspot_settings( $integrations['hubspot'] );
@@ -356,10 +391,12 @@ final class FormSettingsSanitizer {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize_whatsapp_settings( $whatsapp ): array {
-		if ( ! is_array( $whatsapp ) ) return [];
+		if ( ! is_array( $whatsapp ) ) {
+			return array();
+		}
 
 		$enabled    = array_key_exists( 'enabled', $whatsapp ) ? (bool) $whatsapp['enabled'] : false;
-		$recipients = self::sanitize_whatsapp_recipients( $whatsapp['recipients'] ?? [] );
+		$recipients = self::sanitize_whatsapp_recipients( $whatsapp['recipients'] ?? array() );
 
 		$trigger_raw = is_string( $whatsapp['trigger'] ?? null ) ? trim( (string) $whatsapp['trigger'] ) : '';
 		$trigger     = in_array( $trigger_raw, self::WA_VALID_TRIGGERS, true ) ? $trigger_raw : 'entry_created';
@@ -385,10 +422,10 @@ final class FormSettingsSanitizer {
 			&& empty( $recipients )
 			&& $template_name === ''
 		) {
-			return [];
+			return array();
 		}
 
-		return [
+		return array(
 			'enabled'           => $enabled,
 			'recipients'        => $recipients,
 			'trigger'           => $trigger,
@@ -396,7 +433,7 @@ final class FormSettingsSanitizer {
 			'template_language' => $template_language,
 			'send_when'         => $send_when,
 			'include_summary'   => $include_summary,
-		];
+		);
 	}
 
 	/**
@@ -420,47 +457,73 @@ final class FormSettingsSanitizer {
 	 * @return array<int,string>
 	 */
 	public static function sanitize_whatsapp_recipients( $raw ): array {
-		$rows = [];
+		$rows = array();
 		if ( is_array( $raw ) ) {
 			foreach ( $raw as $r ) {
-				if ( is_scalar( $r ) ) $rows[] = (string) $r;
+				if ( is_scalar( $r ) ) {
+					$rows[] = (string) $r;
+				}
 			}
 		} elseif ( is_string( $raw ) ) {
 			$rows = preg_split( '/[\r\n,]+/', $raw );
-			$rows = is_array( $rows ) ? $rows : [];
+			$rows = is_array( $rows ) ? $rows : array();
 		}
 
-		$out  = [];
-		$seen = [];
+		$out  = array();
+		$seen = array();
 		foreach ( $rows as $r ) {
-			if ( ! is_string( $r ) ) continue;
+			if ( ! is_string( $r ) ) {
+				continue;
+			}
 			$digits = preg_replace( '/[^0-9]/', '', $r );
-			if ( ! is_string( $digits ) || $digits === '' ) continue;
+			if ( ! is_string( $digits ) || $digits === '' ) {
+				continue;
+			}
 			$len = strlen( $digits );
-			if ( $len < self::WA_RECIPIENT_MIN_DIGITS || $len > self::WA_RECIPIENT_MAX_DIGITS ) continue;
-			if ( isset( $seen[ $digits ] ) ) continue;
+			if ( $len < self::WA_RECIPIENT_MIN_DIGITS || $len > self::WA_RECIPIENT_MAX_DIGITS ) {
+				continue;
+			}
+			if ( isset( $seen[ $digits ] ) ) {
+				continue;
+			}
 			$seen[ $digits ] = true;
-			$out[] = $digits;
-			if ( count( $out ) >= self::WA_RECIPIENTS_MAX ) break;
+			$out[]           = $digits;
+			if ( count( $out ) >= self::WA_RECIPIENTS_MAX ) {
+				break;
+			}
 		}
 		return $out;
 	}
 
 	public static function sanitize_whatsapp_template_name( $raw ): string {
-		if ( ! is_string( $raw ) ) return '';
+		if ( ! is_string( $raw ) ) {
+			return '';
+		}
 		$raw = trim( $raw );
-		if ( $raw === '' ) return '';
-		if ( strlen( $raw ) > self::WA_TEMPLATE_NAME_MAX ) return '';
-		if ( ! preg_match( self::WA_TEMPLATE_NAME_PATTERN, $raw ) ) return '';
+		if ( $raw === '' ) {
+			return '';
+		}
+		if ( strlen( $raw ) > self::WA_TEMPLATE_NAME_MAX ) {
+			return '';
+		}
+		if ( ! preg_match( self::WA_TEMPLATE_NAME_PATTERN, $raw ) ) {
+			return '';
+		}
 		return $raw;
 	}
 
 	public static function sanitize_whatsapp_template_language( $raw ): string {
 		$default = 'en_US';
-		if ( ! is_string( $raw ) ) return $default;
+		if ( ! is_string( $raw ) ) {
+			return $default;
+		}
 		$raw = trim( $raw );
-		if ( $raw === '' ) return $default;
-		if ( ! preg_match( self::WA_TEMPLATE_LANG_PATTERN, $raw ) ) return $default;
+		if ( $raw === '' ) {
+			return $default;
+		}
+		if ( ! preg_match( self::WA_TEMPLATE_LANG_PATTERN, $raw ) ) {
+			return $default;
+		}
 		return $raw;
 	}
 
@@ -504,12 +567,14 @@ final class FormSettingsSanitizer {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize_mailchimp_settings( $mailchimp ): array {
-		if ( ! is_array( $mailchimp ) ) return [];
+		if ( ! is_array( $mailchimp ) ) {
+			return array();
+		}
 
 		$enabled       = array_key_exists( 'enabled', $mailchimp ) ? (bool) $mailchimp['enabled'] : false;
-		$audience_id   = self::sanitize_mailchimp_audience_id(   $mailchimp['audience_id']   ?? '' );
+		$audience_id   = self::sanitize_mailchimp_audience_id( $mailchimp['audience_id'] ?? '' );
 		$audience_name = self::sanitize_mailchimp_audience_name( $mailchimp['audience_name'] ?? '' );
-		$email_field   = self::sanitize_mailchimp_field_id(      $mailchimp['email_field']   ?? '' );
+		$email_field   = self::sanitize_mailchimp_field_id( $mailchimp['email_field'] ?? '' );
 
 		$status_raw = is_string( $mailchimp['status'] ?? null ) ? strtolower( trim( (string) $mailchimp['status'] ) ) : '';
 		$status     = in_array( $status_raw, self::MC_VALID_STATUS, true ) ? $status_raw : 'subscribed';
@@ -521,8 +586,8 @@ final class FormSettingsSanitizer {
 			? (bool) $mailchimp['update_existing']
 			: true;
 
-		$tags      = self::sanitize_mailchimp_tags(      $mailchimp['tags']      ?? [] );
-		$merge_map = self::sanitize_mailchimp_merge_map( $mailchimp['merge_map'] ?? [] );
+		$tags      = self::sanitize_mailchimp_tags( $mailchimp['tags'] ?? array() );
+		$merge_map = self::sanitize_mailchimp_merge_map( $mailchimp['merge_map'] ?? array() );
 
 		// Collapse-when-empty: disabled AND no audience_id AND no
 		// email_field AND no mapping carries no information.
@@ -533,10 +598,10 @@ final class FormSettingsSanitizer {
 			&& empty( $tags )
 			&& empty( $merge_map )
 		) {
-			return [];
+			return array();
 		}
 
-		return [
+		return array(
 			'enabled'         => $enabled,
 			'audience_id'     => $audience_id,
 			'audience_name'   => $audience_name,
@@ -545,23 +610,33 @@ final class FormSettingsSanitizer {
 			'update_existing' => $update_existing,
 			'tags'            => $tags,
 			'merge_map'       => $merge_map,
-		];
+		);
 	}
 
 	public static function sanitize_mailchimp_audience_id( $raw ): string {
-		if ( ! is_string( $raw ) ) return '';
+		if ( ! is_string( $raw ) ) {
+			return '';
+		}
 		$raw = trim( $raw );
-		if ( $raw === '' ) return '';
-		if ( ! preg_match( self::MC_AUDIENCE_ID_PATTERN, $raw ) ) return '';
+		if ( $raw === '' ) {
+			return '';
+		}
+		if ( ! preg_match( self::MC_AUDIENCE_ID_PATTERN, $raw ) ) {
+			return '';
+		}
 		return $raw;
 	}
 
 	public static function sanitize_mailchimp_audience_name( $raw ): string {
-		if ( ! is_string( $raw ) ) return '';
+		if ( ! is_string( $raw ) ) {
+			return '';
+		}
 		// Strip control chars; rely on sanitize_text_field for the rest.
 		$raw = preg_replace( '/[\x00-\x1F\x7F]/u', '', $raw );
 		$raw = function_exists( 'sanitize_text_field' ) ? sanitize_text_field( $raw ) : trim( (string) $raw );
-		if ( $raw === '' ) return '';
+		if ( $raw === '' ) {
+			return '';
+		}
 		if ( function_exists( 'mb_strlen' ) && mb_strlen( $raw ) > self::MC_AUDIENCE_NAME_MAX ) {
 			$raw = function_exists( 'mb_substr' ) ? mb_substr( $raw, 0, self::MC_AUDIENCE_NAME_MAX ) : substr( $raw, 0, self::MC_AUDIENCE_NAME_MAX );
 		} elseif ( strlen( $raw ) > self::MC_AUDIENCE_NAME_MAX ) {
@@ -578,10 +653,16 @@ final class FormSettingsSanitizer {
 	 * provider can reuse the same shape.
 	 */
 	public static function sanitize_mailchimp_field_id( $raw ): string {
-		if ( ! is_string( $raw ) ) return '';
+		if ( ! is_string( $raw ) ) {
+			return '';
+		}
 		$raw = trim( $raw );
-		if ( $raw === '' ) return '';
-		if ( ! preg_match( self::MC_FIELD_ID_PATTERN, $raw ) ) return '';
+		if ( $raw === '' ) {
+			return '';
+		}
+		if ( ! preg_match( self::MC_FIELD_ID_PATTERN, $raw ) ) {
+			return '';
+		}
 		return $raw;
 	}
 
@@ -594,21 +675,31 @@ final class FormSettingsSanitizer {
 	 * @return array<int,string>
 	 */
 	public static function sanitize_mailchimp_tags( $raw ): array {
-		if ( ! is_array( $raw ) ) return [];
-		$out  = [];
-		$seen = [];
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$out  = array();
+		$seen = array();
 		foreach ( $raw as $tag ) {
-			if ( ! is_string( $tag ) ) continue;
+			if ( ! is_string( $tag ) ) {
+				continue;
+			}
 			$tag = trim( preg_replace( '/[\x00-\x1F\x7F]/u', '', $tag ) ?? '' );
-			if ( $tag === '' ) continue;
+			if ( $tag === '' ) {
+				continue;
+			}
 			if ( strlen( $tag ) > self::MC_TAG_MAX_LENGTH ) {
 				$tag = substr( $tag, 0, self::MC_TAG_MAX_LENGTH );
 			}
 			$key = strtolower( $tag );
-			if ( isset( $seen[ $key ] ) ) continue;
+			if ( isset( $seen[ $key ] ) ) {
+				continue;
+			}
 			$seen[ $key ] = true;
-			$out[] = $tag;
-			if ( count( $out ) >= self::MC_TAGS_MAX_COUNT ) break;
+			$out[]        = $tag;
+			if ( count( $out ) >= self::MC_TAGS_MAX_COUNT ) {
+				break;
+			}
 		}
 		return $out;
 	}
@@ -630,15 +721,25 @@ final class FormSettingsSanitizer {
 	 * @return array<string,string>
 	 */
 	public static function sanitize_mailchimp_merge_map( $raw ): array {
-		if ( ! is_array( $raw ) ) return [];
-		$out = [];
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$out = array();
 		foreach ( $raw as $k => $v ) {
-			if ( ! is_string( $k ) ) continue;
+			if ( ! is_string( $k ) ) {
+				continue;
+			}
 			$key = strtoupper( trim( $k ) );
-			if ( $key === '' || $key === 'EMAIL' ) continue;
-			if ( ! preg_match( self::MC_MERGE_TAG_PATTERN, $key ) ) continue;
+			if ( $key === '' || $key === 'EMAIL' ) {
+				continue;
+			}
+			if ( ! preg_match( self::MC_MERGE_TAG_PATTERN, $key ) ) {
+				continue;
+			}
 			$field_id = self::sanitize_mailchimp_field_id( is_scalar( $v ) ? (string) $v : '' );
-			if ( $field_id === '' ) continue;
+			if ( $field_id === '' ) {
+				continue;
+			}
 			$out[ $key ] = $field_id;
 		}
 		return $out;
@@ -686,11 +787,13 @@ final class FormSettingsSanitizer {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize_zapier_settings( $zapier ): array {
-		if ( ! is_array( $zapier ) ) return [];
+		if ( ! is_array( $zapier ) ) {
+			return array();
+		}
 
 		$enabled = array_key_exists( 'enabled', $zapier ) ? (bool) $zapier['enabled'] : false;
 
-		$webhook_ids = self::sanitize_zapier_webhook_ids( $zapier['webhook_ids'] ?? [] );
+		$webhook_ids = self::sanitize_zapier_webhook_ids( $zapier['webhook_ids'] ?? array() );
 
 		$send_when_raw = is_string( $zapier['send_when'] ?? null ) ? trim( (string) $zapier['send_when'] ) : '';
 		$send_when     = in_array( $send_when_raw, self::ZAP_VALID_SEND_WHEN, true ) ? $send_when_raw : 'all_entries';
@@ -699,8 +802,8 @@ final class FormSettingsSanitizer {
 		// full payload when they hook Zapier in). Only an explicit
 		// false flips them off.
 		$incl_readable = array_key_exists( 'include_fields_readable', $zapier ) ? (bool) $zapier['include_fields_readable'] : true;
-		$incl_raw      = array_key_exists( 'include_raw_fields',      $zapier ) ? (bool) $zapier['include_raw_fields']      : true;
-		$incl_source   = array_key_exists( 'include_source',          $zapier ) ? (bool) $zapier['include_source']          : true;
+		$incl_raw      = array_key_exists( 'include_raw_fields', $zapier ) ? (bool) $zapier['include_raw_fields'] : true;
+		$incl_source   = array_key_exists( 'include_source', $zapier ) ? (bool) $zapier['include_source'] : true;
 
 		// Collapse-when-empty: disabled AND no webhooks selected AND
 		// default payload toggles carries no information.
@@ -710,17 +813,17 @@ final class FormSettingsSanitizer {
 			&& $incl_readable && $incl_raw && $incl_source
 			&& $send_when === 'all_entries'
 		) {
-			return [];
+			return array();
 		}
 
-		return [
+		return array(
 			'enabled'                 => $enabled,
 			'webhook_ids'             => $webhook_ids,
 			'send_when'               => $send_when,
 			'include_fields_readable' => $incl_readable,
 			'include_raw_fields'      => $incl_raw,
 			'include_source'          => $incl_source,
-		];
+		);
 	}
 
 	/**
@@ -740,17 +843,27 @@ final class FormSettingsSanitizer {
 	 * @return array<int,int>
 	 */
 	public static function sanitize_zapier_webhook_ids( $raw ): array {
-		if ( ! is_array( $raw ) ) return [];
-		$out  = [];
-		$seen = [];
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$out  = array();
+		$seen = array();
 		foreach ( $raw as $v ) {
-			if ( ! is_scalar( $v ) ) continue;
+			if ( ! is_scalar( $v ) ) {
+				continue;
+			}
 			$id = (int) $v;
-			if ( $id <= 0 ) continue;
-			if ( isset( $seen[ $id ] ) ) continue;
+			if ( $id <= 0 ) {
+				continue;
+			}
+			if ( isset( $seen[ $id ] ) ) {
+				continue;
+			}
 			$seen[ $id ] = true;
-			$out[] = $id;
-			if ( count( $out ) >= self::ZAP_WEBHOOK_IDS_MAX ) break;
+			$out[]       = $id;
+			if ( count( $out ) >= self::ZAP_WEBHOOK_IDS_MAX ) {
+				break;
+			}
 		}
 		return $out;
 	}
@@ -788,7 +901,9 @@ final class FormSettingsSanitizer {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize_google_forms_settings( $google ): array {
-		if ( ! is_array( $google ) ) return [];
+		if ( ! is_array( $google ) ) {
+			return array();
+		}
 
 		$enabled = array_key_exists( 'enabled', $google ) ? (bool) $google['enabled'] : false;
 
@@ -813,17 +928,17 @@ final class FormSettingsSanitizer {
 		// carries no useful state drops out entirely.
 		if (
 			! $enabled
-			&& $mode      === ''
-			&& $form_id   === ''
-			&& $title     === ''
-			&& $url       === ''
+			&& $mode === ''
+			&& $form_id === ''
+			&& $title === ''
+			&& $url === ''
 			&& $imported_at === ''
 			&& ! $sync_responses
 		) {
-			return [];
+			return array();
 		}
 
-		return [
+		return array(
 			'enabled'           => $enabled,
 			'mode'              => $mode,
 			'google_form_id'    => $form_id,
@@ -831,7 +946,7 @@ final class FormSettingsSanitizer {
 			'google_form_url'   => $url,
 			'imported_at'       => $imported_at,
 			'sync_responses'    => $sync_responses,
-		];
+		);
 	}
 
 	/**
@@ -841,9 +956,15 @@ final class FormSettingsSanitizer {
 	 */
 	public static function sanitize_google_form_id( string $raw ): string {
 		$raw = trim( $raw );
-		if ( $raw === '' ) return '';
-		if ( preg_match( '/[\x00-\x1F\x7F]/', $raw ) ) return '';
-		if ( ! preg_match( self::GF_FORM_ID_PATTERN, $raw ) ) return '';
+		if ( $raw === '' ) {
+			return '';
+		}
+		if ( preg_match( '/[\x00-\x1F\x7F]/', $raw ) ) {
+			return '';
+		}
+		if ( ! preg_match( self::GF_FORM_ID_PATTERN, $raw ) ) {
+			return '';
+		}
 		return $raw;
 	}
 
@@ -853,16 +974,22 @@ final class FormSettingsSanitizer {
 	 */
 	public static function sanitize_google_form_url( string $raw ): string {
 		$clean = function_exists( 'esc_url_raw' ) ? esc_url_raw( $raw ) : trim( $raw );
-		if ( $clean === '' ) return '';
+		if ( $clean === '' ) {
+			return '';
+		}
 		// wp_parse_url() is the WP-compatible alternative to PHP's parse_url();
 		// it's been available since WP 4.4 so the function_exists guard is
 		// unnecessary, and the previous fallback to PHP's parse_url() was
 		// what tripped WordPress.WP.AlternativeFunctions.parse_url_parse_url
 		// in Plugin Check.
 		$scheme = strtolower( (string) wp_parse_url( $clean, PHP_URL_SCHEME ) );
-		if ( $scheme !== 'https' ) return '';
+		if ( $scheme !== 'https' ) {
+			return '';
+		}
 		$host = strtolower( (string) wp_parse_url( $clean, PHP_URL_HOST ) );
-		if ( $host !== self::GF_FORM_URL_HOST ) return '';
+		if ( $host !== self::GF_FORM_URL_HOST ) {
+			return '';
+		}
 		return $clean;
 	}
 
@@ -874,22 +1001,24 @@ final class FormSettingsSanitizer {
 	 *                              the caller drops the key in that case.
 	 */
 	public static function sanitize_hubspot_settings( $hubspot ): array {
-		if ( ! is_array( $hubspot ) ) return [];
+		if ( ! is_array( $hubspot ) ) {
+			return array();
+		}
 
 		// Build the output from scratch — any key NOT explicitly
 		// pulled across is dropped (whitelist semantics). This is
 		// what kills forbidden keys (access_token / secret) and
 		// telemetry keys (last_sent_at etc.) in one stroke.
 
-		$enabled         = array_key_exists( 'enabled', $hubspot ) ? (bool) $hubspot['enabled'] : false;
+		$enabled = array_key_exists( 'enabled', $hubspot ) ? (bool) $hubspot['enabled'] : false;
 
-		$form_id_raw     = is_string( $hubspot['hubspot_form_id'] ?? null )   ? $hubspot['hubspot_form_id']   : '';
-		$form_id         = self::sanitize_hubspot_form_id( $form_id_raw );
+		$form_id_raw = is_string( $hubspot['hubspot_form_id'] ?? null ) ? $hubspot['hubspot_form_id'] : '';
+		$form_id     = self::sanitize_hubspot_form_id( $form_id_raw );
 
-		$form_name_raw   = is_string( $hubspot['hubspot_form_name'] ?? null ) ? $hubspot['hubspot_form_name'] : '';
-		$form_name       = self::sanitize_short_text( $form_name_raw, self::HS_FORM_NAME_MAX );
+		$form_name_raw = is_string( $hubspot['hubspot_form_name'] ?? null ) ? $hubspot['hubspot_form_name'] : '';
+		$form_name     = self::sanitize_short_text( $form_name_raw, self::HS_FORM_NAME_MAX );
 
-		$field_map       = self::sanitize_field_map( $hubspot['field_map'] ?? [] );
+		$field_map = self::sanitize_field_map( $hubspot['field_map'] ?? array() );
 
 		// Collapse-when-empty: a config that's disabled AND has no
 		// form / no mapping carries no information. Returning []
@@ -898,19 +1027,19 @@ final class FormSettingsSanitizer {
 		// preserved — the admin may have toggled off temporarily.
 		if (
 			! $enabled
-			&& $form_id   === ''
+			&& $form_id === ''
 			&& $form_name === ''
 			&& empty( $field_map )
 		) {
-			return [];
+			return array();
 		}
 
-		return [
+		return array(
 			'enabled'           => $enabled,
 			'hubspot_form_id'   => $form_id,
 			'hubspot_form_name' => $form_name,
 			'field_map'         => $field_map,
-		];
+		);
 	}
 
 	/**
@@ -920,12 +1049,18 @@ final class FormSettingsSanitizer {
 	 */
 	public static function sanitize_hubspot_form_id( string $raw ): string {
 		$raw = trim( $raw );
-		if ( $raw === '' ) return '';
+		if ( $raw === '' ) {
+			return '';
+		}
 		// Drop control chars defensively (they wouldn't survive the
 		// regex below, but the regex doesn't strip — it accepts or
 		// rejects whole. A control char anywhere → reject entirely).
-		if ( preg_match( '/[\x00-\x1F\x7F]/', $raw ) ) return '';
-		if ( ! preg_match( self::HS_FORM_ID_PATTERN, $raw ) ) return '';
+		if ( preg_match( '/[\x00-\x1F\x7F]/', $raw ) ) {
+			return '';
+		}
+		if ( ! preg_match( self::HS_FORM_ID_PATTERN, $raw ) ) {
+			return '';
+		}
 		return $raw;
 	}
 
@@ -946,23 +1081,41 @@ final class FormSettingsSanitizer {
 	 * @return array<string,string>
 	 */
 	public static function sanitize_field_map( $raw ): array {
-		if ( ! is_array( $raw ) ) return [];
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
 
-		$out = [];
+		$out = array();
 		foreach ( $raw as $hs_name => $nf_id ) {
-			if ( ! is_string( $hs_name ) ) continue;
+			if ( ! is_string( $hs_name ) ) {
+				continue;
+			}
 			$hs_name = trim( $hs_name );
-			if ( $hs_name === '' ) continue;
-			if ( mb_strlen( $hs_name ) > self::HS_FIELD_NAME_MAX ) continue;
-			if ( ! preg_match( self::HS_FIELD_NAME_PATTERN, $hs_name ) ) continue;
+			if ( $hs_name === '' ) {
+				continue;
+			}
+			if ( mb_strlen( $hs_name ) > self::HS_FIELD_NAME_MAX ) {
+				continue;
+			}
+			if ( ! preg_match( self::HS_FIELD_NAME_PATTERN, $hs_name ) ) {
+				continue;
+			}
 
 			// Reject array / object values outright — no nested
 			// structures allowed in a field map.
-			if ( ! is_string( $nf_id ) ) continue;
+			if ( ! is_string( $nf_id ) ) {
+				continue;
+			}
 			$nf_id = trim( $nf_id );
-			if ( $nf_id === '' ) continue;
-			if ( mb_strlen( $nf_id ) > self::NF_FIELD_ID_MAX ) continue;
-			if ( ! preg_match( self::NF_FIELD_ID_PATTERN, $nf_id ) ) continue;
+			if ( $nf_id === '' ) {
+				continue;
+			}
+			if ( mb_strlen( $nf_id ) > self::NF_FIELD_ID_MAX ) {
+				continue;
+			}
+			if ( ! preg_match( self::NF_FIELD_ID_PATTERN, $nf_id ) ) {
+				continue;
+			}
 
 			$out[ $hs_name ] = $nf_id;
 		}

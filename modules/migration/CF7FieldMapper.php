@@ -14,7 +14,7 @@ class CF7FieldMapper {
 	/**
 	 * CF7 basetype => Neural Forms field type.
 	 */
-	const TYPE_MAP = [
+	const TYPE_MAP = array(
 		'text'       => 'text',
 		'email'      => 'email',
 		'url'        => 'url',
@@ -29,12 +29,12 @@ class CF7FieldMapper {
 		'radio'      => 'radio',
 		'hidden'     => 'hidden',
 		'file'       => 'file',
-	];
+	);
 
 	/**
 	 * CF7 types that cannot be migrated - silently skipped with a warning.
 	 */
-	const UNSUPPORTED = [
+	const UNSUPPORTED = array(
 		'quiz',
 		'captchac',
 		'captchar',
@@ -46,7 +46,7 @@ class CF7FieldMapper {
 		'stripe',
 		'turnstile',
 		'submit',
-	];
+	);
 
 	/**
 	 * Map all tags from a CF7 form into Neural Forms field definitions.
@@ -59,21 +59,21 @@ class CF7FieldMapper {
 	 * }
 	 */
 	public static function map_form( array $tags ): array {
-		$fields   = [];
-		$skipped  = [];
-		$warnings = [];
-		$used_ids = [];
+		$fields   = array();
+		$skipped  = array();
+		$warnings = array();
+		$used_ids = array();
 
 		foreach ( $tags as $tag ) {
 			$cf7_type = $tag['basetype'];
 
 			// Skip explicitly unsupported types.
 			if ( in_array( $cf7_type, self::UNSUPPORTED, true ) ) {
-				$skipped[] = [
+				$skipped[]  = array(
 					'name'     => $tag['name'],
 					'cf7_type' => $cf7_type,
 					'reason'   => 'Unsupported field type.',
-				];
+				);
 				$warnings[] = sprintf(
 					'Skipped "%s" (%s): unsupported field type.',
 					$tag['name'],
@@ -84,11 +84,11 @@ class CF7FieldMapper {
 
 			// Skip unknown types not in our map.
 			if ( ! isset( self::TYPE_MAP[ $cf7_type ] ) ) {
-				$skipped[] = [
+				$skipped[]  = array(
 					'name'     => $tag['name'],
 					'cf7_type' => $cf7_type,
 					'reason'   => 'Unknown CF7 field type.',
-				];
+				);
 				$warnings[] = sprintf(
 					'Skipped "%s" (%s): unknown field type.',
 					$tag['name'],
@@ -98,27 +98,27 @@ class CF7FieldMapper {
 			}
 
 			$field = self::map_tag( $tag );
-			if ( $field === null ) {
-				$skipped[] = [
+			if ( null === $field ) {
+				$skipped[] = array(
 					'name'     => $tag['name'],
 					'cf7_type' => $cf7_type,
 					'reason'   => 'Mapping produced no result.',
-				];
+				);
 				continue;
 			}
 
 			// Generate a unique field ID.
-			$field_id = self::unique_id( $tag['name'], $used_ids );
+			$field_id   = self::unique_id( $tag['name'], $used_ids );
 			$used_ids[] = $field_id;
 
 			$fields[ $field_id ] = $field;
 		}
 
-		return [
+		return array(
 			'fields'   => $fields,
 			'skipped'  => $skipped,
 			'warnings' => $warnings,
-		];
+		);
 	}
 
 	/**
@@ -135,14 +135,14 @@ class CF7FieldMapper {
 			return null;
 		}
 
-		$field = [
+		$field = array(
 			'type'     => $nf_type,
 			'label'    => self::derive_label( $tag ),
 			'required' => (bool) $tag['required'],
-		];
+		);
 
 		// Placeholder - for text-like fields.
-		if ( in_array( $nf_type, [ 'text', 'email', 'url', 'tel', 'number', 'textarea' ], true ) ) {
+		if ( in_array( $nf_type, array( 'text', 'email', 'url', 'tel', 'number', 'textarea' ), true ) ) {
 			$field['placeholder'] = $tag['placeholder'] ?? '';
 		}
 
@@ -152,12 +152,12 @@ class CF7FieldMapper {
 		}
 
 		// Options - for select, radio, checkboxes.
-		if ( in_array( $nf_type, [ 'select', 'radio', 'checkboxes' ], true ) ) {
+		if ( in_array( $nf_type, array( 'select', 'radio', 'checkboxes' ), true ) ) {
 			$field['options'] = self::map_options( $tag );
 		}
 
 		// Numeric constraints - number, range, date.
-		if ( in_array( $nf_type, [ 'number', 'range', 'date' ], true ) ) {
+		if ( in_array( $nf_type, array( 'number', 'range', 'date' ), true ) ) {
 			if ( ( $tag['min'] ?? '' ) !== '' ) {
 				$field['min'] = $tag['min'];
 			}
@@ -167,7 +167,7 @@ class CF7FieldMapper {
 		}
 
 		// Step - number, range.
-		if ( in_array( $nf_type, [ 'number', 'range' ], true ) ) {
+		if ( in_array( $nf_type, array( 'number', 'range' ), true ) ) {
 			if ( ( $tag['step'] ?? '' ) !== '' ) {
 				$field['step'] = $tag['step'];
 			}
@@ -201,7 +201,7 @@ class CF7FieldMapper {
 		$name = $tag['name'];
 
 		// Replace hyphens and underscores with spaces, then title-case.
-		$label = str_replace( [ '-', '_' ], ' ', $name );
+		$label = str_replace( array( '-', '_' ), ' ', $name );
 		$label = ucwords( $label );
 
 		return $label;
@@ -216,15 +216,15 @@ class CF7FieldMapper {
 	 * @return array[] Each entry: { label, value }
 	 */
 	private static function map_options( array $tag ): array {
-		$values = $tag['values'] ?? [];
-		$labels = $tag['labels'] ?? [];
-		$options = [];
+		$values  = $tag['values'] ?? array();
+		$labels  = $tag['labels'] ?? array();
+		$options = array();
 
 		foreach ( $values as $i => $value ) {
-			$options[] = [
+			$options[] = array(
 				'label' => ! empty( $labels[ $i ] ) ? $labels[ $i ] : $value,
 				'value' => $value,
-			];
+			);
 		}
 
 		return $options;
@@ -254,7 +254,7 @@ class CF7FieldMapper {
 
 		while ( in_array( $candidate, $used_ids, true ) ) {
 			$candidate = $base . '_' . $suffix;
-			$suffix++;
+			++$suffix;
 		}
 
 		return $candidate;

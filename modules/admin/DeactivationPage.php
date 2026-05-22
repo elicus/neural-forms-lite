@@ -46,15 +46,15 @@ class DeactivationPage {
 	const NONCE_NAME      = 'neural_forms_deactivate_nonce';
 
 	public static function boot(): void {
-		add_action( 'admin_menu', [ self::class, 'register_page' ] );
-		add_action( 'admin_post_' . self::ADMIN_POST_NAME, [ self::class, 'handle_post' ] );
-		add_action( 'admin_notices', [ self::class, 'maybe_render_notice' ] );
+		add_action( 'admin_menu', array( self::class, 'register_page' ) );
+		add_action( 'admin_post_' . self::ADMIN_POST_NAME, array( self::class, 'handle_post' ) );
+		add_action( 'admin_notices', array( self::class, 'maybe_render_notice' ) );
 
 		// Plugin row action link — only Lite's own row.
 		if ( defined( 'NEURAL_FORMS_BASENAME' ) ) {
 			add_filter(
 				'plugin_action_links_' . NEURAL_FORMS_BASENAME,
-				[ self::class, 'filter_action_links' ]
+				array( self::class, 'filter_action_links' )
 			);
 		}
 	}
@@ -72,7 +72,7 @@ class DeactivationPage {
 			__( 'Neural Forms — deactivation', 'neural-forms-lite' ),
 			'activate_plugins',
 			self::PAGE_SLUG,
-			[ self::class, 'render_page' ]
+			array( self::class, 'render_page' )
 		);
 	}
 
@@ -82,10 +82,12 @@ class DeactivationPage {
 	 * normal WP flow (data-safe by default per uninstall.php gate).
 	 */
 	public static function filter_action_links( array $links ): array {
-		if ( ! current_user_can( 'activate_plugins' ) ) return $links;
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			return $links;
+		}
 
 		$url = add_query_arg(
-			[ 'page' => self::PAGE_SLUG ],
+			array( 'page' => self::PAGE_SLUG ),
 			admin_url( 'admin.php' )
 		);
 
@@ -95,7 +97,7 @@ class DeactivationPage {
 
 		// Insert as the first action so it sits before "Deactivate".
 		// Preserve all other links untouched (Pro may add its own).
-		return array_merge( [ 'neural_forms_deactivate_options' => $cleanup_link ], $links );
+		return array_merge( array( 'neural_forms_deactivate_options' => $cleanup_link ), $links );
 	}
 
 	public static function render_page(): void {
@@ -103,8 +105,8 @@ class DeactivationPage {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'neural-forms-lite' ) );
 		}
 
-		$current = (bool) Config::get( 'delete_data_on_uninstall', false );
-		$post_url = admin_url( 'admin-post.php' );
+		$current     = (bool) Config::get( 'delete_data_on_uninstall', false );
+		$post_url    = admin_url( 'admin-post.php' );
 		$plugins_url = admin_url( 'plugins.php' );
 
 		?>
@@ -119,33 +121,35 @@ class DeactivationPage {
 				<input type="hidden" name="action" value="<?php echo esc_attr( self::ADMIN_POST_NAME ); ?>" />
 				<?php wp_nonce_field( self::NONCE_ACTION, self::NONCE_NAME ); ?>
 
-				<?php /*
+				<?php
+				/*
 				 * Three radio choices. Default selection mirrors the
 				 * user's current preference (so re-opening the page
 				 * doesn't silently flip their setting). For first-time
 				 * visits the default is "keep" — the safe choice.
-				 */ ?>
+				 */
+				?>
 
 				<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:12px">
 					<label style="display:block;font-weight:600;font-size:14px;margin-bottom:6px">
-						<input type="radio" name="choice" value="keep" <?php checked( $current === false ); ?> />
+						<input type="radio" name="choice" value="keep" <?php checked( false === $current ); ?> />
 						<?php echo esc_html__( 'Keep data and deactivate', 'neural-forms-lite' ); ?>
 						<span style="margin-left:6px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">
 							<?php echo esc_html__( 'Recommended', 'neural-forms-lite' ); ?>
 						</span>
 					</label>
 					<p style="margin:0;color:#6b7280;font-size:13px">
-						<?php echo esc_html__( 'Forms, entries, settings, analytics, and AI context stay in your database. You can reactivate at any time and pick up where you left off.', 'neural-forms-lite' ); ?>
+						<?php echo esc_html__( 'Forms, entries, settings, analytics, and Neural AI context stay in your database. You can reactivate at any time and pick up where you left off.', 'neural-forms-lite' ); ?>
 					</p>
 				</div>
 
 				<div style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:16px;margin-bottom:12px">
 					<label style="display:block;font-weight:600;font-size:14px;margin-bottom:6px">
-						<input type="radio" name="choice" value="delete_on_uninstall" <?php checked( $current === true ); ?> />
+						<input type="radio" name="choice" value="delete_on_uninstall" <?php checked( true === $current ); ?> />
 						<?php echo esc_html__( 'Delete all data when the plugin is uninstalled', 'neural-forms-lite' ); ?>
 					</label>
 					<p style="margin:0 0 8px;color:#6b7280;font-size:13px">
-						<?php echo esc_html__( 'The plugin deactivates now, but data stays until you actually delete the plugin in WP Admin → Plugins. At that moment, all forms, entries, settings, AI context, and the plugin tables are removed.', 'neural-forms-lite' ); ?>
+						<?php echo esc_html__( 'The plugin deactivates now, but data stays until you actually delete the plugin in WP Admin → Plugins. At that moment, all forms, entries, settings, Neural AI context, and the plugin tables are removed.', 'neural-forms-lite' ); ?>
 					</p>
 					<label style="display:flex;align-items:flex-start;gap:8px;color:#b91c1c;font-size:13px">
 						<input type="checkbox" name="confirm_delete" value="1" />
@@ -217,10 +221,10 @@ class DeactivationPage {
 				if ( ! $confirmed ) {
 					wp_safe_redirect(
 						add_query_arg(
-							[
-								'page'                            => self::PAGE_SLUG,
+							array(
+								'page' => self::PAGE_SLUG,
 								'neural_forms_needs_confirmation' => '1',
-							],
+							),
 							admin_url( 'admin.php' )
 						)
 					);

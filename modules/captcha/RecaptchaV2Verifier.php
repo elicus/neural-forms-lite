@@ -37,29 +37,32 @@ class RecaptchaV2Verifier implements CaptchaVerifierInterface {
 	 * @return true|\WP_Error
 	 */
 	public function verify( string $token, string $ip ) {
-		$body = [
+		$body = array(
 			'secret'   => $this->secret_key,
 			'response' => $token,
-		];
+		);
 
 		if ( $ip !== '' ) {
 			$body['remoteip'] = $ip;
 		}
 
-		$response = wp_remote_post( self::VERIFY_URL, [
-			'timeout' => 5,
-			'body'    => $body,
-		] );
+		$response = wp_remote_post(
+			self::VERIFY_URL,
+			array(
+				'timeout' => 5,
+				'body'    => $body,
+			)
+		);
 
 		// HTTP request itself failed (network, DNS, TLS).
 		if ( is_wp_error( $response ) ) {
 			return new \WP_Error(
 				'captcha_unreachable',
 				__( 'Could not reach CAPTCHA verification service.', 'neural-forms-lite' ),
-				[
+				array(
 					'provider' => 'recaptcha_v2',
 					'wp_error' => $response->get_error_message(),
-				]
+				)
 			);
 		}
 
@@ -69,10 +72,10 @@ class RecaptchaV2Verifier implements CaptchaVerifierInterface {
 			return new \WP_Error(
 				'captcha_failed',
 				__( 'CAPTCHA verification failed.', 'neural-forms-lite' ),
-				[
+				array(
 					'provider'    => 'recaptcha_v2',
-					'error_codes' => $decoded['error-codes'] ?? [],
-				]
+					'error_codes' => $decoded['error-codes'] ?? array(),
+				)
 			);
 		}
 

@@ -173,8 +173,8 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 			) }
 			<p className="nf-starter__footer">
 				{ canGenerate
-					? __( 'Use the AI assistant in the Inspector to generate a form from a prompt.', 'neural-forms-lite' )
-					: __( 'AI form generation is available in Neural Forms Pro.', 'neural-forms-lite' ) }
+					? __( 'Use the Neural AI assistant in the Inspector to generate a form from a prompt.', 'neural-forms-lite' )
+					: __( 'Neural AI form generation is available in Neural Forms Pro.', 'neural-forms-lite' ) }
 			</p>
 		</div>
 	);

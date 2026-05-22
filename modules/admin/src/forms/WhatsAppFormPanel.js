@@ -314,11 +314,11 @@ export default function WhatsAppFormPanel( { whatsapp, onChange, capUnlocked, fo
 						) ) }
 					</select>
 					<p className="nf-form-settings__hs-cell-sub">
-						{ __( 'Choose which entries should trigger WhatsApp notifications. AI-based conditions (high priority, needs reply, spam detected) require entry analysis — if analysis is not available for this form, those conditions will not fire.', 'neural-forms-lite' ) }
+						{ __( 'Choose which entries should trigger WhatsApp notifications. Neural AI-based conditions (high priority, needs reply, spam detected) require entry analysis — if analysis is not available for this form, those conditions will not fire.', 'neural-forms-lite' ) }
 					</p>
 					{ aiDependentSelected && ! autoAiEnabled && (
 						<p className="nf-form-settings__hs-cell-sub nf-form-settings__hs-required">
-							{ __( 'Enable "Process every entry" under Process with AI for this form so this condition can be evaluated.', 'neural-forms-lite' ) }
+							{ __( 'Enable "Process every entry" under Process with Neural AI for this form so this condition can be evaluated.', 'neural-forms-lite' ) }
 						</p>
 					) }
 				</div>

@@ -226,7 +226,7 @@ export default function FormSettings( {
 					{ section === 'process_with_ai' && (
 						<div className="nf-form-settings__body nf-ai-processing">
 							<p className="nf-form-settings__note nf-ai-processing__note">
-								{ __( 'AI credits are used only when AI processing runs successfully.', 'neural-forms-lite' ) }
+								{ __( 'Neural AI credits are used only when Neural AI processing runs successfully.', 'neural-forms-lite' ) }
 							</p>
 
 							{ /* Capability + cloud-connection gate. Lite-only
@@ -235,13 +235,13 @@ export default function FormSettings( {
 							{ ! aiAvailability.capable && (
 								<div className="nf-ai-processing__upsell" role="note">
 									<strong>{ __( 'Available with Neural Forms Pro', 'neural-forms-lite' ) }</strong>
-									<p>{ __( 'AI processing requires Neural Forms Pro and a connected Neural Forms Cloud account. You can still configure the mode below — it will activate once Pro is installed.', 'neural-forms-lite' ) }</p>
+									<p>{ __( 'Neural AI processing requires Neural Forms Pro and a connected Neural Forms Cloud account. You can still configure the mode below — it will activate once Pro is installed.', 'neural-forms-lite' ) }</p>
 								</div>
 							) }
 							{ aiAvailability.capable && ( ! aiAvailability.cloudConnected || ! aiAvailability.aiEnabled ) && (
 								<div className="nf-ai-processing__upsell" role="note">
 									<strong>{ __( 'Connect Neural Forms Cloud', 'neural-forms-lite' ) }</strong>
-									<p>{ __( 'Connect your Cloud account in Settings to enable AI processing. The mode below will be honoured once the cloud is connected.', 'neural-forms-lite' ) }</p>
+									<p>{ __( 'Connect your Cloud account in Settings to enable Neural AI processing. The mode below will be honoured once the cloud is connected.', 'neural-forms-lite' ) }</p>
 								</div>
 							) }
 
@@ -250,7 +250,7 @@ export default function FormSettings( {
 								disabled={ ! aiUiEnabled }
 								aria-disabled={ ! aiUiEnabled }
 							>
-								<legend className="screen-reader-text">{ __( 'AI processing mode', 'neural-forms-lite' ) }</legend>
+								<legend className="screen-reader-text">{ __( 'Neural AI processing mode', 'neural-forms-lite' ) }</legend>
 								{ AI_PROCESSING_MODES.map( ( m ) => {
 									const id = `nf-ai-processing-${ m.value }`;
 									const checked = aiProcessing.mode === m.value;
@@ -317,14 +317,18 @@ export default function FormSettings( {
 							</label>
 							<label className="nf-form-settings__field">
 								<span className="nf-form-settings__label">{ __( 'Notification email', 'neural-forms-lite' ) }</span>
+								{ /* type="text" rather than type="email" so the browser
+								     doesn't reject commas. Multiple addresses are
+								     resolved server-side by
+								     NotificationService::parse_recipient_list. */ }
 								<input
-									type="email"
+									type="text"
 									value={ s.admin_notification_email || '' }
 									onChange={ ( e ) => set( { admin_notification_email: e.target.value } ) }
-									placeholder="you@example.com"
+									placeholder="you@example.com, manager@example.com"
 								/>
 								<span className="nf-form-settings__field-hint">
-									{ __( 'Falls back to the WordPress admin email when blank.', 'neural-forms-lite' ) }
+									{ __( 'Separate multiple email addresses with commas. Falls back to the WordPress admin email when blank.', 'neural-forms-lite' ) }
 								</span>
 							</label>
 						</div>

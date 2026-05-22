@@ -4,9 +4,9 @@
 // This repository owns the wp_neural_forms_* tables and runs typed CRUD
 // against them. Object caching is intentionally not used here:
 // - REST handlers fetch fresh per request; entries / forms see frequent
-//   writes, so a stale cache would surface in the admin UI.
+// writes, so a stale cache would surface in the admin UI.
 // - Cache invalidation across the create/update/delete + bulk paths
-//   would add more risk than the few percent of latency it would save.
+// would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Storage;
 
 defined( 'ABSPATH' ) || exit;
@@ -51,7 +51,7 @@ class EntryMessageRepository {
 			return new \WP_Error(
 				'invalid_entry_id',
 				__( 'A valid entry_id is required.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -61,23 +61,23 @@ class EntryMessageRepository {
 			return new \WP_Error(
 				'empty_body',
 				__( 'Message body cannot be empty.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
-		$type      = in_array( $data['type'] ?? 'outgoing', [ 'incoming', 'outgoing', 'note' ], true )
+		$type      = in_array( $data['type'] ?? 'outgoing', array( 'incoming', 'outgoing', 'note' ), true )
 			? $data['type']
 			: 'outgoing';
-		$sender    = isset( $data['sender']    ) ? substr( (string) $data['sender'],    0, 255 ) : null;
+		$sender    = isset( $data['sender'] ) ? substr( (string) $data['sender'], 0, 255 ) : null;
 		$recipient = isset( $data['recipient'] ) ? substr( (string) $data['recipient'], 0, 255 ) : null;
-		$subject   = isset( $data['subject']   ) ? substr( (string) $data['subject'],   0, 500 ) : null;
+		$subject   = isset( $data['subject'] ) ? substr( (string) $data['subject'], 0, 500 ) : null;
 		$meta      = isset( $data['meta'] ) && is_array( $data['meta'] )
 			? wp_json_encode( $data['meta'] )
 			: null;
 
 		$inserted = $wpdb->insert(
 			self::table(),
-			[
+			array(
 				'entry_id'   => $entry_id,
 				'type'       => $type,
 				'sender'     => $sender,
@@ -86,11 +86,11 @@ class EntryMessageRepository {
 				'body'       => $body,
 				'meta'       => $meta,
 				'created_at' => current_time( 'mysql', true ),
-			],
-			[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
+			),
+			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
-		if ( $inserted === false ) {
+		if ( false === $inserted ) {
 			if ( $wpdb->last_error ) {
 				\NeuralForms\Core\Logger::file(
 					'storage',
@@ -102,7 +102,7 @@ class EntryMessageRepository {
 			return new \WP_Error(
 				'message_save_failed',
 				__( 'Could not save the message.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -123,13 +123,13 @@ class EntryMessageRepository {
 
 		$updated = $wpdb->update(
 			self::table(),
-			[ 'meta' => wp_json_encode( $meta ) ],
-			[ 'id'   => $id ],
-			[ '%s' ],
-			[ '%d' ]
+			array( 'meta' => wp_json_encode( $meta ) ),
+			array( 'id' => $id ),
+			array( '%s' ),
+			array( '%d' )
 		);
 
-		return $updated !== false;
+		return false !== $updated;
 	}
 
 	// Read operations
@@ -169,7 +169,7 @@ class EntryMessageRepository {
 			ARRAY_A
 		);
 
-		return array_map( [ self::class, 'decode' ], $rows ?: [] );
+		return array_map( array( self::class, 'decode' ), $rows ?: array() );
 	}
 
 	// Helpers
@@ -184,11 +184,11 @@ class EntryMessageRepository {
 		$row['id']       = (int) $row['id'];
 		$row['entry_id'] = (int) $row['entry_id'];
 
-		if ( isset( $row['meta'] ) && $row['meta'] !== null ) {
+		if ( isset( $row['meta'] ) && null !== $row['meta'] ) {
 			$decoded_meta = json_decode( $row['meta'], true );
-			$row['meta']  = is_array( $decoded_meta ) ? $decoded_meta : [];
+			$row['meta']  = is_array( $decoded_meta ) ? $decoded_meta : array();
 		} else {
-			$row['meta'] = [];
+			$row['meta'] = array();
 		}
 
 		return $row;

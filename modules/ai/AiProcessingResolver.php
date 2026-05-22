@@ -45,10 +45,10 @@ defined( 'ABSPATH' ) || exit;
  */
 class AiProcessingResolver {
 
-	const RESULT_UNAVAILABLE          = 'unavailable';
-	const RESULT_ALLOW_AUTO           = 'allow_auto';
-	const RESULT_ALLOW_MANUAL_ONLY    = 'allow_manual_only';
-	const RESULT_SKIP                 = 'skip';
+	const RESULT_UNAVAILABLE       = 'unavailable';
+	const RESULT_ALLOW_AUTO        = 'allow_auto';
+	const RESULT_ALLOW_MANUAL_ONLY = 'allow_manual_only';
+	const RESULT_SKIP              = 'skip';
 
 	/**
 	 * Resolve the AI-processing decision for a given form.
@@ -69,9 +69,15 @@ class AiProcessingResolver {
 		// Layer 1b: cloud connection. Without a configured cloud +
 		// enabled flag, no AI of any kind can run. UI shows a "Connect
 		// Neural Forms Cloud" CTA in this state.
-		if ( ! Config::get( 'ai_enabled' ) )         return self::RESULT_UNAVAILABLE;
-		if ( ! Config::get( 'cloud_ai_enabled' ) )    return self::RESULT_UNAVAILABLE;
-		if ( ! Config::get( 'cloud_api_key' ) )       return self::RESULT_UNAVAILABLE;
+		if ( ! Config::get( 'ai_enabled' ) ) {
+			return self::RESULT_UNAVAILABLE;
+		}
+		if ( ! Config::get( 'cloud_ai_enabled' ) ) {
+			return self::RESULT_UNAVAILABLE;
+		}
+		if ( ! Config::get( 'cloud_api_key' ) ) {
+			return self::RESULT_UNAVAILABLE;
+		}
 
 		// Layer 2: per-form mode.
 		$mode = self::form_mode( $form_id );
@@ -110,15 +116,19 @@ class AiProcessingResolver {
 	 * REST without re-implementing the lookup.
 	 */
 	public static function form_mode( int $form_id ): string {
-		if ( $form_id < 1 ) return SchemaHelper::AI_PROCESSING_DEFAULT_MODE;
+		if ( $form_id < 1 ) {
+			return SchemaHelper::AI_PROCESSING_DEFAULT_MODE;
+		}
 		$form = FormRepository::find( $form_id );
-		if ( ! is_array( $form ) ) return SchemaHelper::AI_PROCESSING_DEFAULT_MODE;
+		if ( ! is_array( $form ) ) {
+			return SchemaHelper::AI_PROCESSING_DEFAULT_MODE;
+		}
 
-		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : [];
-		$schema_settings = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : [];
-		$ai_processing = is_array( $schema_settings['ai_processing'] ?? null )
+		$schema          = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		$schema_settings = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : array();
+		$ai_processing   = is_array( $schema_settings['ai_processing'] ?? null )
 			? $schema_settings['ai_processing']
-			: [];
+			: array();
 
 		$normalized = SchemaHelper::normalize_ai_processing_settings( $ai_processing );
 		return $normalized['mode'];

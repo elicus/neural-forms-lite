@@ -173,7 +173,7 @@ export default function buildSections( ctx ) {
 	//    reads as forward-looking rather than unfinished.
 	descriptors.push( {
 		id:          'future',
-		title:       __( 'AI Insights', 'neural-forms-lite' ),
+		title:       __( 'Neural AI Insights', 'neural-forms-lite' ),
 		description: __( 'Coming in a future release.', 'neural-forms-lite' ),
 		isAvailable: a.overview.total_entries > 0,
 		isEmpty:     false,
