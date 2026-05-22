@@ -235,6 +235,15 @@ function FormRow( { form, onRemove } ) {
 				>
 					{ __( 'Edit', 'neural-forms-lite' ) }
 				</a>
+				{ status === 'draft' && (
+					<button
+						type="button"
+						className="neural-forms-forms-list__action-btn neural-forms-forms-list__action-btn--restore"
+						onClick={ () => activateForm( form.id, onRemove ) }
+					>
+						{ __( 'Activate', 'neural-forms-lite' ) }
+					</button>
+				) }
 				{ status !== 'archived' ? (
 					<button
 						type="button"
@@ -307,6 +316,20 @@ function restoreForm( id, onRemove ) {
 	api( `/forms/${ id }/restore`, { method: 'POST' } )
 		.then( () => { if ( typeof onRemove === 'function' ) onRemove( id ); } )
 		.catch( ( err ) => window.alert( err?.message || 'Failed to restore form.' ) );
+}
+
+/**
+ * Flip a draft form to active via PUT /forms/{id} with status=active.
+ * Only surfaced on the Drafts tab — the action does nothing meaningful
+ * on Active rows (already active) or Archived rows (Restore already
+ * publishes back to active state). Same optimistic-remove pattern as
+ * archive/restore/delete: the row vanishes from the current tab on
+ * success because it no longer matches the tab filter.
+ */
+function activateForm( id, onRemove ) {
+	api( `/forms/${ id }`, { method: 'PUT', data: { status: 'active' } } )
+		.then( () => { if ( typeof onRemove === 'function' ) onRemove( id ); } )
+		.catch( ( err ) => window.alert( err?.message || 'Failed to activate form.' ) );
 }
 
 /**

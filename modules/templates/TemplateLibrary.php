@@ -224,9 +224,13 @@ class TemplateLibrary {
 			return $shape_err;
 		}
 
-		// Builder gate — only Gutenberg bundles are imported by Lite.
+		// Builder gate — Lite imports Block-Editor / Gutenberg bundles.
+		// The remote host moved from /gutenberg/ to /block-editor/ in
+		// 2026-05; bundles now declare `builder: 'block-editor'`.
+		// Older bundles still declaring `gutenberg` continue to import
+		// (same payload shape — only the slug label changed).
 		$builder = isset( $bundle['builder'] ) ? (string) $bundle['builder'] : '';
-		if ( $builder !== 'gutenberg' ) {
+		if ( ! in_array( $builder, array( 'block-editor', 'gutenberg' ), true ) ) {
 			return new WP_Error(
 				'template_unsupported_builder',
 				/* translators: %s: builder slug from the remote bundle. */
@@ -286,9 +290,11 @@ class TemplateLibrary {
 
 		$title = isset( $page['title'] ) ? (string) $page['title'] : ( isset( $bundle['name'] ) ? (string) $bundle['name'] : __( 'Imported Template', 'neural-forms-lite' ) );
 		$slug  = isset( $page['slug'] ) ? sanitize_title( (string) $page['slug'] ) : '';
-		// Force draft regardless of what the bundle says — never
-		// auto-publish imported content; the admin should review first.
-		$status = 'draft';
+		// Publish the imported page immediately so the user can hit
+		// "View page" and see the rendered form without an extra
+		// review step. They can flip it back to draft / pending from
+		// the standard wp-admin Pages edit screen if they need to.
+		$status = 'publish';
 
 		$post_id = wp_insert_post(
 			array(
@@ -340,7 +346,16 @@ class TemplateLibrary {
 	 * @return array
 	 */
 	public static function sanitize_imported_form( array $form ): array {
-		$name = isset( $form['name'] ) ? (string) $form['name'] : __( 'Imported Form', 'neural-forms-lite' );
+		// Name: accept either `name` (legacy nested shape) or `title`
+		// (flat shape the live remote bundles use). Fall back to a
+		// generic label only when neither is present.
+		$raw_name = '';
+		if ( isset( $form['name'] ) && '' !== (string) $form['name'] ) {
+			$raw_name = (string) $form['name'];
+		} elseif ( isset( $form['title'] ) && '' !== (string) $form['title'] ) {
+			$raw_name = (string) $form['title'];
+		}
+		$name = '' !== $raw_name ? $raw_name : __( 'Imported Form', 'neural-forms-lite' );
 		$desc = isset( $form['description'] ) ? (string) $form['description'] : '';
 
 		// Deep-sanitize every string inside form_schema before it goes
@@ -352,8 +367,29 @@ class TemplateLibrary {
 		// to render later. SQL injection is already handled by
 		// FormRepository::create() ($wpdb->insert with format
 		// specifiers); deep sanitize here defends the rendering layer.
-		$schema = isset( $form['form_schema'] ) && is_array( $form['form_schema'] )
-			? self::sanitize_recursive_strings( $form['form_schema'] )
+		//
+		// Two bundle shapes accepted:
+		//   - Legacy nested: form.form_schema = { fields, settings }
+		//   - Flat (current remote 2026-05+): form.fields + form.design
+		//     live at the root; we synthesise a form_schema wrapper
+		//     so FormRepository::create() sees what it expects.
+		if ( isset( $form['form_schema'] ) && is_array( $form['form_schema'] ) ) {
+			$schema_raw = $form['form_schema'];
+		} else {
+			$schema_raw = array();
+			if ( isset( $form['fields'] ) && is_array( $form['fields'] ) ) {
+				$schema_raw['fields'] = $form['fields'];
+			}
+			// `design` carries layout/branding (the form-builder design
+			// tab payload). Live bundles ship it at the root; the
+			// builder reads it back from form_schema.design so we
+			// preserve it under the schema wrapper.
+			if ( isset( $form['design'] ) && is_array( $form['design'] ) ) {
+				$schema_raw['design'] = $form['design'];
+			}
+		}
+		$schema = ! empty( $schema_raw )
+			? self::sanitize_recursive_strings( $schema_raw )
 			: array();
 
 		$raw_settings   = isset( $form['settings'] ) && is_array( $form['settings'] ) ? $form['settings'] : array();
@@ -396,10 +432,11 @@ class TemplateLibrary {
 			'description' => sanitize_textarea_field( $desc ),
 			'form_schema' => $schema,
 			'settings'    => $clean_settings,
-			// Always import in draft so the admin can review before
-			// the form goes live. They can flip it to active in the
-			// builder.
-			'status'      => 'draft',
+			// Imported forms ship active so the published landing page
+			// has a working live form on first render. Admins can flip
+			// the form back to draft from the Forms list if they need
+			// to (or use the Archive action for a longer pause).
+			'status'      => 'active',
 		);
 	}
 
