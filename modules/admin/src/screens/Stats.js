@@ -241,7 +241,43 @@ function NeedsAttention( { items } ) {
 
 // ─── AI Insights ───────────────────────────────────────────────
 
+/**
+ * Reads the Pro-capability snapshot Lite localizes at boot. The AI
+ * Insights card is sourced entirely from `ai_status = 'complete'`
+ * entries, and the analysis pipeline that produces those rows only
+ * runs when Pro flips the `ai_process_entries` capability. On Lite
+ * the numbers would always be zero, so we render a locked variant
+ * with an "Upgrade to Pro" CTA instead.
+ */
+function readAiCapability() {
+	if ( typeof window === 'undefined' ) return false;
+	const caps = window.neuralFormsAdmin?.plugin?.capabilities || {};
+	return !! caps.ai_process_entries;
+}
+
 function AiInsights( { ai } ) {
+	const canRun = readAiCapability();
+
+	if ( ! canRun ) {
+		return (
+			<div className="neural-forms-stats__ai neural-forms-stats__ai--locked">
+				<p className="neural-forms-stats__empty">
+					{ __( 'Neural AI insights are available in Neural Forms Pro. Pro analyses every entry — category, priority, spam, sentiment — and surfaces the rollup here.', 'neural-forms-lite' ) }
+				</p>
+				<div className="neural-forms-stats__ai-actions">
+					<a
+						className="neural-forms-stats__link"
+						href="https://neuralforms.ai/pricing"
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
+					</a>
+				</div>
+			</div>
+		);
+	}
+
 	const safe = ai && typeof ai === 'object' ? ai : {};
 	return (
 		<div className="neural-forms-stats__ai">
@@ -611,6 +647,17 @@ export default function Stats() {
 							<header className="neural-forms-stats__card-head">
 								<h2 className="neural-forms-stats__card-title">
 									{ __( 'Neural AI Insights', 'neural-forms-lite' ) }
+									{ /* PRO badge — the entire card sources data
+									     from `ai_status = complete` entries
+									     which only get produced when Pro flips
+									     the ai_process_entries capability. Lite
+									     installs see the locked variant rendered
+									     by <AiInsights /> below. */ }
+									{ ! readAiCapability() && (
+										<span className="neural-forms-stats__card-pro">
+											{ __( 'PRO', 'neural-forms-lite' ) }
+										</span>
+									) }
 								</h2>
 								<span className="neural-forms-stats__card-sub">{ rangeLabel }</span>
 							</header>

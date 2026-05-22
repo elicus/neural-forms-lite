@@ -628,13 +628,14 @@ class NotificationService {
 	 * often succeed on immediate retry. A single retry keeps things simple
 	 * without needing a full email queue.
 	 *
-	 * @param string   $to
-	 * @param string   $subject
-	 * @param string   $body
-	 * @param string[] $headers
+	 * @param string|array $to       Single recipient OR list of recipients.
+	 *                               wp_mail() accepts either form natively.
+	 * @param string       $subject
+	 * @param string       $body
+	 * @param string[]     $headers
 	 * @return bool
 	 */
-	private static function send_with_retry( string $to, string $subject, string $body, array $headers ): bool {
+	private static function send_with_retry( $to, string $subject, string $body, array $headers ): bool {
 		if ( wp_mail( $to, $subject, $body, $headers ) ) {
 			return true;
 		}

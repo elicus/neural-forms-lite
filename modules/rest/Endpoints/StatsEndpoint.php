@@ -12,24 +12,36 @@ use WP_REST_Request;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * GET /stats
+ * GET /stats?range=today|7d|30d|90d
  *
- * Single endpoint that returns all data for the admin Stats screen.
- * Five payload sections:
+ * Returns every block the admin Stats screen needs:
  *
- *   needs_attention  - up to 8 entries requiring action (high-priority,
- *                      needs-reply, or spam-suspected-but-not-yet-moved).
- *   stats            - aggregate counts: entries last 7 days, unread,
- *                      needs-reply, spam detected.
- *   ai_insights      - top category, high-priority count, sales/support
- *                      count from completed AI analyses.
- *   recent_activity  - last 10 log events (reply, notification, AI).
- *   system_status    - AI on/off, pending queue depth, email failure count.
- *
- * All queries are simple aggregations or small-LIMIT fetches - no heavy
- * joins or full-table scans beyond what the existing indexes cover.
+ *   range              - echoed back ('7d' default)
+ *   summary            - 6 counters (total_forms, entries, unread,
+ *                        needs_reply, spam_detected, failed_deliveries)
+ *   trend              - one { date, entries } row per day in range
+ *   ai                 - analyzed, high_priority, needs_reply,
+ *                        spam_detected, top_category, sentiment
+ *   top_forms          - top 5 forms by entry count in range
+ *   integration_health - filled by Pro via the
+ *                        `neural_forms_integration_health` filter;
+ *                        empty in a Lite-only install
+ *   recent_entries     - last 8 entries with status pill + submitter
+ *   recent_activity    - last 10 log rows (back-compat / System Activity)
+ *   needs_attention    - up to 8 entries requiring action (back-compat)
+ *   system             - ai_engine, queue, email_failures,
+ *                        integration_failures, last_cron_run
  */
 class StatsEndpoint {
+
+	const RANGES = array(
+		'today' => 1,
+		'7d'    => 7,
+		'30d'   => 30,
+		'90d'   => 90,
+	);
+
+	const DEFAULT_RANGE = '7d';
 
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
@@ -41,6 +53,12 @@ class StatsEndpoint {
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_stats' ),
 				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'range' => array(
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
 			)
 		);
 
@@ -69,14 +87,312 @@ class StatsEndpoint {
 	}
 
 	public function get_stats( WP_REST_Request $request ) {
+		$range_key = (string) $request->get_param( 'range' );
+		if ( ! isset( self::RANGES[ $range_key ] ) ) {
+			$range_key = self::DEFAULT_RANGE;
+		}
+		$days = self::RANGES[ $range_key ];
+
 		return rest_ensure_response(
 			array(
-				'needs_attention' => $this->needs_attention(),
-				'stats'           => $this->stats(),
-				'ai_insights'     => $this->ai_insights(),
-				'recent_activity' => $this->recent_activity(),
-				'system_status'   => $this->system_status(),
+				'range'              => $range_key,
+				'summary'            => $this->summary( $days ),
+				'trend'              => $this->trend( $days ),
+				'ai'                 => $this->ai_summary( $days ),
+				'top_forms'          => $this->top_forms( $days ),
+				'integration_health' => $this->integration_health(),
+				'recent_entries'     => $this->recent_entries(),
+				'needs_attention'    => $this->needs_attention(),
+				'recent_activity'    => $this->recent_activity(),
+				'system'             => $this->system_status_v2(),
 			)
+		);
+	}
+
+	/**
+	 * Six counters. total_forms is lifetime; unread + needs_reply
+	 * are lifetime open-counts (the inbox-actionable numbers the
+	 * user wants to see regardless of range); entries / spam /
+	 * failed_deliveries are range-scoped.
+	 */
+	private function summary( int $days ): array {
+		global $wpdb;
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+		$forms   = $wpdb->prefix . 'neural_forms_forms';
+		$logs    = $wpdb->prefix . 'neural_forms_logs';
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT
+				   SUM( created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY ) )                          AS entries,
+				   SUM( status = 'new' )                                                                       AS unread,
+				   SUM( needs_reply = 1 AND status IN ('new','read') )                                         AS needs_reply,
+				   SUM( ai_is_spam = 1 AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY ) )        AS spam_detected
+				 FROM %i",
+				$days,
+				$days,
+				$entries
+			),
+			ARRAY_A
+		);
+
+		$total_forms = (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i', $forms )
+		);
+
+		$failed_deliveries = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM %i
+				 WHERE event_type IN (
+				     'reply_send_failed',
+				     'admin_notification_failed',
+				     'autoresponder_failed'
+				 )
+				 AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY )",
+				$logs,
+				$days
+			)
+		);
+
+		return array(
+			'total_forms'       => $total_forms,
+			'entries'           => (int) ( $row['entries'] ?? 0 ),
+			'unread'            => (int) ( $row['unread'] ?? 0 ),
+			'needs_reply'       => (int) ( $row['needs_reply'] ?? 0 ),
+			'spam_detected'     => (int) ( $row['spam_detected'] ?? 0 ),
+			'failed_deliveries' => $failed_deliveries,
+		);
+	}
+
+	/** One { date, entries } row per UTC calendar day in range; missing days filled with 0. */
+	private function trend( int $days ): array {
+		global $wpdb;
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DATE(created_at) AS day, COUNT(*) AS entries
+				 FROM %i
+				 WHERE created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY )
+				 GROUP BY DATE(created_at)
+				 ORDER BY day ASC",
+				$entries,
+				$days
+			),
+			ARRAY_A
+		);
+		$rows = is_array( $rows ) ? $rows : array();
+
+		$by_date = array();
+		foreach ( $rows as $r ) {
+			$by_date[ (string) $r['day'] ] = (int) $r['entries'];
+		}
+
+		$out = array();
+		for ( $i = $days - 1; $i >= 0; $i-- ) {
+			$date  = gmdate( 'Y-m-d', time() - ( $i * DAY_IN_SECONDS ) );
+			$out[] = array(
+				'date'    => $date,
+				'entries' => $by_date[ $date ] ?? 0,
+			);
+		}
+		return $out;
+	}
+
+	/** Range-scoped AI rollup. `sentiment` stays null until that column ships. */
+	private function ai_summary( int $days ): array {
+		global $wpdb;
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+
+		$agg = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT
+				   COUNT(*)                                              AS analyzed,
+				   SUM( ai_priority = 'high' )                           AS high_priority,
+				   SUM( needs_reply = 1 AND status IN ('new','read') )   AS needs_reply,
+				   SUM( ai_is_spam = 1 )                                 AS spam_detected
+				 FROM %i
+				 WHERE ai_status = 'complete'
+				   AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY )",
+				$entries,
+				$days
+			),
+			ARRAY_A
+		);
+
+		$top_category = (string) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT ai_category FROM %i
+				 WHERE ai_status = 'complete'
+				   AND ai_category IS NOT NULL
+				   AND ai_category != ''
+				   AND ai_category != 'general'
+				   AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY )
+				 GROUP BY ai_category
+				 ORDER BY COUNT(*) DESC
+				 LIMIT 1",
+				$entries,
+				$days
+			)
+		);
+
+		return array(
+			'analyzed'      => (int) ( $agg['analyzed']      ?? 0 ),
+			'high_priority' => (int) ( $agg['high_priority'] ?? 0 ),
+			'needs_reply'   => (int) ( $agg['needs_reply']   ?? 0 ),
+			'spam_detected' => (int) ( $agg['spam_detected'] ?? 0 ),
+			'top_category'  => '' !== $top_category ? $top_category : null,
+			'sentiment'     => null,
+		);
+	}
+
+	/** Top 5 forms in range by entry count. Unread + needs_reply are lifetime (inbox-actionable). */
+	private function top_forms( int $days ): array {
+		global $wpdb;
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+		$forms   = $wpdb->prefix . 'neural_forms_forms';
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT e.form_id,
+				        f.name AS form_title,
+				        COUNT(*) AS entries,
+				        SUM( e.status = 'new' )                                   AS unread,
+				        SUM( e.needs_reply = 1 AND e.status IN ('new','read') )   AS needs_reply
+				 FROM %i e LEFT JOIN %i f ON e.form_id = f.id
+				 WHERE e.created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY )
+				 GROUP BY e.form_id, f.name
+				 ORDER BY entries DESC
+				 LIMIT 5",
+				$entries,
+				$forms,
+				$days
+			),
+			ARRAY_A
+		);
+		$rows = is_array( $rows ) ? $rows : array();
+
+		return array_map(
+			static function ( array $r ): array {
+				return array(
+					'form_id'     => (int) $r['form_id'],
+					'title'       => (string) ( $r['form_title'] ?? '' ),
+					'entries'     => (int) $r['entries'],
+					'unread'      => (int) $r['unread'],
+					'needs_reply' => (int) $r['needs_reply'],
+				);
+			},
+			$rows
+		);
+	}
+
+	/**
+	 * Filled by Pro via `neural_forms_integration_health`; empty on
+	 * Lite installs. React side hides the card when providers map is
+	 * empty.
+	 */
+	private function integration_health(): array {
+		$filtered = apply_filters( 'neural_forms_integration_health', array() );
+		return is_array( $filtered ) ? $filtered : array();
+	}
+
+	/** Last 8 non-trash entries with coarse status pill + best-effort submitter email. */
+	private function recent_entries(): array {
+		global $wpdb;
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+		$forms   = $wpdb->prefix . 'neural_forms_forms';
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT e.id, e.form_id, e.status, e.needs_reply,
+				        e.ai_priority, e.ai_is_spam, e.ai_auto_spam_applied,
+				        e.submitted_at, e.created_at, e.data,
+				        f.name AS form_name
+				 FROM %i e LEFT JOIN %i f ON e.form_id = f.id
+				 WHERE e.status != 'trash'
+				 ORDER BY e.created_at DESC
+				 LIMIT 8",
+				$entries,
+				$forms
+			),
+			ARRAY_A
+		);
+		$rows = is_array( $rows ) ? $rows : array();
+
+		return array_map(
+			static function ( array $r ): array {
+				$status = 'normal';
+				if ( 1 === (int) $r['ai_is_spam'] || 'spam' === $r['status'] ) {
+					$status = 'spam';
+				} elseif ( 'high' === (string) $r['ai_priority'] && in_array( $r['status'], array( 'new', 'read' ), true ) ) {
+					$status = 'high_priority';
+				} elseif ( 1 === (int) $r['needs_reply'] && in_array( $r['status'], array( 'new', 'read' ), true ) ) {
+					$status = 'needs_reply';
+				}
+
+				$submitter = '';
+				$data      = json_decode( (string) ( $r['data'] ?? '{}' ), true );
+				if ( is_array( $data ) ) {
+					foreach ( array( 'email', 'submitter_email', 'your_email', 'email_address' ) as $k ) {
+						if ( ! empty( $data[ $k ] ) && is_string( $data[ $k ] ) && false !== strpos( $data[ $k ], '@' ) ) {
+							$submitter = (string) $data[ $k ];
+							break;
+						}
+					}
+				}
+
+				return array(
+					'entry_id'   => (int) $r['id'],
+					'form_id'    => (int) $r['form_id'],
+					'form_title' => (string) ( $r['form_name'] ?? '' ),
+					'submitter'  => $submitter,
+					'status'     => $status,
+					'created_at' => (string) ( $r['created_at'] ?? '' ),
+				);
+			},
+			$rows
+		);
+	}
+
+	/** v2 system block — adds integration_failures + last_cron_run alongside legacy fields. */
+	private function system_status_v2(): array {
+		global $wpdb;
+
+		$pending_jobs = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM %i
+				 WHERE job_type = 'analyze_entry'
+				   AND status IN ('pending','failed')
+				   AND attempts < %d",
+				$wpdb->prefix . 'neural_forms_queue',
+				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
+			)
+		);
+
+		$email_failures = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM %i
+				 WHERE event_type IN (
+				     'reply_send_failed',
+				     'admin_notification_failed',
+				     'autoresponder_failed'
+				 )
+				 AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 24 HOUR )",
+				$wpdb->prefix . 'neural_forms_logs'
+			)
+		);
+
+		$next_run     = wp_next_scheduled( 'neural_forms_process_queue' );
+		$last_cron_ts = is_int( $next_run ) && $next_run > 0
+			? (int) $next_run - 5 * MINUTE_IN_SECONDS
+			: 0;
+
+		return array(
+			'ai_engine'            => (bool) Config::get( 'ai_enabled' ) ? 'on' : 'off',
+			'queue'                => $pending_jobs,
+			'email_failures'       => $email_failures,
+			'integration_failures' => (int) apply_filters( 'neural_forms_integration_failure_count', 0 ),
+			'last_cron_run'        => $last_cron_ts > 0 ? gmdate( 'Y-m-d H:i:s', $last_cron_ts ) : null,
 		);
 	}
 

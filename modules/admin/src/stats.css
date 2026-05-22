@@ -281,10 +281,56 @@
 }
 
 .neural-forms-stats__trend-bars {
-	align-items: flex-end;
+	/* align-items: stretch (default) so each .trend-col fills the 120px
+	 * height — the inner .trend-bar-track uses flex:1 1 auto and needs
+	 * a fixed-height column to size against. The previous flex-end
+	 * collapsed each col to its content height, so the bar-track was
+	 * 0px and the chart looked empty even with entries. */
+	align-items: stretch;
 	display: flex;
 	gap: 4px;
 	height: 120px;
+}
+
+/* PRO badge on the Neural AI Insights card header. Solid navy fill +
+ * white text to match every other PRO pill across the admin (Builder
+ * Inspector AI card, Templates Divi tab, Integrations locked card,
+ * +New Form dropdown). Sits inline with the card title. */
+.neural-forms-stats__card-pro {
+	background: var( --f-blue-600 );
+	border-radius: var( --f-radius-full );
+	color: #fff;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	margin-left: 8px;
+	padding: 2px 8px;
+	vertical-align: middle;
+}
+
+/* Locked variant of the AI Insights body — soft surface + centered
+ * upsell copy. Replaces the data table when ai_process_entries is
+ * not unlocked (Lite-only installs). */
+.neural-forms-stats__ai--locked {
+	padding: 20px;
+}
+
+.neural-forms-stats__ai--locked .neural-forms-stats__empty {
+	background: linear-gradient( 180deg, #ffffff 0%, #f7fffc 100% );
+	border: 1px solid rgba( 21, 219, 149, 0.28 );
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-700 );
+	font-size: 12.5px;
+	font-style: normal;
+	line-height: 1.55;
+	padding: 14px 16px;
+	text-align: left;
+}
+
+.neural-forms-stats__ai--locked .neural-forms-stats__ai-actions {
+	border-top: 0;
+	margin-top: 10px;
+	padding-top: 0;
 }
 
 .neural-forms-stats__trend-col {

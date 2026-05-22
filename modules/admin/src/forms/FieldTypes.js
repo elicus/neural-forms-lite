@@ -22,7 +22,7 @@ export const FIELD_TYPES = [
 	{ value: 'rating',        label: 'Rating'        },
 	{ value: 'matrix',        label: 'Matrix'        },
 	{ value: 'poll',          label: 'Poll'          },
-	{ value: 'quiz_question', label: 'Quiz Question' },
+	{ value: 'quiz_question', label: 'Quiz'          },
 	{ value: 'repeater',      label: 'Repeater'      },
 	{ value: 'file',          label: 'File Upload'   },
 	{ value: 'hidden',        label: 'Hidden'        },

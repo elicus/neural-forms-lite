@@ -29,13 +29,18 @@ class CF7FieldMapper {
 		'radio'      => 'radio',
 		'hidden'     => 'hidden',
 		'file'       => 'file',
+		// CF7 quiz → Neural Forms quiz_question. The mapping is one
+		// CF7 quiz pair ("Question | Answer") to one Neural Forms
+		// quiz_question field; multi-pair tags fan out to multiple
+		// fields. See map_quiz_tag() for the fan-out and the
+		// warning that asks the user to add distractor options.
+		'quiz'       => 'quiz_question',
 	);
 
 	/**
 	 * CF7 types that cannot be migrated - silently skipped with a warning.
 	 */
 	const UNSUPPORTED = array(
-		'quiz',
 		'captchac',
 		'captchar',
 		'count',
@@ -97,6 +102,43 @@ class CF7FieldMapper {
 				continue;
 			}
 
+			// CF7 quiz tags are the only multi-output basetype: a single
+			// `[quiz quiz-576 "Q1|A1" "Q2|A2"]` fans out to N Neural
+			// Forms quiz_question fields. Everything else maps 1:1.
+			if ( $cf7_type === 'quiz' ) {
+				$quiz_fields = self::map_quiz_tag( $tag );
+				if ( empty( $quiz_fields ) ) {
+					$skipped[]  = array(
+						'name'     => $tag['name'],
+						'cf7_type' => $cf7_type,
+						'reason'   => 'Quiz tag had no question/answer pairs.',
+					);
+					$warnings[] = sprintf(
+						'Skipped "%s" (%s): no question/answer pairs found.',
+						$tag['name'],
+						$cf7_type
+					);
+					continue;
+				}
+				foreach ( $quiz_fields as $i => $quiz_field ) {
+					// Suffix the original tag name with the pair index so
+					// "quiz-576" with two Q/A pairs becomes "quiz_576_1"
+					// + "quiz_576_2" — predictable, unique, debuggable.
+					$suffix     = count( $quiz_fields ) === 1 ? '' : '_' . ( $i + 1 );
+					$field_id   = self::unique_id( $tag['name'] . $suffix, $used_ids );
+					$used_ids[] = $field_id;
+
+					$fields[ $field_id ] = $quiz_field;
+				}
+				$warnings[] = sprintf(
+					/* translators: %s: CF7 quiz tag name */
+					'Imported "%s" as %d quiz question(s). Add distractor options before publishing — CF7 quiz only stores the correct answer.',
+					$tag['name'],
+					count( $quiz_fields )
+				);
+				continue;
+			}
+
 			$field = self::map_tag( $tag );
 			if ( null === $field ) {
 				$skipped[] = array(
@@ -119,6 +161,61 @@ class CF7FieldMapper {
 			'skipped'  => $skipped,
 			'warnings' => $warnings,
 		);
+	}
+
+	/**
+	 * CF7 quiz tag → one or more Neural Forms `quiz_question` fields.
+	 *
+	 * CF7's quiz tag stores each `"Question | Answer"` string as a
+	 * (labels[i], values[i]) pair where labels[] = questions and
+	 * values[] = answers. At runtime CF7 picks ONE pair at random
+	 * and shows the question; the user must type the answer that
+	 * matches values[i] (case/whitespace-trimmed).
+	 *
+	 * Neural Forms' `quiz_question` is multiple-choice, so the
+	 * mapping is asymmetric: we import every Q/A pair as a separate
+	 * quiz_question with the answer marked correct, and emit a
+	 * warning that asks the user to add distractor options before
+	 * publishing (otherwise the question only has one option and
+	 * isn't useful as a quiz).
+	 *
+	 * Returns an empty array when the tag has no labels OR no
+	 * values — the caller treats that as a skipped tag.
+	 *
+	 * @param array $tag CF7Detector descriptor.
+	 * @return array[]   Neural Forms quiz_question field definitions.
+	 */
+	private static function map_quiz_tag( array $tag ): array {
+		$labels = is_array( $tag['labels'] ?? null ) ? $tag['labels'] : array();
+		$values = is_array( $tag['values'] ?? null ) ? $tag['values'] : array();
+
+		if ( empty( $labels ) || empty( $values ) ) {
+			return array();
+		}
+
+		$out = array();
+		foreach ( $labels as $i => $question ) {
+			$question = trim( (string) $question );
+			$answer   = isset( $values[ $i ] ) ? trim( (string) $values[ $i ] ) : '';
+			if ( $question === '' || $answer === '' ) {
+				continue;
+			}
+
+			$out[] = array(
+				'type'     => 'quiz_question',
+				'label'    => $question,
+				'required' => (bool) $tag['required'],
+				'options'  => array(
+					array(
+						'value'      => 'option_1',
+						'label'      => $answer,
+						'is_correct' => true,
+					),
+				),
+			);
+		}
+
+		return $out;
 	}
 
 	/**

@@ -184,7 +184,13 @@ export default function Forms() {
 					</thead>
 					<tbody>
 						{ items.map( ( form ) => (
-							<FormRow key={ form.id } form={ form } />
+							<FormRow
+								key={ form.id }
+								form={ form }
+								onRemove={ ( id ) =>
+									setItems( ( prev ) => prev.filter( ( f ) => f.id !== id ) )
+								}
+							/>
 						) ) }
 					</tbody>
 				</table>
@@ -204,7 +210,7 @@ export default function Forms() {
 	);
 }
 
-function FormRow( { form } ) {
+function FormRow( { form, onRemove } ) {
 	const status = String( form.status || '' );
 
 	return (
@@ -233,18 +239,27 @@ function FormRow( { form } ) {
 					<button
 						type="button"
 						className="neural-forms-forms-list__action-btn neural-forms-forms-list__action-btn--delete"
-						onClick={ () => archiveForm( form.id ) }
+						onClick={ () => archiveForm( form.id, onRemove ) }
 					>
 						{ __( 'Archive', 'neural-forms-lite' ) }
 					</button>
 				) : (
-					<button
-						type="button"
-						className="neural-forms-forms-list__action-btn neural-forms-forms-list__action-btn--restore"
-						onClick={ () => restoreForm( form.id ) }
-					>
-						{ __( 'Restore', 'neural-forms-lite' ) }
-					</button>
+					<>
+						<button
+							type="button"
+							className="neural-forms-forms-list__action-btn neural-forms-forms-list__action-btn--restore"
+							onClick={ () => restoreForm( form.id, onRemove ) }
+						>
+							{ __( 'Restore', 'neural-forms-lite' ) }
+						</button>
+						<button
+							type="button"
+							className="neural-forms-forms-list__action-btn neural-forms-forms-list__action-btn--delete"
+							onClick={ () => deleteForm( form.id, onRemove ) }
+						>
+							{ __( 'Delete', 'neural-forms-lite' ) }
+						</button>
+					</>
 				) }
 			</td>
 		</tr>
@@ -264,19 +279,53 @@ function StatusPill( { status } ) {
 	);
 }
 
-function archiveForm( id ) {
+/**
+ * Three row actions share the same shape: confirm (optional) → REST
+ * call → optimistic-remove the row via the parent's onRemove. Avoiding
+ * `window.location.reload()` keeps the user on the current tab (the
+ * old behaviour bounced Archived → Active on every reload because
+ * "Active" is the default tab).
+ *
+ * Archive (Active/Drafts tab): row vanishes from the current tab
+ *   because the form's status flipped to 'archived'.
+ * Restore (Archived tab): row vanishes because the form is no longer
+ *   archived.
+ * Delete (Archived tab): row vanishes because the row itself is gone.
+ */
+function archiveForm( id, onRemove ) {
 	if ( ! window.confirm(
 		__( 'Archive this form? Its entries are preserved.', 'neural-forms-lite' )
 	) ) {
 		return;
 	}
 	api( `/forms/${ id }`, { method: 'DELETE' } )
-		.then( () => window.location.reload() )
+		.then( () => { if ( typeof onRemove === 'function' ) onRemove( id ); } )
 		.catch( ( err ) => window.alert( err?.message || 'Failed to archive form.' ) );
 }
 
-function restoreForm( id ) {
+function restoreForm( id, onRemove ) {
 	api( `/forms/${ id }/restore`, { method: 'POST' } )
-		.then( () => window.location.reload() )
+		.then( () => { if ( typeof onRemove === 'function' ) onRemove( id ); } )
 		.catch( ( err ) => window.alert( err?.message || 'Failed to restore form.' ) );
+}
+
+/**
+ * Permanently delete a previously-archived form via DELETE /forms/{id}?force=true.
+ * Only callable from the Archived tab — the Active/Drafts tabs offer
+ * Archive (soft delete) instead so live forms can never disappear in
+ * a single click.
+ *
+ * The endpoint's `force=true` branch drops the row and cascades
+ * referenced entries; this is irreversible, hence the destructive
+ * confirm prompt below.
+ */
+function deleteForm( id, onRemove ) {
+	if ( ! window.confirm(
+		__( 'Permanently delete this form and all its entries? This cannot be undone.', 'neural-forms-lite' )
+	) ) {
+		return;
+	}
+	api( `/forms/${ id }?force=true`, { method: 'DELETE' } )
+		.then( () => { if ( typeof onRemove === 'function' ) onRemove( id ); } )
+		.catch( ( err ) => window.alert( err?.message || 'Failed to delete form.' ) );
 }
