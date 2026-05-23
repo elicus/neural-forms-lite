@@ -24,12 +24,19 @@ import { Button, Notice } from '@wordpress/components';
 import api from '../api';
 import '../templates.css';
 
-// Block Editor is the only importable builder for MVP. Divi sits in
-// the tab row as a disabled "PRO" entry so users can see it's part
-// of the roadmap (and behind the Pro plugin).
+// Block Editor is the only importable builder with templates today.
+// The Divi tab is clickable when Neural Forms Pro is installed (so users
+// can see Pro is wired up) but shows a "Coming soon" empty state — the
+// Divi template pack isn't shipping yet. Without Pro, the tab stays
+// locked with the PRO pill.
+const PRO_INSTALLED = !! ( typeof window !== 'undefined'
+	&& window.neuralFormsAdmin
+	&& window.neuralFormsAdmin.pro
+	&& window.neuralFormsAdmin.pro.version );
+
 const BUILDERS = [
-	{ slug: 'block-editor', label: __( 'Block Editor', 'neural-forms-lite' ), available: true,  pill: '' },
-	{ slug: 'divi',         label: __( 'Divi',         'neural-forms-lite' ), available: false, pill: __( 'PRO', 'neural-forms-lite' ) },
+	{ slug: 'block-editor', label: __( 'Block Editor', 'neural-forms-lite' ), available: true,            pill: '' },
+	{ slug: 'divi',         label: __( 'Divi',         'neural-forms-lite' ), available: PRO_INSTALLED,   pill: PRO_INSTALLED ? '' : __( 'PRO', 'neural-forms-lite' ) },
 ];
 
 const SKELETON_COUNT = 6;
@@ -89,6 +96,22 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 	const [ lightbox,        setLightbox        ] = useState( null );
 
 	function loadCatalog( forceRefresh = false, builderSlug = builder ) {
+		// Divi pack hasn't shipped yet — short-circuit the API call and
+		// render the "coming soon" empty state instead of hitting the
+		// backend (which would 400 the unsupported builder slug).
+		if ( builderSlug === 'divi' ) {
+			setCatalog( {
+				builder:    'divi',
+				templates:  [],
+				updated_at: '',
+				coming_soon: true,
+			} );
+			setLoading( false );
+			setRefreshing( false );
+			setError( '' );
+			return Promise.resolve();
+		}
+
 		const path = '/templates?builder=' + encodeURIComponent( builderSlug )
 			+ ( forceRefresh ? '&refresh=1' : '' );
 		if ( forceRefresh ) setRefreshing( true );
@@ -325,7 +348,7 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 				</Notice>
 			) }
 
-			<div className="neural-forms-templates__toolbar">
+			<div className="neural-forms-templates__toolbar" hidden={ !! catalog?.coming_soon }>
 				<nav className="neural-forms-templates__filters" role="tablist" aria-label={ __( 'Filter templates', 'neural-forms-lite' ) }>
 					{ categoryFilters.map( ( f ) => (
 						<button
@@ -411,7 +434,16 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 				</div>
 			) }
 
-			{ ! loading && ! error && ! catalog?.service_unavailable && ! catalog?.parse_error && filteredTemplates.length === 0 && (
+			{ ! loading && ! error && catalog?.coming_soon && (
+				<div className="neural-forms-templates__empty neural-forms-templates__empty--coming-soon">
+					<p><strong>{ __( 'Divi templates coming soon.', 'neural-forms-lite' ) }</strong></p>
+					<p className="neural-forms-templates__empty-hint">
+						{ __( 'We\'re curating a Divi template pack. In the meantime, browse the Block Editor library.', 'neural-forms-lite' ) }
+					</p>
+				</div>
+			) }
+
+			{ ! loading && ! error && ! catalog?.coming_soon && ! catalog?.service_unavailable && ! catalog?.parse_error && filteredTemplates.length === 0 && (
 				<div className="neural-forms-templates__empty">
 					<p><strong>{ __( 'No templates found.', 'neural-forms-lite' ) }</strong></p>
 					<p className="neural-forms-templates__empty-hint">
