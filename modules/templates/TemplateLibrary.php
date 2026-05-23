@@ -247,6 +247,7 @@ class TemplateLibrary {
 		// inline (the older multi-file layout had a `file` URL here
 		// instead — we no longer fetch that for MVP).
 		$id_map            = array();
+		$slug_map          = array();
 		$imported_form_ids = array();
 		foreach ( $forms as $form_ref ) {
 			if ( ! is_array( $form_ref ) ) {
@@ -274,6 +275,22 @@ class TemplateLibrary {
 
 			$id_map[ $source_id ] = (int) $new_id;
 			$imported_form_ids[]  = (int) $new_id;
+
+			// Capture the source slug when the bundle ships one — used
+			// to rewrite `[neural-forms slug="…"]` shortcodes that
+			// referenced the form on the export side. Falls back to
+			// the inline payload's own slug if the ref didn't surface
+			// it explicitly.
+			$source_slug = '';
+			if ( isset( $form_ref['sourceSlug'] ) ) {
+				$source_slug = (string) $form_ref['sourceSlug'];
+			} elseif ( isset( $form_data['slug'] ) ) {
+				$source_slug = (string) $form_data['slug'];
+			}
+			$source_slug = strtolower( trim( $source_slug ) );
+			if ( $source_slug !== '' ) {
+				$slug_map[ $source_slug ] = (int) $new_id;
+			}
 		}
 
 		// Rewrite the page content with new local form IDs, then strip
@@ -285,7 +302,7 @@ class TemplateLibrary {
 		// means a CDN poisoning or a typo in a future template author
 		// upload cannot ship script payloads into a downstream site.
 		$raw_content     = isset( $page['post_content'] ) ? (string) $page['post_content'] : '';
-		$rewrote_content = self::replace_form_ids_in_content( $raw_content, $id_map );
+		$rewrote_content = self::replace_form_ids_in_content( $raw_content, $id_map, $slug_map );
 		$safe_content    = wp_kses_post( $rewrote_content );
 
 		$title = isset( $page['title'] ) ? (string) $page['title'] : ( isset( $bundle['name'] ) ? (string) $bundle['name'] : __( 'Imported Template', 'neural-forms-lite' ) );
@@ -521,12 +538,16 @@ class TemplateLibrary {
 	 * blocks (extreme edge case: the page.json had no Gutenberg block
 	 * markup at all) so we don't risk double-rewriting.
 	 *
-	 * @param string $content Block markup from page.json's post_content.
-	 * @param array  $id_map  source form ID (int) → new local form ID (int)
+	 * @param string $content  Block markup from page.json's post_content.
+	 * @param array  $id_map   source form ID (int) → new local form ID (int)
+	 * @param array  $slug_map source form slug (string) → new local form ID (int)
 	 * @return string
 	 */
-	public static function replace_form_ids_in_content( string $content, array $id_map ): string {
-		if ( empty( $id_map ) || $content === '' ) {
+	public static function replace_form_ids_in_content( string $content, array $id_map, array $slug_map = array() ): string {
+		if ( $content === '' ) {
+			return $content;
+		}
+		if ( empty( $id_map ) && empty( $slug_map ) ) {
 			return $content;
 		}
 
@@ -537,9 +558,20 @@ class TemplateLibrary {
 			$normalized[ (int) $src ] = (int) $dst;
 		}
 
+		// Normalise slug map: trim + lowercase the source slugs so
+		// matches survive case/whitespace drift in the bundle.
+		$normalized_slugs = array();
+		foreach ( $slug_map as $src_slug => $dst_id ) {
+			$key = strtolower( trim( (string) $src_slug ) );
+			if ( $key !== '' ) {
+				$normalized_slugs[ $key ] = (int) $dst_id;
+			}
+		}
+
 		$blocks = parse_blocks( $content );
 		if ( ! is_array( $blocks ) || empty( $blocks ) ) {
-			return self::regex_replace_form_ids( $content, $normalized );
+			$fallback = self::regex_replace_form_ids( $content, $normalized );
+			return self::rewrite_form_shortcodes( $fallback, $normalized, $normalized_slugs );
 		}
 
 		$rewritten  = self::walk_blocks_swap_form_id( $blocks, $normalized );
@@ -549,10 +581,91 @@ class TemplateLibrary {
 		// guard against it), fall back to the regex pass rather than
 		// blanking the imported page.
 		if ( $serialized === '' || null === $serialized ) {
-			return self::regex_replace_form_ids( $content, $normalized );
+			$fallback = self::regex_replace_form_ids( $content, $normalized );
+			return self::rewrite_form_shortcodes( $fallback, $normalized, $normalized_slugs );
 		}
 
-		return $serialized;
+		// Shortcodes ([neural-forms id="…"] / slug="…") live in the
+		// raw post_content alongside blocks (commonly inside a
+		// wp:shortcode wrapper). serialize_blocks preserves their
+		// text verbatim, so we rewrite them after the block pass.
+		return self::rewrite_form_shortcodes( $serialized, $normalized, $normalized_slugs );
+	}
+
+	/**
+	 * Rewrite [neural-forms id="N"] / [neural-forms slug="X"] shortcodes
+	 * so they point at the freshly-imported local form IDs.
+	 *
+	 * Handles single-, double-, and unquoted attribute values, attributes
+	 * in either order, and the self-closing `/]` variant. Shortcodes
+	 * whose target isn't in the map pass through untouched.
+	 *
+	 * Slug references are rewritten to the `id="N"` form because the
+	 * importer mints a fresh unique slug for each form on insert — so
+	 * the source slug is not guaranteed to exist locally.
+	 *
+	 * @param string $content
+	 * @param array  $id_map   source form ID (int) → new local form ID (int)
+	 * @param array  $slug_map source form slug (lowercased) → new local form ID (int)
+	 * @return string
+	 */
+	private static function rewrite_form_shortcodes( string $content, array $id_map, array $slug_map ): string {
+		if ( $content === '' || ( empty( $id_map ) && empty( $slug_map ) ) ) {
+			return $content;
+		}
+		if ( strpos( $content, '[neural-forms' ) === false ) {
+			return $content;
+		}
+
+		// Match the whole [neural-forms …] (or [neural-forms … /])
+		// opening tag so we can rewrite each attribute in place.
+		$pattern = '/\[neural-forms\b([^\]]*?)(\/?)\]/i';
+
+		return preg_replace_callback(
+			$pattern,
+			static function ( $matches ) use ( $id_map, $slug_map ) {
+				$inner      = (string) $matches[1];
+				$self_close = (string) $matches[2];
+				$has_id     = (bool) preg_match( '/\bid\s*=/i', $inner );
+
+				// id="N" / id='N' / id=N — rewrite first because the
+				// shortcode handler treats id as taking precedence
+				// over slug.
+				$inner = preg_replace_callback(
+					'/(\bid\s*=\s*)("?)(\d+)("?)/i',
+					static function ( $m ) use ( $id_map ) {
+						$src = (int) $m[3];
+						if ( $src > 0 && isset( $id_map[ $src ] ) ) {
+							return $m[1] . '"' . (int) $id_map[ $src ] . '"';
+						}
+						return $m[0];
+					},
+					$inner
+				);
+
+				// slug="X" / slug='X' / slug=X — only rewrite when
+				// the shortcode has no id attribute (id takes
+				// precedence in the handler). Rewrite to id="N"
+				// because the new install mints a fresh unique slug
+				// on insert.
+				if ( ! $has_id && ! empty( $slug_map ) ) {
+					$inner = preg_replace_callback(
+						'/(\bslug\s*=\s*)(?|"([^"]*)"|\'([^\']*)\'|([^\s\]\/]+))/i',
+						static function ( $m ) use ( $slug_map ) {
+							$key = strtolower( trim( (string) $m[2] ) );
+							if ( $key !== '' && isset( $slug_map[ $key ] ) ) {
+								return 'id="' . (int) $slug_map[ $key ] . '"';
+							}
+							return $m[0];
+						},
+						$inner
+					);
+				}
+
+				return '[neural-forms' . $inner . $self_close . ']';
+			},
+			$content
+		);
 	}
 
 	/**

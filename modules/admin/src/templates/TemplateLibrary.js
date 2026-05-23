@@ -34,6 +34,36 @@ const BUILDERS = [
 
 const SKELETON_COUNT = 6;
 
+/**
+ * Normalise the catalog's `category` field into an array of trimmed
+ * non-empty strings. Accepts:
+ *
+ *   - undefined / null / ''   → []
+ *   - "Contact Us"            → [ "Contact Us" ]
+ *   - "Contact Us, Lead"      → [ "Contact Us", "Lead" ]   (legacy CSV)
+ *   - [ "Contact Us", "Lead" ]→ [ "Contact Us", "Lead" ]
+ *   - other                   → []
+ *
+ * The remote catalog ships `category` as an array since 2026-05; the
+ * older single-string + CSV shapes are kept for back-compat with any
+ * mirror or future tooling that still emits the legacy form. No
+ * de-duplication beyond order-preserving — caller decides if it cares.
+ */
+function normaliseCategories( raw ) {
+	if ( Array.isArray( raw ) ) {
+		return raw
+			.map( ( c ) => String( c ).trim() )
+			.filter( ( c ) => c !== '' );
+	}
+	if ( typeof raw === 'string' ) {
+		return raw
+			.split( ',' )
+			.map( ( c ) => c.trim() )
+			.filter( ( c ) => c !== '' );
+	}
+	return [];
+}
+
 function formatImportedDate( raw ) {
 	if ( ! raw ) return '';
 	const d = new Date( String( raw ).replace( ' ', 'T' ) );
@@ -97,10 +127,14 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 	const categoryFilters = useMemo( () => {
 		const rows = Array.isArray( catalog?.templates ) ? catalog.templates : [];
 		const counts = new Map();
+		// One template can belong to multiple categories. We count it
+		// once per category so the filter pills surface each bucket's
+		// real size, and the same card shows up in every matching
+		// filter — same UX as a multi-tag library.
 		rows.forEach( ( t ) => {
-			const c = String( t.category || '' ).trim();
-			if ( c === '' ) return;
-			counts.set( c, ( counts.get( c ) || 0 ) + 1 );
+			normaliseCategories( t.category ).forEach( ( c ) => {
+				counts.set( c, ( counts.get( c ) || 0 ) + 1 );
+			} );
 		} );
 		const cats = Array.from( counts.entries() )
 			.sort( ( a, b ) => a[ 0 ].localeCompare( b[ 0 ] ) )
@@ -115,15 +149,16 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 		const rows = Array.isArray( catalog?.templates ) ? catalog.templates : [];
 		const q    = searchQuery.trim().toLowerCase();
 		return rows.filter( ( t ) => {
+			const cats = normaliseCategories( t.category );
 			if ( activeCategory !== 'all' ) {
-				const cat = String( t.category || '' ).toLowerCase();
-				if ( cat !== activeCategory ) return false;
+				const hit = cats.some( ( c ) => c.toLowerCase() === activeCategory );
+				if ( ! hit ) return false;
 			}
 			if ( q !== '' ) {
 				const haystack = [
 					t.name || '',
 					t.description || '',
-					t.category || '',
+					cats.join( ' ' ),
 					...( Array.isArray( t.tags ) ? t.tags : [] ),
 				].join( ' ' ).toLowerCase();
 				if ( haystack.indexOf( q ) === -1 ) return false;
@@ -482,9 +517,18 @@ function TemplateCard( { tpl, importing, onImport, onOpenLightbox } ) {
 			</div>
 
 			<div className="neural-forms-templates__body">
-				{ !! tpl.category && (
-					<div className="neural-forms-templates__eyebrow">{ tpl.category }</div>
-				) }
+				{ /* Eyebrow surfaces the template's category list. The
+				     remote catalog can ship either a single string or
+				     a real array; normaliseCategories handles both
+				     shapes and we join with " · " so multi-category
+				     templates read as one tidy line. */ }
+				{ (() => {
+					const cats = normaliseCategories( tpl.category );
+					if ( cats.length === 0 ) return null;
+					return (
+						<div className="neural-forms-templates__eyebrow">{ cats.join( ' · ' ) }</div>
+					);
+				} )() }
 				<h2 className="neural-forms-templates__card-title">{ cardLabel }</h2>
 
 				{ !! tpl.description && (
