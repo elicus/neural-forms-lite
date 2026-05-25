@@ -199,57 +199,69 @@
 	}
 }
 
-/* Default card: white with border. Stats radius/shadow tokens. The
- * value renders in navy text so the card reads as a calm dashboard
- * stat instead of a flat panel. */
+/* Default card: white panel, hairline border, soft shadow. Label sits
+ * above the value so the eye lands on the metric name first and the
+ * big number reads as the answer. Hover lifts the card subtly so the
+ * row feels alive without going decorative. */
 #neural-forms-results-app .nf-results__card {
+	position: relative;
 	background: var( --nfr-card-bg );
 	border: 1px solid var( --nfr-border );
 	border-radius: var( --nfr-radius );
-	padding: 20px;
+	padding: 18px 20px 20px;
 	box-shadow: var( --nfr-shadow );
-	transition: box-shadow 0.15s ease, border-color 0.15s ease;
+	transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+	overflow: hidden;
+}
+
+#neural-forms-results-app .nf-results__card:hover {
+	box-shadow: 0 4px 12px rgba( 8, 15, 91, 0.06 ), 0 1px 3px rgba( 0, 0, 0, 0.04 );
+	border-color: #d8dde6;
 }
 
 @media ( max-width: 1024px ) {
 	#neural-forms-results-app .nf-results__card {
-		padding: 14px 16px;
+		padding: 14px 16px 16px;
 	}
 }
 
+#neural-forms-results-app .nf-results__card-label {
+	font-size: 11.5px;
+	color: var( --nfr-muted );
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	line-height: 1.2;
+}
+
 #neural-forms-results-app .nf-results__card-value {
-	font-size: 30px;
+	margin-top: 10px;
+	font-size: 28px;
 	font-weight: 700;
-	line-height: 1;
+	line-height: 1.1;
 	font-variant-numeric: tabular-nums;
-	color: var( --nfr-primary );
+	color: var( --nfr-text );
+	letter-spacing: -0.01em;
 }
 
 @media ( max-width: 1024px ) {
-	#neural-forms-results-app .nf-results__card-value { font-size: 24px; }
+	#neural-forms-results-app .nf-results__card-value { font-size: 22px; }
 }
 
-#neural-forms-results-app .nf-results__card-label {
-	margin-top: 6px;
-	font-size: 12px;
-	color: var( --nfr-muted );
-	font-weight: 500;
+/* Primary KPI — the headline metric for the page. Same white card as
+ * the rest of the row, with a 3px gradient strip at the top edge and
+ * the value rendered in brand navy. Restraint > the old full-fill
+ * navy tile which dominated the row visually. */
+#neural-forms-results-app .nf-results__card--primary::before {
+	content: '';
+	position: absolute;
+	inset: 0 0 auto 0;
+	height: 3px;
+	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
 }
 
-/* Accent / highlight card — first card in the grid. Mirrors the Stats
- * --highlight variant: dark navy bg + mint border, white value text. */
-#neural-forms-results-app .nf-results__card--accent {
-	background: var( --nfr-primary-dark );
-	border-color: var( --nfr-accent );
-	color: #ffffff;
-}
-
-#neural-forms-results-app .nf-results__card--accent .nf-results__card-value {
-	color: #ffffff;
-}
-
-#neural-forms-results-app .nf-results__card--accent .nf-results__card-label {
-	color: rgba( 255, 255, 255, 0.78 );
+#neural-forms-results-app .nf-results__card--primary .nf-results__card-value {
+	color: var( --nfr-primary );
 }
 
 /* Section — Stats card pattern: white card, gray-200 border, 14px
@@ -403,11 +415,17 @@
 	background: var( --nfr-card-bg );
 	border: 1px solid var( --nfr-border );
 	border-radius: var( --nfr-radius );
-	padding: 16px 18px;
+	padding: 20px 22px;
 	box-shadow: var( --nfr-shadow );
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 16px;
+	transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+#neural-forms-results-app .nf-results__quiz-card:hover {
+	border-color: #d8dde6;
+	box-shadow: 0 4px 12px rgba( 8, 15, 91, 0.05 ), 0 1px 3px rgba( 0, 0, 0, 0.04 );
 }
 
 #neural-forms-results-app .nf-results__quiz-card-head {
@@ -420,10 +438,11 @@
 
 #neural-forms-results-app .nf-results__quiz-card-title {
 	margin: 0;
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 600;
 	color: var( --nfr-text );
 	line-height: 1.4;
+	letter-spacing: -0.005em;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-meta {
@@ -452,24 +471,28 @@
 }
 
 /* Badge row — points / total / correct rate / difficulty.
- * All chips share the same shape; color signals meaning. */
+ * All chips share the same shape and weight; color tone signals
+ * meaning. No solid-filled brand chip — everything tints lightly so
+ * the row reads as quiet metadata, not competing CTAs. */
 #neural-forms-results-app .nf-results__quiz-card-badges {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
-	margin-top: -4px;
+	margin-top: -2px;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge {
 	display: inline-flex;
 	align-items: center;
-	padding: 2px 9px;
+	gap: 5px;
+	padding: 3px 10px;
 	border-radius: var( --nfr-radius-pill );
 	font-size: 11px;
 	font-weight: 600;
-	letter-spacing: 0.02em;
+	letter-spacing: 0.01em;
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+	border: 1px solid transparent;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge--points {
@@ -483,8 +506,9 @@
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge--rate {
-	background: var( --nfr-primary );
-	color: #ffffff;
+	background: #f5f7ff;
+	color: var( --nfr-primary );
+	border-color: rgba( 8, 15, 91, 0.16 );
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge--easy {
@@ -493,13 +517,13 @@
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge--medium {
-	background: rgba( 217, 119, 6, 0.10 );
-	color: #b45309;
+	background: #fef6e7;
+	color: #92400e;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge--hard {
-	background: rgba( 220, 38, 38, 0.08 );
-	color: #b91c1c;
+	background: #fdecee;
+	color: #9f1239;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-badge--none {
@@ -507,14 +531,16 @@
 	color: var( --nfr-muted );
 }
 
-/* Summary row — donut + stacked bar side by side. */
+/* Summary row — single visual: donut + 2-line label/meta. The old
+ * stacked correct/wrong bar lived here too but duplicated the donut's
+ * data, so we dropped it; the per-option bars below carry the
+ * breakdown. No panel background — the row sits flush with the card
+ * so the card reads as one calm composition. */
 #neural-forms-results-app .nf-results__quiz-summary {
 	display: flex;
 	align-items: center;
-	gap: 14px;
-	padding: 12px 14px;
-	background: var( --nfr-border-soft );
-	border-radius: 10px;
+	gap: 16px;
+	padding: 2px 0;
 }
 
 #neural-forms-results-app .nf-results__quiz-summary-body {
@@ -522,69 +548,56 @@
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-}
-
-#neural-forms-results-app .nf-results__quiz-summary-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	font-size: 12px;
+	gap: 3px;
 }
 
 #neural-forms-results-app .nf-results__quiz-summary-label {
-	color: var( --nfr-muted-strong );
+	font-size: 13px;
 	font-weight: 600;
+	color: var( --nfr-text );
+	letter-spacing: -0.005em;
 }
 
 #neural-forms-results-app .nf-results__quiz-summary-meta {
+	font-size: 12px;
 	color: var( --nfr-muted );
 	font-variant-numeric: tabular-nums;
+	line-height: 1.4;
 }
 
-/* Stacked correct/wrong bar.
- * .correct uses navy → mint gradient.
- * .wrong uses neutral grey. flex with widths drives the split. */
-#neural-forms-results-app .nf-results__quiz-stacked {
-	display: flex;
-	height: 10px;
-	border-radius: var( --nfr-radius-pill );
-	overflow: hidden;
-	background: #e5e7eb;
+/* Small caps section divider before the per-option list. */
+#neural-forms-results-app .nf-results__quiz-card-section-label {
+	font-size: 10.5px;
+	font-weight: 700;
+	color: var( --nfr-muted );
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	margin-top: 4px;
+	padding-top: 14px;
+	border-top: 1px solid var( --nfr-border-soft );
 }
 
-#neural-forms-results-app .nf-results__quiz-stacked-correct {
-	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
-	transition: width 250ms ease;
-}
-
-#neural-forms-results-app .nf-results__quiz-stacked-wrong {
-	background: #d1d5db;
-	transition: width 250ms ease;
-}
-
-/* Compact CSS conic-gradient donut.
- * --pct (0–100) drives the arc; ::after carves the donut hole.
- * Center label sits above via z-index. Kept small (60px) so the
- * card never feels busy — the per-option bars below carry the
- * detail. */
+/* Conic-gradient donut, scaled up slightly so it reads as a real
+ * chart instead of an icon. The brand mint arc carves out the correct
+ * percentage; the remainder stays neutral grey. ::after punches the
+ * hole, center label sits above via z-index. */
 #neural-forms-results-app .nf-results__quiz-donut {
 	position: relative;
 	flex: 0 0 auto;
-	width: 60px;
-	height: 60px;
+	width: 72px;
+	height: 72px;
 	border-radius: 50%;
 	background: conic-gradient(
 		var( --nfr-accent ) 0% calc( var( --pct, 0 ) * 1% ),
-		#e5e7eb calc( var( --pct, 0 ) * 1% ) 100%
+		#eef0f3 calc( var( --pct, 0 ) * 1% ) 100%
 	);
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
 }
 
 #neural-forms-results-app .nf-results__quiz-donut::after {
 	content: '';
 	position: absolute;
-	inset: 7px;
+	inset: 9px;
 	background: var( --nfr-card-bg );
 	border-radius: 50%;
 }
@@ -595,11 +608,12 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 11.5px;
+	font-size: 14px;
 	font-weight: 700;
 	color: var( --nfr-primary );
 	z-index: 1;
 	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-empty {
@@ -666,21 +680,22 @@
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 12px;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 6px;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 8px;
+	gap: 12px;
 	font-size: 13px;
+	min-width: 0;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row-label {
@@ -688,37 +703,89 @@
 	font-weight: 500;
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
+	gap: 8px;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row-marker {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
-	height: 16px;
+	flex: 0 0 auto;
+	width: 18px;
+	height: 18px;
 	border-radius: 999px;
 	background: var( --nfr-accent );
 	color: #ffffff;
-	font-size: 10px;
+	font-size: 11px;
 	font-weight: 700;
 }
 
+/* Inline tag next to the option label — replaces the old standalone
+ * helper line. "Correct answer" / "Most picked wrong" read as quiet
+ * metadata, not as headings competing with the option label. */
+#neural-forms-results-app .nf-results__quiz-card-row-tag {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	padding: 2px 8px;
+	border-radius: var( --nfr-radius-pill );
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	background: var( --nfr-border-soft );
+	color: var( --nfr-muted-strong );
+	white-space: nowrap;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row--correct .nf-results__quiz-card-row-tag {
+	background: var( --nfr-accent-soft );
+	color: #0f766e;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row--most-wrong .nf-results__quiz-card-row-tag {
+	background: #fdecee;
+	color: #9f1239;
+}
+
 #neural-forms-results-app .nf-results__quiz-card-row-count {
-	color: var( --nfr-muted );
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
+	flex: 0 0 auto;
+	color: var( --nfr-text );
 	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-count-pct {
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nfr-text );
+}
+
+#neural-forms-results-app .nf-results__quiz-card-row-count-n {
+	font-size: 11.5px;
+	color: var( --nfr-muted );
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row-bar {
 	height: 6px;
-	background: #e5e7eb;
+	background: #eef0f3;
 	border-radius: 999px;
 	overflow: hidden;
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row-fill {
 	height: 100%;
-	background: #9ca3af;
+	background: #cbd5e0;
 	border-radius: 999px;
 	transition: width 200ms ease;
 }
@@ -727,16 +794,19 @@
 	background: linear-gradient( 90deg, var( --nfr-primary ) 0%, var( --nfr-accent ) 100% );
 }
 
+/* Soft coral instead of the old amber — sits in the warm-warning
+ * range without screaming. Harmonises with the brand's mint/navy. */
 #neural-forms-results-app .nf-results__quiz-card-row--most-wrong .nf-results__quiz-card-row-fill {
-	background: linear-gradient( 90deg, #f59e0b 0%, #fbbf24 100% );
+	background: linear-gradient( 90deg, #fb7185 0%, #fda4af 100% );
 }
 
 #neural-forms-results-app .nf-results__quiz-card-row--other .nf-results__quiz-card-row-fill {
 	background: #cbd5e0;
 }
 
-/* Per-option helper line ("Correct answer", "Most common wrong",
- * "Top vote"). Sits between the label/count head and the bar. */
+/* Legacy helper-line selectors kept for any non-quiz callers (poll
+ * card uses .nf-results__poll-card-row-helper). The quiz path now
+ * uses --row-tag, so the quiz selectors below are no-ops. */
 #neural-forms-results-app .nf-results__quiz-card-row-helper,
 #neural-forms-results-app .nf-results__poll-card-row-helper {
 	margin: 2px 0 0;
@@ -835,28 +905,38 @@
 #neural-forms-results-app .nf-results__insight {
 	display: flex;
 	align-items: flex-start;
-	gap: 10px;
-	padding: 12px 14px;
+	gap: 12px;
+	padding: 14px 16px;
 	background: var( --nfr-card-bg );
 	border: 1px solid var( --nfr-border );
-	border-left: 3px solid var( --nfr-border );
-	border-radius: var( --nfr-radius );
-	box-shadow: var( --nfr-shadow );
+	border-radius: 12px;
+	box-shadow: 0 1px 2px rgba( 0, 0, 0, 0.03 );
+	position: relative;
+	overflow: hidden;
 }
 
+#neural-forms-results-app .nf-results__insight::before {
+	content: '';
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 3px;
+	background: var( --nfr-border );
+}
+
+#neural-forms-results-app .nf-results__insight--success::before { background: #15803d; }
+#neural-forms-results-app .nf-results__insight--warning::before { background: #d97706; }
+#neural-forms-results-app .nf-results__insight--info::before    { background: var( --nfr-primary ); }
+
 #neural-forms-results-app .nf-results__insight--success {
-	border-left-color: #15803d;
-	background: linear-gradient( 90deg, rgba( 21, 128, 61, 0.05 ) 0%, var( --nfr-card-bg ) 60% );
+	background: linear-gradient( 90deg, rgba( 21, 128, 61, 0.05 ) 0%, var( --nfr-card-bg ) 50% );
 }
 
 #neural-forms-results-app .nf-results__insight--warning {
-	border-left-color: #d97706;
-	background: linear-gradient( 90deg, rgba( 217, 119, 6, 0.06 ) 0%, var( --nfr-card-bg ) 60% );
+	background: linear-gradient( 90deg, rgba( 217, 119, 6, 0.05 ) 0%, var( --nfr-card-bg ) 50% );
 }
 
 #neural-forms-results-app .nf-results__insight--info {
-	border-left-color: var( --nfr-primary );
-	background: linear-gradient( 90deg, rgba( 8, 15, 91, 0.04 ) 0%, var( --nfr-card-bg ) 60% );
+	background: linear-gradient( 90deg, rgba( 8, 15, 91, 0.04 ) 0%, var( --nfr-card-bg ) 50% );
 }
 
 #neural-forms-results-app .nf-results__insight-icon {

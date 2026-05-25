@@ -24,6 +24,7 @@
 
 import { __ } from '@wordpress/i18n';
 import OverviewCards from '../ResultsOverviewCards';
+import ResultsInsights from '../ResultsInsights';
 import SubmissionAnalyticsSection from './SubmissionAnalyticsSection';
 import PollAnalyticsSection from './PollAnalyticsSection';
 import QuizAnalyticsSection from './QuizAnalyticsSection';
@@ -129,7 +130,37 @@ export default function buildSections( ctx ) {
 		render:      ( d ) => <PollAnalyticsSection polls={ d.polls } />,
 	} );
 
-	// 4. Quiz Analytics — insights + per-question results + attempts table.
+	// 4. Quiz Insights — extracted from the quiz payload so the page
+	//    can render Page Performance between the Insights summary and
+	//    the heavier quiz body (per-question results + attempts).
+	const quizInsights = ( a.quiz.payload && Array.isArray( a.quiz.payload.insights ) ) ? a.quiz.payload.insights : [];
+	descriptors.push( {
+		id:          'quiz-insights',
+		isAvailable: a.quiz.available && quizInsights.length > 0,
+		isEmpty:     false,
+		chrome:      false, // ResultsInsights renders its own card chrome.
+		data:        { insights: quizInsights },
+		render:      ( d ) => <ResultsInsights insights={ d.insights } />,
+	} );
+
+	// 5. Page Performance — Pro analytics. Slots between Insights and
+	//    the quiz body so the operator sees "where these submissions
+	//    came from" before diving into per-question scoring. Always
+	//    available so the Lite locked card can render an upsell; the
+	//    section component decides between locked / empty / data
+	//    states internally based on capability + fetched payload.
+	descriptors.push( {
+		id:          'page-performance',
+		isAvailable: a.form.id > 0,
+		isEmpty:     false,
+		chrome:      false, // Component renders its own card chrome.
+		data:        { formId: a.form.id },
+		render:      ( d ) => <PagePerformanceSection formId={ d.formId } />,
+	} );
+
+	// 6. Quiz Analytics — per-question results + attempts table.
+	//    Insights moved out (see #4) so Page Performance can sit
+	//    between them.
 	descriptors.push( {
 		id:          'quiz',
 		isAvailable: a.quiz.available,
@@ -139,7 +170,7 @@ export default function buildSections( ctx ) {
 		render:      ( d ) => <QuizAnalyticsSection quiz={ d.quiz } formId={ d.formId } />,
 	} );
 
-	// 5. Quiz error banner — only when the quiz endpoint failed but
+	// 7. Quiz error banner — only when the quiz endpoint failed but
 	//    polls succeeded. Surfaces inline so the user knows half the
 	//    page is missing without losing the half that loaded.
 	if ( ctx.quizError ) {
@@ -154,19 +185,6 @@ export default function buildSections( ctx ) {
 			emptyMessage: ctx.quizError,
 		} );
 	}
-
-	// 6. Page Performance — Pro analytics. Always available so the
-	//    Lite locked card can render an upsell; the section
-	//    component decides between locked / empty / data states
-	//    internally based on capability + fetched payload.
-	descriptors.push( {
-		id:          'page-performance',
-		isAvailable: a.form.id > 0,
-		isEmpty:     false,
-		chrome:      false, // Component renders its own card chrome.
-		data:        { formId: a.form.id },
-		render:      ( d ) => <PagePerformanceSection formId={ d.formId } />,
-	} );
 
 	// 7. AI Insights / Future Insights — Stats-style insight-rows
 	//    card. Renders only when there is real data above it so it

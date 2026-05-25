@@ -203,40 +203,73 @@
 	position: relative;
 }
 
+/* Brand primary CTA — navy fill / white text by default, mint
+ * background + navy text on hover. Matches the Pro lock card CTA so
+ * every "primary action" in the Lite admin reads as one family. */
 .neural-forms-entries-export__trigger {
 	align-items: center;
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
+	color: #ffffff;
 	display: inline-flex;
 	gap: 8px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	padding: 8px 14px;
+	transition:
+		background var( --f-transition ),
+		border-color var( --f-transition ),
+		color var( --f-transition ),
+		box-shadow var( --f-transition ),
+		transform var( --f-transition );
+}
+
+.neural-forms-entries-export__trigger:hover:not(:disabled),
+.neural-forms-entries-export__trigger:focus-visible:not(:disabled) {
+	background: var( --f-green-600 );
+	border-color: var( --f-green-600 );
+	color: var( --f-blue-700 );
+	box-shadow: 0 2px 8px rgba( 21, 219, 149, 0.28 );
+	outline: none;
+}
+
+.neural-forms-entries-export__trigger:active:not(:disabled) {
+	transform: translateY( 1px );
 }
 
 .neural-forms-entries-export__icon {
 	align-items: center;
-	color: var( --f-gray-500 );
+	color: currentColor;
 	display: inline-flex;
 }
 
 .neural-forms-entries-export__chevron {
-	color: var( --f-gray-400 );
+	color: currentColor;
+	opacity: 0.85;
 	font-size: 10px;
 	margin-left: 2px;
 }
 
+/* Open state — keep navy fill, drop the mint hover glow so the
+ * trigger doesn't fight the menu beneath it. */
 .neural-forms-entries-export--open .neural-forms-entries-export__trigger {
-	background: var( --f-gray-50 );
-	border-color: var( --f-gray-300 );
+	background: var( --f-blue-700 );
+	border-color: var( --f-blue-700 );
+	color: #ffffff;
+	box-shadow: none;
 }
 
 .neural-forms-entries-export__menu {
-	background: #fff;
-	border: 1px solid var( --f-gray-200 );
+	background: #ffffff;
+	border: 1px solid rgba( 8, 15, 91, 0.16 );
 	border-radius: var( --f-radius-md );
-	box-shadow: var( --f-shadow-sm );
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.08 ), 0 1px 3px rgba( 0, 0, 0, 0.04 );
 	display: flex;
 	flex-direction: column;
 	gap: 1px;
 	list-style: none;
-	margin: 4px 0 0;
-	min-width: 180px;
+	margin: 6px 0 0;
+	min-width: 200px;
 	padding: 4px;
 	position: absolute;
 	right: 0;
@@ -253,14 +286,16 @@
 	display: block;
 	font-family: inherit;
 	font-size: 13px;
+	font-weight: 500;
 	padding: 8px 12px;
 	text-align: left;
 	width: 100%;
+	transition: background var( --f-transition ), color var( --f-transition );
 }
 
 .neural-forms-entries-export__option:hover,
 .neural-forms-entries-export__option:focus-visible {
-	background: var( --f-gray-50 );
+	background: var( --f-green-50 );
 	color: var( --f-blue-600 );
 	outline: none;
 }

@@ -1,26 +1,21 @@
 /**
- * Quiz analytics — bundles per-question results, rule-based insights,
- * and the individual-attempts table into a single section so callers
- * see one logical unit.
+ * Quiz analytics — bundles per-question results and the
+ * individual-attempts table into a single section so callers see one
+ * logical unit. Insights renders separately so the page can interleave
+ * Page Performance between Insights and the quiz body.
  *
  * Each child already renders its own <section> chrome; AnalyticsSection
  * invokes us with `chrome:false` so the page doesn't double-wrap.
  */
 
 import QuizResultsSection from '../QuizResultsSection';
-import ResultsInsights from '../ResultsInsights';
 import QuizAttemptsTable from '../QuizAttemptsTable';
 
 export default function QuizAnalyticsSection( { quiz, formId } ) {
-	const insights = ( quiz && Array.isArray( quiz.insights ) ) ? quiz.insights : [];
 	const showPassFail = !! ( quiz && typeof quiz.pass_rate === 'number' );
 
 	return (
 		<>
-			{ insights.length > 0 && (
-				<ResultsInsights insights={ insights } />
-			) }
-
 			<QuizResultsSection quiz={ quiz } />
 
 			<QuizAttemptsTable

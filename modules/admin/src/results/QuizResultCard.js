@@ -52,7 +52,6 @@ export default function QuizResultCard( { question } ) {
 	const correct    = Number( q.correct_answers )    || 0;
 	const incorrect  = Number( q.incorrect_answers )  || 0;
 	const correctPct = Math.max( 0, Math.min( 100, Number( q.correct_percentage ) || 0 ) );
-	const wrongPct   = Math.max( 0, 100 - correctPct );
 	const points     = Number( q.points_possible )    || 0;
 	const options    = Array.isArray( q.options ) ? q.options : [];
 
@@ -118,28 +117,20 @@ export default function QuizResultCard( { question } ) {
 							<span className="nf-results__quiz-donut__center">{ correctPct + '%' }</span>
 						</div>
 						<div className="nf-results__quiz-summary-body">
-							<div className="nf-results__quiz-summary-head">
-								<span className="nf-results__quiz-summary-label">{ __( 'Correct vs Wrong', 'neural-forms-lite' ) }</span>
-								<span className="nf-results__quiz-summary-meta">
-									{ sprintf(
-										/* translators: 1: correct count, 2: incorrect count */
-										__( '%1$d correct · %2$d wrong', 'neural-forms-lite' ),
-										correct,
-										incorrect
-									) }
-								</span>
-							</div>
-							<div className="nf-results__quiz-stacked" aria-hidden="true">
-								<div
-									className="nf-results__quiz-stacked-correct"
-									style={ { width: correctPct + '%' } }
-								/>
-								<div
-									className="nf-results__quiz-stacked-wrong"
-									style={ { width: wrongPct + '%' } }
-								/>
-							</div>
+							<span className="nf-results__quiz-summary-label">{ __( 'Correct rate', 'neural-forms-lite' ) }</span>
+							<span className="nf-results__quiz-summary-meta">
+								{ sprintf(
+									/* translators: 1: correct count, 2: total attempts */
+									__( '%1$d of %2$d answered correctly', 'neural-forms-lite' ),
+									correct,
+									total
+								) }
+							</span>
 						</div>
+					</div>
+
+					<div className="nf-results__quiz-card-section-label">
+						{ __( 'Answer breakdown', 'neural-forms-lite' ) }
 					</div>
 
 					<ul className="nf-results__quiz-card-list">
@@ -154,7 +145,7 @@ export default function QuizResultCard( { question } ) {
 								+ ( isOther     ? ' nf-results__quiz-card-row--other'      : '' );
 							let helper = '';
 							if ( isCorrect )        helper = __( 'Correct answer',     'neural-forms-lite' );
-							else if ( isMostWrong ) helper = __( 'Most common wrong',  'neural-forms-lite' );
+							else if ( isMostWrong ) helper = __( 'Most picked wrong',  'neural-forms-lite' );
 							return (
 								<li key={ opt.value } className={ cls }>
 									<div className="nf-results__quiz-card-row-head">
@@ -162,15 +153,16 @@ export default function QuizResultCard( { question } ) {
 											{ isCorrect && (
 												<span className="nf-results__quiz-card-row-marker" aria-hidden="true">✓</span>
 											) }
-											{ opt.label }
+											<span className="nf-results__quiz-card-row-text">{ opt.label }</span>
+											{ helper && (
+												<span className="nf-results__quiz-card-row-tag">{ helper }</span>
+											) }
 										</span>
 										<span className="nf-results__quiz-card-row-count">
-											{ ( Number( opt.answers ) || 0 ) + ' (' + pct + '%)' }
+											<span className="nf-results__quiz-card-row-count-pct">{ pct + '%' }</span>
+											<span className="nf-results__quiz-card-row-count-n">{ '(' + ( Number( opt.answers ) || 0 ) + ')' }</span>
 										</span>
 									</div>
-									{ helper && (
-										<p className="nf-results__quiz-card-row-helper">{ helper }</p>
-									) }
 									<div className="nf-results__quiz-card-row-bar" aria-hidden="true">
 										<div
 											className="nf-results__quiz-card-row-fill"

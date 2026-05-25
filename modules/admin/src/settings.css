@@ -606,25 +606,42 @@
 
 .neural-forms-settings__pro-card {
 	align-items: flex-start;
-	background: var( --f-gray-50 );
-	border: 1px solid var( --f-gray-200 );
+	background:
+		linear-gradient( 135deg, rgba( 8, 15, 91, 0.04 ) 0%, rgba( 21, 219, 149, 0.06 ) 100% ),
+		#ffffff;
+	border: 1px solid rgba( 8, 15, 91, 0.18 );
 	border-radius: var( --f-radius-xl );
 	display: flex;
 	gap: 14px;
 	padding: 18px 20px;
+	position: relative;
+	overflow: hidden;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
+}
+
+/* Brand gradient accent rail along the left edge — the same
+ * navy → mint gradient used on the primary KPI card and the Insights
+ * stripe so every "this is a Pro hook" surface reads as one family. */
+.neural-forms-settings__pro-card::before {
+	content: '';
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 4px;
+	background: linear-gradient( 180deg, var( --f-blue-600 ) 0%, var( --f-green-600 ) 100% );
 }
 
 .neural-forms-settings__pro-icon {
 	align-items: center;
-	background: #fff;
-	border: 1px solid var( --f-gray-200 );
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
 	border-radius: 999px;
-	color: var( --f-gray-500 );
+	color: #ffffff;
 	display: inline-flex;
 	flex-shrink: 0;
-	height: 32px;
+	height: 36px;
 	justify-content: center;
-	width: 32px;
+	width: 36px;
+	box-shadow: 0 0 0 4px rgba( 21, 219, 149, 0.16 );
 }
 
 .neural-forms-settings__pro-body {
@@ -633,35 +650,49 @@
 }
 
 .neural-forms-settings__pro-title {
-	color: var( --f-gray-900 );
-	font-size: 13.5px;
-	font-weight: 600;
+	color: var( --f-blue-600 );
+	font-size: 14px;
+	font-weight: 700;
+	letter-spacing: -0.005em;
 	margin: 0 0 4px;
 }
 
 .neural-forms-settings__pro-desc {
-	color: var( --f-gray-600 );
+	color: var( --f-gray-700, #374151 );
 	font-size: 12.5px;
 	line-height: 1.55;
 	margin: 0 0 12px;
 }
 
 .neural-forms-settings__pro-cta {
-	background: #fff;
-	border: 1px solid var( --f-gray-300 );
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
 	border-radius: var( --f-radius-full );
-	color: var( --f-gray-800 );
+	color: #ffffff;
 	display: inline-flex;
 	font-size: 12px;
-	font-weight: 500;
-	padding: 6px 14px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	padding: 7px 16px;
 	text-decoration: none;
-	transition: border-color var( --f-transition ), color var( --f-transition );
+	transition:
+		background var( --f-transition ),
+		border-color var( --f-transition ),
+		color var( --f-transition ),
+		box-shadow var( --f-transition ),
+		transform var( --f-transition );
 }
 
-.neural-forms-settings__pro-cta:hover {
-	border-color: var( --f-gray-400 );
-	color: var( --f-gray-900 );
+.neural-forms-settings__pro-cta:hover,
+.neural-forms-settings__pro-cta:focus {
+	background: var( --f-green-600 );
+	border-color: var( --f-green-600 );
+	color: var( --f-blue-700 );
+	box-shadow: 0 2px 8px rgba( 21, 219, 149, 0.28 );
+}
+
+.neural-forms-settings__pro-cta:active {
+	transform: translateY( 1px );
 }
 
 /* ── Hint variants ──────────────────────────────────────────── */

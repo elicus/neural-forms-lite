@@ -15,18 +15,18 @@
 
 import { __ } from '@wordpress/i18n';
 
-function Card( { label, value, accent, statusKey } ) {
+function Card( { label, value, primary, statusKey } ) {
 	const classes = [ 'nf-results__card' ];
-	if ( accent )    classes.push( 'nf-results__card--accent' );
+	if ( primary )   classes.push( 'nf-results__card--primary' );
 	if ( statusKey ) classes.push( 'nf-results__card--status', 'nf-results__card--status-' + statusKey );
 	return (
 		<article className={ classes.join( ' ' ) }>
+			<div className="nf-results__card-label">{ label }</div>
 			<div className={ statusKey
 				? 'nf-results__card-value nf-results__card-value--text'
 				: 'nf-results__card-value' }>
 				{ value }
 			</div>
-			<div className="nf-results__card-label">{ label }</div>
 		</article>
 	);
 }
@@ -68,7 +68,7 @@ export default function ResultsOverviewCards( { data, quiz, selectedForm } ) {
 
 	return (
 		<div className="nf-results__cards">
-			<Card label={ __( 'Total entries', 'neural-forms-lite' ) } value={ totalEntries } accent />
+			<Card label={ __( 'Total entries', 'neural-forms-lite' ) } value={ totalEntries } primary />
 
 			{ isSimple && spamCount > 0 && (
 				<Card label={ __( 'Spam blocked', 'neural-forms-lite' ) } value={ spamCount } />
