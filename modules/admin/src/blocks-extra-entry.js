@@ -60,6 +60,22 @@ import MultiStepDesignExtras from './blocks/multistep/MultiStepDesignExtras';
 		.block-editor-line-height-control .components-input-control__container {
 			width: 100%;
 		}
+		.components-panel__body .components-tools-panel {
+			border-top: none !important;
+			padding: 0 !important;
+		}
+		.nf-typo-panel.components-tools-panel {
+			padding: 10px 0 !important;
+		}
+		.nf-typo-panel .single-column {
+			grid-column: span 1;
+		}
+		.nf-typo-panel .single-column .components-input-control__container {
+			width: 100%;
+		}
+		.nf-typo-panel .components-font-size-picker__controls {
+			margin-bottom: 0;
+		}
 	`;
 	document.head.appendChild( s );
 }() );
@@ -100,21 +116,47 @@ function MultiStepExtras( props ) {
  * implying it only swaps the bar variant.
  */
 function MultiStepSettingsExtrasTop( { attributes, setAttributes } ) {
-	const value = String( attributes?.progressIndicatorOverride || '' );
+	// Coerce legacy '' (old "Use form default") to 'numbers' so existing
+	// blocks display the correct option after the option was removed.
+	const value = String( attributes?.progressIndicatorOverride || 'numbers' );
 	return (
 		<SelectControl
 			label={ __( 'Step Progress', 'neural-forms-lite' ) }
 			value={ value }
 			options={ [
-				{ label: __( 'Use form default', 'neural-forms-lite' ), value: '' },
-				{ label: __( 'Step numbers',     'neural-forms-lite' ), value: 'numbers' },
-				{ label: __( 'Progress bar',     'neural-forms-lite' ), value: 'bar' },
-				{ label: __( 'None',             'neural-forms-lite' ), value: 'none' },
+				{ label: __( 'Step numbers', 'neural-forms-lite' ), value: 'numbers' },
+				{ label: __( 'Progress bar', 'neural-forms-lite' ), value: 'bar' },
+				{ label: __( 'None',         'neural-forms-lite' ), value: 'none' },
 			] }
-			onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v || '' } ) }
-			help={ __( 'Override the form\'s saved progress indicator for this placement only.', 'neural-forms-lite' ) }
+			onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v } ) }
 		/>
 	);
+}
+
+/**
+ * Pro-gated "Add Row Button Text" control. Hidden when Pro is not active
+ * (neuralFormsBlockCaps.fieldRepeater is false) — the repeater field
+ * doesn't exist in Lite installs so the override is irrelevant.
+ */
+function RepeaterAddBtnTextControl( { attributes, setAttributes } ) {
+	if ( ! window.neuralFormsBlockCaps?.fieldRepeater ) return null;
+	return (
+		<TextControl
+			label={ __( 'Add Row Button Text', 'neural-forms-lite' ) }
+			value={ attributes?.repeaterAddBtnText ?? 'Add item' }
+			onChange={ ( v ) => setAttributes( { repeaterAddBtnText: v } ) }
+			help={ __( 'Override the repeater field\'s "Add item" button label for this placement.', 'neural-forms-lite' ) }
+		/>
+	);
+}
+
+/**
+ * Form block: Settings tab extras — only the repeater add-button text
+ * override (Pro-gated). Rendered in the Display panel after Submit
+ * Button Text.
+ */
+function FormSettingsExtrasBottom( props ) {
+	return <RepeaterAddBtnTextControl { ...props } />;
 }
 
 /**
@@ -138,6 +180,7 @@ function MultiStepSettingsExtrasBottom( { attributes, setAttributes } ) {
 				onChange={ ( v ) => setAttributes( { nextButtonText: v } ) }
 				help={ __( 'Leave empty to render an empty Next button (icon-only support).', 'neural-forms-lite' ) }
 			/>
+			<RepeaterAddBtnTextControl { ...{ attributes, setAttributes } } />
 		</>
 	);
 }
@@ -252,6 +295,7 @@ wp.domReady( () => {
 				blockKind="form"
 				blockName="neural-forms/form"
 				extras={ <FormExtras { ...props } /> }
+				settingsExtrasBottom={ <FormSettingsExtrasBottom { ...props } /> }
 			/>
 		),
 		save: () => null,

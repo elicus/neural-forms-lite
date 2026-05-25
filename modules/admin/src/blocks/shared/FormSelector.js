@@ -225,16 +225,43 @@ export default function FormSelector( {
 				*/ }
 				{ ! loading && (
 					<PanelBody title={ DISPLAY_PANEL_TITLE } initialOpen={ false }>
-						{ blockKind !== 'quiz' && blockKind !== 'poll' && (
+						<ToggleControl
+							label={ __( 'Show Field Labels', 'neural-forms-lite' ) }
+							checked={ !! attributes.showLabels }
+							onChange={ ( v ) => setAttributes( { showLabels: !! v } ) }
+							help={ __( 'When off, each field shows only its placeholder. Turn on to render a visible label above every input.', 'neural-forms-lite' ) }
+						/>
+						<ToggleControl
+							label={ __( 'Show Success Message', 'neural-forms-lite' ) }
+							checked={ attributes.successMsgEnabled !== false }
+							onChange={ ( v ) => setAttributes( { successMsgEnabled: v } ) }
+						/>
+						<ToggleControl
+							label={ __( 'Show Error Message', 'neural-forms-lite' ) }
+							checked={ attributes.errorMsgEnabled !== false }
+							onChange={ ( v ) => setAttributes( { errorMsgEnabled: v } ) }
+						/>
+						{ blockKind === 'quiz' && (
 							<ToggleControl
-								label={ __( 'Show Field Labels', 'neural-forms-lite' ) }
-								checked={ !! attributes.showLabels }
-								onChange={ ( v ) => setAttributes( { showLabels: !! v } ) }
-								help={ __( 'When off, each field shows only its placeholder. Turn on to render a visible label above every input.', 'neural-forms-lite' ) }
+								label={ __( 'Show Quiz Results', 'neural-forms-lite' ) }
+								help={ __( 'When off, only the success message is shown after submitting.', 'neural-forms-lite' ) }
+								checked={ attributes.showQuizResults !== false }
+								onChange={ ( v ) => setAttributes( { showQuizResults: v } ) }
+							/>
+						) }
+						{ blockKind === 'poll' && (
+							<ToggleControl
+								label={ __( 'Show Poll Results', 'neural-forms-lite' ) }
+								help={ __( 'When off, only the success message is shown after voting.', 'neural-forms-lite' ) }
+								checked={ attributes.showPollResults !== false }
+								onChange={ ( v ) => setAttributes( { showPollResults: v } ) }
 							/>
 						) }
 
 						{ settingsExtrasTop }
+
+						{ settingsExtrasBottom }
+						{ settingsExtras }
 
 						<TextControl
 							label={ __( 'Submit Button Text', 'neural-forms-lite' ) }
@@ -242,9 +269,6 @@ export default function FormSelector( {
 							onChange={ ( v ) => setAttributes( { submitButtonText: v } ) }
 							help={ __( 'Leave empty to render an empty submit button — useful when you style it as icon-only via theme CSS.', 'neural-forms-lite' ) }
 						/>
-
-						{ settingsExtrasBottom }
-						{ settingsExtras }
 					</PanelBody>
 				) }
 			</InspectorControls>

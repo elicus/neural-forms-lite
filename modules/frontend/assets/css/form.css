@@ -1154,6 +1154,80 @@
 
 
 /*
+   Button icons
+   Inline SVG icons inside submit / nav buttons. The .nf-btn--has-icon class
+   is added by FormRenderer when an icon is present; it switches the button to
+   inline-flex so the icon and label sit side-by-side.
+   .nf-btn-label wraps the text node so JS (form-submit.js updateNavLabels)
+   can update only the text without clobbering the icon <span>.
+ */
+
+.nf-btn--has-icon {
+    display: inline-flex !important;
+    align-items: center;
+    /* No gap — icon spacing is handled per-direction via margin so that
+       hover-reveal mode can collapse it to zero without layout shift. */
+}
+
+.nf-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+    pointer-events: none;
+    overflow: hidden; /* needed when width collapses to 0 in hover-reveal */
+}
+
+/* Always-visible icon: add spacing between icon and label text. */
+.nf-btn-icon--after  { margin-left:  0.4em; }
+.nf-btn-icon--before { margin-right: 0.4em; }
+
+.nf-btn-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Hover-reveal: icon takes no space at rest (width + margin both 0). */
+.nf-btn--hover-icon .nf-btn-icon--after {
+    opacity: 0;
+    width: 0;
+    margin-left: 0;
+    transform: translateX( 0.35em );
+    transition: opacity 0.2s ease, transform 0.2s ease,
+                width 0.2s ease, margin 0.2s ease;
+}
+
+.nf-btn--hover-icon .nf-btn-icon--before {
+    opacity: 0;
+    width: 0;
+    margin-right: 0;
+    transform: translateX( -0.35em );
+    transition: opacity 0.2s ease, transform 0.2s ease,
+                width 0.2s ease, margin 0.2s ease;
+}
+
+/* Reveal on hover and keyboard focus — restore size and spacing. */
+.nf-btn--hover-icon:hover .nf-btn-icon--after,
+.nf-btn--hover-icon:focus-visible .nf-btn-icon--after {
+    opacity: 1;
+    width: 1em;
+    margin-left: 0.4em;
+    transform: translateX( 0 );
+}
+
+.nf-btn--hover-icon:hover .nf-btn-icon--before,
+.nf-btn--hover-icon:focus-visible .nf-btn-icon--before {
+    opacity: 1;
+    width: 1em;
+    margin-right: 0.4em;
+    transform: translateX( 0 );
+}
+
+
+/*
    Success message focus outline
    Remove the visible outline when focused programmatically - the green box
    itself is the visual indicator. Screen readers still announce it.

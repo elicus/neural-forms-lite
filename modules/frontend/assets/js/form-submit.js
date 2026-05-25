@@ -1345,9 +1345,9 @@
 		if ( submit ) {
 			submit.disabled = false;
 			form.classList.remove( 'neural-forms-form--submitting' );
-			var original = submit.getAttribute( 'data-original-text' );
+			var original = submit.getAttribute( 'data-original-html' );
 			if ( original !== null ) {
-				submit.textContent = original;
+				submit.innerHTML = original;
 			}
 		}
 
@@ -1379,9 +1379,12 @@
 			form.classList.add( 'neural-forms-form--submitting' );
 			if ( btn ) {
 				btn.disabled = true;
-				// Stash the original label so we can restore it later.
-				if ( ! btn.hasAttribute( 'data-original-text' ) ) {
-					btn.setAttribute( 'data-original-text', btn.textContent );
+				// Stash the original HTML so we can restore icon markup later.
+				// data-original-html is preferred over the legacy data-original-text
+				// because the button may contain an icon <span> that textContent
+				// would discard on restore.
+				if ( ! btn.hasAttribute( 'data-original-html' ) ) {
+					btn.setAttribute( 'data-original-html', btn.innerHTML );
 				}
 				btn.innerHTML = '<span class="neural-forms-form__spinner" aria-hidden="true"></span> Submitting\u2026';
 			}
@@ -1389,9 +1392,9 @@
 			form.classList.remove( 'neural-forms-form--submitting' );
 			if ( btn ) {
 				btn.disabled = false;
-				var original = btn.getAttribute( 'data-original-text' );
+				var original = btn.getAttribute( 'data-original-html' );
 				if ( original ) {
-					btn.textContent = original;
+					btn.innerHTML = original;
 				}
 			}
 		}
@@ -1616,6 +1619,7 @@
 	 * @param {object}          polls
 	 */
 	function renderPollResults( form, polls ) {
+		if ( form.getAttribute( 'data-show-poll-results' ) === '0' ) return;
 		Object.keys( polls ).forEach( function ( fieldId ) {
 			var poll = polls[ fieldId ];
 			if ( ! poll || typeof poll !== 'object' ) return;
@@ -1703,6 +1707,8 @@
 	 */
 	function renderQuizResults( form, quiz ) {
 		if ( ! quiz || typeof quiz !== 'object' ) return;
+		var summaryCheck = form.querySelector( '[data-quiz-summary]' );
+		if ( summaryCheck && summaryCheck.dataset.showResults === '0' ) return;
 
 		var score    = Number( quiz.score )      || 0;
 		var maxScore = Number( quiz.max_score )  || 0;
@@ -1828,7 +1834,9 @@
 		var html = '';
 
 		// Quiz first — score is the most prominent post-submit info.
-		if ( quiz && typeof quiz === 'object' ) {
+		var quizSummaryEl = form.querySelector( '[data-quiz-summary]' );
+		var showQuizResults = ! quizSummaryEl || quizSummaryEl.getAttribute( 'data-show-results' ) !== '0';
+		if ( quiz && typeof quiz === 'object' && showQuizResults ) {
 			var score    = Number( quiz.score )      || 0;
 			var maxScore = Number( quiz.max_score )  || 0;
 			var pct      = Number( quiz.percentage );
@@ -1920,7 +1928,8 @@
 		}
 
 		// Then poll bars. Each visible/after_vote poll renders a card.
-		if ( polls && typeof polls === 'object' ) {
+		var showPollResults = form.getAttribute( 'data-show-poll-results' ) !== '0';
+		if ( polls && typeof polls === 'object' && showPollResults ) {
 			Object.keys( polls ).forEach( function ( fieldId ) {
 				var poll = polls[ fieldId ];
 				if ( ! poll || typeof poll !== 'object' ) return;
@@ -2169,10 +2178,25 @@
 
 		function updateNavLabels( step ) {
 			if ( ! step ) return;
-			var nextLabel = step.getAttribute( 'data-step-button-next' );
-			var prevLabel = step.getAttribute( 'data-step-button-previous' );
-			if ( nextBtn && nextLabel ) nextBtn.textContent = nextLabel;
-			if ( prevBtn && prevLabel ) prevBtn.textContent = prevLabel;
+			var nav      = form.querySelector( '[data-neural-forms-steps-nav]' );
+			var defNext  = nav ? ( nav.getAttribute( 'data-nav-default-next' ) || '' ) : '';
+			var defPrev  = nav ? ( nav.getAttribute( 'data-nav-default-prev' ) || '' ) : '';
+			var ovNext   = nav && nav.hasAttribute( 'data-nav-override-next' );
+			var ovPrev   = nav && nav.hasAttribute( 'data-nav-override-prev' );
+			// Block-level override always wins; otherwise per-step label
+			// wins with the resolved default (block or form) as fallback.
+			var nextLabel = ovNext ? defNext : ( step.getAttribute( 'data-step-button-next' ) || defNext );
+			var prevLabel = ovPrev ? defPrev : ( step.getAttribute( 'data-step-button-previous' ) || defPrev );
+			// When an icon is present FormRenderer wraps the text in .nf-btn-label
+			// so we can update it without clobbering the icon <span>.
+			if ( nextBtn && nextLabel ) {
+				var nextLbl = nextBtn.querySelector( '.nf-btn-label' );
+				if ( nextLbl ) { nextLbl.textContent = nextLabel; } else { nextBtn.textContent = nextLabel; }
+			}
+			if ( prevBtn && prevLabel ) {
+				var prevLbl = prevBtn.querySelector( '.nf-btn-label' );
+				if ( prevLbl ) { prevLbl.textContent = prevLabel; } else { prevBtn.textContent = prevLabel; }
+			}
 		}
 
 		/**

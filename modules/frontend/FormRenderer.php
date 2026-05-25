@@ -62,7 +62,7 @@ class FormRenderer {
 	 * @param array $options  Render options from the block (e.g. form_title).
 	 * @return string  Ready-to-echo HTML (all content escaped internally).
 	 */
-	public static function render( int $form_id, array $options = array() ): string {
+	public static function render( int $form_id, array $options = [] ): string {
 		$form = FormRepository::find( $form_id );
 
 		if ( ! $form ) {
@@ -119,7 +119,7 @@ class FormRenderer {
 	 * @param array $options  Render options from the block (e.g. form_title).
 	 * @return string  Ready-to-echo HTML, or empty string if not found.
 	 */
-	public static function render_preview( int $form_id, array $options = array() ): string {
+	public static function render_preview( int $form_id, array $options = [] ): string {
 		$form = FormRepository::find( $form_id );
 
 		if ( ! $form ) {
@@ -146,16 +146,16 @@ class FormRenderer {
 	 * @param array $options  Render options (e.g. show_labels, show_placeholders).
 	 * @return string
 	 */
-	public static function render_preview_form( array $form, array $options = array() ): string {
+	public static function render_preview_form( array $form, array $options = [] ): string {
 		// Defensive defaults so a caller passing a partial array doesn't
 		// reach render_form() with missing keys.
-		$form += array(
+		$form += [
 			'id'          => 0,
 			'name'        => '',
 			'status'      => 'active',
-			'form_schema' => array(),
-			'settings'    => array(),
-		);
+			'form_schema' => [],
+			'settings'    => [],
+		];
 
 		return static::render_form( $form, $options );
 	}
@@ -182,11 +182,11 @@ class FormRenderer {
 	 * @param array $options  Render options (e.g. form_title, title_level).
 	 * @return string
 	 */
-	private static function render_form( array $form, array $options = array() ): string {
+	private static function render_form( array $form, array $options = [] ): string {
 		$form_id  = (int) $form['id'];
-		$schema   = is_array( $form['form_schema'] ) ? $form['form_schema'] : array();
-		$fields   = is_array( $schema['fields'] ) ? $schema['fields'] : array();
-		$settings = is_array( $form['settings'] ) ? $form['settings'] : array();
+		$schema   = is_array( $form['form_schema'] ) ? $form['form_schema'] : [];
+		$fields   = is_array( $schema['fields'] )    ? $schema['fields']    : [];
+		$settings = is_array( $form['settings'] )    ? $form['settings']    : [];
 
 		// Mirrors the form_version hash written by SubmitEndpoint at submission
 		// time. Lets the JS layer (or future diffing logic) detect pages served
@@ -194,13 +194,13 @@ class FormRenderer {
 		$version = md5( (string) wp_json_encode( $schema ) );
 
 		// On-submit outcome settings. Both 'on_success' and 'on_error' carry:
-		// mode    'message' or 'redirect'
-		// message Used when mode === 'message'
-		// url     Used when mode === 'redirect'
+		//   mode    'message' or 'redirect'
+		//   message Used when mode === 'message'
+		//   url     Used when mode === 'redirect'
 		// Legacy 'success_message' (saved before the on_success object existed)
 		// is honored as a fallback so older forms keep their custom text.
-		$on_success         = is_array( $settings['on_success'] ?? null ) ? $settings['on_success'] : array();
-		$on_error           = is_array( $settings['on_error'] ?? null ) ? $settings['on_error'] : array();
+		$on_success         = is_array( $settings['on_success'] ?? null ) ? $settings['on_success'] : [];
+		$on_error           = is_array( $settings['on_error']   ?? null ) ? $settings['on_error']   : [];
 		$on_success_mode    = ( ( $on_success['mode'] ?? 'message' ) === 'redirect' ) ? 'redirect' : 'message';
 		$on_success_message = (string) ( $on_success['message'] ?? '' );
 		$on_success_url     = esc_url_raw( (string) ( $on_success['url'] ?? '' ) );
@@ -220,8 +220,8 @@ class FormRenderer {
 		}
 
 		// Render the field tree. A node is either:
-		// - a layout row (type=row) with explicit columns; or
-		// - a flat field, optionally with width=half for pair-rendering.
+		//   - a layout row (type=row) with explicit columns; or
+		//   - a flat field, optionally with width=half for pair-rendering.
 		// has_files is collected via a single recursive scan so file uploads
 		// inside a column still trigger the multipart enctype.
 		$has_files   = false;
@@ -231,14 +231,9 @@ class FormRenderer {
 		// (data-neural-forms-multistep="1") so form-submit.js can opt in
 		// cheaply, and to emit the steps-nav buttons just above the
 		// submit button further down.
-		$top_steps = array_values(
-			array_filter(
-				$fields,
-				static function ( $n ) {
-					return is_array( $n ) && ( $n['type'] ?? '' ) === SchemaHelper::STEP_TYPE;
-				}
-			)
-		);
+		$top_steps = array_values( array_filter( $fields, static function ( $n ) {
+			return is_array( $n ) && ( $n['type'] ?? '' ) === SchemaHelper::STEP_TYPE;
+		} ) );
 		$has_steps = count( $top_steps ) >= 2;
 
 		// Form-level multi-step settings live on form_schema.settings.
@@ -246,12 +241,12 @@ class FormRenderer {
 		// settings; schema-level rendering options belong here so the
 		// shape of the form is self-contained.)
 		//
-		// form_schema.settings.multistep.progress_indicator
-		// "numbers" | "bar" | "none"   default: "numbers"
-		$schema_settings    = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : array();
-		$multistep_settings = is_array( $schema_settings['multistep'] ?? null ) ? $schema_settings['multistep'] : array();
+		//   form_schema.settings.multistep.progress_indicator
+		//     "numbers" | "bar" | "none"   default: "numbers"
+		$schema_settings    = is_array( $schema['settings'] ?? null ) ? $schema['settings'] : [];
+		$multistep_settings = is_array( $schema_settings['multistep'] ?? null ) ? $schema_settings['multistep'] : [];
 		$progress_indicator = (string) ( $multistep_settings['progress_indicator'] ?? 'numbers' );
-		if ( ! in_array( $progress_indicator, array( 'numbers', 'bar', 'none' ), true ) ) {
+		if ( ! in_array( $progress_indicator, [ 'numbers', 'bar', 'none' ], true ) ) {
 			$progress_indicator = 'numbers';
 		}
 
@@ -265,7 +260,7 @@ class FormRenderer {
 		$progress_override = isset( $options['progress_indicator_override'] )
 			? (string) $options['progress_indicator_override']
 			: '';
-		if ( in_array( $progress_override, array( 'numbers', 'bar', 'none' ), true ) ) {
+		if ( in_array( $progress_override, [ 'numbers', 'bar', 'none' ], true ) ) {
 			$progress_indicator = $progress_override;
 		}
 
@@ -296,7 +291,7 @@ class FormRenderer {
 						. '</div>';
 
 		// ' Assemble '
-		$html = '<div class="neural-forms-form-wrap">';
+		$html  = '<div class="neural-forms-form-wrap">';
 
 		// Optional form title - block attribute formTitle. When non-empty,
 		// emit it as a heading at the top of the form. The heading level is
@@ -304,7 +299,7 @@ class FormRenderer {
 		$title = isset( $options['form_title'] ) ? (string) $options['form_title'] : '';
 		if ( $title !== '' ) {
 			$lvl = strtolower( (string) ( $options['title_level'] ?? 'h2' ) );
-			if ( ! in_array( $lvl, array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
+			if ( ! in_array( $lvl, [ 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ], true ) ) {
 				$lvl = 'h2';
 			}
 			$html .= '<' . $lvl . ' class="neural-forms-form__title">'
@@ -347,6 +342,17 @@ class FormRenderer {
 
 		$form_attrs .= ' novalidate';
 
+		// data-show-poll-results: read by form-submit.js to suppress poll
+		// results cards in populateDynamicResults() / renderPollResults()
+		// when the block's "Show Poll Results" toggle is off. Uses the
+		// <form> element (not the poll div) because render_poll() does not
+		// receive $options. Omitted when true (default) to keep the DOM
+		// clean for non-poll forms.
+		$show_poll_results = ! isset( $options['show_poll_results'] ) || $options['show_poll_results'] !== false;
+		if ( ! $show_poll_results ) {
+			$form_attrs .= ' data-show-poll-results="0"';
+		}
+
 		$html .= '<form' . $form_attrs . '>';
 
 		// Multi-step progress indicator. Rendered ABOVE the fields
@@ -360,8 +366,8 @@ class FormRenderer {
 				. ' data-progress-mode="numbers"'
 				. ' aria-label="' . esc_attr__( 'Form progress', 'neural-forms-lite' ) . '">';
 			foreach ( $top_steps as $idx => $step ) {
-				$step_title     = (string) ( $step['title'] ?? '' );
-				$item_class     = 'neural-forms-form__progress-item' . ( 0 === $idx ? ' is-active' : '' );
+				$step_title = (string) ( $step['title'] ?? '' );
+				$item_class = 'neural-forms-form__progress-item' . ( $idx === 0 ? ' is-active' : '' );
 				$progress_html .= '<li class="' . esc_attr( $item_class ) . '"'
 					. ' data-step-index="' . (int) $idx . '">'
 					. '<span class="neural-forms-form__progress-num">' . ( (int) $idx + 1 ) . '</span>';
@@ -373,8 +379,8 @@ class FormRenderer {
 			}
 			$progress_html .= '</ol>';
 		} elseif ( $show_progress && $progress_indicator === 'bar' ) {
-			$total          = count( $top_steps );
-			$pct            = $total > 0 ? (int) floor( ( 1 / $total ) * 100 ) : 0;
+			$total = count( $top_steps );
+			$pct   = $total > 0 ? (int) floor( ( 1 / $total ) * 100 ) : 0;
 			$progress_html .= '<div class="neural-forms-form__progress neural-forms-form__progress--bar"'
 				. ' data-progress-mode="bar"'
 				. ' aria-label="' . esc_attr__( 'Form progress', 'neural-forms-lite' ) . '">'
@@ -415,10 +421,10 @@ class FormRenderer {
 
 		if ( $captcha_enabled && $captcha_provider !== 'none' && $captcha_site_key !== '' ) {
 			// Map provider slug to the auto-render CSS class expected by the SDK.
-			$provider_class_map = array(
+			$provider_class_map = [
 				'turnstile'    => 'cf-turnstile',
 				'recaptcha_v2' => 'g-recaptcha',
-			);
+			];
 
 			$provider_class = $provider_class_map[ $captcha_provider ] ?? '';
 
@@ -444,7 +450,7 @@ class FormRenderer {
 					wp_enqueue_script(
 						'neural-forms-cf-turnstile',
 						'https://challenges.cloudflare.com/turnstile/v0/api.js',
-						array(),
+						[],
 						NEURAL_FORMS_VERSION,
 						true
 					);
@@ -452,7 +458,7 @@ class FormRenderer {
 					wp_enqueue_script(
 						'neural-forms-recaptcha-v2',
 						'https://www.google.com/recaptcha/api.js',
-						array(),
+						[],
 						NEURAL_FORMS_VERSION,
 						true
 					);
@@ -479,7 +485,7 @@ class FormRenderer {
 				: (string) ( $top_steps[0]['settings']['button_previous'] ?? __( 'Back', 'neural-forms-lite' ) );
 			$first_next = array_key_exists( 'next_button_text', $options )
 				? (string) $options['next_button_text']
-				: (string) ( $top_steps[0]['settings']['button_next'] ?? __( 'Next', 'neural-forms-lite' ) );
+				: (string) ( $top_steps[0]['settings']['button_next']     ?? __( 'Next', 'neural-forms-lite' ) );
 
 			// `wp-element-button` is the WordPress core class that block
 			// themes (and many classic themes) apply Button-element
@@ -490,14 +496,75 @@ class FormRenderer {
 			// btnBgColor / btnTextColor / etc. still win because
 			// BlockHandler emits them as direct rules at higher
 			// specificity than `:where()`.
-			$html .= '<div class="neural-forms-form__steps-nav" data-neural-forms-steps-nav>'
-					. '<button type="button" class="neural-forms-form__step-prev wp-element-button"'
+			// data-nav-default-next/prev carry the resolved label (block
+			// override wins over per-step form settings). data-nav-override-*
+			// flags are present when the block path explicitly set the text,
+			// so JS knows to ignore per-step labels and always use these.
+			$nav_open = '<div class="neural-forms-form__steps-nav" data-neural-forms-steps-nav'
+				. ' data-nav-default-next="' . esc_attr( $first_next ) . '"'
+				. ' data-nav-default-prev="' . esc_attr( $first_prev ) . '"';
+			if ( array_key_exists( 'next_button_text', $options ) ) {
+				$nav_open .= ' data-nav-override-next';
+			}
+			if ( array_key_exists( 'prev_button_text', $options ) ) {
+				$nav_open .= ' data-nav-override-prev';
+			}
+			$nav_open .= '>';
+			// ── Nav button icon injection ──────────────────────────────────
+			// Build prev button HTML.
+			$prev_class = 'neural-forms-form__step-prev wp-element-button';
+			$prev_svg   = '';
+			if ( ! empty( $options['nav_btn_prev_icon'] ) ) {
+				$prev_svg = ButtonIcons::get( (string) $options['nav_btn_prev_icon'] );
+			}
+			if ( $prev_svg !== '' ) {
+				$prev_pos    = (string) ( $options['nav_btn_prev_icon_position'] ?? 'before' );
+				$prev_icls   = 'nf-btn-icon nf-btn-icon--' . esc_attr( $prev_pos );
+				$prev_class .= ' nf-btn--has-icon';
+				if ( ! empty( $options['nav_btn_prev_icon_hover'] ) ) {
+					$prev_class  .= ' nf-btn--hover-icon';
+					$prev_icls   .= ' nf-btn-icon--hover';
+				}
+				$prev_icon_html = '<span class="' . $prev_icls . '" aria-hidden="true">' . $prev_svg . '</span>';
+				$prev_label_html = '<span class="nf-btn-label">' . esc_html( $first_prev ) . '</span>';
+				$prev_content    = $prev_pos === 'before'
+					? $prev_icon_html . $prev_label_html
+					: $prev_label_html . $prev_icon_html;
+			} else {
+				$prev_content = esc_html( $first_prev );
+			}
+
+			// Build next button HTML.
+			$next_class = 'neural-forms-form__step-next wp-element-button';
+			$next_svg   = '';
+			if ( ! empty( $options['nav_btn_next_icon'] ) ) {
+				$next_svg = ButtonIcons::get( (string) $options['nav_btn_next_icon'] );
+			}
+			if ( $next_svg !== '' ) {
+				$next_pos    = (string) ( $options['nav_btn_next_icon_position'] ?? 'after' );
+				$next_icls   = 'nf-btn-icon nf-btn-icon--' . esc_attr( $next_pos );
+				$next_class .= ' nf-btn--has-icon';
+				if ( ! empty( $options['nav_btn_next_icon_hover'] ) ) {
+					$next_class  .= ' nf-btn--hover-icon';
+					$next_icls   .= ' nf-btn-icon--hover';
+				}
+				$next_icon_html = '<span class="' . $next_icls . '" aria-hidden="true">' . $next_svg . '</span>';
+				$next_label_html = '<span class="nf-btn-label">' . esc_html( $first_next ) . '</span>';
+				$next_content    = $next_pos === 'before'
+					? $next_icon_html . $next_label_html
+					: $next_label_html . $next_icon_html;
+			} else {
+				$next_content = esc_html( $first_next );
+			}
+
+			$html .= $nav_open
+					. '<button type="button" class="' . esc_attr( $prev_class ) . '"'
 					. ' data-step-action="prev">'
-					. esc_html( $first_prev )
+					. $prev_content
 					. '</button>'
-					. '<button type="button" class="neural-forms-form__step-next wp-element-button"'
+					. '<button type="button" class="' . esc_attr( $next_class ) . '"'
 					. ' data-step-action="next">'
-					. esc_html( $first_next )
+					. $next_content
 					. '</button>'
 					. '</div>';
 		}
@@ -516,19 +583,28 @@ class FormRenderer {
 			$submit_class .= ' neural-forms-form__submit--multistep';
 		}
 
+		// ── Submit button icon injection ────────────────────────────────────
+		// Icon SVGs come from the hardcoded ButtonIcons registry — no user
+		// content is rendered here. The icon id is validated by ButtonIcons::get()
+		// (returns '' for unknown ids).
+		$btn_icon_svg = '';
+		if ( ! empty( $options['btn_icon'] ) ) {
+			$btn_icon_svg = ButtonIcons::get( (string) $options['btn_icon'] );
+		}
+
 		// Quiz summary placeholder: one per form, emitted only when the
 		// form contains at least one quiz_question. Populated post-
 		// submit by form-submit.js with the score / max / percentage.
 		// Empty + hidden at SSR so a no-JS render stays clean.
 		$has_quiz = false;
 		foreach ( SchemaHelper::flatten_fields( $fields ) as $f ) {
-			if ( ( $f['type'] ?? '' ) === 'quiz_question' ) {
-				$has_quiz = true;
-				break; }
+			if ( ( $f['type'] ?? '' ) === 'quiz_question' ) { $has_quiz = true; break; }
 		}
 		if ( $has_quiz ) {
+			$show_quiz_results = ! isset( $options['show_quiz_results'] ) || $options['show_quiz_results'] !== false;
 			$html .= '<div class="neural-forms-form__quiz-summary"'
 				. ' data-quiz-summary'
+				. ' data-show-results="' . ( $show_quiz_results ? '1' : '0' ) . '"'
 				. ' role="status" aria-live="polite"'
 				. ' hidden></div>';
 		}
@@ -539,9 +615,26 @@ class FormRenderer {
 			? (string) $options['submit_button_text']
 			: __( 'Submit', 'neural-forms-lite' );
 
+		if ( $btn_icon_svg !== '' ) {
+			$btn_icon_pos  = (string) ( $options['btn_icon_position'] ?? 'after' );
+			$btn_icon_cls  = 'nf-btn-icon nf-btn-icon--' . esc_attr( $btn_icon_pos );
+			$submit_class .= ' nf-btn--has-icon';
+			if ( ! empty( $options['btn_icon_hover'] ) ) {
+				$submit_class .= ' nf-btn--hover-icon';
+				$btn_icon_cls .= ' nf-btn-icon--hover';
+			}
+			$btn_icon_html   = '<span class="' . $btn_icon_cls . '" aria-hidden="true">' . $btn_icon_svg . '</span>';
+			$btn_label_html  = '<span class="nf-btn-label">' . esc_html( $submit_text ) . '</span>';
+			$btn_content     = $btn_icon_pos === 'before'
+				? $btn_icon_html . $btn_label_html
+				: $btn_label_html . $btn_icon_html;
+		} else {
+			$btn_content = esc_html( $submit_text );
+		}
+
 		$html .= '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
-				. esc_html( $submit_text )
+				. $btn_content
 				. '</button>'
 				. '</div>';
 
@@ -607,7 +700,7 @@ class FormRenderer {
 
 			if ( $is_top_level && SchemaHelper::is_step( $node ) ) {
 				$html .= static::render_step( $node, $step_index, $form_id, $options, $has_files );
-				++$step_index;
+				$step_index++;
 				continue;
 			}
 
@@ -633,7 +726,7 @@ class FormRenderer {
 			$next = isset( $nodes[ $i + 1 ] ) ? (array) $nodes[ $i + 1 ] : null;
 			$pair = $node['type'] !== 'hidden'
 				&& FieldRegistry::normalize_width( $node['width'] ?? '' ) === FieldRegistry::WIDTH_HALF
-				&& null !== $next
+				&& $next !== null
 				&& ! SchemaHelper::is_row( $next )
 				&& ( $next['type'] ?? '' ) !== 'hidden'
 				&& FieldRegistry::normalize_width( $next['width'] ?? '' ) === FieldRegistry::WIDTH_HALF;
@@ -646,7 +739,7 @@ class FormRenderer {
 				$html .= '<div class="neural-forms-form__row__column">' . static::render_field( $node, $form_id, $options ) . '</div>';
 				$html .= '<div class="neural-forms-form__row__column">' . static::render_field( $next, $form_id, $options ) . '</div>';
 				$html .= '</div>';
-				++$i;
+				$i++;
 				continue;
 			}
 
@@ -692,7 +785,7 @@ class FormRenderer {
 
 		$class = 'neural-forms-form__section neural-forms-form__section--' . $style;
 
-		$html = '<div class="' . esc_attr( $class ) . '"';
+		$html  = '<div class="' . esc_attr( $class ) . '"';
 		if ( $section_id !== '' ) {
 			$html .= ' data-neural-forms-section-id="' . esc_attr( $section_id ) . '"';
 		}
@@ -708,10 +801,10 @@ class FormRenderer {
 	}
 
 	private static function render_step( array $step, int $step_index, int $form_id, array $options, bool &$has_files ): string {
-		$step_id  = (string) ( $step['id'] ?? '' );
-		$title    = (string) ( $step['title'] ?? '' );
-		$desc     = (string) ( $step['description'] ?? '' );
-		$btn_next = (string) ( $step['settings']['button_next'] ?? '' );
+		$step_id = (string) ( $step['id'] ?? '' );
+		$title   = (string) ( $step['title'] ?? '' );
+		$desc    = (string) ( $step['description'] ?? '' );
+		$btn_next = (string) ( $step['settings']['button_next']     ?? '' );
 		$btn_prev = (string) ( $step['settings']['button_previous'] ?? '' );
 
 		$html  = '<div class="neural-forms-form__step"';
@@ -734,8 +827,8 @@ class FormRenderer {
 			$html .= '<p class="neural-forms-form__step-description">' . esc_html( $desc ) . '</p>';
 		}
 
-		$html       .= '<div class="neural-forms-form__step-body">';
-		$inner_nodes = is_array( $step['fields'] ?? null ) ? $step['fields'] : array();
+		$html .= '<div class="neural-forms-form__step-body">';
+		$inner_nodes = is_array( $step['fields'] ?? null ) ? $step['fields'] : [];
 		// is_top_level=false so a malformed nested step is rendered as
 		// a no-op (the validator already rejects them on save).
 		$html .= static::render_nodes( $inner_nodes, $form_id, $options, $has_files, false );
@@ -752,7 +845,7 @@ class FormRenderer {
 	 */
 	private static function render_row( array $row, int $form_id, array $options, bool &$has_files ): string {
 		$col_count = SchemaHelper::normalize_column_count(
-			$row['settings']['columns'] ?? count( is_array( $row['columns'] ?? null ) ? $row['columns'] : array() )
+			$row['settings']['columns'] ?? count( is_array( $row['columns'] ?? null ) ? $row['columns'] : [] )
 		);
 
 		$gap = (string) ( $row['settings']['gap'] ?? 'medium' );
@@ -762,7 +855,7 @@ class FormRenderer {
 
 		$row_id = (string) ( $row['id'] ?? '' );
 
-		$html = '<div class="neural-forms-form__row'
+		$html  = '<div class="neural-forms-form__row'
 			. ' neural-forms-form__row--cols-' . $col_count
 			. ' neural-forms-form__row--gap-' . esc_attr( $gap ) . '"';
 		if ( $row_id !== '' ) {
@@ -770,7 +863,7 @@ class FormRenderer {
 		}
 		$html .= '>';
 
-		$columns = is_array( $row['columns'] ?? null ) ? array_values( $row['columns'] ) : array();
+		$columns = is_array( $row['columns'] ?? null ) ? array_values( $row['columns'] ) : [];
 
 		// Render only the declared count - excess columns in the schema
 		// (left over from a column-count-shrink that hasn't been saved
@@ -780,22 +873,19 @@ class FormRenderer {
 		$tail    = array_slice( $columns, $col_count );
 
 		if ( ! empty( $tail ) && ! empty( $visible ) ) {
-			$last_idx                       = count( $visible ) - 1;
+			$last_idx = count( $visible ) - 1;
 			$visible[ $last_idx ]['fields'] = is_array( $visible[ $last_idx ]['fields'] ?? null )
 				? $visible[ $last_idx ]['fields']
-				: array();
+				: [];
 			foreach ( $tail as $tail_col ) {
-				$tail_fields                    = is_array( $tail_col['fields'] ?? null ) ? $tail_col['fields'] : array();
+				$tail_fields = is_array( $tail_col['fields'] ?? null ) ? $tail_col['fields'] : [];
 				$visible[ $last_idx ]['fields'] = array_merge( $visible[ $last_idx ]['fields'], $tail_fields );
 			}
 		}
 
 		// Pad with empty columns when settings.columns > count(columns).
 		while ( count( $visible ) < $col_count ) {
-			$visible[] = array(
-				'id'     => '',
-				'fields' => array(),
-			);
+			$visible[] = [ 'id' => '', 'fields' => [] ];
 		}
 
 		foreach ( $visible as $col ) {
@@ -807,7 +897,7 @@ class FormRenderer {
 			}
 			$col_html .= '>';
 
-			$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : array();
+			$col_fields = is_array( $col['fields'] ?? null ) ? $col['fields'] : [];
 			$col_html  .= static::render_nodes( $col_fields, $form_id, $options, $has_files );
 			$col_html  .= '</div>';
 
@@ -818,26 +908,26 @@ class FormRenderer {
 		return $html;
 	}
 
-	private static function render_field( array $field, int $form_id, array $options = array() ): string {
+	private static function render_field( array $field, int $form_id, array $options = [] ): string {
 		$type     = $field['type'];
 		$field_id = $field['id'];
 		$required = ! empty( $field['required'] );
 
 		// Label / placeholder resolution:
-		// * show_labels (block-level)  '->-> render every field's label visibly
-		// above its input. Falls back to per-field $field['show_label']
-		// when the option is absent (e.g. shortcode usage).
-		// * show_placeholders (block-level, default true) '->-> render the
-		// placeholder. When false, no field gets a placeholder.
-		// * Placeholder source: user-defined $field['placeholder'] wins.
-		// If empty AND the label is hidden, fall back to label-as-
-		// placeholder so the user still sees a hint inside the input.
-		$lbl               = (string) ( $field['label'] ?? '' );
-		$user_placeholder  = (string) ( $field['placeholder'] ?? '' );
-		$show_label        = isset( $options['show_labels'] )
+		//   * show_labels (block-level)  '->-> render every field's label visibly
+		//     above its input. Falls back to per-field $field['show_label']
+		//     when the option is absent (e.g. shortcode usage).
+		//   * show_placeholders (block-level, default true) '->-> render the
+		//     placeholder. When false, no field gets a placeholder.
+		//   * Placeholder source: user-defined $field['placeholder'] wins.
+		//     If empty AND the label is hidden, fall back to label-as-
+		//     placeholder so the user still sees a hint inside the input.
+		$lbl              = (string) ( $field['label'] ?? '' );
+		$user_placeholder = (string) ( $field['placeholder'] ?? '' );
+		$show_label       = isset( $options['show_labels'] )
 			? (bool) $options['show_labels']
 			: ! empty( $field['show_label'] );
-		$show_placeholders = ! isset( $options['show_placeholders'] ) || false !== $options['show_placeholders'];
+		$show_placeholders = ! isset( $options['show_placeholders'] ) || $options['show_placeholders'] !== false;
 
 		if ( ! $show_placeholders ) {
 			$field['placeholder'] = '';
@@ -869,18 +959,18 @@ class FormRenderer {
 		// Only emit the keys the frontend actually needs: field, operator, value.
 		// Ignore all other keys so the attribute stays small.
 		$conditional_attr = '';
-		$cl               = $field['conditional_logic'] ?? null;
+		$cl = $field['conditional_logic'] ?? null;
 		if (
 			is_array( $cl )
 			&& ! empty( $cl['enabled'] )
 			&& isset( $cl['field'] )
 			&& (string) $cl['field'] !== ''
 		) {
-			$cl_data          = array(
-				'field'    => (string) ( $cl['field'] ?? '' ),
+			$cl_data = [
+				'field'    => (string) ( $cl['field']    ?? '' ),
 				'operator' => (string) ( $cl['operator'] ?? 'equals' ),
-				'value'    => (string) ( $cl['value'] ?? '' ),
-			);
+				'value'    => (string) ( $cl['value']    ?? '' ),
+			];
 			$conditional_attr = ' data-conditional="' . esc_attr( (string) wp_json_encode( $cl_data ) ) . '"';
 		}
 
@@ -892,19 +982,19 @@ class FormRenderer {
 		// Field-level label.
 		// * Default: empty - the label is carried by the placeholder.
 		// * show_label = true: emit a visible <label> above the input. Skipped
-		// for checkbox / acceptance (their inline label already serves as
-		// the question) and for radio / checkboxes (their renderers expose
-		// the label as a visible <legend> instead).
+		//   for checkbox / acceptance (their inline label already serves as
+		//   the question) and for radio / checkboxes (their renderers expose
+		//   the label as a visible <legend> instead).
 		$label_html = '';
 		if (
 			$show_label
 			&& $lbl !== ''
-			&& ! in_array( $type, array( 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ), true )
+			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true )
 		) {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$label_html    = '<label class="neural-forms-form__label neural-forms-form__label--block" for="' . esc_attr( $input_id ) . '">'
+			$label_html = '<label class="neural-forms-form__label neural-forms-form__label--block" for="' . esc_attr( $input_id ) . '">'
 						. esc_html( $lbl )
 						. $required_mark
 						. '</label>';
@@ -962,7 +1052,7 @@ class FormRenderer {
 				$input_html = static::render_matrix( $field, $input_id, $error_id, $form_id );
 				break;
 			case 'repeater':
-				$input_html = static::render_repeater( $field, $input_id, $error_id, $form_id );
+				$input_html = static::render_repeater( $field, $input_id, $error_id, $form_id, $options );
 				break;
 			case 'hidden':
 				$input_html = static::render_hidden( $field, $input_id );
@@ -1050,7 +1140,7 @@ class FormRenderer {
 			$attrs .= ' value="' . esc_attr( (string) $default ) . '"';
 		}
 
-		foreach ( array( 'min', 'max' ) as $attr ) {
+		foreach ( [ 'min', 'max' ] as $attr ) {
 			if ( isset( $field[ $attr ] ) && $field[ $attr ] !== '' ) {
 				$attrs .= ' ' . $attr . '="' . esc_attr( (string) $field[ $attr ] ) . '"';
 			}
@@ -1087,7 +1177,7 @@ class FormRenderer {
 
 		// min, max, step are optional numeric constraints.
 		// Cast to string before esc_attr() to handle integer/float values safely.
-		foreach ( array( 'min', 'max', 'step' ) as $attr ) {
+		foreach ( [ 'min', 'max', 'step' ] as $attr ) {
 			if ( isset( $field[ $attr ] ) && $field[ $attr ] !== '' ) {
 				$attrs .= ' ' . $attr . '="' . esc_attr( (string) $field[ $attr ] ) . '"';
 			}
@@ -1137,7 +1227,7 @@ class FormRenderer {
 	 */
 	private static function render_select( array $field, string $input_id, string $error_id ): string {
 		$default = (string) ( $field['default_value'] ?? '' );
-		$options = is_array( $field['options'] ) ? $field['options'] : array();
+		$options = is_array( $field['options'] ) ? $field['options'] : [];
 
 		$attrs = 'id="' . esc_attr( $input_id ) . '"'
 			. ' name="' . esc_attr( $field['id'] ) . '"'
@@ -1182,7 +1272,7 @@ class FormRenderer {
 	 */
 	private static function render_radio( array $field, string $input_id, string $error_id ): string {
 		$default  = (string) ( $field['default_value'] ?? '' );
-		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : [];
 		$required = ! empty( $field['required'] );
 
 		$html = '<fieldset class="neural-forms-form__radio-group" aria-describedby="' . esc_attr( $error_id ) . '">';
@@ -1199,15 +1289,15 @@ class FormRenderer {
 			$required_mark = ( $show_label && $required )
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
 		}
 
 		foreach ( $options as $i => $option ) {
-			$option  = (array) $option;
-			$label   = (string) ( $option['label'] ?? '' );
+			$option = (array) $option;
+			$label  = (string) ( $option['label'] ?? '' );
 			$raw_val = (string) ( $option['value'] ?? '' );
 			$val     = $raw_val !== '' ? $raw_val : $label;
 
@@ -1218,7 +1308,7 @@ class FormRenderer {
 			$opt_id  = $input_id . '-' . $i;
 			$checked = ( $val === $default ) ? ' checked' : '';
 
-			$req_attr = ( $required && 0 === $i ) ? ' required aria-required="true"' : '';
+			$req_attr = ( $required && $i === 0 ) ? ' required aria-required="true"' : '';
 
 			$html .= '<div class="neural-forms-form__radio-option">'
 				. '<input type="radio"'
@@ -1248,16 +1338,16 @@ class FormRenderer {
 	 * <fieldset> wrapping individual checkbox+label pairs.
 	 */
 	private static function render_checkboxes( array $field, string $input_id, string $error_id ): string {
-		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : [];
 		$required = ! empty( $field['required'] );
 
 		// default_value may be a JSON-encoded array or a comma-separated string.
-		$defaults = $field['default_value'] ?? array();
+		$defaults = $field['default_value'] ?? [];
 		if ( is_string( $defaults ) ) {
 			$defaults = array_map( 'trim', explode( ',', $defaults ) );
 		}
 		if ( ! is_array( $defaults ) ) {
-			$defaults = array();
+			$defaults = [];
 		}
 
 		$name = esc_attr( $field['id'] ) . '[]';
@@ -1275,7 +1365,7 @@ class FormRenderer {
 			$required_mark = ( $show_label && $required )
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -1453,10 +1543,8 @@ class FormRenderer {
 	 */
 	private static function render_rating( array $field, string $input_id, string $error_id ): string {
 		$stars = isset( $field['stars'] ) ? (int) $field['stars'] : 5;
-		if ( $stars < 1 ) {
-			$stars = 1; }
-		if ( $stars > 10 ) {
-			$stars = 10; }
+		if ( $stars < 1 ) { $stars = 1; }
+		if ( $stars > 10 ) { $stars = 10; }
 
 		$required = ! empty( $field['required'] );
 		$default  = isset( $field['default_value'] ) && $field['default_value'] !== '' ? (int) $field['default_value'] : 0;
@@ -1474,7 +1562,7 @@ class FormRenderer {
 			$required_mark = ( $show_label && $required )
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -1482,9 +1570,9 @@ class FormRenderer {
 
 		$html .= '<div class="neural-forms-form__rating">';
 		for ( $i = 1; $i <= $stars; $i++ ) {
-			$opt_id   = $input_id . '-' . $i;
-			$checked  = ( $default === $i ) ? ' checked' : '';
-			$req_attr = ( $required && 1 === $i ) ? ' required aria-required="true"' : '';
+			$opt_id  = $input_id . '-' . $i;
+			$checked = ( $default === $i ) ? ' checked' : '';
+			$req_attr = ( $required && $i === 1 ) ? ' required aria-required="true"' : '';
 
 			$html .= '<label class="neural-forms-form__rating-star" for="' . esc_attr( $opt_id ) . '">'
 				. '<input type="radio"'
@@ -1520,7 +1608,7 @@ class FormRenderer {
 	 */
 	private static function render_poll( array $field, string $input_id, string $error_id, int $form_id = 0 ): string {
 		$default  = (string) ( $field['default_value'] ?? '' );
-		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : [];
 		$required = ! empty( $field['required'] );
 		$settings = SchemaHelper::normalize_poll_settings( $field['settings'] ?? null );
 
@@ -1537,7 +1625,7 @@ class FormRenderer {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="neural-forms-form__label neural-forms-form__label--block">'
+			$html .= '<legend class="neural-forms-form__label neural-forms-form__label--block">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -1546,7 +1634,7 @@ class FormRenderer {
 		$html .= '<div class="neural-forms-form__poll-options">';
 
 		foreach ( $options as $i => $option ) {
-			$option  = (array) $option;
+			$option = (array) $option;
 			$label   = (string) ( $option['label'] ?? '' );
 			$raw_val = (string) ( $option['value'] ?? '' );
 			$val     = $raw_val !== '' ? $raw_val : $label;
@@ -1555,9 +1643,9 @@ class FormRenderer {
 				continue;
 			}
 
-			$opt_id   = $input_id . '-' . $i;
-			$checked  = ( $val === $default ) ? ' checked' : '';
-			$req_attr = ( $required && 0 === $i ) ? ' required aria-required="true"' : '';
+			$opt_id  = $input_id . '-' . $i;
+			$checked = ( $val === $default ) ? ' checked' : '';
+			$req_attr = ( $required && $i === 0 ) ? ' required aria-required="true"' : '';
 
 			// Whole option row is a <label> wrapping the radio + the
 			// option text so clicking anywhere inside the padded /
@@ -1581,21 +1669,21 @@ class FormRenderer {
 		$html .= '</div>';
 
 		// Results placeholder.
-		// never      — omitted entirely.
-		// after_vote — emitted empty + [hidden]; populated by JS on
-		// a successful submit response.
-		// always     — server-rendered with the current totals so the
-		// form is functional without JS.
+		//   never      — omitted entirely.
+		//   after_vote — emitted empty + [hidden]; populated by JS on
+		//                a successful submit response.
+		//   always     — server-rendered with the current totals so the
+		//                form is functional without JS.
 		if ( $settings['results_visibility'] !== 'never' ) {
 			$attrs  = ' data-poll-results="' . esc_attr( $field['id'] ) . '"';
 			$attrs .= ' data-poll-visibility="' . esc_attr( $settings['results_visibility'] ) . '"';
 			$attrs .= ' data-poll-chart="' . esc_attr( $settings['chart_type'] ) . '"';
 
-			$inner      = '';
+			$inner = '';
 			$is_visible = false;
 
 			if ( $settings['results_visibility'] === 'always' && $form_id > 0 ) {
-				$inner      = static::render_poll_results_html( $form_id, $field, $settings );
+				$inner = static::render_poll_results_html( $form_id, $field, $settings );
 				$is_visible = true;
 			}
 
@@ -1644,31 +1732,29 @@ class FormRenderer {
 		}
 
 		$agg    = \NeuralForms\Storage\EntryRepository::aggregate_poll_votes( $form_id, $field_id );
-		$total  = (int) ( $agg['total'] ?? 0 );
-		$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : array();
+		$total  = (int) ( $agg['total']  ?? 0 );
+		$counts = is_array( $agg['counts'] ?? null ) ? $agg['counts'] : [];
 
-		$options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
-		$known   = array();
-		$rows    = array();
+		$options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
+		$known   = [];
+		$rows    = [];
 
 		foreach ( $options as $opt ) {
 			$opt   = (array) $opt;
 			$label = (string) ( $opt['label'] ?? '' );
 			$raw   = (string) ( $opt['value'] ?? '' );
 			$value = $raw !== '' ? $raw : $label;
-			if ( $value === '' ) {
-				continue;
-			}
+			if ( $value === '' ) continue;
 
 			$known[] = $value;
 			$votes   = (int) ( $counts[ $value ] ?? 0 );
 			$pct     = $total > 0 ? round( ( $votes / $total ) * 100, 2 ) : 0.0;
 
-			$rows[] = array(
+			$rows[] = [
 				'label' => $label !== '' ? $label : $value,
 				'votes' => $votes,
 				'pct'   => $pct,
-			);
+			];
 		}
 
 		$other_votes = 0;
@@ -1678,16 +1764,16 @@ class FormRenderer {
 			}
 		}
 		if ( $other_votes > 0 ) {
-			$rows[] = array(
+			$rows[] = [
 				'label' => __( 'Other', 'neural-forms-lite' ),
 				'votes' => $other_votes,
 				'pct'   => $total > 0 ? round( ( $other_votes / $total ) * 100, 2 ) : 0.0,
-			);
+			];
 		}
 
 		$chart = $settings['chart_type'] ?? 'bar';
 
-		$html = '<p class="neural-forms-form__poll-total">'
+		$html  = '<p class="neural-forms-form__poll-total">'
 			. sprintf(
 				/* translators: %d: total vote count */
 				esc_html__( 'Total votes: %d', 'neural-forms-lite' ),
@@ -1698,7 +1784,7 @@ class FormRenderer {
 		$html .= '<ul class="neural-forms-form__poll-bars" data-poll-chart="' . esc_attr( $chart ) . '">';
 		foreach ( $rows as $r ) {
 			$pct_attr = max( 0, min( 100, (float) $r['pct'] ) );
-			$html    .= '<li class="neural-forms-form__poll-bar">'
+			$html .= '<li class="neural-forms-form__poll-bar">'
 				. '<div class="neural-forms-form__poll-bar-head">'
 				. '<span class="neural-forms-form__poll-bar-label">' . esc_html( $r['label'] ) . '</span>'
 				. '<span class="neural-forms-form__poll-bar-count">'
@@ -1735,7 +1821,7 @@ class FormRenderer {
 	 */
 	private static function render_quiz_question( array $field, string $input_id, string $error_id ): string {
 		$default  = (string) ( $field['default_value'] ?? '' );
-		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+		$options  = is_array( $field['options'] ?? null ) ? $field['options'] : [];
 		$required = ! empty( $field['required'] );
 		$settings = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
 
@@ -1758,7 +1844,7 @@ class FormRenderer {
 			$required_mark = $required
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="neural-forms-form__label neural-forms-form__label--block">'
+			$html .= '<legend class="neural-forms-form__label neural-forms-form__label--block">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -1767,7 +1853,7 @@ class FormRenderer {
 		$html .= '<div class="neural-forms-form__quiz-options">';
 
 		foreach ( $options as $i => $option ) {
-			$option  = (array) $option;
+			$option = (array) $option;
 			$label   = (string) ( $option['label'] ?? '' );
 			$raw_val = (string) ( $option['value'] ?? '' );
 			$val     = $raw_val !== '' ? $raw_val : $label;
@@ -1776,9 +1862,9 @@ class FormRenderer {
 				continue;
 			}
 
-			$opt_id   = $input_id . '-' . $i;
-			$checked  = ( $val === $default ) ? ' checked' : '';
-			$req_attr = ( $required && 0 === $i ) ? ' required aria-required="true"' : '';
+			$opt_id  = $input_id . '-' . $i;
+			$checked = ( $val === $default ) ? ' checked' : '';
+			$req_attr = ( $required && $i === 0 ) ? ' required aria-required="true"' : '';
 
 			// is_correct INTENTIONALLY NOT EMITTED: it would leak the
 			// answer to anyone with browser devtools. Score is computed
@@ -1855,41 +1941,31 @@ class FormRenderer {
 			return '';
 		}
 
-		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
 		$sel_type = ( ( $settings['selection_type'] ?? 'radio' ) === 'checkbox' ) ? 'checkbox' : 'radio';
-		$rows_raw = is_array( $settings['rows'] ?? null ) ? $settings['rows'] : array();
-		$cols_raw = is_array( $settings['columns'] ?? null ) ? $settings['columns'] : array();
+		$rows_raw = is_array( $settings['rows'] ?? null )    ? $settings['rows']    : [];
+		$cols_raw = is_array( $settings['columns'] ?? null ) ? $settings['columns'] : [];
 		$required = ! empty( $field['required'] );
 		$field_id = (string) $field['id'];
 
 		// Drop empty rows/columns. The builder allows partial state mid-edit;
 		// the renderer must never emit an input with no value / no name.
-		$rows = array_values(
-			array_filter(
-				$rows_raw,
-				static function ( $r ) {
-					if ( ! is_array( $r ) ) {
-						return false;
-					}
-					$v = (string) ( $r['value'] ?? '' );
-					$l = (string) ( $r['label'] ?? '' );
-					return $v !== '' || $l !== '';
-				}
-			)
-		);
-		$cols = array_values(
-			array_filter(
-				$cols_raw,
-				static function ( $c ) {
-					if ( ! is_array( $c ) ) {
-						return false;
-					}
-					$v = (string) ( $c['value'] ?? '' );
-					$l = (string) ( $c['label'] ?? '' );
-					return $v !== '' || $l !== '';
-				}
-			)
-		);
+		$rows = array_values( array_filter( $rows_raw, static function ( $r ) {
+			if ( ! is_array( $r ) ) {
+				return false;
+			}
+			$v = (string) ( $r['value'] ?? '' );
+			$l = (string) ( $r['label'] ?? '' );
+			return $v !== '' || $l !== '';
+		} ) );
+		$cols = array_values( array_filter( $cols_raw, static function ( $c ) {
+			if ( ! is_array( $c ) ) {
+				return false;
+			}
+			$v = (string) ( $c['value'] ?? '' );
+			$l = (string) ( $c['label'] ?? '' );
+			return $v !== '' || $l !== '';
+		} ) );
 
 		if ( empty( $rows ) || empty( $cols ) ) {
 			// Misconfigured matrix: render nothing rather than fatal. The
@@ -1909,7 +1985,7 @@ class FormRenderer {
 			$required_mark = ( $show_label && $required )
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -1970,12 +2046,12 @@ class FormRenderer {
 				$aria_lbl = trim( $lbl . ' — ' . $row_label . ' — ' . $col_label );
 
 				// Required attribute strategy:
-				// - radio:    mark first column in each row required so
-				// the browser enforces "one per row" client-
-				// side. The HTML radio group is row-scoped,
-				// so marking one input requires the group.
-				// - checkbox: not browser-enforceable across rows; left
-				// for commit 4 server validation.
+				//   - radio:    mark first column in each row required so
+				//               the browser enforces "one per row" client-
+				//               side. The HTML radio group is row-scoped,
+				//               so marking one input requires the group.
+				//   - checkbox: not browser-enforceable across rows; left
+				//               for commit 4 server validation.
 				$req_attr = '';
 				if ( $required && 'radio' === $sel_type && 0 === $ci ) {
 					$req_attr = ' required aria-required="true"';
@@ -2043,7 +2119,7 @@ class FormRenderer {
 	 *   public visitors see nothing. The rest of the form keeps
 	 *   working — the repeater field is silently skipped.
 	 */
-	private static function render_repeater( array $field, string $input_id, string $error_id, int $form_id ): string {
+	private static function render_repeater( array $field, string $input_id, string $error_id, int $form_id, array $options = [] ): string {
 		// Pro-deactivated fallback. Stay silent for visitors.
 		if ( ! Capabilities::can( Capabilities::FIELD_REPEATER ) ) {
 			if ( current_user_can( 'manage_options' ) ) {
@@ -2054,46 +2130,33 @@ class FormRenderer {
 			return '';
 		}
 
-		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : [];
 		$min      = isset( $settings['min_items'] ) ? (int) $settings['min_items'] : 1;
 		$max      = isset( $settings['max_items'] ) ? (int) $settings['max_items'] : 5;
-		$cols_in  = isset( $settings['columns'] ) ? (int) $settings['columns'] : 1;
+		$cols_in  = isset( $settings['columns'] )   ? (int) $settings['columns']   : 1;
 
-		if ( $min < 0 ) {
-			$min = 0;
-		}
-		if ( $max < 1 ) {
-			$max = 1;
-		}
-		if ( $max > 20 ) {
-			$max = 20;
-		}
-		if ( $max < $min ) {
-			$max = $min;
-		}
-		$columns = ( $cols_in >= 1 && $cols_in <= 4 ) ? $cols_in : 1;
+		if ( $min < 0 ) $min = 0;
+		if ( $max < 1 ) $max = 1;
+		if ( $max > 20 ) $max = 20;
+		if ( $max < $min ) $max = $min;
+		$columns  = ( $cols_in >= 1 && $cols_in <= 4 ) ? $cols_in : 1;
 
-		$add_label    = (string) ( $settings['add_button_label'] ?? '' );
+		$add_label    = (string) ( $settings['add_button_label']    ?? '' );
 		$remove_label = (string) ( $settings['remove_button_label'] ?? '' );
-		if ( $add_label === '' ) {
-			$add_label = __( 'Add item', 'neural-forms-lite' );
-		}
-		if ( $remove_label === '' ) {
-			$remove_label = __( 'Remove', 'neural-forms-lite' );
+		if ( $add_label === '' )    $add_label    = __( 'Add item', 'neural-forms-lite' );
+		if ( $remove_label === '' ) $remove_label = __( 'Remove', 'neural-forms-lite' );
+		// Block-level placement override wins over per-field label.
+		if ( array_key_exists( 'repeater_add_btn_text', $options ) && (string) $options['repeater_add_btn_text'] !== '' ) {
+			$add_label = (string) $options['repeater_add_btn_text'];
 		}
 
-		$children = is_array( $field['fields'] ?? null ) ? $field['fields'] : array();
+		$children = is_array( $field['fields'] ?? null ) ? $field['fields'] : [];
 		// Drop malformed / blocked children defensively — the schema
 		// validator already enforces this on save, but a manually-
 		// edited DB row could carry stale entries.
-		$children = array_values(
-			array_filter(
-				$children,
-				static function ( $c ) {
-					return is_array( $c ) && ! empty( $c['id'] ) && ! empty( $c['type'] );
-				}
-			)
-		);
+		$children = array_values( array_filter( $children, static function ( $c ) {
+			return is_array( $c ) && ! empty( $c['id'] ) && ! empty( $c['type'] );
+		} ) );
 
 		if ( empty( $children ) ) {
 			// Repeater with no children template — render nothing useful.
@@ -2110,15 +2173,13 @@ class FormRenderer {
 		$initial_count = max( 1, $min );
 		// Initial items capped at max_items so a misconfigured
 		// min_items > max_items can't render more than max.
-		if ( $initial_count > $max ) {
-			$initial_count = $max;
-		}
+		if ( $initial_count > $max ) $initial_count = $max;
 
 		$lbl        = (string) ( $field['label'] ?? '' );
 		$show_label = ! empty( $field['show_label'] );
 		$required   = ! empty( $field['required'] );
 
-		$html = '<fieldset class="neural-forms-repeater"'
+		$html  = '<fieldset class="neural-forms-repeater"'
 			. ' data-neural-forms-repeater="' . $repeater_attr . '"'
 			. ' data-min="' . esc_attr( (string) $min ) . '"'
 			. ' data-max="' . esc_attr( (string) $max ) . '"'
@@ -2139,7 +2200,7 @@ class FormRenderer {
 			$required_mark = ( $show_label && $required )
 				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
 				: '';
-			$html         .= '<legend class="' . esc_attr( $legend_class ) . '">'
+			$html .= '<legend class="' . esc_attr( $legend_class ) . '">'
 				. esc_html( $lbl )
 				. $required_mark
 				. '</legend>';
@@ -2205,7 +2266,7 @@ class FormRenderer {
 		// runtime; for server-rendered items we compute it here.
 		$idx_human = $is_template ? '__INDEX_1__' : (string) ( ( (int) $index ) + 1 );
 
-		$html = '<li class="neural-forms-repeater__item"'
+		$html  = '<li class="neural-forms-repeater__item"'
 			. ' data-repeater-item';
 		if ( ! $is_template ) {
 			$html .= ' data-index="' . esc_attr( $idx_str ) . '"';
@@ -2256,17 +2317,13 @@ class FormRenderer {
 	 * allowlist at save time, but this is defence-in-depth.
 	 */
 	private static function render_repeater_child( array $child, string $repeater_id, string $index, int $form_id ): string {
-		$child_id   = (string) ( $child['id'] ?? '' );
+		$child_id   = (string) ( $child['id']   ?? '' );
 		$child_type = (string) ( $child['type'] ?? '' );
-		if ( $child_id === '' || $child_type === '' ) {
-			return '';
-		}
+		if ( $child_id === '' || $child_type === '' ) return '';
 
 		// v1 leaf whitelist. Mirrors FormValidator::REPEATER_ALLOWED_CHILD_TYPES.
-		$allowed = array( 'text', 'email', 'phone', 'tel', 'number', 'url', 'textarea', 'select', 'radio', 'checkbox', 'checkboxes', 'date', 'file' );
-		if ( ! in_array( $child_type, $allowed, true ) ) {
-			return '';
-		}
+		$allowed = [ 'text','email','phone','tel','number','url','textarea','select','radio','checkbox','checkboxes','date','file' ];
+		if ( ! in_array( $child_type, $allowed, true ) ) return '';
 
 		// Scoped wire names + ids.
 		$is_template_index = ( $index === '__INDEX__' );
@@ -2284,53 +2341,27 @@ class FormRenderer {
 		// scoped bracketed name; the renderers use $field['id'] for
 		// the input's `name` attribute and the supplied $input_id for
 		// the input's `id` attribute.
-		$scoped                = $child;
-		$scoped['id']          = $scoped_name;
-		$scoped['placeholder'] = (string) ( $child['placeholder'] ?? '' );
+		$scoped = $child;
+		$scoped['id']            = $scoped_name;
+		$scoped['placeholder']   = (string) ( $child['placeholder'] ?? '' );
 		// Per-iteration `name` for radio + checkboxes must include the
 		// row index so each iteration has its own radio group / array
 		// bucket. render_radio / render_checkboxes already build their
 		// `name` from $field['id'], so the scoped id above is enough.
 
 		switch ( $child_type ) {
-			case 'email':
-				$inner = static::render_email( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'phone':
-			case 'tel':
-				$inner = static::render_phone( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'url':
-				$inner = static::render_url( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'number':
-				$inner = static::render_number( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'date':
-				$inner = static::render_date( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'textarea':
-				$inner = static::render_textarea( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'select':
-				$inner = static::render_select( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'radio':
-				$inner = static::render_radio( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'checkboxes':
-				$inner = static::render_checkboxes( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'checkbox':
-				$inner = static::render_checkbox( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'file':
-				$inner = static::render_file( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
-			case 'text':
-			default:
-				$inner = static::render_text( $scoped, $scoped_input_id, $scoped_error_id );
-				break;
+			case 'email':                 $inner = static::render_email(     $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'phone': case 'tel':     $inner = static::render_phone(     $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'url':                   $inner = static::render_url(       $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'number':                $inner = static::render_number(    $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'date':                  $inner = static::render_date(      $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'textarea':              $inner = static::render_textarea(  $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'select':                $inner = static::render_select(    $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'radio':                 $inner = static::render_radio(     $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'checkboxes':            $inner = static::render_checkboxes( $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'checkbox':              $inner = static::render_checkbox(  $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'file':                  $inner = static::render_file(      $scoped, $scoped_input_id, $scoped_error_id ); break;
+			case 'text': default:         $inner = static::render_text(      $scoped, $scoped_input_id, $scoped_error_id ); break;
 		}
 
 		// Inject data-name-template / data-id-template on every named
@@ -2345,8 +2376,8 @@ class FormRenderer {
 		// shape. We can't reuse render_field directly because it adds
 		// a wrapper with the field id as data-attr — we want the
 		// scoped id instead.
-		$label      = (string) ( $child['label'] ?? '' );
-		$req        = ! empty( $child['required'] );
+		$label = (string) ( $child['label'] ?? '' );
+		$req   = ! empty( $child['required'] );
 		$label_html = '';
 		if ( $label !== '' ) {
 			$req_mark = $req ? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>' : '';
@@ -2435,7 +2466,7 @@ class FormRenderer {
 	 * used by form-submit.js for client-side size pre-checking.
 	 */
 	private static function render_file( array $field, string $input_id, string $error_id ): string {
-		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
+		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : [];
 		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
 			? (int) $field['max_file_size']
 			: 5;
@@ -2456,20 +2487,18 @@ class FormRenderer {
 		}
 
 		// Build hint text: accepted types + max size.
-		$hint_parts = array();
+		$hint_parts = [];
 		if ( ! empty( $allowed_types ) ) {
-			$type_labels = array(
+			$type_labels = [
 				'image'    => 'JPG, PNG, GIF, WebP',
 				'pdf'      => 'PDF',
 				'document' => 'DOC, DOCX, ODT',
 				'text'     => 'TXT, CSV',
-			);
-			$labels      = array_filter(
-				array_map(
-					static fn( $t ) => $type_labels[ $t ] ?? null,
-					$allowed_types
-				)
-			);
+			];
+			$labels = array_filter( array_map(
+				static fn( $t ) => $type_labels[ $t ] ?? null,
+				$allowed_types
+			) );
 			if ( ! empty( $labels ) ) {
 				$hint_parts[] = 'Accepted: ' . implode( ', ', $labels );
 			}
@@ -2497,18 +2526,18 @@ class FormRenderer {
 	 * @return string
 	 */
 	private static function build_accept_attr( array $allowed_types ): string {
-		$mime_map = array(
-			'image'    => array( 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ),
-			'pdf'      => array( 'application/pdf' ),
-			'document' => array( 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.oasis.opendocument.text' ),
-			'text'     => array( 'text/plain', 'text/csv' ),
-		);
+		$mime_map = [
+			'image'    => [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ],
+			'pdf'      => [ 'application/pdf' ],
+			'document' => [ 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.oasis.opendocument.text' ],
+			'text'     => [ 'text/plain', 'text/csv' ],
+		];
 
 		if ( empty( $allowed_types ) ) {
 			return '';
 		}
 
-		$mimes = array();
+		$mimes = [];
 		foreach ( $allowed_types as $group ) {
 			if ( isset( $mime_map[ $group ] ) ) {
 				$mimes = array_merge( $mimes, $mime_map[ $group ] );
