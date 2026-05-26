@@ -1758,6 +1758,7 @@
 	align-items: center;
 	justify-content: center;
 	width: 100%;
+	box-sizing: border-box;
 	margin-top: 12px;
 	padding: 9px 14px;
 	font-size: 13px;
