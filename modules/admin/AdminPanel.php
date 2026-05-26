@@ -40,6 +40,39 @@ class AdminPanel {
 		add_action( 'admin_menu', array( self::class, 'register_menus' ) );
 		add_action( 'admin_enqueue_scripts', array( self::class, 'enqueue_assets' ) );
 		add_action( 'in_admin_header', array( self::class, 'suppress_third_party_notices' ), 1000 );
+		// Add a "Neural Form" entry to the admin bar +New menu (both
+		// front-end and back-end), parity with Post / Page / Media so
+		// builders can start a new form from any screen.
+		add_action( 'admin_bar_menu', array( self::class, 'register_admin_bar_new_node' ), 80 );
+	}
+
+	/**
+	 * Register a "Neural Form" item under the admin bar's "+ New" menu.
+	 *
+	 * Clicking lands on the Forms screen with `?new=1` which the
+	 * Forms-list bundle reads as a "open new form builder immediately"
+	 * signal. Capability-gated to the same cap that owns the menu
+	 * registration so users without form-management rights don't see
+	 * an orphan entry that 403s on click.
+	 *
+	 * @param \WP_Admin_Bar $wp_admin_bar
+	 * @return void
+	 */
+	public static function register_admin_bar_new_node( $wp_admin_bar ): void {
+		if ( ! ( $wp_admin_bar instanceof \WP_Admin_Bar ) ) {
+			return;
+		}
+		if ( ! current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {
+			return;
+		}
+		$wp_admin_bar->add_node(
+			array(
+				'parent' => 'new-content',
+				'id'     => 'new-neural-form',
+				'title'  => __( 'Neural Form', 'neural-forms-lite' ),
+				'href'   => admin_url( 'admin.php?page=neural-forms&new=1' ),
+			)
+		);
 	}
 
 	/**
