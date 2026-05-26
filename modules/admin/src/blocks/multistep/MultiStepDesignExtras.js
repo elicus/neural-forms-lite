@@ -38,6 +38,11 @@ function StepLayoutPanel( { a, set } ) {
 			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepTitleFontSize } onChange={ v => set( { stepTitleFontSize: v ?? '' } ) } />
 			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepTitleFontWeight || '' } options={ FW } onChange={ v => set( { stepTitleFontWeight: v } ) } />
 			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Description', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepDescColor } onChange={ v => set( { stepDescColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepDescFontSize } onChange={ v => set( { stepDescFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepDescFontWeight || '' } options={ FW } onChange={ v => set( { stepDescFontWeight: v } ) } />
+			<Sep />
 			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Separator', 'neural-forms-lite' ) }</p>
 			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 8px' } }>{ __( 'Top border shown between steps (not on the first step).', 'neural-forms-lite' ) }</p>
 			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepSepColor } onChange={ v => set( { stepSepColor: v ?? '' } ) } />

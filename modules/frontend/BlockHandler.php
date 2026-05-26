@@ -497,7 +497,7 @@ class BlockHandler {
 			'fieldHoverBg', 'fieldHoverBgGradient', 'fieldHoverBorderColor',
 			'fieldBorderColor', 'fieldBorderWidth', 'fieldBorderStyle', 'fieldBorderRadius',
 			'fieldBorderRadiusTL', 'fieldBorderRadiusTR', 'fieldBorderRadiusBR', 'fieldBorderRadiusBL',
-			'fieldTextColor', 'fieldFocusTextColor',
+			'fieldTextColor', 'fieldFocusTextColor', 'fieldPlaceholderColor',
 			'fieldFocusBorderColor',
 			'fieldFontSize', 'fieldFontFamily', 'fieldFontWeight', 'fieldFontStyle', 'fieldLetterSpacing',
 			'fieldTextDecoration', 'fieldTextTransform', 'fieldLineHeight',
@@ -546,7 +546,7 @@ class BlockHandler {
 			'labelMarginTop', 'labelMarginRight', 'labelMarginBottom', 'labelMarginLeft',
 			// Textarea field
 			'textareaBg', 'textareaBgGradient', 'textareaHoverBg', 'textareaHoverBgGradient', 'textareaFocusBg', 'textareaFocusBgGradient',
-			'textareaTextColor', 'textareaFocusTextColor',
+			'textareaTextColor', 'textareaFocusTextColor', 'textareaPlaceholderColor',
 			'textareaBorderColor', 'textareaBorderWidth', 'textareaBorderStyle',
 			'textareaHoverBorderColor', 'textareaFocusBorderColor',
 			'textareaBorderRadiusTL', 'textareaBorderRadiusTR', 'textareaBorderRadiusBR', 'textareaBorderRadiusBL',
@@ -597,6 +597,7 @@ class BlockHandler {
 			'navBtnNextIconEnabled', 'navBtnNextIcon', 'navBtnNextIconPosition', 'navBtnNextIconShowOnHover',
 			// Multi-step: step indicator
 			'stepTitleColor', 'stepTitleFontSize', 'stepTitleFontWeight',
+			'stepDescColor', 'stepDescFontSize', 'stepDescFontWeight',
 			'stepSepColor', 'stepSepWidth', 'stepSepStyle',
 			'stepBarFillColor', 'stepBarTrackColor', 'stepBarHeight', 'stepBarRadius',
 			'stepBarTextColor', 'stepBarTextFontSize', 'stepBarTextFontWeight',
@@ -710,16 +711,11 @@ class BlockHandler {
 			$parts[] = 'max-height:' . sanitize_text_field( $max_height );
 		}
 
-		// formAlign auto-margins go first so explicit user margins override them
-		// when both are set (later declaration in inline style wins).
+		// Stretch overrides width inline (safe; not affected by WP layout constraints).
+		// Center/right margins are handled in build_scoped_css() with !important to
+		// override WordPress constrained-layout CSS that forces margin:auto on children.
 		$form_align = (string) ( $attributes['formAlign'] ?? '' );
-		if ( $form_align === 'center' && $max_width !== '' ) {
-			$parts[] = 'margin-left:auto';
-			$parts[] = 'margin-right:auto';
-		} elseif ( $form_align === 'right' && $max_width !== '' ) {
-			$parts[] = 'margin-left:auto';
-			$parts[] = 'margin-right:0';
-		} elseif ( $form_align === 'stretch' ) {
+		if ( $form_align === 'stretch' ) {
 			$parts[] = 'width:100%';
 		}
 
@@ -819,6 +815,24 @@ class BlockHandler {
 		$wrap_rules          = [];
 		$var_rules           = [];
 		$form_wrap_pad_rules = [];
+
+		// Alignment margins use !important to override WordPress's constrained-layout
+		// CSS (.is-layout-constrained > :where(...) { margin-left:auto!important; ... })
+		// which would otherwise neutralise the right-aligned / centered inline styles.
+		$form_align_css        = (string) ( $attributes['formAlign'] ?? '' );
+		$form_width_css        = (string) ( $attributes['formWidth'] ?? '' );
+		$max_width_css         = (string) ( $attributes['maxWidth']  ?? '' );
+		$has_constrained_width = $form_width_css !== '' || $max_width_css !== '';
+		if ( $form_align_css === 'center' && $has_constrained_width ) {
+			$wrap_rules[] = 'margin-left:auto!important';
+			$wrap_rules[] = 'margin-right:auto!important';
+		} elseif ( $form_align_css === 'right' && $has_constrained_width ) {
+			$wrap_rules[] = 'margin-left:auto!important';
+			$wrap_rules[] = 'margin-right:0!important';
+		} elseif ( $form_align_css === 'left' && $has_constrained_width ) {
+			$wrap_rules[] = 'margin-left:0!important';
+			$wrap_rules[] = 'margin-right:auto!important';
+		}
 
 		// ' Container box '
 		// Background (color / image / gradient) goes to .neural-forms-form-wrap so
@@ -1031,6 +1045,12 @@ class BlockHandler {
 			$var_rules[] = '--neural-forms-text:' . sanitize_hex_color( $field_text_color );
 		}
 
+		// Stored for later emission in the assemble block (after $css is initialised).
+		// Direct ::placeholder rules keep input and textarea colours independent —
+		// the shared --neural-forms-placeholder variable would bleed the input
+		// colour into the textarea, so we target concrete pseudo-element selectors.
+		$field_placeholder_color = sanitize_hex_color( (string) ( $attributes['fieldPlaceholderColor'] ?? '' ) );
+
 		$field_focus_border_color = (string) ( $attributes['fieldFocusBorderColor'] ?? '' );
 		if ( $field_focus_border_color !== '' ) {
 			$var_rules[] = '--neural-forms-border-focus:' . sanitize_hex_color( $field_focus_border_color );
@@ -1203,7 +1223,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'btnPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$btn_rules[] = $css_prop . ':' . $len( $val );
+				$btn_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 
@@ -1238,6 +1258,12 @@ class BlockHandler {
 
 		if ( $var_rules ) {
 			$css .= $form_sel . '{' . implode( ';', $var_rules ) . '}';
+		}
+
+		if ( $field_placeholder_color !== null && $field_placeholder_color !== '' ) {
+			$ph_sel = $wrap_sel . ' .neural-forms-form__input::placeholder,'
+				. $wrap_sel . ' .neural-forms-form__select::placeholder';
+			$css .= $ph_sel . '{color:' . $field_placeholder_color . '}';
 		}
 
 		if ( $btn_rules ) {
@@ -1330,7 +1356,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'fieldPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$field_pad_rules[] = $css_prop . ':' . $len( $val );
+				$field_pad_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $field_pad_rules ) {
@@ -1389,13 +1415,13 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'titlePadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$title_rules[] = $css_prop . ':' . $len( $val );
+				$title_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		foreach ( [ 'Top' => 'margin-top', 'Right' => 'margin-right', 'Bottom' => 'margin-bottom', 'Left' => 'margin-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'titleMargin' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$title_rules[] = $css_prop . ':' . $len( $val );
+				$title_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $title_rules ) {
@@ -1459,13 +1485,13 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'labelPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$label_rules[] = $css_prop . ':' . $len( $val );
+				$label_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		foreach ( [ 'Top' => 'margin-top', 'Right' => 'margin-right', 'Bottom' => 'margin-bottom', 'Left' => 'margin-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'labelMargin' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$label_rules[] = $css_prop . ':' . $len( $val );
+				$label_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $label_rules ) {
@@ -1481,7 +1507,7 @@ class BlockHandler {
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'fieldBorderRadius' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$field_corner_rules[] = $css_prop . ':' . $len( $val );
+				$field_corner_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $field_corner_rules ) {
@@ -1555,7 +1581,7 @@ class BlockHandler {
 		$ta_ta = (string) ( $attributes['textareaTextAlign'] ?? '' );
 		if ( $ta_ta !== '' && in_array( $ta_ta, [ 'left', 'center', 'right', 'justify' ], true ) ) $ta_rules[] = 'text-align:' . $ta_ta;
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $k => $prop ) {
-			$v = $len( (string) ( $attributes[ 'textareaPadding' . $k ] ?? '' ) );
+			$v = $spacing( (string) ( $attributes[ 'textareaPadding' . $k ] ?? '' ) );
 			if ( $v !== '' ) $ta_rules[] = $prop . ':' . $v;
 		}
 		$ta_mh = $len( (string) ( $attributes['textareaMinHeight'] ?? '' ) );
@@ -1587,6 +1613,11 @@ class BlockHandler {
 		$ta_hover_border = (string) ( $attributes['textareaHoverBorderColor'] ?? '' );
 		if ( $ta_hover_border !== '' ) $ta_hover_rules[] = 'border-color:' . sanitize_hex_color( $ta_hover_border );
 		if ( $ta_hover_rules ) $css .= $ta_sel . ':hover:not(:focus){' . implode( ';', $ta_hover_rules ) . '}';
+
+		$ta_placeholder_color = sanitize_hex_color( (string) ( $attributes['textareaPlaceholderColor'] ?? '' ) );
+		if ( $ta_placeholder_color !== null && $ta_placeholder_color !== '' ) {
+			$css .= $ta_sel . '::placeholder{color:' . $ta_placeholder_color . '}';
+		}
 
 		// ' Acceptance field — checkbox + label (.neural-forms-form__field--acceptance) '
 		$acc_cb_sel    = $wrap_sel . ' .neural-forms-form__field--acceptance .neural-forms-form__checkbox';
@@ -1676,7 +1707,7 @@ class BlockHandler {
 			foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 				$val = (string) ( $attributes[ 'successMsgPadding' . $key ] ?? '' );
 				if ( $val !== '' ) {
-					$success_rules[] = $css_prop . ':' . $len( $val );
+					$success_rules[] = $css_prop . ':' . $spacing( $val );
 				}
 			}
 			if ( $success_rules ) {
@@ -1709,7 +1740,7 @@ class BlockHandler {
 			foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 				$val = (string) ( $attributes[ 'errorMsgPadding' . $key ] ?? '' );
 				if ( $val !== '' ) {
-					$err_rules[] = $css_prop . ':' . $len( $val );
+					$err_rules[] = $css_prop . ':' . $spacing( $val );
 				}
 			}
 			if ( $err_rules ) {
@@ -1768,7 +1799,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
 			$val = (string) ( $attributes[ 'radioOptionPadding' . $side ] ?? '' );
 			if ( $val !== '' ) {
-				$radio_opt_rules[] = $css_prop . ':' . $len( $val );
+				$radio_opt_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $radio_opt_rules ) {
@@ -2012,7 +2043,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
 			$val = (string) ( $attributes[ 'fileInputPadding' . $side ] ?? '' );
 			if ( $val !== '' ) {
-				$fi_rules[] = $css_prop . ':' . $len( $val );
+				$fi_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 
@@ -2073,7 +2104,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
 			$val = (string) ( $attributes[ 'fileBtnPadding' . $side ] ?? '' );
 			if ( $val !== '' ) {
-				$fbtn_rules[] = $css_prop . ':' . $len( $val );
+				$fbtn_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 
@@ -2138,7 +2169,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'pollOptionPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$poll_opt_rules[] = $css_prop . ':' . $len( $val );
+				$poll_opt_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $poll_opt_rules ) {
@@ -2326,7 +2357,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'quizOptionPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$quiz_opt_rules[] = $css_prop . ':' . $len( $val );
+				$quiz_opt_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $quiz_opt_rules ) {
@@ -2445,14 +2476,14 @@ class BlockHandler {
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $corner => $css_prop ) {
 			$val = (string) ( $attributes[ 'quizSummaryBorderRadius' . $corner ] ?? '' );
 			if ( $val !== '' ) {
-				$quiz_summary_rules[] = $css_prop . ':' . $len( $val );
+				$quiz_summary_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'quizSummaryPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$quiz_summary_rules[] = $css_prop . ':' . $len( $val );
+				$quiz_summary_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 		if ( $quiz_summary_rules ) {
@@ -2488,7 +2519,7 @@ class BlockHandler {
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $corner => $css_prop ) {
 			$val = (string) ( $attributes[ 'navBtnRadius' . $corner ] ?? '' );
 			if ( $val !== '' ) {
-				$nav_btn_rules[] = $css_prop . ':' . $len( $val );
+				$nav_btn_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 
@@ -2543,7 +2574,7 @@ class BlockHandler {
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'navBtnPadding' . $key ] ?? '' );
 			if ( $val !== '' ) {
-				$nav_btn_rules[] = $css_prop . ':' . $len( $val );
+				$nav_btn_rules[] = $css_prop . ':' . $spacing( $val );
 			}
 		}
 
@@ -2607,6 +2638,26 @@ class BlockHandler {
 		}
 		if ( $step_title_rules ) {
 			$css .= $step_title_sel . '{' . implode( ';', $step_title_rules ) . '}';
+		}
+
+		$step_desc_sel    = $wrap_sel . ' .neural-forms-form__step-description';
+		$step_desc_color  = sanitize_hex_color( (string) ( $attributes['stepDescColor']     ?? '' ) );
+		$step_desc_fs     = $len( (string) ( $attributes['stepDescFontSize']   ?? '' ) );
+		$step_desc_fw_raw = (string) ( $attributes['stepDescFontWeight'] ?? '' );
+		$step_desc_fw     = in_array( $step_desc_fw_raw, $allowed_fw_st, true ) ? $step_desc_fw_raw : '';
+
+		$step_desc_rules = [];
+		if ( $step_desc_color !== null && $step_desc_color !== '' ) {
+			$step_desc_rules[] = 'color:' . $step_desc_color;
+		}
+		if ( $step_desc_fs !== '' ) {
+			$step_desc_rules[] = 'font-size:' . $step_desc_fs;
+		}
+		if ( $step_desc_fw !== '' ) {
+			$step_desc_rules[] = 'font-weight:' . $step_desc_fw;
+		}
+		if ( $step_desc_rules ) {
+			$css .= $step_desc_sel . '{' . implode( ';', $step_desc_rules ) . '}';
 		}
 
 		$step_sep_color = sanitize_hex_color( (string) ( $attributes['stepSepColor'] ?? '' ) );
@@ -2797,7 +2848,7 @@ class BlockHandler {
 		}
 		if ( $rep_cont_radius ) $rep_cont_rules[] = 'border-radius:' . $len( $rep_cont_radius );
 		if ( $rep_cont_pt || $rep_cont_pr || $rep_cont_pb || $rep_cont_pl ) {
-			$rep_cont_rules[] = 'padding:' . $len( $rep_cont_pt ?: '0' ) . ' ' . $len( $rep_cont_pr ?: '0' ) . ' ' . $len( $rep_cont_pb ?: '0' ) . ' ' . $len( $rep_cont_pl ?: '0' );
+			$rep_cont_rules[] = 'padding:' . $spacing( $rep_cont_pt ?: '0' ) . ' ' . $spacing( $rep_cont_pr ?: '0' ) . ' ' . $spacing( $rep_cont_pb ?: '0' ) . ' ' . $spacing( $rep_cont_pl ?: '0' );
 		}
 		if ( $rep_cont_rules ) $css .= $rep_cont_sel . '{' . implode( ';', $rep_cont_rules ) . '}';
 
@@ -2831,7 +2882,7 @@ class BlockHandler {
 		}
 		if ( $rep_row_radius )   $rep_row_rules[] = 'border-radius:' . $len( $rep_row_radius );
 		if ( $rep_row_pt || $rep_row_pr || $rep_row_pb || $rep_row_pl ) {
-			$rep_row_rules[] = 'padding:' . $len( $rep_row_pt ?: '0' ) . ' ' . $len( $rep_row_pr ?: '0' ) . ' ' . $len( $rep_row_pb ?: '0' ) . ' ' . $len( $rep_row_pl ?: '0' );
+			$rep_row_rules[] = 'padding:' . $spacing( $rep_row_pt ?: '0' ) . ' ' . $spacing( $rep_row_pr ?: '0' ) . ' ' . $spacing( $rep_row_pb ?: '0' ) . ' ' . $spacing( $rep_row_pl ?: '0' );
 		}
 		if ( $rep_row_rules ) $css .= $rep_row_sel . '{' . implode( ';', $rep_row_rules ) . '}';
 
@@ -2881,7 +2932,7 @@ class BlockHandler {
 		}
 		if ( $rep_add_radius ) $rep_add_rules[] = 'border-radius:' . $len( $rep_add_radius );
 		if ( $rep_add_pt || $rep_add_pr || $rep_add_pb || $rep_add_pl ) {
-			$rep_add_rules[] = 'padding:' . $len( $rep_add_pt ?: '0' ) . ' ' . $len( $rep_add_pr ?: '0' ) . ' ' . $len( $rep_add_pb ?: '0' ) . ' ' . $len( $rep_add_pl ?: '0' );
+			$rep_add_rules[] = 'padding:' . $spacing( $rep_add_pt ?: '0' ) . ' ' . $spacing( $rep_add_pr ?: '0' ) . ' ' . $spacing( $rep_add_pb ?: '0' ) . ' ' . $spacing( $rep_add_pl ?: '0' );
 		}
 		if ( $rep_add_rules ) $css .= $rep_add_sel . '{' . implode( ';', $rep_add_rules ) . '}';
 
@@ -2952,7 +3003,7 @@ class BlockHandler {
 		if ( $mat_col_fs )    $mat_col_rules[] = 'font-size:' . $len( $mat_col_fs );
 		if ( $mat_col_fw )    $mat_col_rules[] = 'font-weight:' . esc_attr( $mat_col_fw );
 		if ( $mat_col_pt || $mat_col_pr || $mat_col_pb || $mat_col_pl ) {
-			$mat_col_rules[] = 'padding:' . $len( $mat_col_pt ?: '0' ) . ' ' . $len( $mat_col_pr ?: '0' ) . ' ' . $len( $mat_col_pb ?: '0' ) . ' ' . $len( $mat_col_pl ?: '0' );
+			$mat_col_rules[] = 'padding:' . $spacing( $mat_col_pt ?: '0' ) . ' ' . $spacing( $mat_col_pr ?: '0' ) . ' ' . $spacing( $mat_col_pb ?: '0' ) . ' ' . $spacing( $mat_col_pl ?: '0' );
 		}
 		if ( $mat_col_rules ) $css .= $mat_col_sel . '{' . implode( ';', $mat_col_rules ) . '}';
 
@@ -2994,7 +3045,7 @@ class BlockHandler {
 			$mat_cell_rules[] = 'border-color:' . $mat_cell_bc;
 		}
 		if ( $mat_cell_pt || $mat_cell_pr || $mat_cell_pb || $mat_cell_pl ) {
-			$mat_cell_rules[] = 'padding:' . $len( $mat_cell_pt ?: '0' ) . ' ' . $len( $mat_cell_pr ?: '0' ) . ' ' . $len( $mat_cell_pb ?: '0' ) . ' ' . $len( $mat_cell_pl ?: '0' );
+			$mat_cell_rules[] = 'padding:' . $spacing( $mat_cell_pt ?: '0' ) . ' ' . $spacing( $mat_cell_pr ?: '0' ) . ' ' . $spacing( $mat_cell_pb ?: '0' ) . ' ' . $spacing( $mat_cell_pl ?: '0' );
 		}
 		if ( $mat_cell_rules ) $css .= $mat_cell_sel . '{' . implode( ';', $mat_cell_rules ) . '}';
 

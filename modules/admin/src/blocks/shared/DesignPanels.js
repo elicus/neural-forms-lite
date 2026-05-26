@@ -513,6 +513,7 @@ export function InputFieldsPanel( { a, set } ) {
 			</BaseControl>
 			<Clr label={ __( 'Text Color', 'neural-forms-lite' ) } value={ a.fieldTextColor } onChange={ v => set( { fieldTextColor: v ?? '' } ) } />
 			<Clr label={ __( 'Focus Text Color', 'neural-forms-lite' ) } value={ a.fieldFocusTextColor } onChange={ v => set( { fieldFocusTextColor: v ?? '' } ) } />
+			<Clr label={ __( 'Placeholder Color', 'neural-forms-lite' ) } value={ a.fieldPlaceholderColor } onChange={ v => set( { fieldPlaceholderColor: v ?? '' } ) } />
 			<Sep />
 			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.fieldBorderColor, width: a.fieldBorderWidth, style: a.fieldBorderStyle } } onChange={ v => set( { fieldBorderColor: v?.color ?? '', fieldBorderWidth: v?.width ?? '', fieldBorderStyle: v?.style ?? '' } ) } withSlider />
 			<Clr label={ __( 'Hover Border Color', 'neural-forms-lite' ) } value={ a.fieldHoverBorderColor } onChange={ v => set( { fieldHoverBorderColor: v ?? '' } ) } />
@@ -552,6 +553,7 @@ export function TextareaFieldPanel( { a, set } ) {
 			</BaseControl>
 			<Clr label={ __( 'Text Color', 'neural-forms-lite' ) } value={ a.textareaTextColor } onChange={ v => set( { textareaTextColor: v ?? '' } ) } />
 			<Clr label={ __( 'Focus Text Color', 'neural-forms-lite' ) } value={ a.textareaFocusTextColor } onChange={ v => set( { textareaFocusTextColor: v ?? '' } ) } />
+			<Clr label={ __( 'Placeholder Color', 'neural-forms-lite' ) } value={ a.textareaPlaceholderColor } onChange={ v => set( { textareaPlaceholderColor: v ?? '' } ) } />
 			<Sep />
 			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.textareaBorderColor, width: a.textareaBorderWidth, style: a.textareaBorderStyle } } onChange={ v => set( { textareaBorderColor: v?.color ?? '', textareaBorderWidth: v?.width ?? '', textareaBorderStyle: v?.style ?? '' } ) } withSlider />
 			<Clr label={ __( 'Hover Border Color', 'neural-forms-lite' ) } value={ a.textareaHoverBorderColor } onChange={ v => set( { textareaHoverBorderColor: v ?? '' } ) } />
