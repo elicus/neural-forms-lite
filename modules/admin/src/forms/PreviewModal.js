@@ -91,6 +91,56 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
 .neural-forms-form__field--honeypot { display: none !important; }
 .neural-forms-form__required { color: #b91c1c; }
 .neural-forms-form__radio-option, .neural-forms-form__checkbox-option { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+
+/* ----------------------------------------------------------------- */
+/* Fieldset / legend reset for grouped fields                         */
+/* ----------------------------------------------------------------- */
+/* All group wrappers in the frontend (radio, checkbox, rating, poll, */
+/* quiz) render as <fieldset> with a <legend> for accessibility. The  */
+/* browser default styles a fieldset with a 2px groove border and    */
+/* breaks the top border to fit the legend mid-stream, which reads as */
+/* an ugly debug outline in the preview iframe. Frontend form.css     */
+/* zeroes them; mirror those resets here so preview matches.          */
+.neural-forms-form__radio-group,
+.neural-forms-form__checkbox-group,
+.neural-forms-form__rating-group,
+.neural-forms-form__poll,
+.neural-forms-form__quiz {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+.neural-forms-form__radio-group > legend,
+.neural-forms-form__checkbox-group > legend,
+.neural-forms-form__rating-group > legend,
+.neural-forms-form__poll > legend,
+.neural-forms-form__quiz > legend {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: inherit;
+  float: none;
+}
+.neural-forms-form__quiz-options,
+.neural-forms-form__poll-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.neural-forms-form__quiz-option,
+.neural-forms-form__poll-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin: 0;
+}
+.neural-forms-form__quiz-input,
+.neural-forms-form__poll-input { accent-color: #15db95; cursor: pointer; }
 .neural-forms-form__file-hint { color: #6b7280; font-size: 12px; margin: 4px 0 0; }
 .neural-forms-form__step {
   border-top: 2px solid #080f5b;
