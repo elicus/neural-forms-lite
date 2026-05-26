@@ -47,7 +47,7 @@ class AdminPanel {
 	}
 
 	/**
-	 * Register a "Neural Form" item under the admin bar's "+ New" menu.
+	 * Register a "Neural Forms" item under the admin bar's "+ New" menu.
 	 *
 	 * Clicking lands on the Forms screen with `?new=1` which the
 	 * Forms-list bundle reads as a "open new form builder immediately"
@@ -69,7 +69,7 @@ class AdminPanel {
 			array(
 				'parent' => 'new-content',
 				'id'     => 'new-neural-form',
-				'title'  => __( 'Neural Form', 'neural-forms-lite' ),
+				'title'  => __( 'Neural Forms', 'neural-forms-lite' ),
 				'href'   => admin_url( 'admin.php?page=neural-forms&new=1' ),
 			)
 		);
