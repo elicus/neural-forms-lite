@@ -599,6 +599,123 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* ── Cloud first-run signup gate ──────────────────────────────
+ *
+ * Overlay shown over the Neural AI Cloud section while the user
+ * doesn't yet have an API key set. Click on the CTA opens the
+ * pricing page in a new tab AND dismisses the overlay locally
+ * (in-memory only — refreshing brings it back if no key was set).
+ *
+ * Sits inside .neural-forms-settings__cloud-wrap, which gets
+ * position: relative so the absolute overlay matches the Section's
+ * dimensions exactly.
+ */
+.neural-forms-settings__cloud-wrap {
+	position: relative;
+}
+
+.neural-forms-settings__cloud-gate {
+	position: absolute;
+	inset: 0;
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	border-radius: var( --f-radius-xl );
+	background:
+		linear-gradient( 135deg, rgba( 8, 15, 91, 0.06 ) 0%, rgba( 21, 219, 149, 0.08 ) 100% ),
+		rgba( 255, 255, 255, 0.82 );
+	backdrop-filter: blur( 3px );
+	-webkit-backdrop-filter: blur( 3px );
+}
+
+.neural-forms-settings__cloud-gate-card {
+	background: #ffffff;
+	border: 1px solid rgba( 8, 15, 91, 0.18 );
+	border-radius: var( --f-radius-xl );
+	box-shadow: 0 12px 32px rgba( 8, 15, 91, 0.14 ), 0 1px 3px rgba( 0, 0, 0, 0.04 );
+	max-width: 460px;
+	padding: 32px 36px;
+	position: relative;
+	overflow: hidden;
+	text-align: center;
+	/* Sticky-center so the CTA stays visible even when the section
+	 * is taller than the viewport — keeps the card in view as the
+	 * user scrolls within the gated section. */
+	position: sticky;
+	top: 80px;
+}
+
+.neural-forms-settings__cloud-gate-card::before {
+	content: '';
+	position: absolute;
+	inset: 0 0 auto 0;
+	height: 4px;
+	background: linear-gradient( 90deg, var( --f-blue-600 ) 0%, var( --f-green-600 ) 100% );
+}
+
+.neural-forms-settings__cloud-gate-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 48px;
+	height: 48px;
+	border-radius: 999px;
+	background: var( --f-blue-600 );
+	color: #ffffff;
+	box-shadow: 0 0 0 6px rgba( 21, 219, 149, 0.18 );
+	margin-bottom: 18px;
+}
+
+.neural-forms-settings__cloud-gate-title {
+	color: var( --f-blue-600 );
+	font-size: 16px;
+	font-weight: 700;
+	letter-spacing: -0.005em;
+	line-height: 1.35;
+	margin: 0 0 8px;
+}
+
+.neural-forms-settings__cloud-gate-desc {
+	color: var( --f-gray-700, #374151 );
+	font-size: 13px;
+	line-height: 1.55;
+	margin: 0 0 22px;
+}
+
+.neural-forms-settings__cloud-gate-btn {
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
+	border-radius: var( --f-radius-full );
+	color: #ffffff;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	padding: 10px 26px;
+	transition:
+		background var( --f-transition ),
+		border-color var( --f-transition ),
+		color var( --f-transition ),
+		box-shadow var( --f-transition ),
+		transform var( --f-transition );
+}
+
+.neural-forms-settings__cloud-gate-btn:hover,
+.neural-forms-settings__cloud-gate-btn:focus-visible {
+	background: var( --f-green-600 );
+	border-color: var( --f-green-600 );
+	color: var( --f-blue-700 );
+	box-shadow: 0 2px 8px rgba( 21, 219, 149, 0.28 );
+	outline: none;
+}
+
+.neural-forms-settings__cloud-gate-btn:active {
+	transform: translateY( 1px );
+}
+
 /* ── Pro feature lock card ─────────────────────────────────── */
 .neural-forms-settings__pro-row {
 	padding: 8px 24px 18px;

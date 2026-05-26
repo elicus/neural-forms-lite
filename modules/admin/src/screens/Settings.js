@@ -249,7 +249,25 @@ function CloudAiSection( {
 	const hasBusinessAnalysis = !! caps.ai_reanalyze;
 	const hasSpamDetect       = !! caps.ai_spam_detect;
 
+	// First-run signup gate. Shown when no API key is set yet AND the
+	// user hasn't dismissed it this page-load. Dismissal is intentionally
+	// in-memory only (not persisted) so the gate reappears on reload if
+	// the user bounced to /pricing without coming back with a key.
+	const [ gateDismissed, setGateDismissed ] = useState( false );
+	const showSignupGate = ! form.cloud_api_key_set && ! gateDismissed;
+
+	function handleSignupGateClick() {
+		// Open in a new tab so the user can come back to Settings with
+		// the page state intact (the field they may have started typing
+		// in, the form snapshot, etc.). Local dismissal so they can
+		// inspect / interact with the section without the overlay until
+		// the next reload.
+		window.open( 'https://neuralforms.ai/pricing/', '_blank', 'noopener,noreferrer' );
+		setGateDismissed( true );
+	}
+
 	return (
+		<div className="neural-forms-settings__cloud-wrap">
 		<Section
 			title={ __( 'Neural AI Cloud', 'neural-forms-lite' ) }
 			description={ __( 'Connect to Neural AI Cloud to enable Neural AI-powered entry analysis, suggested replies, and spam detection.', 'neural-forms-lite' ) }
@@ -397,6 +415,40 @@ function CloudAiSection( {
 				</div>
 			) }
 		</Section>
+
+		{ showSignupGate && (
+			<div
+				className="neural-forms-settings__cloud-gate"
+				role="dialog"
+				aria-labelledby="neural-forms-cloud-gate-title"
+			>
+				<div className="neural-forms-settings__cloud-gate-card">
+					<span className="neural-forms-settings__cloud-gate-icon" aria-hidden="true">
+						<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+							<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+							<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+						</svg>
+					</span>
+					<h3
+						id="neural-forms-cloud-gate-title"
+						className="neural-forms-settings__cloud-gate-title"
+					>
+						{ __( 'Sign up for free to activate Lite features of Neural AI', 'neural-forms-lite' ) }
+					</h3>
+					<p className="neural-forms-settings__cloud-gate-desc">
+						{ __( 'Connect your free Neural Forms Cloud account to unlock AI-powered entry analysis, suggested replies, and built-in spam detection.', 'neural-forms-lite' ) }
+					</p>
+					<button
+						type="button"
+						className="neural-forms-settings__cloud-gate-btn"
+						onClick={ handleSignupGateClick }
+					>
+						{ __( 'Sign up free', 'neural-forms-lite' ) }
+					</button>
+				</div>
+			</div>
+		) }
+		</div>
 	);
 }
 
