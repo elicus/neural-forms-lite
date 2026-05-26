@@ -2469,7 +2469,7 @@ CSS;
 		$cap_unlimited = \NeuralForms\Core\Capabilities::can(
 			\NeuralForms\Core\Capabilities::POLL_QUIZ_UNLIMITED_SUBMISSIONS
 		);
-		$cap_limit     = (int) apply_filters( 'neural_forms_poll_quiz_submission_limit', 1000 );
+		$cap_limit     = (int) apply_filters( 'neural_forms_poll_quiz_submission_limit', 200 );
 		// A 0/negative filter return means "no cap" — same semantics
 		// the enforcer uses.
 		if ( $cap_limit <= 0 ) {
@@ -2529,7 +2529,7 @@ CSS;
 					'submission'    => __( 'submission', 'neural-forms-lite' ),
 					'spam'          => __( 'spam', 'neural-forms-lite' ),
 					'analyticsAria' => __( 'Open analytics for this form', 'neural-forms-lite' ),
-					/* translators: 1: current entry count, 2: cap (e.g. "1,000"). */
+					/* translators: 1: current entry count, 2: cap (e.g. "200"). */
 					'capNotice'     => __( '%1$s of %2$s entries used (Lite limit).', 'neural-forms-lite' ),
 					'capReached'    => __( 'Lite entry limit reached.', 'neural-forms-lite' ),
 					'capUpgrade'    => __( 'Upgrade to Pro for unlimited entries.', 'neural-forms-lite' ),
@@ -2848,7 +2848,7 @@ JS;
  * navy text mirrors the AI card on the empty inspector — same
  * "this is a Pro feature heads-up" visual family. The --reached
  * modifier swaps to the warning palette when the form already hit
- * the 1,000 entry cap and submissions are being rejected. */
+ * the 200 entry cap and submissions are being rejected. */
 #neural-forms-app .nf-list-meta__cap {
     margin-top: 4px;
     padding: 4px 8px;

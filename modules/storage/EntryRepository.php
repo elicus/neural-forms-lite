@@ -382,7 +382,7 @@ class EntryRepository {
 	/**
 	 * Count non-trashed entries for a single form.
 	 *
-	 * Used by the Lite poll/quiz submission limit (1,000 per form).
+	 * Used by the Lite poll/quiz submission limit (200 per form).
 	 * Spam IS counted because spam entries still consume storage and
 	 * are real submissions; only `status = 'trash'` is excluded so a
 	 * site owner can recover capacity by emptying trash.

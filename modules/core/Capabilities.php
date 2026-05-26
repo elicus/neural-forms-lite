@@ -65,7 +65,7 @@ final class Capabilities {
 
 	/**
 	 * POLL_QUIZ_UNLIMITED_SUBMISSIONS (added 1.1.0): Lite caps poll
-	 * and quiz forms at 1,000 non-trash submissions per form. Pro
+	 * and quiz forms at 200 non-trash submissions per form. Pro
 	 * flips this to true to lift the cap. Plain contact / multi-step
 	 * forms are NOT limited regardless of plan.
 	 *

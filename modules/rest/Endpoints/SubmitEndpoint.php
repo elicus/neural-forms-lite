@@ -111,7 +111,7 @@ class SubmitEndpoint {
 		// ' Step 2b: Lite poll/quiz submission cap '
 		//
 		// Poll and quiz forms (including mixed quiz+poll) are capped
-		// at 1,000 non-trash entries per form on Lite. Pro flips
+		// at 200 non-trash entries per form on Lite. Pro flips
 		// `poll_quiz_unlimited_submissions` via Capabilities to lift
 		// the cap entirely. Plain contact / multi-step / rating-only
 		// forms are NEVER limited regardless of plan.
@@ -498,7 +498,7 @@ class SubmitEndpoint {
 	 * Folders backend, so "what counts as a poll/quiz form" is
 	 * defined in exactly one place.
 	 *
-	 * The cap is hard-coded (1000) but exposed via the
+	 * The cap is hard-coded (200) but exposed via the
 	 * `neural_forms_poll_quiz_submission_limit` filter so site owners
 	 * can tighten it without forking the plugin. Returning 0 from
 	 * the filter disables the cap entirely.
@@ -508,7 +508,7 @@ class SubmitEndpoint {
 	 * This is a LOCAL PRODUCT LIMIT, not a security boundary. Since
 	 * WordPress is self-hosted, site owners with code or database
 	 * access can modify local behavior — flip a filter, swap a class,
-	 * delete the table row, etc. The 1,000 cap exists to keep Lite's
+	 * delete the table row, etc. The 200 cap exists to keep Lite's
 	 * storage footprint predictable and to give Pro a clear value
 	 * proposition; it is intentionally not designed to resist a
 	 * determined operator on their own server.
@@ -562,7 +562,7 @@ class SubmitEndpoint {
 			return true;
 		}
 
-		$limit = (int) apply_filters( 'neural_forms_poll_quiz_submission_limit', 1000 );
+		$limit = (int) apply_filters( 'neural_forms_poll_quiz_submission_limit', 200 );
 		if ( $limit <= 0 ) {
 			return true; // Filter disabled the cap.
 		}
@@ -575,9 +575,13 @@ class SubmitEndpoint {
 
 		return new WP_Error(
 			'poll_quiz_submission_limit_reached',
-			__(
-				'This poll or quiz has reached the 1,000 submission limit available in Lite. Upgrade to Pro to continue collecting responses.',
-				'neural-forms-lite'
+			sprintf(
+				/* translators: %s: localised submission cap (e.g. "200"). */
+				__(
+					'This poll or quiz has reached the %s submission limit available in Lite. Upgrade to Pro to continue collecting responses.',
+					'neural-forms-lite'
+				),
+				number_format_i18n( $limit )
 			),
 			array(
 				'status'      => 403,

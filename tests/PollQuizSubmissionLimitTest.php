@@ -16,10 +16,10 @@
  * Coverage matches the brief's PHP-test checklist:
  *   1. simple form bypasses the cap
  *   2. multi-step simple form bypasses
- *   3. poll form at 999 → allow
- *   4. poll form at 1000 → block
- *   5. quiz form at 1000 → block
- *   6. mixed quiz+poll at 1000 → block
+ *   3. poll form at 199 → allow
+ *   4. poll form at 200 → block
+ *   5. quiz form at 200 → block
+ *   6. mixed quiz+poll at 200 → block
  *   7. multi-step quiz form → cap applies (still detected as quiz)
  *   8. Pro capability bypasses regardless of count
  *   9. trash entries excluded (count helper contract)
@@ -34,6 +34,11 @@ namespace {
 	defined( 'ABSPATH' ) || exit; // Direct-access guard (no-op once the line above defines ABSPATH).
 	// phpcs:disable WordPress.Security.EscapeOutput,WordPress.Security.ValidatedSanitizedInput,WordPress.Security.NonceVerification -- CLI-only test runner.
 	if ( ! function_exists( '__' ) )    { function __( $s, $domain = null ) { return $s; } }
+	if ( ! function_exists( 'number_format_i18n' ) ) {
+		function number_format_i18n( $number, $decimals = 0 ) {
+			return number_format( (float) $number, (int) $decimals );
+		}
+	}
 	if ( ! function_exists( 'apply_filters' ) ) {
 		function apply_filters( $hook, $value, ...$args ) {
 			global $__nf_filters;
@@ -225,48 +230,48 @@ namespace {
 		$gate->check_poll_quiz_submission_limit( $multistep_simple ),
 		true, $passed, $failed );
 
-	// 3. Poll form at 999 → allow.
+	// 3. Poll form at 199 → allow.
 	reset_world();
-	\NeuralForms\Storage\EntryRepository::$count = 999;
-	check( '3 poll form at 999 → allow',
+	\NeuralForms\Storage\EntryRepository::$count = 199;
+	check( '3 poll form at 199 → allow',
 		$gate->check_poll_quiz_submission_limit( $poll_form ),
 		true, $passed, $failed );
 
-	// 4. Poll form at exactly 1000 → block.
+	// 4. Poll form at exactly 200 → block.
 	reset_world();
-	\NeuralForms\Storage\EntryRepository::$count = 1000;
+	\NeuralForms\Storage\EntryRepository::$count = 200;
 	$res = $gate->check_poll_quiz_submission_limit( $poll_form );
-	check( '4a poll form at 1000 → WP_Error',
+	check( '4a poll form at 200 → WP_Error',
 		is_wp_error( $res ), true, $passed, $failed );
 	check( '4b error code = poll_quiz_submission_limit_reached',
 		$res->get_error_code(), 'poll_quiz_submission_limit_reached', $passed, $failed );
 	check( '4c error data status = 403',
 		$res->get_error_data()['status'], 403, $passed, $failed );
-	check( '4d error data limit = 1000',
-		$res->get_error_data()['limit'], 1000, $passed, $failed );
-	check( '4e error data count = 1000',
-		$res->get_error_data()['count'], 1000, $passed, $failed );
+	check( '4d error data limit = 200',
+		$res->get_error_data()['limit'], 200, $passed, $failed );
+	check( '4e error data count = 200',
+		$res->get_error_data()['count'], 200, $passed, $failed );
 
-	// 5. Quiz form at 1000 → block.
+	// 5. Quiz form at 200 → block.
 	reset_world();
-	\NeuralForms\Storage\EntryRepository::$count = 1000;
+	\NeuralForms\Storage\EntryRepository::$count = 200;
 	$res = $gate->check_poll_quiz_submission_limit( $quiz_form );
-	check( '5 quiz form at 1000 → block',
+	check( '5 quiz form at 200 → block',
 		is_wp_error( $res ) && $res->get_error_code() === 'poll_quiz_submission_limit_reached',
 		true, $passed, $failed );
 
-	// 6. Mixed quiz + poll at 1000 → block (mixed routes to quiz per the brief).
+	// 6. Mixed quiz + poll at 200 → block (mixed routes to quiz per the brief).
 	reset_world();
-	\NeuralForms\Storage\EntryRepository::$count = 1000;
+	\NeuralForms\Storage\EntryRepository::$count = 200;
 	$res = $gate->check_poll_quiz_submission_limit( $mixed_form );
-	check( '6 mixed quiz+poll at 1000 → block',
+	check( '6 mixed quiz+poll at 200 → block',
 		is_wp_error( $res ) && $res->get_error_code() === 'poll_quiz_submission_limit_reached',
 		true, $passed, $failed );
 
 	// 7. Multi-step form whose only field is a quiz_question still
 	//    detects as quiz and is limited.
 	reset_world();
-	\NeuralForms\Storage\EntryRepository::$count = 1000;
+	\NeuralForms\Storage\EntryRepository::$count = 200;
 	$res = $gate->check_poll_quiz_submission_limit( $multistep_quiz );
 	check( '7 multi-step quiz form is limited',
 		is_wp_error( $res ) && $res->get_error_code() === 'poll_quiz_submission_limit_reached',
