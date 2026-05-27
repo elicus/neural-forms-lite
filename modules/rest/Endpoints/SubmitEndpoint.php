@@ -1445,6 +1445,35 @@ class SubmitEndpoint {
 		$check        = wp_check_filetype_and_ext( $file_info['tmp_name'], $file_info['name'], $upload_mimes );
 		$actual_mime  = $check['type'] ?: '';
 
+		// If wp_check_filetype_and_ext can't resolve a mime against our
+		// custom $upload_mimes whitelist (file extension not in any of
+		// our type groups, or file content doesn't match its extension),
+		// the upload would be rejected later by wp_handle_upload with a
+		// generic "Sorry, this file type is not permitted for security
+		// reasons" message that we'd then surface as a vague 500
+		// "Could not save the uploaded file. Please try again." Catch
+		// it here instead so the user sees the same actionable 422 as
+		// when an explicit allow-list rejects them.
+		if ( $actual_mime === '' ) {
+			$label = trim( $field['label'] ?? '' ) !== '' ? trim( $field['label'] ) : ( (string) ( $field['id'] ?? 'file' ) );
+			return new WP_Error(
+				'invalid_submission',
+				__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+				array(
+					'status' => 422,
+					'fields' => array(
+						$error_field_path => array(
+							array(
+								'code'    => 'invalid_file_type',
+								/* translators: %s: field label */
+								'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
+							),
+						),
+					),
+				)
+			);
+		}
+
 		if ( ! empty( $allowed_types ) ) {
 			$allowed_mimes = array();
 			foreach ( $allowed_types as $group ) {
@@ -1644,6 +1673,31 @@ class SubmitEndpoint {
 			// wp_check_filetype_and_ext() returns false (not null) for type/ext
 			// when the file is unrecognised. Use ?: so false coalesces to ''.
 			$actual_mime = $check['type'] ?: '';
+
+			// Unknown type → fail fast with a clear 422 instead of
+			// letting wp_handle_upload return its generic security
+			// message which we'd otherwise surface as a vague 500.
+			// Same actionable error as the explicit allow-list branch
+			// below.
+			if ( $actual_mime === '' ) {
+				$label = trim( $field['label'] ?? '' ) ?: $field_id;
+				return new WP_Error(
+					'invalid_submission',
+					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+					array(
+						'status' => 422,
+						'fields' => array(
+							$field_id => array(
+								array(
+									'code'    => 'invalid_file_type',
+									/* translators: %s: field label */
+									'message' => sprintf( __( '%s: file type not allowed.', 'neural-forms-lite' ), $label ),
+								),
+							),
+						),
+					)
+				);
+			}
 
 			if ( ! empty( $allowed_types ) ) {
 				$allowed_mimes = array();
