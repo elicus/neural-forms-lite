@@ -40,12 +40,12 @@ class Config {
 
 		// AI spam detection
 		'ai_spam_enabled'               => false,   // master switch - off by default
-		'ai_spam_mode'                  => 'suggest', // 'suggest' | 'auto'
+		'ai_spam_mode'                  => 'suggest', // values: suggest, auto
 		'ai_spam_threshold'             => 85,      // 60-100; auto-move only above this confidence
 		'email_skip_spam_notifications' => false,  // skip email notifications for spam entries
 
 		// CAPTCHA
-		'captcha_provider'              => 'none',       // 'none' | 'turnstile' | 'recaptcha_v2'
+		'captcha_provider'              => 'none',       // values: none, turnstile, recaptcha_v2
 		'captcha_site_key'              => '',           // public key, rendered in HTML
 		'captcha_secret_key'            => '',           // private key, used only server-side
 

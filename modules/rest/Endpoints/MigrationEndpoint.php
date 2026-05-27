@@ -79,7 +79,11 @@ class MigrationEndpoint {
 
 	/**
 	 * GET /migration/cf7/forms
+	 *
+	 * $request is required by the REST callback signature even though
+	 * this endpoint takes no body / query parameters.
 	 */
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 	public function get_forms( WP_REST_Request $request ) {
 		if ( ! CF7Detector::is_cf7_active() ) {
 			return rest_ensure_response(

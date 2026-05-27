@@ -115,6 +115,10 @@ class SettingsEndpoint {
 
 	// Handlers
 
+	// $request is required by the route callback signature even though
+	// GET /settings reads no body / query — REST handlers must accept
+	// the request object so WP can dispatch the callback uniformly.
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 	public function get_settings( WP_REST_Request $request ) {
 		$all = Config::all();
 

@@ -79,6 +79,7 @@ class Database {
 				} catch ( \Throwable $e ) {
 					// Don't break the upgrade if repair throws — the
 					// schema work has already succeeded.
+					unset( $e );
 				}
 			}
 		}

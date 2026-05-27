@@ -222,6 +222,11 @@ class BlockHandler {
 		// missing or unreadable for any reason, bail rather than
 		// registering blocks with no attributes (which would corrupt
 		// every saved instance on the next editor load).
+		// Local plugin asset, not a remote URL — wp_remote_get is wrong
+		// here. @ is intentional: the json_decode + is_array guards
+		// below handle the false return path without a PHP warning
+		// surfacing on the page if the file is briefly unreadable.
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 		$base_json = @file_get_contents( __DIR__ . '/block/block.json' );
 		if ( $base_json === false ) {
 			return;
@@ -1280,6 +1285,7 @@ class BlockHandler {
 			$css .= $field_sel . '{' . implode( ';', $field_typo_rules ) . '}';
 		}
 
+		// phpcs:disable Squiz.PHP.CommentedOutCode.Found -- explanatory banner contains CSS selectors that look like code to the sniff.
 		// ' Field bg / color / border — direct rules on the scoped input
 		//   selector. We ALSO set CSS variables above (for back-compat and
 		//   so non-block contexts like the shortcode pick them up), but in
@@ -1292,6 +1298,7 @@ class BlockHandler {
 		//   <uid> .neural-forms-form__input`) so the resulting selector
 		//   beats `.editor-styles-wrapper input[type="text"]` in the
 		//   canvas and survives most theme overrides on the frontend. '
+		// phpcs:enable Squiz.PHP.CommentedOutCode.Found
 		$field_idle_rules = [];
 		if ( $field_bg_gradient !== '' ) {
 			$field_idle_rules[] = 'background-image:' . sanitize_text_field( $field_bg_gradient );

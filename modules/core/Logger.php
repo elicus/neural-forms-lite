@@ -155,6 +155,7 @@ class Logger {
 			file_put_contents( $file, $line, FILE_APPEND | LOCK_EX );
 		} catch ( \Throwable $e ) {
 			// Swallow - logging must never break anything.
+			unset( $e );
 		}
 	}
 

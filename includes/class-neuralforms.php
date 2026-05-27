@@ -104,6 +104,13 @@ final class NeuralForms {
 	 * immediately without requiring a plugin deactivate/reactivate cycle.
 	 */
 	private function boot_ai(): void {
+		// Custom 5-minute (300s) recurring interval registered for the
+		// AI queue processor — see AIQueueProcessor::add_cron_interval.
+		// The interval is computed in the filter callback so phpcs can't
+		// resolve it statically. 5 minutes is faster than WP's 10-minute
+		// soft guideline but matches the latency users expect for AI
+		// analysis to surface in the inbox.
+		// phpcs:ignore WordPress.WP.CronInterval.ChangeDetected
 		add_filter( 'cron_schedules', array( \NeuralForms\AI\AIQueueProcessor::class, 'add_cron_interval' ) );
 		\NeuralForms\AI\AIQueueProcessor::boot();
 		\NeuralForms\AI\QueueListener::boot();

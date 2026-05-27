@@ -884,6 +884,9 @@ class FormRenderer {
 		}
 
 		// Pad with empty columns when settings.columns > count(columns).
+		// $visible grows inside the loop — count() must be re-evaluated
+		// each iteration so the padding stops at the new target.
+		// phpcs:ignore Squiz.PHP.DisallowSizeFunctionsInLoops.Found
 		while ( count( $visible ) < $col_count ) {
 			$visible[] = [ 'id' => '', 'fields' => [] ];
 		}
@@ -1928,6 +1931,12 @@ class FormRenderer {
 	 * browser-enforced (the browser cannot express "at least one per row"
 	 * across a name array) and will be enforced server-side in commit 4.
 	 */
+	// $form_id kept on the signature for parity with render_repeater so
+	// the dispatch table in render() can pass it uniformly to every
+	// composite-field renderer; matrix doesn't currently need it for
+	// the simple-radio / checkbox cases, but reserving the slot avoids
+	// a churny refactor when matrix gains form-scoped behaviour later.
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
 	private static function render_matrix( array $field, string $input_id, string $error_id, int $form_id ): string {
 		// Pro-deactivated fallback. Stay silent for visitors so the rest of
 		// the form keeps working; show a one-line, admin-only notice so

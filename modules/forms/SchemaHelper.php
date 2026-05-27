@@ -295,6 +295,9 @@ class SchemaHelper {
 			}
 			$cols = $kept;
 		} elseif ( $count < $next ) {
+			// $cols grows inside the loop — count() must be re-evaluated
+			// each iteration so the loop terminates at the new target.
+			// phpcs:ignore Squiz.PHP.DisallowSizeFunctionsInLoops.Found
 			while ( count( $cols ) < $next ) {
 				$cols[] = array(
 					'id'     => self::generate_column_id(),
