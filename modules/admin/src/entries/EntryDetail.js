@@ -156,6 +156,15 @@ function FlagIcon() {
 	);
 }
 
+function formatFileSize( bytes ) {
+	const n = Number( bytes );
+	if ( ! isFinite( n ) || n <= 0 ) return '';
+	if ( n < 1024 )            return n + ' B';
+	if ( n < 1024 * 1024 )     return ( n / 1024 ).toFixed( 1 ) + ' KB';
+	if ( n < 1024 * 1024 * 1024 ) return ( n / ( 1024 * 1024 ) ).toFixed( 1 ) + ' MB';
+	return ( n / ( 1024 * 1024 * 1024 ) ).toFixed( 1 ) + ' GB';
+}
+
 function getEntryFormName( entry, fallback ) {
 	if ( entry?.form_name && String( entry.form_name ).trim() !== '' ) return String( entry.form_name );
 	if ( fallback && String( fallback ).trim() !== '' ) return String( fallback );
@@ -660,6 +669,52 @@ export default function EntryDetail( {
 															<span className="neural-forms-entry-detail__matrix-row-value">
 																{ ml.display || '—' }
 															</span>
+														</li>
+													) ) }
+												</ul>
+											) }
+										</dd>
+									</div>
+								);
+							}
+
+							// File upload — render filename as a download link
+							// instead of dumping the raw {attachment_id, url, ...}
+							// JSON envelope into the value cell. Matches the
+							// repeater child-row treatment above. Handles both
+							// the canonical object shape and the rare array
+							// shape (multi-file fields ship as [ {…}, {…} ]).
+							const isFileType  = !! ( field && field.type === 'file' );
+							const looksLikeFile = ! isFileType && v && typeof v === 'object' && ! Array.isArray( v )
+								&& typeof v.url === 'string' && v.url !== '';
+							if ( isFileType || looksLikeFile ) {
+								const files = Array.isArray( v ) ? v : [ v ];
+								const validFiles = files.filter( ( f ) => f && typeof f === 'object' && typeof f.url === 'string' && f.url !== '' );
+								return (
+									<div className="neural-forms-entry-detail__field-row" key={ k }>
+										<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+										<dd className="neural-forms-entry-detail__field-value">
+											{ validFiles.length === 0 ? (
+												<span className="neural-forms-entry-detail__field-empty">
+													{ __( 'No file uploaded', 'neural-forms-lite' ) }
+												</span>
+											) : (
+												<ul className="neural-forms-entry-detail__file-list">
+													{ validFiles.map( ( f, i ) => (
+														<li key={ ( f.attachment_id || i ) + '' } className="neural-forms-entry-detail__file-item">
+															<a
+																className="neural-forms-entry-detail__file-link"
+																href={ f.url }
+																target="_blank"
+																rel="noreferrer"
+															>
+																{ f.filename || f.url }
+															</a>
+															{ typeof f.size === 'number' && f.size > 0 && (
+																<span className="neural-forms-entry-detail__file-meta">
+																	{ formatFileSize( f.size ) }
+																</span>
+															) }
 														</li>
 													) ) }
 												</ul>
