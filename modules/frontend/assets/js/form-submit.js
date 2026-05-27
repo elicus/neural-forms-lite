@@ -1095,6 +1095,87 @@
 	}
 
 	/**
+	 * Client-side mirror of the server-side file validation in
+	 * SubmitEndpoint::upload_file_cell. Returns a localised error
+	 * string when the file should be rejected, or null when it's OK.
+	 *
+	 * Mirrors two server checks: file size (against data-max-size in
+	 * bytes that the renderer emits) and file type (against the field's
+	 * accept attribute when set, else the plugin's global allowed
+	 * extension list which mirrors ALLOWED_MIME_GROUPS).
+	 *
+	 * Why we check extension AND mime: some files have no registered
+	 * browser MIME at all (.pages, .ai, .psd) — file.type is empty so
+	 * a mime-only check would let them through. Extension-based
+	 * fallback closes that gap and matches the server's
+	 * wp_check_filetype_and_ext behaviour.
+	 *
+	 * @param {HTMLInputElement} input
+	 * @param {File}             file
+	 * @param {string}           label
+	 * @returns {string|null}
+	 */
+	function clientFileError( input, file, label ) {
+		// Size check
+		var maxSize = Number( input.getAttribute( 'data-max-size' ) || 0 );
+		if ( maxSize > 0 && file.size > maxSize ) {
+			var maxMb = Math.round( maxSize / 1024 / 1024 );
+			return label + ': file exceeds the maximum allowed size of ' + maxMb + ' MB.';
+		}
+
+		// Type check
+		var fileMime = ( file.type || '' ).toLowerCase();
+		var fileName = ( file.name || '' ).toLowerCase();
+		var dotAt    = fileName.lastIndexOf( '.' );
+		var fileExt  = dotAt > -1 ? fileName.slice( dotAt + 1 ) : '';
+
+		// MIME → extension table mirroring the server's
+		// ALLOWED_MIME_GROUPS so the ext fallback can resolve known MIMEs
+		// back to file extensions.
+		var MIME_TO_EXTS = {
+			'image/jpeg':                                                                  [ 'jpg', 'jpeg' ],
+			'image/png':                                                                   [ 'png' ],
+			'image/gif':                                                                   [ 'gif' ],
+			'image/webp':                                                                  [ 'webp' ],
+			'application/pdf':                                                             [ 'pdf' ],
+			'application/msword':                                                          [ 'doc' ],
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document':     [ 'docx' ],
+			'application/vnd.oasis.opendocument.text':                                     [ 'odt' ],
+			'text/plain':                                                                  [ 'txt' ],
+			'text/csv':                                                                    [ 'csv' ]
+		};
+
+		var acceptAttr = ( input.getAttribute( 'accept' ) || '' ).trim();
+		if ( acceptAttr !== '' ) {
+			// Field-level restriction: compare against the accept list.
+			var allowedMimes = acceptAttr.split( ',' ).map( function ( s ) { return s.trim().toLowerCase(); } ).filter( Boolean );
+			var allowedExts  = [];
+			for ( var k = 0; k < allowedMimes.length; k++ ) {
+				var exts = MIME_TO_EXTS[ allowedMimes[ k ] ] || [];
+				allowedExts = allowedExts.concat( exts );
+			}
+			var mimeOk = fileMime !== '' && allowedMimes.indexOf( fileMime ) !== -1;
+			var extOk  = fileExt  !== '' && allowedExts.indexOf( fileExt ) !== -1;
+			if ( ! mimeOk && ! extOk ) {
+				return label + ': file type not allowed.';
+			}
+		} else {
+			// No field-level restriction → fall back to the plugin's
+			// global extension list so the client check still matches
+			// what the server will accept.
+			var GLOBAL_EXTS = [ 'jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'odt', 'txt', 'csv' ];
+			if ( fileExt !== '' && GLOBAL_EXTS.indexOf( fileExt ) === -1 ) {
+				return label + ': file type not allowed.';
+			}
+			// Empty extension with no MIME → let the server reject;
+			// extremely rare and we don't want to nag on files that
+			// genuinely have no name extension at all.
+		}
+
+		return null;
+	}
+
+	/**
 	 * Walk every visible field wrapper inside `scope` (the form, or a
 	 * single multi-step step) and validate required + type. Returns the
 	 * first wrapper that failed so the caller can scroll/focus it.
@@ -1138,6 +1219,21 @@
 				if ( required && input.files && input.files.length === 0 ) {
 					markFieldInvalid( w, label + ' is required.' );
 					if ( ! firstError ) firstError = w;
+					continue;
+				}
+				// Size + type checks when a file is selected — mirrors
+				// the server-side validation in
+				// SubmitEndpoint::upload_file_cell so multi-step Next
+				// blocks here instead of bouncing to a final-submit error.
+				if ( input.files && input.files.length > 0 ) {
+					for ( var fi = 0; fi < input.files.length; fi++ ) {
+						var fileErr = clientFileError( input, input.files[ fi ], label );
+						if ( fileErr ) {
+							markFieldInvalid( w, fileErr );
+							if ( ! firstError ) firstError = w;
+							break;
+						}
+					}
 				}
 				continue;
 			}
