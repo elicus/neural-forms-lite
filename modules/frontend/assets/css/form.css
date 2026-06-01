@@ -1269,6 +1269,79 @@
     margin-bottom: 8px;
 }
 
+/* ── Step transition animations ─────────────────────────────────────────── */
+
+/* The steps-body wrapper is the animation container — progress indicator,
+   nav buttons and submit sit outside it and are never disturbed. */
+.neural-forms-form[data-step-transition] .neural-forms-form__steps-body {
+    position: relative;
+    overflow: hidden;
+}
+
+/* During a transition steps are taken out of flow; height is locked by JS. */
+.neural-forms-form[data-step-transition] .neural-forms-form__step {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+
+.neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-animating-out {
+    pointer-events: none;
+}
+
+/* ── Slide ── */
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-enter-from-right { transform: translateX(100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-enter-from-left  { transform: translateX(-100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-enter-from-up    { transform: translateY(-100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-enter-from-down  { transform: translateY(100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-exit-to-left     { transform: translateX(-100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-exit-to-right    { transform: translateX(100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-exit-to-up       { transform: translateY(-100%); }
+.neural-forms-form[data-step-transition="slide"] .neural-forms-form__step.nf-step-exit-to-down     { transform: translateY(100%); }
+
+/* ── Fade ── */
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-enter-from-right,
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-enter-from-left,
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-enter-from-up,
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-enter-from-down   { opacity: 0; }
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-exit-to-left,
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-exit-to-right,
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-exit-to-up,
+.neural-forms-form[data-step-transition="fade"] .neural-forms-form__step.nf-step-exit-to-down      { opacity: 0; }
+
+/* ── Scale ── */
+.neural-forms-form[data-step-transition="scale"] .neural-forms-form__step.nf-step-enter-from-right { transform: scale(0.85); opacity: 0; }
+.neural-forms-form[data-step-transition="scale"] .neural-forms-form__step.nf-step-enter-from-left  { transform: scale(1.1);  opacity: 0; }
+.neural-forms-form[data-step-transition="scale"] .neural-forms-form__step.nf-step-exit-to-left     { transform: scale(0.85); opacity: 0; }
+.neural-forms-form[data-step-transition="scale"] .neural-forms-form__step.nf-step-exit-to-right    { transform: scale(1.1);  opacity: 0; }
+
+/* ── Flip ── */
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__steps-body { perspective: 1200px; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-enter-from-right  { transform: rotateY(90deg);  opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-enter-from-left   { transform: rotateY(-90deg); opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-enter-from-up     { transform: rotateX(-90deg); opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-enter-from-down   { transform: rotateX(90deg);  opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-exit-to-left      { transform: rotateY(-90deg); opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-exit-to-right     { transform: rotateY(90deg);  opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-exit-to-up        { transform: rotateX(90deg);  opacity: 0; }
+.neural-forms-form[data-step-transition="flip"] .neural-forms-form__step.nf-step-exit-to-down      { transform: rotateX(-90deg); opacity: 0; }
+
+/* Reduced motion: disable all step transitions */
+@media (prefers-reduced-motion: reduce) {
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-enter-from-right,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-enter-from-left,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-enter-from-up,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-enter-from-down,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-exit-to-left,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-exit-to-right,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-exit-to-up,
+    .neural-forms-form[data-step-transition] .neural-forms-form__step.nf-step-exit-to-down {
+        transform: none !important;
+        opacity: 1 !important;
+    }
+}
+/* ──────────────────────────────────────────────────────────────────────── */
+
 .neural-forms-form__step:first-of-type {
     border-top: 0;
     padding-top: 0;

@@ -35,7 +35,7 @@
 
 import { registerBlockType, unregisterBlockType } from '@wordpress/blocks';
 import { __ }                from '@wordpress/i18n';
-import { SelectControl, TextControl } from '@wordpress/components';
+import { SelectControl, TextControl, ToggleControl } from '@wordpress/components';
 import baseMetadata          from '../../frontend/block/block.json';
 import FormSelector          from './blocks/shared/FormSelector';
 import FormDesignExtras      from './blocks/form/FormDesignExtras';
@@ -56,6 +56,23 @@ import MultiStepDesignExtras from './blocks/multistep/MultiStepDesignExtras';
 		}
 		fieldset[data-wp-component="BorderControl"] {
 			margin-bottom: 16px;
+		}
+		div[data-wp-component="BorderBoxControl"] > label {
+			margin-bottom: 12px;
+			display: block;
+		}
+		div[data-wp-component="BorderBoxControl"] {
+			margin-bottom: 16px;
+		}
+		div[data-wp-component="BorderBoxControl"] div[data-wp-component="HStack"],
+		div[data-wp-component="BoxControl"] div[data-wp-component="HStack"] {
+			align-items: center !important;
+		}
+		.components-h-stack .components-base-control {
+			margin-bottom: 0 !important;
+		}
+		.components-h-stack .components-range-control {
+			margin-left: 10px;
 		}
 		.block-editor-line-height-control .components-input-control__container {
 			width: 100%;
@@ -118,18 +135,35 @@ function MultiStepExtras( props ) {
 function MultiStepSettingsExtrasTop( { attributes, setAttributes } ) {
 	// Coerce legacy '' (old "Use form default") to 'numbers' so existing
 	// blocks display the correct option after the option was removed.
-	const value = String( attributes?.progressIndicatorOverride || 'numbers' );
+	const value        = String( attributes?.progressIndicatorOverride || 'numbers' );
+	const hasIndicator = value !== 'none';
 	return (
-		<SelectControl
-			label={ __( 'Step Progress', 'neural-forms-lite' ) }
-			value={ value }
-			options={ [
-				{ label: __( 'Step numbers', 'neural-forms-lite' ), value: 'numbers' },
-				{ label: __( 'Progress bar', 'neural-forms-lite' ), value: 'bar' },
-				{ label: __( 'None',         'neural-forms-lite' ), value: 'none' },
-			] }
-			onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v } ) }
-		/>
+		<>
+			<SelectControl
+				label={ __( 'Step Progress', 'neural-forms-lite' ) }
+				value={ value }
+				options={ [
+					{ label: __( 'Step numbers', 'neural-forms-lite' ), value: 'numbers' },
+					{ label: __( 'Progress bar', 'neural-forms-lite' ), value: 'bar' },
+					{ label: __( 'None',         'neural-forms-lite' ), value: 'none' },
+				] }
+				onChange={ ( v ) => setAttributes( { progressIndicatorOverride: v } ) }
+			/>
+			{ hasIndicator && (
+				<ToggleControl
+					label={ __( 'Show Step Titles', 'neural-forms-lite' ) }
+					checked={ attributes?.showStepLabels !== false }
+					onChange={ ( v ) => setAttributes( { showStepLabels: v } ) }
+				/>
+			) }
+			{ hasIndicator && (
+				<ToggleControl
+					label={ __( 'Show Step Descriptions', 'neural-forms-lite' ) }
+					checked={ attributes?.showStepDescriptions !== false }
+					onChange={ ( v ) => setAttributes( { showStepDescriptions: v } ) }
+				/>
+			) }
+		</>
 	);
 }
 

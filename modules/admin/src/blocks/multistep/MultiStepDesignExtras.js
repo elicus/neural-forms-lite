@@ -1,5 +1,5 @@
 import { __ } from '@wordpress/i18n';
-import { PanelBody, SelectControl } from '@wordpress/components';
+import { PanelBody, SelectControl, RangeControl } from '@wordpress/components';
 import { __experimentalUnitControl as UnitControl } from '@wordpress/components';
 import {
 	ContainerPanel,
@@ -18,10 +18,53 @@ import {
 	SubmitButtonPanel,
 	MessagesPanel,
 	AdvancedPanel,
-	Sep, Gap, Clr, FW,
+	Sep, Gap, Clr, FW, PaddingMarginDimensions,
 } from '../shared/DesignPanels';
 
 // ─── Step Layout panel (MultiStep-only) ──────────────────────────────────────
+
+const TRANSITION_OPTIONS = [
+	{ value: 'none',  label: __( 'None',  'neural-forms-lite' ) },
+	{ value: 'slide', label: __( 'Slide', 'neural-forms-lite' ) },
+	{ value: 'fade',  label: __( 'Fade',  'neural-forms-lite' ) },
+	{ value: 'scale', label: __( 'Scale', 'neural-forms-lite' ) },
+	{ value: 'flip',  label: __( 'Flip',  'neural-forms-lite' ) },
+];
+
+const TRANSITION_DIR_OPTIONS = {
+	slide: [
+		{ value: 'auto',  label: __( 'Auto (direction-aware)', 'neural-forms-lite' ) },
+		{ value: 'right', label: __( 'Right → Left',           'neural-forms-lite' ) },
+		{ value: 'left',  label: __( 'Left → Right',           'neural-forms-lite' ) },
+		{ value: 'up',    label: __( 'Up → Down',              'neural-forms-lite' ) },
+		{ value: 'down',  label: __( 'Down → Up',              'neural-forms-lite' ) },
+	],
+	fade: [
+		{ value: 'auto',  label: __( 'Auto (direction-aware)', 'neural-forms-lite' ) },
+		{ value: 'right', label: __( 'Drift Right',            'neural-forms-lite' ) },
+		{ value: 'left',  label: __( 'Drift Left',             'neural-forms-lite' ) },
+		{ value: 'up',    label: __( 'Drift Up',               'neural-forms-lite' ) },
+		{ value: 'down',  label: __( 'Drift Down',             'neural-forms-lite' ) },
+	],
+	scale: [
+		{ value: 'auto', label: __( 'Auto (in on Next, out on Prev)', 'neural-forms-lite' ) },
+		{ value: 'in',   label: __( 'Scale In',                       'neural-forms-lite' ) },
+		{ value: 'out',  label: __( 'Scale Out',                      'neural-forms-lite' ) },
+	],
+	flip: [
+		{ value: 'auto',       label: __( 'Auto (horizontal)', 'neural-forms-lite' ) },
+		{ value: 'horizontal', label: __( 'Horizontal (Y)',    'neural-forms-lite' ) },
+		{ value: 'vertical',   label: __( 'Vertical (X)',      'neural-forms-lite' ) },
+	],
+};
+
+const EASING_OPTIONS = [
+	{ value: 'ease',        label: 'Ease'        },
+	{ value: 'linear',      label: 'Linear'      },
+	{ value: 'ease-in',     label: 'Ease In'     },
+	{ value: 'ease-out',    label: 'Ease Out'    },
+	{ value: 'ease-in-out', label: 'Ease In-Out' },
+];
 
 const BORDER_STYLE_OPTIONS = [
 	{ value: 'solid',  label: 'Solid'  },
@@ -31,18 +74,66 @@ const BORDER_STYLE_OPTIONS = [
 ];
 
 function StepLayoutPanel( { a, set } ) {
+	const showLabels = a.showStepLabels !== false;
+	const showDescs  = a.showStepDescriptions !== false;
 	return (
 		<PanelBody title={ __( 'Step Layout', 'neural-forms-lite' ) } initialOpen={ false }>
-			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Title', 'neural-forms-lite' ) }</p>
-			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepTitleColor } onChange={ v => set( { stepTitleColor: v ?? '' } ) } />
-			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepTitleFontSize } onChange={ v => set( { stepTitleFontSize: v ?? '' } ) } />
-			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepTitleFontWeight || '' } options={ FW } onChange={ v => set( { stepTitleFontWeight: v } ) } />
+			<PaddingMarginDimensions
+				pTop="stepPaddingTop" pRight="stepPaddingRight" pBottom="stepPaddingBottom" pLeft="stepPaddingLeft"
+				mTop="stepMarginTop"  mRight="stepMarginRight"  mBottom="stepMarginBottom"  mLeft="stepMarginLeft"
+				a={ a } set={ set }
+			/>
 			<Sep />
-			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Description', 'neural-forms-lite' ) }</p>
-			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepDescColor } onChange={ v => set( { stepDescColor: v ?? '' } ) } />
-			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepDescFontSize } onChange={ v => set( { stepDescFontSize: v ?? '' } ) } />
-			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepDescFontWeight || '' } options={ FW } onChange={ v => set( { stepDescFontWeight: v } ) } />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Transition', 'neural-forms-lite' ) }</p>
+			<SelectControl
+				label={ __( 'Animation', 'neural-forms-lite' ) }
+				value={ a.stepTransition || 'none' }
+				options={ TRANSITION_OPTIONS }
+				onChange={ v => set( { stepTransition: v } ) }
+			/>
+			{ a.stepTransition && a.stepTransition !== 'none' && (
+				<>
+					<SelectControl
+						label={ __( 'Direction', 'neural-forms-lite' ) }
+						value={ a.stepTransitionDirection || 'auto' }
+						options={ TRANSITION_DIR_OPTIONS[ a.stepTransition ] || [] }
+						onChange={ v => set( { stepTransitionDirection: v } ) }
+					/>
+					<RangeControl
+						label={ __( 'Duration (ms)', 'neural-forms-lite' ) }
+						value={ parseInt( a.stepTransitionDuration || '350', 10 ) }
+						onChange={ v => set( { stepTransitionDuration: String( v ) } ) }
+						min={ 100 }
+						max={ 1200 }
+						step={ 50 }
+					/>
+					<SelectControl
+						label={ __( 'Easing', 'neural-forms-lite' ) }
+						value={ a.stepTransitionEasing || 'ease' }
+						options={ EASING_OPTIONS }
+						onChange={ v => set( { stepTransitionEasing: v } ) }
+					/>
+				</>
+			) }
 			<Sep />
+			{ showLabels && (
+				<>
+					<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Title', 'neural-forms-lite' ) }</p>
+					<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepTitleColor } onChange={ v => set( { stepTitleColor: v ?? '' } ) } />
+					<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepTitleFontSize } onChange={ v => set( { stepTitleFontSize: v ?? '' } ) } />
+					<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepTitleFontWeight || '' } options={ FW } onChange={ v => set( { stepTitleFontWeight: v } ) } />
+					<Sep />
+				</>
+			) }
+			{ showDescs && (
+				<>
+					<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Description', 'neural-forms-lite' ) }</p>
+					<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepDescColor } onChange={ v => set( { stepDescColor: v ?? '' } ) } />
+					<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepDescFontSize } onChange={ v => set( { stepDescFontSize: v ?? '' } ) } />
+					<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepDescFontWeight || '' } options={ FW } onChange={ v => set( { stepDescFontWeight: v } ) } />
+					<Sep />
+				</>
+			) }
 			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Separator', 'neural-forms-lite' ) }</p>
 			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 8px' } }>{ __( 'Top border shown between steps (not on the first step).', 'neural-forms-lite' ) }</p>
 			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepSepColor } onChange={ v => set( { stepSepColor: v ?? '' } ) } />

@@ -2210,6 +2210,37 @@
 
 		var current = 0;
 
+		// Transition config (read once from data attrs set by BlockHandler).
+		var transitionType   = form.getAttribute( 'data-step-transition' )          || 'none';
+		var transitionDir    = form.getAttribute( 'data-step-transition-dir' )       || 'auto';
+		var transitionDur    = parseInt( form.getAttribute( 'data-step-transition-duration' ) || '350', 10 );
+		var transitionEasing = form.getAttribute( 'data-step-transition-easing' )    || 'ease';
+		var prefersReduced   = window.matchMedia && window.matchMedia( '(prefers-reduced-motion: reduce)' ).matches;
+		var useTransition    = transitionType !== 'none' && ! prefersReduced;
+
+		/**
+		 * Resolve the CSS enter/exit class suffix based on direction config
+		 * and whether the user navigated forward (isForward).
+		 *
+		 * Direction map per transition type:
+		 *   slide/fade: left|right|up|down  (auto → right on forward, left on back)
+		 *   scale:      in|out              (auto → in on forward, out on back)
+		 *   flip:       horizontal|vertical (auto → horizontal)
+		 */
+		function resolveDir( isForward ) {
+			if ( transitionType === 'scale' ) {
+				var d = transitionDir === 'out' ? 'out' : ( transitionDir === 'in' ? 'in' : ( isForward ? 'in' : 'out' ) );
+				// scale reuses right/left CSS class names for in/out
+				return d === 'in' ? 'right' : 'left';
+			}
+			if ( transitionType === 'flip' ) {
+				return ( transitionDir === 'vertical' ) ? 'up' : 'down';
+			}
+			// slide / fade
+			if ( transitionDir === 'auto' ) return isForward ? 'right' : 'left';
+			return transitionDir; // left|right|up|down
+		}
+
 		function updateProgress( index ) {
 			if ( ! progress ) return;
 			var mode = progress.getAttribute( 'data-progress-mode' );
@@ -2235,18 +2266,128 @@
 			}
 		}
 
-		function show( index ) {
-			for ( var i = 0; i < steps.length; i++ ) {
-				if ( i === index ) {
-					steps[ i ].classList.add( 'is-active' );
-					steps[ i ].style.display = '';
-				} else {
-					steps[ i ].classList.remove( 'is-active' );
-					steps[ i ].style.display = 'none';
+		// isForward: true = Next, false = Prev. Undefined on initial render.
+		// fromIndex: the step we're leaving (must be passed explicitly because
+		//            `current` is already updated before show() is called).
+		function show( index, isForward, fromIndex ) {
+			if ( useTransition && isForward !== undefined && fromIndex !== undefined && fromIndex >= 0 ) {
+				animateTransition( fromIndex, index, isForward );
+			} else {
+				// Plain show — no animation (initial render, reset, or no transition).
+				for ( var i = 0; i < steps.length; i++ ) {
+					if ( i === index ) {
+						steps[ i ].classList.add( 'is-active' );
+						steps[ i ].style.display = '';
+					} else {
+						steps[ i ].classList.remove( 'is-active' );
+						steps[ i ].style.display = 'none';
+					}
 				}
+				afterShow( index );
+			}
+		}
+
+		// The steps-body wrapper is the animation container — it only contains
+		// the progress indicator and step divs; nav/submit sit outside it.
+		var stepsBody = form.querySelector( '.neural-forms-form__steps-body' );
+
+		var _animating = false;
+
+		function animateTransition( fromIndex, toIndex, isForward ) {
+			if ( _animating ) return;
+			// No steps-body wrapper means transition is disabled (non-block path).
+			if ( ! stepsBody ) { return; }
+			_animating = true;
+
+			var outStep = steps[ fromIndex ];
+			var inStep  = steps[ toIndex ];
+			var dir     = resolveDir( isForward );
+
+			var exitDir = {
+				right: 'left',  left: 'right',
+				up:    'down',  down: 'up'
+			}[ dir ] || dir;
+
+			var enterClass = 'nf-step-enter-from-' + dir;
+			var exitClass  = 'nf-step-exit-to-' + exitDir;
+
+			var transCSS = 'transform ' + transitionDur + 'ms ' + transitionEasing
+				+ ', opacity ' + transitionDur + 'ms ' + transitionEasing;
+
+			// ── Phase 1: measure BEFORE any DOM changes ───────────────────
+			// offsetTop/offsetLeft point to the element's BORDER edge, but
+			// position:absolute top/left position the MARGIN edge. Subtract
+			// the step's computed margins so the element lands exactly where
+			// it was in flow regardless of any margin/padding set by the user.
+			var outCS    = window.getComputedStyle( outStep );
+			var snapTop  = outStep.offsetTop  - ( parseFloat( outCS.marginTop  ) || 0 );
+			var snapLeft = outStep.offsetLeft - ( parseFloat( outCS.marginLeft ) || 0 );
+			var snapW    = outStep.offsetWidth;
+			var bodyH    = stepsBody.offsetHeight;
+
+			// ── Phase 2: apply all changes in one synchronous batch ───────
+			// Lock the wrapper height so it doesn't collapse when steps leave flow.
+			stepsBody.style.height = bodyH + 'px';
+
+			// Prepare inStep (no transition — just position it off-screen).
+			inStep.classList.add( 'is-active' );
+			inStep.style.display    = '';
+			inStep.style.transition = 'none';
+			inStep.style.position   = 'absolute';
+			inStep.style.top        = snapTop  + 'px';
+			inStep.style.left       = snapLeft + 'px';
+			inStep.style.width      = snapW    + 'px';
+			inStep.style.zIndex     = '1';
+			inStep.classList.add( enterClass );
+
+			// Take outStep out of flow at its exact measured position.
+			outStep.style.transition = 'none';
+			outStep.style.position   = 'absolute';
+			outStep.style.top        = snapTop  + 'px';
+			outStep.style.left       = snapLeft + 'px';
+			outStep.style.width      = snapW    + 'px';
+			outStep.style.zIndex     = '0';
+
+			// ── Phase 3: reflow → rAF → start transitions ─────────────────
+			/* jshint ignore:start */
+			void outStep.offsetWidth;
+			/* jshint ignore:end */
+
+			requestAnimationFrame( function () {
+				inStep.style.transition  = transCSS;
+				outStep.style.transition = transCSS;
+				inStep.classList.remove( enterClass );
+				outStep.classList.add( exitClass );
+			} );
+
+			function onDone() {
+				outStep.removeEventListener( 'transitionend', onDone );
+
+				// Reset exiting step.
+				outStep.classList.remove( 'is-active', exitClass );
+				outStep.style.cssText = '';
+				outStep.style.display = 'none';
+
+				// Reset entering step — clear all animation inline styles.
+				inStep.classList.remove( enterClass );
+				inStep.style.cssText = '';
+
+				// Release locked wrapper height.
+				stepsBody.style.height = '';
+
+				_animating = false;
+				afterShow( toIndex );
 			}
 
-			// Update nav button labels for the now-active step.
+			outStep.addEventListener( 'transitionend', onDone );
+
+			// Fallback in case transitionend doesn't fire.
+			setTimeout( function () {
+				if ( _animating ) onDone();
+			}, transitionDur + 100 );
+		}
+
+		function afterShow( index ) {
 			updateNavLabels( steps[ index ] );
 
 			if ( prevBtn ) prevBtn.style.display = ( index === 0 ) ? 'none' : '';
@@ -2255,16 +2396,10 @@
 
 			updateProgress( index );
 
-			// Conditional logic visibility may depend on values in
-			// previously visited steps - re-evaluate on every step
-			// transition so newly visible fields are honoured.
 			if ( typeof updateConditionalFields === 'function' ) {
 				updateConditionalFields( form );
 			}
 
-			// Move focus to the active step's heading, or the step
-			// container itself, so screen readers and keyboard users
-			// don't lose context.
 			var heading = steps[ index ].querySelector( '.neural-forms-form__step-title' );
 			var target  = heading || steps[ index ];
 			if ( target && typeof target.scrollIntoView === 'function' ) {
@@ -2334,10 +2469,12 @@
 		if ( nextBtn ) {
 			nextBtn.addEventListener( 'click', function ( e ) {
 				e.preventDefault();
+				if ( _animating ) return;
 				if ( ! validateStep( steps[ current ] ) ) return;
 				if ( current < steps.length - 1 ) {
+					var from = current;
 					current += 1;
-					show( current );
+					show( current, true, from );
 				}
 			} );
 		}
@@ -2345,9 +2482,11 @@
 		if ( prevBtn ) {
 			prevBtn.addEventListener( 'click', function ( e ) {
 				e.preventDefault();
+				if ( _animating ) return;
 				if ( current > 0 ) {
+					var from = current;
 					current -= 1;
-					show( current );
+					show( current, false, from );
 				}
 			} );
 		}

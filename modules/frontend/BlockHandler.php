@@ -328,6 +328,10 @@ class BlockHandler {
 				|| $attributes['showQuizResults'] !== false,
 			'show_poll_results'  => ! isset( $attributes['showPollResults'] )
 				|| $attributes['showPollResults'] !== false,
+			'show_step_labels'       => ! isset( $attributes['showStepLabels'] )
+				|| $attributes['showStepLabels'] !== false,
+			'show_step_descriptions' => ! isset( $attributes['showStepDescriptions'] )
+				|| $attributes['showStepDescriptions'] !== false,
 		];
 
 		// Button-text overrides (1.1.0). Block attributes always carry a
@@ -390,6 +394,23 @@ class BlockHandler {
 		$progress_override = (string) ( $attributes['progressIndicatorOverride'] ?? '' );
 		if ( $progress_override !== '' ) {
 			$render_options['progress_indicator_override'] = $progress_override;
+		}
+
+		// Step transition animation (Multi-Step block only; harmless on the
+		// plain Form block since FormRenderer only emits the attrs when
+		// $has_steps is true).
+		$step_transition = (string) ( $attributes['stepTransition'] ?? 'none' );
+		if ( $step_transition !== 'none' && in_array( $step_transition, [ 'slide', 'fade', 'scale', 'flip' ], true ) ) {
+			$allowed_dirs = [ 'auto', 'left', 'right', 'up', 'down', 'in', 'out', 'horizontal', 'vertical' ];
+			$render_options['step_transition']           = $step_transition;
+			$render_options['step_transition_direction'] = in_array( (string) ( $attributes['stepTransitionDirection'] ?? 'auto' ), $allowed_dirs, true )
+				? (string) $attributes['stepTransitionDirection']
+				: 'auto';
+			$duration = (int) ( $attributes['stepTransitionDuration'] ?? 350 );
+			$render_options['step_transition_duration']  = max( 100, min( 2000, $duration ) );
+			$render_options['step_transition_easing']    = in_array( (string) ( $attributes['stepTransitionEasing'] ?? 'ease' ), [ 'ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out' ], true )
+				? (string) $attributes['stepTransitionEasing']
+				: 'ease';
 		}
 
 		// In editor context, render the form without enqueuing the submission
@@ -479,6 +500,61 @@ class BlockHandler {
 	 * Returns true when at least one formatting attribute has a non-default value,
 	 * meaning a scoped wrapper needs to be injected.
 	 */
+	/**
+	 * Generate scoped border CSS from a BorderBoxControl value.
+	 *
+	 * Linked shape:   { color, style, width }
+	 * Unlinked shape: { top: {…}, right: {…}, bottom: {…}, left: {…} }
+	 *
+	 * Returns one or more complete CSS rule strings (selector included),
+	 * or '' when nothing is set.
+	 */
+	private static function border_css( string $selector, mixed $border, string $fallback = '' ): string {
+		if ( ! is_array( $border ) || empty( $border ) ) return '';
+		$sides = [ 'top', 'right', 'bottom', 'left' ];
+		$is_split = isset( $border['top'] ) || isset( $border['right'] )
+		         || isset( $border['bottom'] ) || isset( $border['left'] );
+		if ( $is_split ) {
+			$css = '';
+			foreach ( $sides as $side ) {
+				if ( ! isset( $border[ $side ] ) || ! is_array( $border[ $side ] ) ) continue;
+				$rule = self::single_border_rule( $border[ $side ], $fallback );
+				if ( $rule !== '' ) $css .= $selector . '{border-' . $side . ':' . $rule . '}';
+			}
+			return $css;
+		}
+		$rule = self::single_border_rule( $border, $fallback );
+		return $rule !== '' ? $selector . '{border:' . $rule . '}' : '';
+	}
+
+	/** Validate & format one { color, style, width } side into a CSS shorthand value. */
+	private static function single_border_rule( array $side, string $fallback = '' ): string {
+		$color = self::sanitize_color( (string) ( $side['color'] ?? '' ) );
+		$width = sanitize_text_field( (string) ( $side['width'] ?? '' ) );
+		$style_raw = (string) ( $side['style'] ?? 'solid' );
+		$style = in_array( $style_raw, [ 'solid', 'dashed', 'dotted', 'double', 'none' ], true )
+			? $style_raw : 'solid';
+		if ( $color === '' && $width === '' ) return '';
+		$bc = $color !== '' ? $color : $fallback;
+		$bw = $width !== '' ? $width : '1px';
+		return $bc . ' ' . $style . ' ' . $bw;
+	}
+
+	private static function sanitize_color( string $color ): string {
+		if ( $color === '' ) return '';
+		$hex = sanitize_hex_color( $color );
+		if ( $hex !== null && $hex !== '' ) return $hex;
+		// Accept 8-digit hex with alpha (#RRGGBBAA) or 4-digit (#RGBA).
+		if ( preg_match( '/^#([0-9a-fA-F]{8}|[0-9a-fA-F]{4})$/', $color ) ) {
+			return $color;
+		}
+		// Accept rgba(R,G,B,A) with optional whitespace.
+		if ( preg_match( '/^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(0|0?\.\d+|1(?:\.0+)?)\s*\)$/', $color ) ) {
+			return $color;
+		}
+		return '';
+	}
+
 	private static function has_style_attrs( array $attributes ): bool {
 		$style_keys = [
 			'formAlign', 'formWidth', 'maxWidth',
@@ -486,12 +562,12 @@ class BlockHandler {
 			'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
 			'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
 			'bgColor', 'bgGradient', 'bgImage', 'bgImageSize', 'bgImagePosition', 'bgImageRepeat', 'bgImageBlend',
-			'borderColor', 'borderWidth', 'borderStyle', 'borderRadius',
+			'border', 'borderRadius',
 			'borderRadiusTL', 'borderRadiusTR', 'borderRadiusBR', 'borderRadiusBL',
 			'btnTextColor', 'btnBgColor', 'btnBgGradient',
 			'btnAlign', 'btnRadius',
 			'btnRadiusTL', 'btnRadiusTR', 'btnRadiusBR', 'btnRadiusBL',
-			'btnBorderColor', 'btnBorderWidth', 'btnBorderStyle',
+			'btnBorder',
 			'btnFontSize', 'btnFontFamily',
 			'btnFontWeight', 'btnFontStyle', 'btnLetterSpacing', 'btnTextDecoration', 'btnTextTransform', 'btnLineHeight',
 			'btnPaddingTop', 'btnPaddingRight', 'btnPaddingBottom', 'btnPaddingLeft',
@@ -500,7 +576,7 @@ class BlockHandler {
 			'shadowH', 'shadowV', 'shadowBlur', 'shadowSpread', 'shadowColor', 'shadowPosition',
 			'fieldBg', 'fieldBgGradient', 'fieldFocusBg', 'fieldFocusBgGradient',
 			'fieldHoverBg', 'fieldHoverBgGradient', 'fieldHoverBorderColor',
-			'fieldBorderColor', 'fieldBorderWidth', 'fieldBorderStyle', 'fieldBorderRadius',
+			'fieldBorder', 'fieldBorderRadius',
 			'fieldBorderRadiusTL', 'fieldBorderRadiusTR', 'fieldBorderRadiusBR', 'fieldBorderRadiusBL',
 			'fieldTextColor', 'fieldFocusTextColor', 'fieldPlaceholderColor',
 			'fieldFocusBorderColor',
@@ -531,13 +607,13 @@ class BlockHandler {
 			// Rating field
 			'ratingStarSize', 'ratingStarGap', 'ratingEmptyColor', 'ratingFilledColor', 'ratingHoverColor',
 			// File input field
-			'fileInputBg', 'fileInputBgGradient', 'fileInputBorderColor', 'fileInputBorderWidth', 'fileInputBorderStyle', 'fileInputBorderRadius',
+			'fileInputBg', 'fileInputBgGradient', 'fileInputBorder', 'fileInputBorderRadius',
 			'fileInputColor', 'fileInputFontSize',
 			'fileInputPaddingTop', 'fileInputPaddingRight', 'fileInputPaddingBottom', 'fileInputPaddingLeft',
 			// File browse button
 			'fileBtnBg', 'fileBtnBgGradient', 'fileBtnHoverBg', 'fileBtnHoverBgGradient', 'fileBtnColor', 'fileBtnFontSize', 'fileBtnFontWeight',
 			'fileBtnPaddingTop', 'fileBtnPaddingRight', 'fileBtnPaddingBottom', 'fileBtnPaddingLeft',
-			'fileBtnBorderColor', 'fileBtnBorderWidth', 'fileBtnBorderStyle', 'fileBtnBorderRadius',
+			'fileBtnBorder', 'fileBtnBorderRadius',
 			'titleAlign', 'titleColor', 'titleFontFamily',
 			'titleFontSize', 'titleFontWeight', 'titleFontStyle', 'titleLetterSpacing',
 			'titleTextDecoration', 'titleTextTransform', 'titleLineHeight',
@@ -552,7 +628,7 @@ class BlockHandler {
 			// Textarea field
 			'textareaBg', 'textareaBgGradient', 'textareaHoverBg', 'textareaHoverBgGradient', 'textareaFocusBg', 'textareaFocusBgGradient',
 			'textareaTextColor', 'textareaFocusTextColor', 'textareaPlaceholderColor',
-			'textareaBorderColor', 'textareaBorderWidth', 'textareaBorderStyle',
+			'textareaBorder',
 			'textareaHoverBorderColor', 'textareaFocusBorderColor',
 			'textareaBorderRadiusTL', 'textareaBorderRadiusTR', 'textareaBorderRadiusBR', 'textareaBorderRadiusBL',
 			'textareaFontSize', 'textareaFontWeight', 'textareaFontStyle', 'textareaFontFamily',
@@ -589,7 +665,7 @@ class BlockHandler {
 			// Multi-step: prev & next buttons (shared)
 			'navBtnBgColor', 'navBtnBgGradient', 'navBtnTextColor',
 			'navBtnHoverBg', 'navBtnHoverBgGradient', 'navBtnHoverColor', 'navBtnHoverBorderColor',
-			'navBtnBorderColor', 'navBtnBorderWidth', 'navBtnBorderStyle',
+			'navBtnBorder',
 			'navBtnRadiusTL', 'navBtnRadiusTR', 'navBtnRadiusBR', 'navBtnRadiusBL',
 			'navBtnFontSize', 'navBtnFontFamily',
 			'navBtnFontWeight', 'navBtnFontStyle', 'navBtnLetterSpacing', 'navBtnTextDecoration', 'navBtnTextTransform', 'navBtnLineHeight',
@@ -600,6 +676,12 @@ class BlockHandler {
 			// Button icons — nav (prev / next, MultiStep only)
 			'navBtnPrevIconEnabled', 'navBtnPrevIcon', 'navBtnPrevIconPosition', 'navBtnPrevIconShowOnHover',
 			'navBtnNextIconEnabled', 'navBtnNextIcon', 'navBtnNextIconPosition', 'navBtnNextIconShowOnHover',
+			// Multi-step: step visibility toggles
+			'showStepLabels', 'showStepDescriptions',
+			// Multi-step: step transition animation
+			'stepTransition', 'stepTransitionDirection', 'stepTransitionDuration', 'stepTransitionEasing',
+			'stepPaddingTop', 'stepPaddingRight', 'stepPaddingBottom', 'stepPaddingLeft',
+			'stepMarginTop', 'stepMarginRight', 'stepMarginBottom', 'stepMarginLeft',
 			// Multi-step: step indicator
 			'stepTitleColor', 'stepTitleFontSize', 'stepTitleFontWeight',
 			'stepDescColor', 'stepDescFontSize', 'stepDescFontWeight',
@@ -613,15 +695,15 @@ class BlockHandler {
 			'stepLabelColor', 'stepActiveLabelColor', 'stepCompleteLabelColor',
 			'stepLabelFontSize', 'stepLabelFontWeight',
 			// Repeater field
-			'repeaterContainerBg', 'repeaterContainerBgGradient', 'repeaterContainerBorderColor', 'repeaterContainerBorderWidth', 'repeaterContainerBorderStyle',
+			'repeaterContainerBg', 'repeaterContainerBgGradient', 'repeaterContainerBorder',
 			'repeaterContainerBorderRadius', 'repeaterContainerPaddingTop', 'repeaterContainerPaddingRight', 'repeaterContainerPaddingBottom', 'repeaterContainerPaddingLeft',
 			'repeaterListAddGap',
-			'repeaterRowBg', 'repeaterRowBgGradient', 'repeaterRowHoverBg', 'repeaterRowHoverBgGradient', 'repeaterRowBorderColor', 'repeaterRowBorderWidth', 'repeaterRowBorderStyle',
+			'repeaterRowBg', 'repeaterRowBgGradient', 'repeaterRowHoverBg', 'repeaterRowHoverBgGradient', 'repeaterRowBorder',
 			'repeaterRowBorderRadius', 'repeaterRowPaddingTop', 'repeaterRowPaddingRight', 'repeaterRowPaddingBottom', 'repeaterRowPaddingLeft',
 			'repeaterRowGap',
 			'repeaterAddBtnBg', 'repeaterAddBtnBgGradient', 'repeaterAddBtnHoverBg', 'repeaterAddBtnHoverBgGradient', 'repeaterAddBtnColor', 'repeaterAddBtnHoverColor',
 			'repeaterAddBtnFontSize', 'repeaterAddBtnFontWeight',
-			'repeaterAddBtnBorderColor', 'repeaterAddBtnBorderWidth', 'repeaterAddBtnBorderStyle', 'repeaterAddBtnBorderRadius',
+			'repeaterAddBtnBorder', 'repeaterAddBtnBorderRadius',
 			'repeaterAddBtnPaddingTop', 'repeaterAddBtnPaddingRight', 'repeaterAddBtnPaddingBottom', 'repeaterAddBtnPaddingLeft',
 			'repeaterRemoveBtnColor', 'repeaterRemoveBtnHoverColor', 'repeaterRemoveBtnSize',
 			'repeaterItemNumColor', 'repeaterItemNumFontSize',
@@ -630,7 +712,7 @@ class BlockHandler {
 			'matrixColHeaderBg', 'matrixColHeaderBgGradient', 'matrixColHeaderColor', 'matrixColHeaderFontSize', 'matrixColHeaderFontWeight',
 			'matrixColHeaderPaddingTop', 'matrixColHeaderPaddingRight', 'matrixColHeaderPaddingBottom', 'matrixColHeaderPaddingLeft',
 			'matrixRowHeaderBg', 'matrixRowHeaderBgGradient', 'matrixRowHeaderColor', 'matrixRowHeaderFontSize', 'matrixRowHeaderFontWeight',
-			'matrixCellBg', 'matrixCellBgGradient', 'matrixCellHoverBg', 'matrixCellHoverBgGradient', 'matrixCellCheckedBg', 'matrixCellCheckedBgGradient', 'matrixCellBorderColor', 'matrixCellBorderWidth',
+			'matrixCellBg', 'matrixCellBgGradient', 'matrixCellHoverBg', 'matrixCellHoverBgGradient', 'matrixCellCheckedBg', 'matrixCellCheckedBgGradient', 'matrixCellBorder',
 			'matrixCellPaddingTop', 'matrixCellPaddingRight', 'matrixCellPaddingBottom', 'matrixCellPaddingLeft',
 			'matrixAccentColor', 'matrixRowBg', 'matrixRowBgGradient', 'matrixAltRowBg', 'matrixAltRowBgGradient',
 		];
@@ -775,6 +857,8 @@ class BlockHandler {
 	 * @return string             Raw CSS string (safe to echo inside <style>).
 	 */
 	private static function build_scoped_css( string $uid, array $attributes ): string {
+		$css = '';
+
 		// Compound the two classes that BlockHandler::render() always
 		// puts on the same wrapper div (`neural-forms-block-wrap` +
 		// `neural-forms-block-<uid>`). The selector still targets a
@@ -847,7 +931,7 @@ class BlockHandler {
 		// clip the form-wrap background to the rounded shape).
 		$bg_color = (string) ( $attributes['bgColor'] ?? '' );
 		if ( $bg_color !== '' ) {
-			$hex = sanitize_hex_color( $bg_color );
+			$hex = self::sanitize_color( $bg_color );
 			if ( $hex !== null && $hex !== '' ) {
 				$form_wrap_pad_rules[] = 'background-color:' . $hex;
 			}
@@ -891,15 +975,7 @@ class BlockHandler {
 			$form_wrap_pad_rules[] = 'background-image:none';
 		}
 
-		$border_color = (string) ( $attributes['borderColor'] ?? '' );
-		$border_width = (string) ( $attributes['borderWidth'] ?? '' );
-		$border_style = (string) ( $attributes['borderStyle'] ?? '' );
-		if ( $border_color !== '' || $border_width !== '' || $border_style !== '' ) {
-			$bw = $border_width !== '' ? sanitize_text_field( $border_width ) : '1px';
-			$bc = $border_color !== '' ? sanitize_hex_color( $border_color ) : '#d1d5db';
-			$bs = in_array( $border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $border_style : 'solid';
-			$wrap_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		$css .= self::border_css( $wrap_sel, $attributes['border'] ?? [], '#d1d5db' );
 
 		// Per-corner radius wins over the unified radius when any corner is set.
 		$radius_tl = (string) ( $attributes['borderRadiusTL'] ?? '' );
@@ -956,7 +1032,7 @@ class BlockHandler {
 			$v = $shadow_v !== '' ? sanitize_text_field( $shadow_v ) : '0';
 			$b = $shadow_blur !== '' ? sanitize_text_field( $shadow_blur ) : '0';
 			$s = $shadow_spread !== '' ? sanitize_text_field( $shadow_spread ) : '0';
-			$c = $shadow_color !== '' ? sanitize_hex_color( $shadow_color ) : 'rgba(0,0,0,0.3)';
+			$c = $shadow_color !== '' ? self::sanitize_color( $shadow_color ) : 'rgba(0,0,0,0.3)';
 			$inset = $shadow_pos === 'inner' ? 'inset ' : '';
 			$wrap_rules[] = 'box-shadow:' . $inset . $h . ' ' . $v . ' ' . $b . ' ' . $s . ' ' . $c;
 		}
@@ -986,12 +1062,12 @@ class BlockHandler {
 		// ' CSS custom properties (cascade to all form children) '
 		$btn_text_color = (string) ( $attributes['btnTextColor'] ?? '' );
 		if ( $btn_text_color !== '' ) {
-			$var_rules[] = '--neural-forms-btn-color:' . sanitize_hex_color( $btn_text_color );
+			$var_rules[] = '--neural-forms-btn-color:' . self::sanitize_color( $btn_text_color );
 		}
 
 		$btn_bg_color = (string) ( $attributes['btnBgColor'] ?? '' );
 		if ( $btn_bg_color !== '' ) {
-			$var_rules[] = '--neural-forms-btn-bg:' . sanitize_hex_color( $btn_bg_color );
+			$var_rules[] = '--neural-forms-btn-bg:' . self::sanitize_color( $btn_bg_color );
 		}
 
 		$btn_radius = $len( (string) ( $attributes['btnRadius'] ?? '' ) );
@@ -1014,7 +1090,7 @@ class BlockHandler {
 		if ( $field_bg_gradient !== '' ) {
 			$var_rules[] = '--neural-forms-field-bg-image:' . sanitize_text_field( $field_bg_gradient );
 		} elseif ( $field_bg !== '' ) {
-			$var_rules[] = '--neural-forms-field-bg:' . sanitize_hex_color( $field_bg );
+			$var_rules[] = '--neural-forms-field-bg:' . self::sanitize_color( $field_bg );
 		}
 
 		$field_focus_bg          = (string) ( $attributes['fieldFocusBg']         ?? '' );
@@ -1022,22 +1098,19 @@ class BlockHandler {
 
 		$field_focus_text = (string) ( $attributes['fieldFocusTextColor'] ?? '' );
 		if ( $field_focus_text !== '' ) {
-			$var_rules[] = '--neural-forms-field-focus-text:' . sanitize_hex_color( $field_focus_text );
+			$var_rules[] = '--neural-forms-field-focus-text:' . self::sanitize_color( $field_focus_text );
 		}
 
-		$field_border_color = (string) ( $attributes['fieldBorderColor'] ?? '' );
-		if ( $field_border_color !== '' ) {
-			$var_rules[] = '--neural-forms-border:' . sanitize_hex_color( $field_border_color );
-		}
-
-		$field_border_width = (string) ( $attributes['fieldBorderWidth'] ?? '' );
-		if ( $field_border_width !== '' ) {
-			$var_rules[] = '--neural-forms-border-width:' . sanitize_text_field( $field_border_width );
-		}
-
-		$field_border_style = (string) ( $attributes['fieldBorderStyle'] ?? '' );
-		if ( $field_border_style !== '' && in_array( $field_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ) {
-			$var_rules[] = '--neural-forms-border-style:' . $field_border_style;
+		$field_border_obj = is_array( $attributes['fieldBorder'] ?? null ) ? $attributes['fieldBorder'] : [];
+		// For linked borders, also push into CSS variables so form.css var()-based rules pick them up.
+		if ( ! empty( $field_border_obj ) && ! isset( $field_border_obj['top'] ) ) {
+			$fb_color = self::sanitize_color( (string) ( $field_border_obj['color'] ?? '' ) );
+			$fb_width = sanitize_text_field( (string) ( $field_border_obj['width'] ?? '' ) );
+			$fb_style_raw = (string) ( $field_border_obj['style'] ?? 'solid' );
+			$fb_style = in_array( $fb_style_raw, [ 'solid', 'dashed', 'dotted' ], true ) ? $fb_style_raw : 'solid';
+			if ( $fb_color !== '' ) $var_rules[] = '--neural-forms-border:' . $fb_color;
+			if ( $fb_width !== '' ) $var_rules[] = '--neural-forms-border-width:' . $fb_width;
+			$var_rules[] = '--neural-forms-border-style:' . $fb_style;
 		}
 
 		$field_border_radius = (string) ( $attributes['fieldBorderRadius'] ?? '' );
@@ -1047,18 +1120,18 @@ class BlockHandler {
 
 		$field_text_color = (string) ( $attributes['fieldTextColor'] ?? '' );
 		if ( $field_text_color !== '' ) {
-			$var_rules[] = '--neural-forms-text:' . sanitize_hex_color( $field_text_color );
+			$var_rules[] = '--neural-forms-text:' . self::sanitize_color( $field_text_color );
 		}
 
 		// Stored for later emission in the assemble block (after $css is initialised).
 		// Direct ::placeholder rules keep input and textarea colours independent —
 		// the shared --neural-forms-placeholder variable would bleed the input
 		// colour into the textarea, so we target concrete pseudo-element selectors.
-		$field_placeholder_color = sanitize_hex_color( (string) ( $attributes['fieldPlaceholderColor'] ?? '' ) );
+		$field_placeholder_color = self::sanitize_color( (string) ( $attributes['fieldPlaceholderColor'] ?? '' ) );
 
 		$field_focus_border_color = (string) ( $attributes['fieldFocusBorderColor'] ?? '' );
 		if ( $field_focus_border_color !== '' ) {
-			$var_rules[] = '--neural-forms-border-focus:' . sanitize_hex_color( $field_focus_border_color );
+			$var_rules[] = '--neural-forms-border-focus:' . self::sanitize_color( $field_focus_border_color );
 		}
 
 		// Typography rules - applied directly to the field selectors so they
@@ -1137,21 +1210,13 @@ class BlockHandler {
 		// at lower specificity. The CSS variables remain set on the form
 		// element above so any theme-side variable consumer still works.
 		if ( $btn_text_color !== '' ) {
-			$btn_rules[] = 'color:' . sanitize_hex_color( $btn_text_color );
+			$btn_rules[] = 'color:' . self::sanitize_color( $btn_text_color );
 		}
 		if ( $btn_bg_color !== '' ) {
-			$btn_rules[] = 'background-color:' . sanitize_hex_color( $btn_bg_color );
+			$btn_rules[] = 'background-color:' . self::sanitize_color( $btn_bg_color );
 		}
 
-		$btn_border_color = (string) ( $attributes['btnBorderColor'] ?? '' );
-		$btn_border_width = (string) ( $attributes['btnBorderWidth'] ?? '' );
-		$btn_border_style = (string) ( $attributes['btnBorderStyle'] ?? '' );
-		if ( $btn_border_color !== '' || $btn_border_width !== '' || $btn_border_style !== '' ) {
-			$bw = $btn_border_width !== '' ? sanitize_text_field( $btn_border_width ) : '1px';
-			$bc = $btn_border_color !== '' ? sanitize_hex_color( $btn_border_color ) : 'transparent';
-			$bs = in_array( $btn_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $btn_border_style : 'solid';
-			$btn_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		$css .= self::border_css( $btn_sel, $attributes['btnBorder'] ?? [], 'transparent' );
 
 		// Per-corner radius wins over the unified btnRadius when any corner is set.
 		$btn_radius_tl = (string) ( $attributes['btnRadiusTL'] ?? '' );
@@ -1236,13 +1301,13 @@ class BlockHandler {
 		$btn_hover_color  = (string) ( $attributes['btnHoverColor']       ?? '' );
 		$btn_hover_border = (string) ( $attributes['btnHoverBorderColor'] ?? '' );
 		if ( $btn_hover_bg !== '' ) {
-			$btn_hover_rules[] = 'background-color:' . sanitize_hex_color( $btn_hover_bg );
+			$btn_hover_rules[] = 'background-color:' . self::sanitize_color( $btn_hover_bg );
 		}
 		if ( $btn_hover_color !== '' ) {
-			$btn_hover_rules[] = 'color:' . sanitize_hex_color( $btn_hover_color );
+			$btn_hover_rules[] = 'color:' . self::sanitize_color( $btn_hover_color );
 		}
 		if ( $btn_hover_border !== '' ) {
-			$btn_hover_rules[] = 'border-color:' . sanitize_hex_color( $btn_hover_border );
+			$btn_hover_rules[] = 'border-color:' . self::sanitize_color( $btn_hover_border );
 		}
 		// When a hover bg/color is set, override the default brightness filter
 		// so the user's chosen colours render exactly as picked.
@@ -1251,8 +1316,6 @@ class BlockHandler {
 		}
 
 		// ' Assemble '
-		$css = '';
-
 		if ( $wrap_rules ) {
 			$css .= $wrap_sel . '{' . implode( ';', $wrap_rules ) . '}';
 		}
@@ -1279,9 +1342,9 @@ class BlockHandler {
 			$css .= $btn_hover_sel . '{' . implode( ';', $btn_hover_rules ) . '}';
 		}
 
+		$field_sel = $wrap_sel . ' .neural-forms-form__input,'
+			. $wrap_sel . ' .neural-forms-form__select';
 		if ( $field_typo_rules ) {
-			$field_sel = $wrap_sel . ' .neural-forms-form__input,'
-				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_sel . '{' . implode( ';', $field_typo_rules ) . '}';
 		}
 
@@ -1303,22 +1366,12 @@ class BlockHandler {
 		if ( $field_bg_gradient !== '' ) {
 			$field_idle_rules[] = 'background-image:' . sanitize_text_field( $field_bg_gradient );
 		} elseif ( $field_bg !== '' ) {
-			$field_idle_rules[] = 'background-color:' . sanitize_hex_color( $field_bg );
+			$field_idle_rules[] = 'background-color:' . self::sanitize_color( $field_bg );
 		}
 		if ( $field_text_color !== '' ) {
-			$field_idle_rules[] = 'color:' . sanitize_hex_color( $field_text_color );
+			$field_idle_rules[] = 'color:' . self::sanitize_color( $field_text_color );
 		}
-		// Border: only emit the shorthand when at least one of color /
-		// width / style is set. Fill the others from the form.css default
-		// so partial selections (e.g. just color) still produce a valid
-		// declaration. Themes that override the full border shorthand
-		// would otherwise wipe out a partial-property fight.
-		if ( $field_border_color !== '' || $field_border_width !== '' || $field_border_style !== '' ) {
-			$bw = $field_border_width !== '' ? $len( $field_border_width ) : '1px';
-			$bc = $field_border_color !== '' ? sanitize_hex_color( $field_border_color ) : '#d1d5db';
-			$bs = in_array( $field_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $field_border_style : 'solid';
-			$field_idle_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		$css .= self::border_css( $field_sel, $field_border_obj, '#d1d5db' );
 		if ( $field_border_radius !== '' ) {
 			$field_idle_rules[] = 'border-radius:' . $len( $field_border_radius );
 		}
@@ -1342,13 +1395,13 @@ class BlockHandler {
 		if ( $field_focus_bg_gradient !== '' ) {
 			$field_focus_rules[] = 'background-image:' . sanitize_text_field( $field_focus_bg_gradient );
 		} elseif ( $field_focus_bg !== '' ) {
-			$field_focus_rules[] = 'background-color:' . sanitize_hex_color( $field_focus_bg );
+			$field_focus_rules[] = 'background-color:' . self::sanitize_color( $field_focus_bg );
 		}
 		if ( $field_focus_text !== '' ) {
-			$field_focus_rules[] = 'color:' . sanitize_hex_color( $field_focus_text );
+			$field_focus_rules[] = 'color:' . self::sanitize_color( $field_focus_text );
 		}
 		if ( $field_focus_border_color !== '' ) {
-			$field_focus_rules[] = 'border-color:' . sanitize_hex_color( $field_focus_border_color );
+			$field_focus_rules[] = 'border-color:' . self::sanitize_color( $field_focus_border_color );
 		}
 		if ( $field_focus_rules ) {
 			// Inputs + selects only — textarea has its own focus
@@ -1376,7 +1429,7 @@ class BlockHandler {
 		$title_rules = [];
 		$title_color = (string) ( $attributes['titleColor'] ?? '' );
 		if ( $title_color !== '' ) {
-			$title_rules[] = 'color:' . sanitize_hex_color( $title_color );
+			$title_rules[] = 'color:' . self::sanitize_color( $title_color );
 		}
 		$title_align = (string) ( $attributes['titleAlign'] ?? '' );
 		if ( $title_align !== '' && in_array( $title_align, [ 'left', 'center', 'right', 'justify' ], true ) ) {
@@ -1441,7 +1494,7 @@ class BlockHandler {
 		$label_rules = [];
 		$label_color = (string) ( $attributes['labelColor'] ?? '' );
 		if ( $label_color !== '' ) {
-			$label_rules[] = 'color:' . sanitize_hex_color( $label_color );
+			$label_rules[] = 'color:' . self::sanitize_color( $label_color );
 		}
 		$label_align = (string) ( $attributes['labelAlign'] ?? '' );
 		if ( $label_align !== '' && in_array( $label_align, [ 'left', 'center', 'right', 'justify' ], true ) ) {
@@ -1530,11 +1583,11 @@ class BlockHandler {
 		if ( $field_hover_bg_gradient !== '' ) {
 			$field_hover_rules[] = 'background-image:' . sanitize_text_field( $field_hover_bg_gradient );
 		} elseif ( $field_hover_bg !== '' ) {
-			$field_hover_rules[] = 'background-color:' . sanitize_hex_color( $field_hover_bg );
+			$field_hover_rules[] = 'background-color:' . self::sanitize_color( $field_hover_bg );
 		}
 		$field_hover_border = (string) ( $attributes['fieldHoverBorderColor'] ?? '' );
 		if ( $field_hover_border !== '' ) {
-			$field_hover_rules[] = 'border-color:' . sanitize_hex_color( $field_hover_border );
+			$field_hover_rules[] = 'border-color:' . self::sanitize_color( $field_hover_border );
 		}
 		if ( $field_hover_rules ) {
 			$field_hover_sel = $wrap_sel . ' .neural-forms-form__input:hover:not(:focus),'
@@ -1550,19 +1603,11 @@ class BlockHandler {
 		if ( $ta_bg_gradient !== '' ) {
 			$ta_rules[] = 'background-image:' . sanitize_text_field( $ta_bg_gradient );
 		} elseif ( $ta_bg !== '' ) {
-			$ta_rules[] = 'background-color:' . sanitize_hex_color( $ta_bg );
+			$ta_rules[] = 'background-color:' . self::sanitize_color( $ta_bg );
 		}
 		$ta_text = (string) ( $attributes['textareaTextColor'] ?? '' );
-		if ( $ta_text !== '' ) $ta_rules[] = 'color:' . sanitize_hex_color( $ta_text );
-		$ta_bc = (string) ( $attributes['textareaBorderColor'] ?? '' );
-		$ta_bw = (string) ( $attributes['textareaBorderWidth'] ?? '' );
-		$ta_bs = (string) ( $attributes['textareaBorderStyle'] ?? '' );
-		if ( $ta_bc !== '' || $ta_bw !== '' || $ta_bs !== '' ) {
-			$bw = $ta_bw !== '' ? sanitize_text_field( $ta_bw ) : '1px';
-			$bc = $ta_bc !== '' ? sanitize_hex_color( $ta_bc ) : 'transparent';
-			$bs = in_array( $ta_bs, [ 'solid', 'dashed', 'dotted' ], true ) ? $ta_bs : 'solid';
-			$ta_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		if ( $ta_text !== '' ) $ta_rules[] = 'color:' . self::sanitize_color( $ta_text );
+		$css .= self::border_css( $ta_sel, $attributes['textareaBorder'] ?? [], 'transparent' );
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $k => $prop ) {
 			$v = $len( (string) ( $attributes[ 'textareaBorderRadius' . $k ] ?? '' ) );
 			if ( $v !== '' ) $ta_rules[] = $prop . ':' . $v;
@@ -1601,12 +1646,12 @@ class BlockHandler {
 		if ( $ta_focus_bg_gradient !== '' ) {
 			$ta_focus_rules[] = 'background-image:' . sanitize_text_field( $ta_focus_bg_gradient );
 		} elseif ( $ta_focus_bg !== '' ) {
-			$ta_focus_rules[] = 'background-color:' . sanitize_hex_color( $ta_focus_bg );
+			$ta_focus_rules[] = 'background-color:' . self::sanitize_color( $ta_focus_bg );
 		}
 		$ta_focus_text = (string) ( $attributes['textareaFocusTextColor'] ?? '' );
-		if ( $ta_focus_text !== '' ) $ta_focus_rules[] = 'color:' . sanitize_hex_color( $ta_focus_text );
+		if ( $ta_focus_text !== '' ) $ta_focus_rules[] = 'color:' . self::sanitize_color( $ta_focus_text );
 		$ta_focus_border = (string) ( $attributes['textareaFocusBorderColor'] ?? '' );
-		if ( $ta_focus_border !== '' ) $ta_focus_rules[] = 'border-color:' . sanitize_hex_color( $ta_focus_border );
+		if ( $ta_focus_border !== '' ) $ta_focus_rules[] = 'border-color:' . self::sanitize_color( $ta_focus_border );
 		if ( $ta_focus_rules ) $css .= $ta_sel . ':focus{' . implode( ';', $ta_focus_rules ) . '}';
 
 		$ta_hover_rules          = [];
@@ -1615,13 +1660,13 @@ class BlockHandler {
 		if ( $ta_hover_bg_gradient !== '' ) {
 			$ta_hover_rules[] = 'background-image:' . sanitize_text_field( $ta_hover_bg_gradient );
 		} elseif ( $ta_hover_bg !== '' ) {
-			$ta_hover_rules[] = 'background-color:' . sanitize_hex_color( $ta_hover_bg );
+			$ta_hover_rules[] = 'background-color:' . self::sanitize_color( $ta_hover_bg );
 		}
 		$ta_hover_border = (string) ( $attributes['textareaHoverBorderColor'] ?? '' );
-		if ( $ta_hover_border !== '' ) $ta_hover_rules[] = 'border-color:' . sanitize_hex_color( $ta_hover_border );
+		if ( $ta_hover_border !== '' ) $ta_hover_rules[] = 'border-color:' . self::sanitize_color( $ta_hover_border );
 		if ( $ta_hover_rules ) $css .= $ta_sel . ':hover:not(:focus){' . implode( ';', $ta_hover_rules ) . '}';
 
-		$ta_placeholder_color = sanitize_hex_color( (string) ( $attributes['textareaPlaceholderColor'] ?? '' ) );
+		$ta_placeholder_color = self::sanitize_color( (string) ( $attributes['textareaPlaceholderColor'] ?? '' ) );
 		if ( $ta_placeholder_color !== null && $ta_placeholder_color !== '' ) {
 			$css .= $ta_sel . '::placeholder{color:' . $ta_placeholder_color . '}';
 		}
@@ -1631,8 +1676,8 @@ class BlockHandler {
 		$acc_label_sel = $wrap_sel . ' .neural-forms-form__field--acceptance .neural-forms-form__label--checkbox';
 		$acc_wrap_sel  = $wrap_sel . ' .neural-forms-form__field--acceptance .neural-forms-form__checkbox-wrapper';
 		$acc_cb_rules      = [];
-		$acc_checked_bg    = sanitize_hex_color( (string) ( $attributes['acceptanceCheckedBg'] ?? '' ) );
-		$acc_border_color  = sanitize_hex_color( (string) ( $attributes['acceptanceBorderColor'] ?? '' ) );
+		$acc_checked_bg    = self::sanitize_color( (string) ( $attributes['acceptanceCheckedBg'] ?? '' ) );
+		$acc_border_color  = self::sanitize_color( (string) ( $attributes['acceptanceBorderColor'] ?? '' ) );
 		$acc_border_width  = $len( (string) ( $attributes['acceptanceBorderWidth'] ?? '' ) );
 		$acc_radius        = $len( (string) ( $attributes['acceptanceBorderRadius'] ?? '' ) );
 		$acc_size_raw      = $len( (string) ( $attributes['acceptanceSize'] ?? '' ) );
@@ -1664,7 +1709,7 @@ class BlockHandler {
 
 		$acc_label_rules = [];
 		$acc_label_color = (string) ( $attributes['acceptanceLabelColor'] ?? '' );
-		if ( $acc_label_color !== '' ) $acc_label_rules[] = 'color:' . sanitize_hex_color( $acc_label_color );
+		if ( $acc_label_color !== '' ) $acc_label_rules[] = 'color:' . self::sanitize_color( $acc_label_color );
 		$acc_label_fs_raw = (string) ( $attributes['acceptanceLabelFontSize'] ?? '' );
 		$label_slug_map = [ 'small' => '12px', 'medium' => '14px', 'large' => '16px', 'x-large' => '20px' ];
 		if ( isset( $label_slug_map[ $acc_label_fs_raw ] ) ) $acc_label_fs_raw = $label_slug_map[ $acc_label_fs_raw ];
@@ -1681,7 +1726,7 @@ class BlockHandler {
 		$field_err_msg_rules = [];
 		$field_err_msg_color = (string) ( $attributes['fieldErrorMsgColor'] ?? '' );
 		if ( $field_err_msg_color !== '' ) {
-			$hex = sanitize_hex_color( $field_err_msg_color );
+			$hex = self::sanitize_color( $field_err_msg_color );
 			if ( $hex !== null && $hex !== '' ) {
 				$field_err_msg_rules[] = 'color:' . $hex;
 			}
@@ -1704,11 +1749,11 @@ class BlockHandler {
 			if ( $success_bg_gradient !== '' ) {
 				$success_rules[] = 'background-image:' . sanitize_text_field( $success_bg_gradient );
 			} elseif ( $success_bg !== '' ) {
-				$success_rules[] = 'background-color:' . sanitize_hex_color( $success_bg );
+				$success_rules[] = 'background-color:' . self::sanitize_color( $success_bg );
 			}
 			$success_color = (string) ( $attributes['successMsgColor'] ?? '' );
 			if ( $success_color !== '' ) {
-				$success_rules[] = 'color:' . sanitize_hex_color( $success_color );
+				$success_rules[] = 'color:' . self::sanitize_color( $success_color );
 			}
 
 			foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
@@ -1732,14 +1777,14 @@ class BlockHandler {
 			if ( $err_bg_gradient !== '' ) {
 				$err_rules[] = 'background-image:' . sanitize_text_field( $err_bg_gradient );
 			} elseif ( $err_bg !== '' ) {
-				$hex = sanitize_hex_color( $err_bg );
+				$hex = self::sanitize_color( $err_bg );
 				if ( $hex !== null && $hex !== '' ) {
 					$err_rules[] = 'background-color:' . $hex;
 				}
 			}
 			$err_color = (string) ( $attributes['errorMsgColor'] ?? '' );
 			if ( $err_color !== '' ) {
-				$hex = sanitize_hex_color( $err_color );
+				$hex = self::sanitize_color( $err_color );
 				if ( $hex !== null && $hex !== '' ) {
 					$err_rules[] = 'color:' . $hex;
 				}
@@ -1788,14 +1833,14 @@ class BlockHandler {
 		$radio_opt_rules = [];
 		$radio_opt_bg = (string) ( $attributes['radioOptionBg'] ?? '' );
 		if ( $radio_opt_bg !== '' ) {
-			$radio_opt_rules[] = 'background-color:' . sanitize_hex_color( $radio_opt_bg );
+			$radio_opt_rules[] = 'background-color:' . self::sanitize_color( $radio_opt_bg );
 		}
 		$radio_opt_border_color = (string) ( $attributes['radioOptionBorderColor'] ?? '' );
 		$radio_opt_border_width = (string) ( $attributes['radioOptionBorderWidth'] ?? '' );
 		$radio_opt_border_style = (string) ( $attributes['radioOptionBorderStyle'] ?? '' );
 		if ( $radio_opt_border_color !== '' || $radio_opt_border_width !== '' || $radio_opt_border_style !== '' ) {
 			$bw = $radio_opt_border_width !== '' ? sanitize_text_field( $radio_opt_border_width ) : '1px';
-			$bc = $radio_opt_border_color !== '' ? ( sanitize_hex_color( $radio_opt_border_color ) ?? 'transparent' ) : 'transparent';
+			$bc = $radio_opt_border_color !== '' ? ( self::sanitize_color( $radio_opt_border_color ) ?? 'transparent' ) : 'transparent';
 			$bs = in_array( $radio_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $radio_opt_border_style : 'solid';
 			$radio_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
@@ -1815,17 +1860,17 @@ class BlockHandler {
 
 		$radio_hover_bg = (string) ( $attributes['radioOptionHoverBg'] ?? '' );
 		if ( $radio_hover_bg !== '' ) {
-			$css .= $radio_opt_hover_sel . '{background-color:' . sanitize_hex_color( $radio_hover_bg ) . '}';
+			$css .= $radio_opt_hover_sel . '{background-color:' . self::sanitize_color( $radio_hover_bg ) . '}';
 		}
 
 		$radio_checked_bg = (string) ( $attributes['radioOptionCheckedBg'] ?? '' );
 		if ( $radio_checked_bg !== '' ) {
-			$css .= $radio_opt_chk_sel . '{background-color:' . sanitize_hex_color( $radio_checked_bg ) . '}';
+			$css .= $radio_opt_chk_sel . '{background-color:' . self::sanitize_color( $radio_checked_bg ) . '}';
 		}
 
 		$radio_accent = (string) ( $attributes['radioAccentColor'] ?? '' );
 		if ( $radio_accent !== '' ) {
-			$hex = sanitize_hex_color( $radio_accent );
+			$hex = self::sanitize_color( $radio_accent );
 			if ( $hex !== null && $hex !== '' ) {
 				$css .= $radio_input_sel . ':checked{background-image:radial-gradient(circle,' . $hex . ' 40%,transparent 40%);border-color:' . $hex . '}';
 			}
@@ -1834,7 +1879,7 @@ class BlockHandler {
 		$radio_label_rules = [];
 		$radio_label_color = (string) ( $attributes['radioOptionColor'] ?? '' );
 		if ( $radio_label_color !== '' ) {
-			$hex = sanitize_hex_color( $radio_label_color );
+			$hex = self::sanitize_color( $radio_label_color );
 			if ( $hex !== null && $hex !== '' ) {
 				$radio_label_rules[] = 'color:' . $hex;
 			}
@@ -1894,13 +1939,13 @@ class BlockHandler {
 			if ( $cbg_bg_gradient !== '' ) {
 				$cbg_cb_rules[] = 'background-image:' . sanitize_text_field( $cbg_bg_gradient );
 			} else {
-				$cbg_bg_hex = $cbg_bg !== '' ? ( sanitize_hex_color( $cbg_bg ) ?? '#ffffff' ) : '#ffffff';
+				$cbg_bg_hex = $cbg_bg !== '' ? ( self::sanitize_color( $cbg_bg ) ?? '#ffffff' ) : '#ffffff';
 				$cbg_cb_rules[] = 'background-color:' . $cbg_bg_hex;
 			}
 		}
 		if ( $cbg_bc !== '' || $cbg_bw !== '' ) {
 			$bw = $cbg_bw !== '' ? sanitize_text_field( $cbg_bw ) : '1px';
-			$bc = $cbg_bc !== '' ? ( sanitize_hex_color( $cbg_bc ) ?? '#cccccc' ) : '#cccccc';
+			$bc = $cbg_bc !== '' ? ( self::sanitize_color( $cbg_bc ) ?? '#cccccc' ) : '#cccccc';
 			$cbg_cb_rules[] = 'border:' . $bw . ' solid ' . $bc;
 		}
 		if ( $cbg_br !== '' ) {
@@ -1912,13 +1957,13 @@ class BlockHandler {
 
 		if ( $has_cbg_custom ) {
 			// Checked state: accent bg + white SVG tick
-			$fill_hex   = $cbg_chk !== '' ? ( sanitize_hex_color( $cbg_chk ) ?? '#2271b1' ) : '#2271b1';
+			$fill_hex   = $cbg_chk !== '' ? ( self::sanitize_color( $cbg_chk ) ?? '#2271b1' ) : '#2271b1';
 			$chk_svg    = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2' d='M3 8l3.5 3.5L13 4'/%3E%3C/svg%3E\")";
 			$css .= $cbg_cb_chk_sel . '{background-color:' . $fill_hex . ';background-image:' . $chk_svg . ';background-size:70%;background-repeat:no-repeat;background-position:center;border-color:' . $fill_hex . '}';
 			$css .= $cbg_cb_fcs_sel . '{outline:none}';
 		} elseif ( $cbg_chk !== '' ) {
 			// Only checked bg set — keep native appearance and use accent-color
-			$hex = sanitize_hex_color( $cbg_chk );
+			$hex = self::sanitize_color( $cbg_chk );
 			if ( $hex !== null && $hex !== '' ) {
 				$css .= $cbg_cb_sel . '{accent-color:' . $hex . '}';
 			}
@@ -1937,7 +1982,7 @@ class BlockHandler {
 		$cbg_label_rules = [];
 		$cbg_lc = (string) ( $attributes['cbGroupLabelColor'] ?? '' );
 		if ( $cbg_lc !== '' ) {
-			$hex = sanitize_hex_color( $cbg_lc );
+			$hex = self::sanitize_color( $cbg_lc );
 			if ( $hex !== null && $hex !== '' ) {
 				$cbg_label_rules[] = 'color:' . $hex;
 			}
@@ -1972,7 +2017,7 @@ class BlockHandler {
 
 		$rating_empty = (string) ( $attributes['ratingEmptyColor'] ?? '' );
 		if ( $rating_empty !== '' ) {
-			$hex = sanitize_hex_color( $rating_empty );
+			$hex = self::sanitize_color( $rating_empty );
 			if ( $hex !== null && $hex !== '' ) {
 				// Default state: every glyph (all are visually "empty" until starred)
 				$css .= $rating_glyph_sel . '{color:' . $hex . '}';
@@ -1981,7 +2026,7 @@ class BlockHandler {
 
 		$rating_filled = (string) ( $attributes['ratingFilledColor'] ?? '' );
 		if ( $rating_filled !== '' ) {
-			$hex = sanitize_hex_color( $rating_filled );
+			$hex = self::sanitize_color( $rating_filled );
 			if ( $hex !== null && $hex !== '' ) {
 				// Filled: checked input's glyph + all preceding siblings (row-reverse trick)
 				$css .= $wrap_sel . ' .neural-forms-form__rating-input:checked ~ .neural-forms-form__rating-glyph,'
@@ -1993,7 +2038,7 @@ class BlockHandler {
 
 		$rating_hover = (string) ( $attributes['ratingHoverColor'] ?? '' );
 		if ( $rating_hover !== '' ) {
-			$hex = sanitize_hex_color( $rating_hover );
+			$hex = self::sanitize_color( $rating_hover );
 			if ( $hex !== null && $hex !== '' ) {
 				$css .= $rating_star_sel . ':hover,'
 					. $rating_star_sel . ':hover ~ ' . $rating_star_sel . ','
@@ -2013,7 +2058,7 @@ class BlockHandler {
 		if ( $fi_bg_gradient !== '' ) {
 			$fi_rules[] = 'background-image:' . sanitize_text_field( $fi_bg_gradient );
 		} elseif ( $fi_bg !== '' ) {
-			$hex = sanitize_hex_color( $fi_bg );
+			$hex = self::sanitize_color( $fi_bg );
 			if ( $hex !== null && $hex !== '' ) {
 				$fi_rules[] = 'background-color:' . $hex;
 			}
@@ -2021,7 +2066,7 @@ class BlockHandler {
 
 		$fi_color = (string) ( $attributes['fileInputColor'] ?? '' );
 		if ( $fi_color !== '' ) {
-			$hex = sanitize_hex_color( $fi_color );
+			$hex = self::sanitize_color( $fi_color );
 			if ( $hex !== null && $hex !== '' ) {
 				$fi_rules[] = 'color:' . $hex;
 			}
@@ -2032,15 +2077,7 @@ class BlockHandler {
 			$fi_rules[] = 'font-size:' . $len( $fi_fs );
 		}
 
-		$fi_bc = (string) ( $attributes['fileInputBorderColor'] ?? '' );
-		$fi_bw = (string) ( $attributes['fileInputBorderWidth'] ?? '' );
-		$fi_bs = (string) ( $attributes['fileInputBorderStyle'] ?? '' );
-		if ( $fi_bc !== '' || $fi_bw !== '' || $fi_bs !== '' ) {
-			$bw = $fi_bw !== '' ? sanitize_text_field( $fi_bw ) : '1px';
-			$bc = $fi_bc !== '' ? ( sanitize_hex_color( $fi_bc ) ?? 'transparent' ) : 'transparent';
-			$bs = in_array( $fi_bs, [ 'solid', 'dashed', 'dotted' ], true ) ? $fi_bs : 'solid';
-			$fi_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		$css .= self::border_css( $fi_sel, $attributes['fileInputBorder'] ?? [], 'transparent' );
 
 		$fi_br = (string) ( $attributes['fileInputBorderRadius'] ?? '' );
 		if ( $fi_br !== '' ) {
@@ -2069,7 +2106,7 @@ class BlockHandler {
 		if ( $fbtn_bg_gradient !== '' ) {
 			$fbtn_rules[] = 'background-image:' . sanitize_text_field( $fbtn_bg_gradient );
 		} elseif ( $fbtn_bg !== '' ) {
-			$hex = sanitize_hex_color( $fbtn_bg );
+			$hex = self::sanitize_color( $fbtn_bg );
 			if ( $hex !== null && $hex !== '' ) {
 				$fbtn_rules[] = 'background-color:' . $hex;
 			}
@@ -2077,7 +2114,7 @@ class BlockHandler {
 
 		$fbtn_color = (string) ( $attributes['fileBtnColor'] ?? '' );
 		if ( $fbtn_color !== '' ) {
-			$hex = sanitize_hex_color( $fbtn_color );
+			$hex = self::sanitize_color( $fbtn_color );
 			if ( $hex !== null && $hex !== '' ) {
 				$fbtn_rules[] = 'color:' . $hex;
 			}
@@ -2093,15 +2130,7 @@ class BlockHandler {
 			$fbtn_rules[] = 'font-weight:' . sanitize_text_field( $fbtn_fw );
 		}
 
-		$fbtn_bc = (string) ( $attributes['fileBtnBorderColor'] ?? '' );
-		$fbtn_bw = (string) ( $attributes['fileBtnBorderWidth'] ?? '' );
-		$fbtn_bs = (string) ( $attributes['fileBtnBorderStyle'] ?? '' );
-		if ( $fbtn_bc !== '' || $fbtn_bw !== '' || $fbtn_bs !== '' ) {
-			$bw = $fbtn_bw !== '' ? sanitize_text_field( $fbtn_bw ) : '1px';
-			$bc = $fbtn_bc !== '' ? ( sanitize_hex_color( $fbtn_bc ) ?? 'transparent' ) : 'transparent';
-			$bs = in_array( $fbtn_bs, [ 'solid', 'dashed', 'dotted' ], true ) ? $fbtn_bs : 'solid';
-			$fbtn_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		$css .= self::border_css( $fbtn_sel, $attributes['fileBtnBorder'] ?? [], 'transparent' );
 
 		$fbtn_br = (string) ( $attributes['fileBtnBorderRadius'] ?? '' );
 		if ( $fbtn_br !== '' ) {
@@ -2124,7 +2153,7 @@ class BlockHandler {
 		if ( $fbtn_hover_bg_gradient !== '' ) {
 			$css .= $fbtn_hover_sel . '{background-image:' . sanitize_text_field( $fbtn_hover_bg_gradient ) . '}';
 		} elseif ( $fbtn_hover_bg !== '' ) {
-			$hex = sanitize_hex_color( $fbtn_hover_bg );
+			$hex = self::sanitize_color( $fbtn_hover_bg );
 			if ( $hex !== null && $hex !== '' ) {
 				$css .= $fbtn_hover_sel . '{background-color:' . $hex . '}';
 			}
@@ -2158,14 +2187,14 @@ class BlockHandler {
 		if ( $poll_opt_bg_gradient !== '' ) {
 			$poll_opt_rules[] = 'background-image:' . sanitize_text_field( $poll_opt_bg_gradient );
 		} elseif ( $poll_opt_bg !== '' ) {
-			$poll_opt_rules[] = 'background-color:' . sanitize_hex_color( $poll_opt_bg );
+			$poll_opt_rules[] = 'background-color:' . self::sanitize_color( $poll_opt_bg );
 		}
 		$poll_opt_border_color = (string) ( $attributes['pollOptionBorderColor'] ?? '' );
 		$poll_opt_border_width = (string) ( $attributes['pollOptionBorderWidth'] ?? '' );
 		$poll_opt_border_style = (string) ( $attributes['pollOptionBorderStyle'] ?? '' );
 		if ( $poll_opt_border_color !== '' || $poll_opt_border_width !== '' || $poll_opt_border_style !== '' ) {
 			$bw = $poll_opt_border_width !== '' ? sanitize_text_field( $poll_opt_border_width ) : '1px';
-			$bc = $poll_opt_border_color !== '' ? sanitize_hex_color( $poll_opt_border_color ) : 'transparent';
+			$bc = $poll_opt_border_color !== '' ? self::sanitize_color( $poll_opt_border_color ) : 'transparent';
 			$bs = in_array( $poll_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $poll_opt_border_style : 'solid';
 			$poll_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
@@ -2189,7 +2218,7 @@ class BlockHandler {
 		if ( $poll_opt_hover_bg_gradient !== '' ) {
 			$css .= $poll_opt_hover_sel . '{background-image:' . sanitize_text_field( $poll_opt_hover_bg_gradient ) . '}';
 		} elseif ( $poll_opt_hover_bg !== '' ) {
-			$css .= $poll_opt_hover_sel . '{background-color:' . sanitize_hex_color( $poll_opt_hover_bg ) . '}';
+			$css .= $poll_opt_hover_sel . '{background-color:' . self::sanitize_color( $poll_opt_hover_bg ) . '}';
 		}
 
 		// Selected (checked) option bg.
@@ -2198,20 +2227,20 @@ class BlockHandler {
 		if ( $poll_opt_checked_bg_gradient !== '' ) {
 			$css .= $poll_opt_check_sel . '{background-image:' . sanitize_text_field( $poll_opt_checked_bg_gradient ) . '}';
 		} elseif ( $poll_opt_checked_bg !== '' ) {
-			$css .= $poll_opt_check_sel . '{background-color:' . sanitize_hex_color( $poll_opt_checked_bg ) . '}';
+			$css .= $poll_opt_check_sel . '{background-color:' . self::sanitize_color( $poll_opt_checked_bg ) . '}';
 		}
 
 		// Radio accent color.
 		$poll_accent = (string) ( $attributes['pollAccentColor'] ?? '' );
 		if ( $poll_accent !== '' ) {
-			$css .= $poll_input_sel . '{accent-color:' . sanitize_hex_color( $poll_accent ) . '}';
+			$css .= $poll_input_sel . '{accent-color:' . self::sanitize_color( $poll_accent ) . '}';
 		}
 
 		// Option label color + typography.
 		$poll_label_rules = [];
 		$poll_opt_color = (string) ( $attributes['pollOptionColor'] ?? '' );
 		if ( $poll_opt_color !== '' ) {
-			$poll_label_rules[] = 'color:' . sanitize_hex_color( $poll_opt_color );
+			$poll_label_rules[] = 'color:' . self::sanitize_color( $poll_opt_color );
 		}
 		$poll_opt_fs_raw = (string) ( $attributes['pollOptionFontSize'] ?? '' );
 		$poll_slug_to_px = [ 'small' => '13px', 'medium' => '15px', 'large' => '18px', 'x-large' => '22px' ];
@@ -2243,8 +2272,8 @@ class BlockHandler {
 		$poll_bar_c1 = (string) ( $attributes['pollBarColor']  ?? '' );
 		$poll_bar_c2 = (string) ( $attributes['pollBarColor2'] ?? '' );
 		if ( $poll_bar_c1 !== '' ) {
-			$c1 = sanitize_hex_color( $poll_bar_c1 );
-			$c2 = $poll_bar_c2 !== '' ? sanitize_hex_color( $poll_bar_c2 ) : $c1;
+			$c1 = self::sanitize_color( $poll_bar_c1 );
+			$c2 = $poll_bar_c2 !== '' ? self::sanitize_color( $poll_bar_c2 ) : $c1;
 			$fill_bg = ( $c2 && $c2 !== $c1 )
 				? 'linear-gradient(90deg,' . $c1 . ' 0%,' . $c2 . ' 100%)'
 				: $c1;
@@ -2254,7 +2283,7 @@ class BlockHandler {
 		// Bar track color.
 		$poll_bar_track = (string) ( $attributes['pollBarTrackColor'] ?? '' );
 		if ( $poll_bar_track !== '' ) {
-			$css .= $poll_bar_track_sel . '{background-color:' . sanitize_hex_color( $poll_bar_track ) . '}';
+			$css .= $poll_bar_track_sel . '{background-color:' . self::sanitize_color( $poll_bar_track ) . '}';
 		}
 
 		// Bar height + border-radius (applied to both track and fill).
@@ -2295,18 +2324,18 @@ class BlockHandler {
 
 		$poll_res_label_color = (string) ( $attributes['pollResultsLabelColor'] ?? '' );
 		if ( $poll_res_label_color !== '' ) {
-			$css .= $poll_bar_label_sel . '{color:' . sanitize_hex_color( $poll_res_label_color ) . '}';
+			$css .= $poll_bar_label_sel . '{color:' . self::sanitize_color( $poll_res_label_color ) . '}';
 		}
 		$poll_res_count_color = (string) ( $attributes['pollResultsCountColor'] ?? '' );
 		if ( $poll_res_count_color !== '' ) {
-			$css .= $poll_bar_count_sel . '{color:' . sanitize_hex_color( $poll_res_count_color ) . ';opacity:1}';
+			$css .= $poll_bar_count_sel . '{color:' . self::sanitize_color( $poll_res_count_color ) . ';opacity:1}';
 		}
 
 		// Total votes text.
 		$poll_total_rules = [];
 		$poll_total_color = (string) ( $attributes['pollTotalColor'] ?? '' );
 		if ( $poll_total_color !== '' ) {
-			$poll_total_rules[] = 'color:' . sanitize_hex_color( $poll_total_color );
+			$poll_total_rules[] = 'color:' . self::sanitize_color( $poll_total_color );
 		}
 		$poll_total_fs_raw = (string) ( $attributes['pollTotalFontSize'] ?? '' );
 		if ( isset( $poll_slug_to_px[ $poll_total_fs_raw ] ) ) {
@@ -2349,11 +2378,11 @@ class BlockHandler {
 		if ( $quiz_opt_bg_gradient !== '' ) {
 			$quiz_opt_rules[] = 'background-image:' . sanitize_text_field( $quiz_opt_bg_gradient );
 		} elseif ( $quiz_opt_bg !== '' ) {
-			$quiz_opt_rules[] = 'background-color:' . sanitize_hex_color( $quiz_opt_bg );
+			$quiz_opt_rules[] = 'background-color:' . self::sanitize_color( $quiz_opt_bg );
 		}
 		if ( $quiz_opt_border_color !== '' || $quiz_opt_border_width !== '' || $quiz_opt_border_style !== '' ) {
 			$bw = $quiz_opt_border_width !== '' ? sanitize_text_field( $quiz_opt_border_width ) : '1px';
-			$bc = $quiz_opt_border_color !== '' ? sanitize_hex_color( $quiz_opt_border_color ) : 'transparent';
+			$bc = $quiz_opt_border_color !== '' ? self::sanitize_color( $quiz_opt_border_color ) : 'transparent';
 			$bs = in_array( $quiz_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $quiz_opt_border_style : 'solid';
 			$quiz_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
@@ -2376,7 +2405,7 @@ class BlockHandler {
 		if ( $quiz_opt_hover_bg_gradient !== '' ) {
 			$css .= $quiz_opt_hover_sel . '{background-image:' . sanitize_text_field( $quiz_opt_hover_bg_gradient ) . '}';
 		} elseif ( $quiz_opt_hover_bg !== '' ) {
-			$css .= $quiz_opt_hover_sel . '{background-color:' . sanitize_hex_color( $quiz_opt_hover_bg ) . '}';
+			$css .= $quiz_opt_hover_sel . '{background-color:' . self::sanitize_color( $quiz_opt_hover_bg ) . '}';
 		}
 
 		$quiz_opt_checked_bg          = (string) ( $attributes['quizOptionCheckedBg']         ?? '' );
@@ -2384,18 +2413,18 @@ class BlockHandler {
 		if ( $quiz_opt_checked_bg_gradient !== '' ) {
 			$css .= $quiz_opt_check_sel . '{background-image:' . sanitize_text_field( $quiz_opt_checked_bg_gradient ) . '}';
 		} elseif ( $quiz_opt_checked_bg !== '' ) {
-			$css .= $quiz_opt_check_sel . '{background-color:' . sanitize_hex_color( $quiz_opt_checked_bg ) . '}';
+			$css .= $quiz_opt_check_sel . '{background-color:' . self::sanitize_color( $quiz_opt_checked_bg ) . '}';
 		}
 
 		$quiz_accent = (string) ( $attributes['quizAccentColor'] ?? '' );
 		if ( $quiz_accent !== '' ) {
-			$css .= $quiz_input_sel . '{accent-color:' . sanitize_hex_color( $quiz_accent ) . '}';
+			$css .= $quiz_input_sel . '{accent-color:' . self::sanitize_color( $quiz_accent ) . '}';
 		}
 
 		$quiz_label_rules = [];
 		$quiz_opt_color   = (string) ( $attributes['quizOptionColor'] ?? '' );
 		if ( $quiz_opt_color !== '' ) {
-			$quiz_label_rules[] = 'color:' . sanitize_hex_color( $quiz_opt_color );
+			$quiz_label_rules[] = 'color:' . self::sanitize_color( $quiz_opt_color );
 		}
 		$quiz_opt_fs_raw   = (string) ( $attributes['quizOptionFontSize'] ?? '' );
 		$quiz_slug_to_px   = [ 'small' => '13px', 'medium' => '15px', 'large' => '18px', 'x-large' => '22px' ];
@@ -2422,7 +2451,7 @@ class BlockHandler {
 
 		$quiz_summary_bg = (string) ( $attributes['quizSummaryBg'] ?? '' );
 		if ( $quiz_summary_bg !== '' ) {
-			$hex = sanitize_hex_color( $quiz_summary_bg );
+			$hex = self::sanitize_color( $quiz_summary_bg );
 			if ( $hex !== null && $hex !== '' ) {
 				$quiz_summary_rules[] = 'background-color:' . $hex;
 			}
@@ -2466,7 +2495,7 @@ class BlockHandler {
 
 		$quiz_summary_color = (string) ( $attributes['quizSummaryColor'] ?? '' );
 		if ( $quiz_summary_color !== '' ) {
-			$hex = sanitize_hex_color( $quiz_summary_color );
+			$hex = self::sanitize_color( $quiz_summary_color );
 			if ( $hex !== null && $hex !== '' ) {
 				$quiz_summary_rules[] = 'color:' . $hex;
 			}
@@ -2476,7 +2505,7 @@ class BlockHandler {
 		$quiz_summary_bw = (string) ( $attributes['quizSummaryBorderWidth'] ?? '' );
 		if ( $quiz_summary_bc !== '' || $quiz_summary_bw !== '' ) {
 			$bw = $quiz_summary_bw !== '' ? sanitize_text_field( $quiz_summary_bw ) : '1px';
-			$bc = $quiz_summary_bc !== '' ? sanitize_hex_color( $quiz_summary_bc ) : 'currentColor';
+			$bc = $quiz_summary_bc !== '' ? self::sanitize_color( $quiz_summary_bc ) : 'currentColor';
 			$quiz_summary_rules[] = 'border:' . $bw . ' solid ' . $bc;
 		}
 
@@ -2513,15 +2542,7 @@ class BlockHandler {
 		$nav_btn_rules     = [];
 		$nav_btn_hover_rules = [];
 
-		$nav_border_color = (string) ( $attributes['navBtnBorderColor'] ?? '' );
-		$nav_border_width = (string) ( $attributes['navBtnBorderWidth'] ?? '' );
-		$nav_border_style = (string) ( $attributes['navBtnBorderStyle'] ?? '' );
-		if ( $nav_border_color !== '' || $nav_border_width !== '' || $nav_border_style !== '' ) {
-			$bw = $nav_border_width !== '' ? sanitize_text_field( $nav_border_width ) : '1px';
-			$bc = $nav_border_color !== '' ? sanitize_hex_color( $nav_border_color ) : 'transparent';
-			$bs = in_array( $nav_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $nav_border_style : 'solid';
-			$nav_btn_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
-		}
+		$css .= self::border_css( $nav_btn_sel, $attributes['navBtnBorder'] ?? [], 'transparent' );
 
 		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $corner => $css_prop ) {
 			$val = (string) ( $attributes[ 'navBtnRadius' . $corner ] ?? '' );
@@ -2588,11 +2609,11 @@ class BlockHandler {
 		$nav_bg_color   = (string) ( $attributes['navBtnBgColor']   ?? '' );
 		$nav_text_color = (string) ( $attributes['navBtnTextColor']  ?? '' );
 		if ( $nav_bg_color !== '' ) {
-			$hex = sanitize_hex_color( $nav_bg_color );
+			$hex = self::sanitize_color( $nav_bg_color );
 			if ( $hex !== null && $hex !== '' ) { $nav_btn_rules[] = 'background-color:' . $hex; }
 		}
 		if ( $nav_text_color !== '' ) {
-			$hex = sanitize_hex_color( $nav_text_color );
+			$hex = self::sanitize_color( $nav_text_color );
 			if ( $hex !== null && $hex !== '' ) { $nav_btn_rules[] = 'color:' . $hex; }
 		}
 
@@ -2600,15 +2621,15 @@ class BlockHandler {
 		$nav_hover_color  = (string) ( $attributes['navBtnHoverColor']       ?? '' );
 		$nav_hover_border = (string) ( $attributes['navBtnHoverBorderColor'] ?? '' );
 		if ( $nav_hover_bg !== '' ) {
-			$hex = sanitize_hex_color( $nav_hover_bg );
+			$hex = self::sanitize_color( $nav_hover_bg );
 			if ( $hex !== null && $hex !== '' ) { $nav_btn_hover_rules[] = 'background-color:' . $hex; }
 		}
 		if ( $nav_hover_color !== '' ) {
-			$hex = sanitize_hex_color( $nav_hover_color );
+			$hex = self::sanitize_color( $nav_hover_color );
 			if ( $hex !== null && $hex !== '' ) { $nav_btn_hover_rules[] = 'color:' . $hex; }
 		}
 		if ( $nav_hover_border !== '' ) {
-			$hex = sanitize_hex_color( $nav_hover_border );
+			$hex = self::sanitize_color( $nav_hover_border );
 			if ( $hex !== null && $hex !== '' ) { $nav_btn_hover_rules[] = 'border-color:' . $hex; }
 		}
 		if ( $nav_btn_hover_rules ) {
@@ -2624,10 +2645,24 @@ class BlockHandler {
 
 		// ——— Multi-step: step title + separator ———
 
+		$step_sel = $wrap_sel . ' .neural-forms-form__step';
+		$step_spacing_rules = [];
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = $spacing( (string) ( $attributes[ 'stepPadding' . $key ] ?? '' ) );
+			if ( $val !== '' ) $step_spacing_rules[] = $css_prop . ':' . $val;
+		}
+		foreach ( [ 'Top' => 'margin-top', 'Right' => 'margin-right', 'Bottom' => 'margin-bottom', 'Left' => 'margin-left' ] as $key => $css_prop ) {
+			$val = $spacing( (string) ( $attributes[ 'stepMargin' . $key ] ?? '' ) );
+			if ( $val !== '' ) $step_spacing_rules[] = $css_prop . ':' . $val;
+		}
+		if ( $step_spacing_rules ) {
+			$css .= $step_sel . '{' . implode( ';', $step_spacing_rules ) . '}';
+		}
+
 		$step_title_sel = $wrap_sel . ' .neural-forms-form__step-title';
 		$step_sep_sel   = $wrap_sel . ' .neural-forms-form__step:not(:first-of-type)';
 
-		$step_title_color  = sanitize_hex_color( (string) ( $attributes['stepTitleColor']      ?? '' ) );
+		$step_title_color  = self::sanitize_color( (string) ( $attributes['stepTitleColor']      ?? '' ) );
 		$step_title_fs     = $len( (string) ( $attributes['stepTitleFontSize']    ?? '' ) );
 		$step_title_fw_raw = (string) ( $attributes['stepTitleFontWeight'] ?? '' );
 		$allowed_fw_st     = [ '100','200','300','400','500','600','700','800','900','bold','normal' ];
@@ -2648,7 +2683,7 @@ class BlockHandler {
 		}
 
 		$step_desc_sel    = $wrap_sel . ' .neural-forms-form__step-description';
-		$step_desc_color  = sanitize_hex_color( (string) ( $attributes['stepDescColor']     ?? '' ) );
+		$step_desc_color  = self::sanitize_color( (string) ( $attributes['stepDescColor']     ?? '' ) );
 		$step_desc_fs     = $len( (string) ( $attributes['stepDescFontSize']   ?? '' ) );
 		$step_desc_fw_raw = (string) ( $attributes['stepDescFontWeight'] ?? '' );
 		$step_desc_fw     = in_array( $step_desc_fw_raw, $allowed_fw_st, true ) ? $step_desc_fw_raw : '';
@@ -2667,7 +2702,7 @@ class BlockHandler {
 			$css .= $step_desc_sel . '{' . implode( ';', $step_desc_rules ) . '}';
 		}
 
-		$step_sep_color = sanitize_hex_color( (string) ( $attributes['stepSepColor'] ?? '' ) );
+		$step_sep_color = self::sanitize_color( (string) ( $attributes['stepSepColor'] ?? '' ) );
 		$step_sep_width = $len( (string) ( $attributes['stepSepWidth'] ?? '' ) );
 		$step_sep_style_raw = (string) ( $attributes['stepSepStyle'] ?? '' );
 		$allowed_bs     = [ 'solid', 'dashed', 'dotted', 'double' ];
@@ -2692,8 +2727,8 @@ class BlockHandler {
 		$bar_track_sel = $wrap_sel . ' .neural-forms-form__progress-bar-track';
 		$bar_fill_sel  = $wrap_sel . ' .neural-forms-form__progress-bar-fill';
 
-		$step_bar_fill  = sanitize_hex_color( (string) ( $attributes['stepBarFillColor']  ?? '' ) );
-		$step_bar_track = sanitize_hex_color( (string) ( $attributes['stepBarTrackColor'] ?? '' ) );
+		$step_bar_fill  = self::sanitize_color( (string) ( $attributes['stepBarFillColor']  ?? '' ) );
+		$step_bar_track = self::sanitize_color( (string) ( $attributes['stepBarTrackColor'] ?? '' ) );
 		$step_bar_h     = $len( (string) ( $attributes['stepBarHeight'] ?? '' ) );
 		$step_bar_r     = $len( (string) ( $attributes['stepBarRadius'] ?? '' ) );
 
@@ -2714,7 +2749,7 @@ class BlockHandler {
 
 		// Progress text ("Step X of Y").
 		$bar_text_sel   = $wrap_sel . ' .neural-forms-form__progress-text';
-		$bar_text_color = sanitize_hex_color( (string) ( $attributes['stepBarTextColor']      ?? '' ) );
+		$bar_text_color = self::sanitize_color( (string) ( $attributes['stepBarTextColor']      ?? '' ) );
 		$bar_text_fs    = $len( (string) ( $attributes['stepBarTextFontSize']   ?? '' ) );
 		$bar_text_fw_r  = (string) ( $attributes['stepBarTextFontWeight'] ?? '' );
 		$allowed_fw_bar = [ '100','200','300','400','500','600','700','800','900','bold','normal' ];
@@ -2740,12 +2775,12 @@ class BlockHandler {
 		$step_active_item_sel    = $wrap_sel . ' .neural-forms-form__progress-item.is-active .neural-forms-form__progress-num';
 		$step_complete_item_sel  = $wrap_sel . ' .neural-forms-form__progress-item.is-complete .neural-forms-form__progress-num';
 
-		$step_inactive_bg    = sanitize_hex_color( (string) ( $attributes['stepInactiveNumBg']    ?? '' ) );
-		$step_inactive_color = sanitize_hex_color( (string) ( $attributes['stepInactiveNumColor'] ?? '' ) );
-		$step_active_bg      = sanitize_hex_color( (string) ( $attributes['stepActiveNumBg']      ?? '' ) );
-		$step_active_color   = sanitize_hex_color( (string) ( $attributes['stepActiveNumColor']   ?? '' ) );
-		$step_complete_bg    = sanitize_hex_color( (string) ( $attributes['stepCompleteNumBg']    ?? '' ) );
-		$step_complete_color = sanitize_hex_color( (string) ( $attributes['stepCompleteNumColor'] ?? '' ) );
+		$step_inactive_bg    = self::sanitize_color( (string) ( $attributes['stepInactiveNumBg']    ?? '' ) );
+		$step_inactive_color = self::sanitize_color( (string) ( $attributes['stepInactiveNumColor'] ?? '' ) );
+		$step_active_bg      = self::sanitize_color( (string) ( $attributes['stepActiveNumBg']      ?? '' ) );
+		$step_active_color   = self::sanitize_color( (string) ( $attributes['stepActiveNumColor']   ?? '' ) );
+		$step_complete_bg    = self::sanitize_color( (string) ( $attributes['stepCompleteNumBg']    ?? '' ) );
+		$step_complete_color = self::sanitize_color( (string) ( $attributes['stepCompleteNumColor'] ?? '' ) );
 		$step_num_size       = $len( (string) ( $attributes['stepNumSize']     ?? '' ) );
 		$step_num_fs         = $len( (string) ( $attributes['stepNumFontSize'] ?? '' ) );
 
@@ -2789,7 +2824,7 @@ class BlockHandler {
 			$css .= $step_complete_item_sel . '{' . implode( ';', $step_complete_rules ) . '}';
 		}
 
-		$step_connector_color = sanitize_hex_color( (string) ( $attributes['stepConnectorColor'] ?? '' ) );
+		$step_connector_color = self::sanitize_color( (string) ( $attributes['stepConnectorColor'] ?? '' ) );
 		if ( $step_connector_color !== null && $step_connector_color !== '' ) {
 			$connector_sel = $wrap_sel . ' .neural-forms-form__progress--numbers .neural-forms-form__progress-item:not(:last-child)::after';
 			$css .= $connector_sel . '{content:\'\';flex-shrink:0;display:inline-block;width:16px;height:2px;background:' . $step_connector_color . ';align-self:center;margin-left:6px}';
@@ -2800,9 +2835,9 @@ class BlockHandler {
 		$step_active_label_sel   = $wrap_sel . ' .neural-forms-form__progress-item.is-active .neural-forms-form__progress-label';
 		$step_complete_label_sel = $wrap_sel . ' .neural-forms-form__progress-item.is-complete .neural-forms-form__progress-label';
 
-		$step_label_color    = sanitize_hex_color( (string) ( $attributes['stepLabelColor']         ?? '' ) );
-		$step_active_lc      = sanitize_hex_color( (string) ( $attributes['stepActiveLabelColor']   ?? '' ) );
-		$step_complete_lc    = sanitize_hex_color( (string) ( $attributes['stepCompleteLabelColor'] ?? '' ) );
+		$step_label_color    = self::sanitize_color( (string) ( $attributes['stepLabelColor']         ?? '' ) );
+		$step_active_lc      = self::sanitize_color( (string) ( $attributes['stepActiveLabelColor']   ?? '' ) );
+		$step_complete_lc    = self::sanitize_color( (string) ( $attributes['stepCompleteLabelColor'] ?? '' ) );
 		$step_label_fs       = $len( (string) ( $attributes['stepLabelFontSize']   ?? '' ) );
 		$step_label_fw_raw   = (string) ( $attributes['stepLabelFontWeight'] ?? '' );
 		$allowed_fw          = [ '100','200','300','400','500','600','700','800','900','bold','normal' ];
@@ -2834,10 +2869,8 @@ class BlockHandler {
 		$rep_cont_rules  = [];
 		$rep_cont_bg_raw  = (string) ( $attributes['repeaterContainerBg']          ?? '' );
 		$rep_cont_bg_grad = (string) ( $attributes['repeaterContainerBgGradient']  ?? '' );
-		$rep_cont_bg      = sanitize_hex_color( $rep_cont_bg_raw );
-		$rep_cont_bc     = sanitize_hex_color( (string) ( $attributes['repeaterContainerBorderColor'] ?? '' ) );
-		$rep_cont_bw     = (string) ( $attributes['repeaterContainerBorderWidth']  ?? '' );
-		$rep_cont_bs     = (string) ( $attributes['repeaterContainerBorderStyle']  ?? '' );
+		$rep_cont_bg      = self::sanitize_color( $rep_cont_bg_raw );
+		$rep_cont_border = is_array( $attributes['repeaterContainerBorder'] ?? null ) ? $attributes['repeaterContainerBorder'] : [];
 		$rep_cont_radius = (string) ( $attributes['repeaterContainerBorderRadius'] ?? '' );
 		$rep_cont_pt     = (string) ( $attributes['repeaterContainerPaddingTop']    ?? '' );
 		$rep_cont_pr     = (string) ( $attributes['repeaterContainerPaddingRight']  ?? '' );
@@ -2848,11 +2881,7 @@ class BlockHandler {
 		} elseif ( $rep_cont_bg ) {
 			$rep_cont_rules[] = 'background:' . $rep_cont_bg;
 		}
-		if ( $rep_cont_bc && $rep_cont_bw && $rep_cont_bs ) {
-			$rep_cont_rules[] = 'border:' . $len( $rep_cont_bw ) . ' ' . esc_attr( $rep_cont_bs ) . ' ' . $rep_cont_bc;
-		} elseif ( $rep_cont_bc ) {
-			$rep_cont_rules[] = 'border-color:' . $rep_cont_bc;
-		}
+		$css .= self::border_css( $rep_cont_sel, $rep_cont_border );
 		if ( $rep_cont_radius ) $rep_cont_rules[] = 'border-radius:' . $len( $rep_cont_radius );
 		if ( $rep_cont_pt || $rep_cont_pr || $rep_cont_pb || $rep_cont_pl ) {
 			$rep_cont_rules[] = 'padding:' . $spacing( $rep_cont_pt ?: '0' ) . ' ' . $spacing( $rep_cont_pr ?: '0' ) . ' ' . $spacing( $rep_cont_pb ?: '0' ) . ' ' . $spacing( $rep_cont_pl ?: '0' );
@@ -2868,10 +2897,8 @@ class BlockHandler {
 		$rep_row_rules     = [];
 		$rep_row_bg_raw    = (string) ( $attributes['repeaterRowBg']          ?? '' );
 		$rep_row_bg_grad   = (string) ( $attributes['repeaterRowBgGradient']  ?? '' );
-		$rep_row_bg        = sanitize_hex_color( $rep_row_bg_raw );
-		$rep_row_border_c  = sanitize_hex_color( (string) ( $attributes['repeaterRowBorderColor'] ?? '' ) );
-		$rep_row_border_w  = (string) ( $attributes['repeaterRowBorderWidth']  ?? '' );
-		$rep_row_border_s  = (string) ( $attributes['repeaterRowBorderStyle']  ?? '' );
+		$rep_row_bg        = self::sanitize_color( $rep_row_bg_raw );
+		$rep_row_border = is_array( $attributes['repeaterRowBorder'] ?? null ) ? $attributes['repeaterRowBorder'] : [];
 		$rep_row_radius    = (string) ( $attributes['repeaterRowBorderRadius'] ?? '' );
 		$rep_row_pt        = (string) ( $attributes['repeaterRowPaddingTop']    ?? '' );
 		$rep_row_pr        = (string) ( $attributes['repeaterRowPaddingRight']  ?? '' );
@@ -2882,11 +2909,7 @@ class BlockHandler {
 		} elseif ( $rep_row_bg ) {
 			$rep_row_rules[] = 'background:' . $rep_row_bg;
 		}
-		if ( $rep_row_border_c && $rep_row_border_w && $rep_row_border_s ) {
-			$rep_row_rules[] = 'border:' . $len( $rep_row_border_w ) . ' ' . esc_attr( $rep_row_border_s ) . ' ' . $rep_row_border_c;
-		} elseif ( $rep_row_border_c ) {
-			$rep_row_rules[] = 'border-color:' . $rep_row_border_c;
-		}
+		$css .= self::border_css( $rep_row_sel, $rep_row_border );
 		if ( $rep_row_radius )   $rep_row_rules[] = 'border-radius:' . $len( $rep_row_radius );
 		if ( $rep_row_pt || $rep_row_pr || $rep_row_pb || $rep_row_pl ) {
 			$rep_row_rules[] = 'padding:' . $spacing( $rep_row_pt ?: '0' ) . ' ' . $spacing( $rep_row_pr ?: '0' ) . ' ' . $spacing( $rep_row_pb ?: '0' ) . ' ' . $spacing( $rep_row_pl ?: '0' );
@@ -2895,7 +2918,7 @@ class BlockHandler {
 
 		$rep_row_hover_bg_raw  = (string) ( $attributes['repeaterRowHoverBg']         ?? '' );
 		$rep_row_hover_bg_grad = (string) ( $attributes['repeaterRowHoverBgGradient'] ?? '' );
-		$rep_row_hover_bg      = sanitize_hex_color( $rep_row_hover_bg_raw );
+		$rep_row_hover_bg      = self::sanitize_color( $rep_row_hover_bg_raw );
 		if ( $rep_row_hover_bg_grad !== '' ) {
 			$css .= $rep_row_sel . ':hover{background-image:' . sanitize_text_field( $rep_row_hover_bg_grad ) . '}';
 		} elseif ( $rep_row_hover_bg ) {
@@ -2912,13 +2935,11 @@ class BlockHandler {
 		$rep_add_rules    = [];
 		$rep_add_bg_raw   = (string) ( $attributes['repeaterAddBtnBg']           ?? '' );
 		$rep_add_bg_grad  = (string) ( $attributes['repeaterAddBtnBgGradient']  ?? '' );
-		$rep_add_bg       = sanitize_hex_color( $rep_add_bg_raw );
-		$rep_add_color    = sanitize_hex_color( (string) ( $attributes['repeaterAddBtnColor']        ?? '' ) );
+		$rep_add_bg       = self::sanitize_color( $rep_add_bg_raw );
+		$rep_add_color    = self::sanitize_color( (string) ( $attributes['repeaterAddBtnColor']        ?? '' ) );
 		$rep_add_fs       = (string) ( $attributes['repeaterAddBtnFontSize']    ?? '' );
 		$rep_add_fw       = (string) ( $attributes['repeaterAddBtnFontWeight']  ?? '' );
-		$rep_add_bc       = sanitize_hex_color( (string) ( $attributes['repeaterAddBtnBorderColor']  ?? '' ) );
-		$rep_add_bw       = (string) ( $attributes['repeaterAddBtnBorderWidth'] ?? '' );
-		$rep_add_bs       = (string) ( $attributes['repeaterAddBtnBorderStyle'] ?? '' );
+		$rep_add_border = is_array( $attributes['repeaterAddBtnBorder'] ?? null ) ? $attributes['repeaterAddBtnBorder'] : [];
 		$rep_add_radius   = (string) ( $attributes['repeaterAddBtnBorderRadius'] ?? '' );
 		$rep_add_pt       = (string) ( $attributes['repeaterAddBtnPaddingTop']    ?? '' );
 		$rep_add_pr       = (string) ( $attributes['repeaterAddBtnPaddingRight']  ?? '' );
@@ -2932,11 +2953,7 @@ class BlockHandler {
 		if ( $rep_add_color )  $rep_add_rules[] = 'color:' . $rep_add_color;
 		if ( $rep_add_fs )     $rep_add_rules[] = 'font-size:' . $len( $rep_add_fs );
 		if ( $rep_add_fw )     $rep_add_rules[] = 'font-weight:' . esc_attr( $rep_add_fw );
-		if ( $rep_add_bc && $rep_add_bw && $rep_add_bs ) {
-			$rep_add_rules[] = 'border:' . $len( $rep_add_bw ) . ' ' . esc_attr( $rep_add_bs ) . ' ' . $rep_add_bc;
-		} elseif ( $rep_add_bc ) {
-			$rep_add_rules[] = 'border-color:' . $rep_add_bc;
-		}
+		$css .= self::border_css( $rep_add_sel, $rep_add_border );
 		if ( $rep_add_radius ) $rep_add_rules[] = 'border-radius:' . $len( $rep_add_radius );
 		if ( $rep_add_pt || $rep_add_pr || $rep_add_pb || $rep_add_pl ) {
 			$rep_add_rules[] = 'padding:' . $spacing( $rep_add_pt ?: '0' ) . ' ' . $spacing( $rep_add_pr ?: '0' ) . ' ' . $spacing( $rep_add_pb ?: '0' ) . ' ' . $spacing( $rep_add_pl ?: '0' );
@@ -2945,8 +2962,8 @@ class BlockHandler {
 
 		$rep_add_hover_bg_raw  = (string) ( $attributes['repeaterAddBtnHoverBg']         ?? '' );
 		$rep_add_hover_bg_grad = (string) ( $attributes['repeaterAddBtnHoverBgGradient'] ?? '' );
-		$rep_add_hover_bg      = sanitize_hex_color( $rep_add_hover_bg_raw );
-		$rep_add_hover_color = sanitize_hex_color( (string) ( $attributes['repeaterAddBtnHoverColor'] ?? '' ) );
+		$rep_add_hover_bg      = self::sanitize_color( $rep_add_hover_bg_raw );
+		$rep_add_hover_color = self::sanitize_color( (string) ( $attributes['repeaterAddBtnHoverColor'] ?? '' ) );
 		$rep_add_hover_rules = [];
 		if ( $rep_add_hover_bg_grad !== '' ) {
 			$rep_add_hover_rules[] = 'background-image:' . sanitize_text_field( $rep_add_hover_bg_grad );
@@ -2959,17 +2976,17 @@ class BlockHandler {
 		// Remove button
 		$rep_rm_sel        = $wrap_sel . ' .neural-forms-repeater__remove';
 		$rep_rm_rules      = [];
-		$rep_rm_color      = sanitize_hex_color( (string) ( $attributes['repeaterRemoveBtnColor']  ?? '' ) );
+		$rep_rm_color      = self::sanitize_color( (string) ( $attributes['repeaterRemoveBtnColor']  ?? '' ) );
 		$rep_rm_size       = (string) ( $attributes['repeaterRemoveBtnSize'] ?? '' );
 		if ( $rep_rm_color ) $rep_rm_rules[] = 'color:' . $rep_rm_color;
 		if ( $rep_rm_size )  $rep_rm_rules[] = 'font-size:' . $len( $rep_rm_size );
 		if ( $rep_rm_rules ) $css .= $rep_rm_sel . '{' . implode( ';', $rep_rm_rules ) . '}';
 
-		$rep_rm_hover_color = sanitize_hex_color( (string) ( $attributes['repeaterRemoveBtnHoverColor'] ?? '' ) );
+		$rep_rm_hover_color = self::sanitize_color( (string) ( $attributes['repeaterRemoveBtnHoverColor'] ?? '' ) );
 		if ( $rep_rm_hover_color ) $css .= $rep_rm_sel . ':hover{color:' . $rep_rm_hover_color . '}';
 
 		$rep_num_sel   = $wrap_sel . ' .neural-forms-repeater__item-num';
-		$rep_num_color = sanitize_hex_color( (string) ( $attributes['repeaterItemNumColor']    ?? '' ) );
+		$rep_num_color = self::sanitize_color( (string) ( $attributes['repeaterItemNumColor']    ?? '' ) );
 		$rep_num_fs    = (string) ( $attributes['repeaterItemNumFontSize'] ?? '' );
 		$rep_num_rules = [];
 		if ( $rep_num_color ) $rep_num_rules[] = 'color:' . $rep_num_color;
@@ -2979,7 +2996,7 @@ class BlockHandler {
 		// ── Matrix field ──────────────────────────────────────────────────────
 		$mat_table_sel   = $wrap_sel . ' .neural-forms-matrix__table';
 		$mat_table_rules = [];
-		$mat_border_c    = sanitize_hex_color( (string) ( $attributes['matrixBorderColor']  ?? '' ) );
+		$mat_border_c    = self::sanitize_color( (string) ( $attributes['matrixBorderColor']  ?? '' ) );
 		$mat_border_w    = (string) ( $attributes['matrixBorderWidth']  ?? '' );
 		if ( $mat_border_c && $mat_border_w ) {
 			$mat_table_rules[] = 'border:' . $len( $mat_border_w ) . ' solid ' . $mat_border_c;
@@ -2993,8 +3010,8 @@ class BlockHandler {
 		$mat_col_rules = [];
 		$mat_col_bg_raw  = (string) ( $attributes['matrixColHeaderBg']          ?? '' );
 		$mat_col_bg_grad = (string) ( $attributes['matrixColHeaderBgGradient']  ?? '' );
-		$mat_col_bg      = sanitize_hex_color( $mat_col_bg_raw );
-		$mat_col_color = sanitize_hex_color( (string) ( $attributes['matrixColHeaderColor']      ?? '' ) );
+		$mat_col_bg      = self::sanitize_color( $mat_col_bg_raw );
+		$mat_col_color = self::sanitize_color( (string) ( $attributes['matrixColHeaderColor']      ?? '' ) );
 		$mat_col_fs    = (string) ( $attributes['matrixColHeaderFontSize']   ?? '' );
 		$mat_col_fw    = (string) ( $attributes['matrixColHeaderFontWeight'] ?? '' );
 		$mat_col_pt    = (string) ( $attributes['matrixColHeaderPaddingTop']    ?? '' );
@@ -3019,8 +3036,8 @@ class BlockHandler {
 		$mat_rh_rules = [];
 		$mat_rh_bg_raw  = (string) ( $attributes['matrixRowHeaderBg']          ?? '' );
 		$mat_rh_bg_grad = (string) ( $attributes['matrixRowHeaderBgGradient']  ?? '' );
-		$mat_rh_bg      = sanitize_hex_color( $mat_rh_bg_raw );
-		$mat_rh_color = sanitize_hex_color( (string) ( $attributes['matrixRowHeaderColor']      ?? '' ) );
+		$mat_rh_bg      = self::sanitize_color( $mat_rh_bg_raw );
+		$mat_rh_color = self::sanitize_color( (string) ( $attributes['matrixRowHeaderColor']      ?? '' ) );
 		$mat_rh_fs    = (string) ( $attributes['matrixRowHeaderFontSize']   ?? '' );
 		$mat_rh_fw    = (string) ( $attributes['matrixRowHeaderFontWeight'] ?? '' );
 		if ( $mat_rh_bg_grad !== '' ) {
@@ -3038,25 +3055,20 @@ class BlockHandler {
 		$mat_cell_rules = [];
 		$mat_cell_bg_raw  = (string) ( $attributes['matrixCellBg']          ?? '' );
 		$mat_cell_bg_grad = (string) ( $attributes['matrixCellBgGradient']  ?? '' );
-		$mat_cell_bg      = sanitize_hex_color( $mat_cell_bg_raw );
-		$mat_cell_bc    = sanitize_hex_color( (string) ( $attributes['matrixCellBorderColor'] ?? '' ) );
-		$mat_cell_bw    = (string) ( $attributes['matrixCellBorderWidth']  ?? '' );
+		$mat_cell_bg      = self::sanitize_color( $mat_cell_bg_raw );
+		$mat_cell_border = is_array( $attributes['matrixCellBorder'] ?? null ) ? $attributes['matrixCellBorder'] : [];
 		$mat_cell_pt    = (string) ( $attributes['matrixCellPaddingTop']    ?? '' );
 		$mat_cell_pr    = (string) ( $attributes['matrixCellPaddingRight']  ?? '' );
 		$mat_cell_pb    = (string) ( $attributes['matrixCellPaddingBottom'] ?? '' );
 		$mat_cell_pl    = (string) ( $attributes['matrixCellPaddingLeft']   ?? '' );
 		if ( $mat_cell_bg ) $mat_cell_rules[] = 'background:' . $mat_cell_bg;
-		if ( $mat_cell_bc && $mat_cell_bw ) {
-			$mat_cell_rules[] = 'border:' . $len( $mat_cell_bw ) . ' solid ' . $mat_cell_bc;
-		} elseif ( $mat_cell_bc ) {
-			$mat_cell_rules[] = 'border-color:' . $mat_cell_bc;
-		}
+		$css .= self::border_css( $mat_cell_sel, $mat_cell_border );
 		if ( $mat_cell_pt || $mat_cell_pr || $mat_cell_pb || $mat_cell_pl ) {
 			$mat_cell_rules[] = 'padding:' . $spacing( $mat_cell_pt ?: '0' ) . ' ' . $spacing( $mat_cell_pr ?: '0' ) . ' ' . $spacing( $mat_cell_pb ?: '0' ) . ' ' . $spacing( $mat_cell_pl ?: '0' );
 		}
 		if ( $mat_cell_rules ) $css .= $mat_cell_sel . '{' . implode( ';', $mat_cell_rules ) . '}';
 
-		$mat_cell_hover_bg = sanitize_hex_color( (string) ( $attributes['matrixCellHoverBg'] ?? '' ) );
+		$mat_cell_hover_bg = self::sanitize_color( (string) ( $attributes['matrixCellHoverBg'] ?? '' ) );
 		if ( $mat_cell_hover_bg ) {
 			$css .= $mat_cell_sel . ':hover{background:' . $mat_cell_hover_bg . '}';
 		}
@@ -3067,25 +3079,25 @@ class BlockHandler {
 		if ( $mat_cell_checked_bg_gradient !== '' ) {
 			$css .= $mat_cell_sel . ':has(input:checked){background-image:' . sanitize_text_field( $mat_cell_checked_bg_gradient ) . '}';
 		} elseif ( $mat_cell_checked_bg !== '' ) {
-			$hex = sanitize_hex_color( $mat_cell_checked_bg );
+			$hex = self::sanitize_color( $mat_cell_checked_bg );
 			if ( $hex ) {
 				$css .= $mat_cell_sel . ':has(input:checked){background:' . $hex . '}';
 			}
 		}
 
 		// Radio accent color inside cells
-		$mat_accent = sanitize_hex_color( (string) ( $attributes['matrixAccentColor'] ?? '' ) );
+		$mat_accent = self::sanitize_color( (string) ( $attributes['matrixAccentColor'] ?? '' ) );
 		if ( $mat_accent ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__input{accent-color:' . $mat_accent . '}';
 		}
 
 		// Alternating row background
-		$mat_row_bg = sanitize_hex_color( (string) ( $attributes['matrixRowBg'] ?? '' ) );
+		$mat_row_bg = self::sanitize_color( (string) ( $attributes['matrixRowBg'] ?? '' ) );
 		if ( $mat_row_bg ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__row .neural-forms-matrix__cell{background:' . $mat_row_bg . '}';
 		}
 
-		$mat_alt_bg = sanitize_hex_color( (string) ( $attributes['matrixAltRowBg'] ?? '' ) );
+		$mat_alt_bg = self::sanitize_color( (string) ( $attributes['matrixAltRowBg'] ?? '' ) );
 		if ( $mat_alt_bg ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell{background:' . $mat_alt_bg . '}';
 		}

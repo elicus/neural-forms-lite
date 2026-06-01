@@ -17,7 +17,7 @@ import {
 	BaseControl,
 	PanelBody, ColorPalette, GradientPicker,
 	Button, TabPanel, SelectControl, ToggleControl,
-	TextControl, BoxControl, BorderControl,
+	TextControl, BoxControl, BorderBoxControl,
 	__experimentalUnitControl          as UnitControl,
 	__experimentalToggleGroupControl   as ToggleGroupControl,
 	__experimentalToggleGroupControlOption     as ToggleGroupControlOption,
@@ -35,6 +35,27 @@ export function Sep() {
 
 export function Gap() {
 	return <div style={{ marginTop: 16 }} />;
+}
+
+function BorderBox( { label, value, onChange, enableAlpha } ) {
+	const isEmpty = ! value || Object.keys( value ).length === 0
+		|| ( ! value.color && ! value.width && ! value.style
+			&& ! value.top && ! value.right && ! value.bottom && ! value.left );
+	return (
+		<div style={{ position: 'relative' }}>
+			{ ! isEmpty && (
+				<Button
+					variant="secondary"
+					isSmall
+					onClick={ () => onChange( {} ) }
+					style={{ position: 'absolute', top: '-2px', right: 0, zIndex: 1 }}
+				>
+					{ __( 'Reset', 'neural-forms-lite' ) }
+				</Button>
+			) }
+			<BorderBoxControl label={ label } value={ value || {} } onChange={ onChange } enableAlpha={ enableAlpha } />
+		</div>
+	);
 }
 
 // ─── Reusable Dimensions helpers ─────────────────────────────────────────────
@@ -69,7 +90,7 @@ function PaddingDimensions( { topKey, rightKey, bottomKey, leftKey, a, set } ) {
 }
 
 // Padding + Margin — wraps two SpacingSizesControls in one ToolsPanel.
-function PaddingMarginDimensions( { pTop, pRight, pBottom, pLeft, mTop, mRight, mBottom, mLeft, a, set } ) {
+export function PaddingMarginDimensions( { pTop, pRight, pBottom, pLeft, mTop, mRight, mBottom, mLeft, a, set } ) {
 	if ( ! SpacingSizesControl || ! ToolsPanel ) return null;
 	const val = k => a[ k ] || undefined;
 	const padHasValue  = !! ( a[ pTop ] || a[ pRight ] || a[ pBottom ] || a[ pLeft ] );
@@ -240,7 +261,7 @@ function AlignControl( { label, value, onChange, justify = true } ) {
 export function Clr({ label, value, onChange }) {
 	return (
 		<BaseControl label={ label } __nextHasNoMarginBottom>
-			<ColorPalette value={ value } onChange={ onChange } />
+			<ColorPalette value={ value } onChange={ onChange } enableAlpha />
 		</BaseControl>
 	);
 }
@@ -411,7 +432,7 @@ export function ContainerPanel( { a, set } ) {
 				</>
 			) }
 			<Sep />
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.borderColor, width: a.borderWidth, style: a.borderStyle } } onChange={ v => set( { borderColor: v?.color ?? '', borderWidth: v?.width ?? '', borderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.border || {} } onChange={ v => set( { border: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<BoxControl label={ __( 'Border Radius', 'neural-forms-lite' ) } values={ { top: a.borderRadiusTL || undefined, right: a.borderRadiusTR || undefined, bottom: a.borderRadiusBR || undefined, left: a.borderRadiusBL || undefined } } onChange={ v => set( { borderRadiusTL: v.top ?? '', borderRadiusTR: v.right ?? '', borderRadiusBR: v.bottom ?? '', borderRadiusBL: v.left ?? '' } ) } />
 			<Sep />
@@ -515,7 +536,7 @@ export function InputFieldsPanel( { a, set } ) {
 			<Clr label={ __( 'Focus Text Color', 'neural-forms-lite' ) } value={ a.fieldFocusTextColor } onChange={ v => set( { fieldFocusTextColor: v ?? '' } ) } />
 			<Clr label={ __( 'Placeholder Color', 'neural-forms-lite' ) } value={ a.fieldPlaceholderColor } onChange={ v => set( { fieldPlaceholderColor: v ?? '' } ) } />
 			<Sep />
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.fieldBorderColor, width: a.fieldBorderWidth, style: a.fieldBorderStyle } } onChange={ v => set( { fieldBorderColor: v?.color ?? '', fieldBorderWidth: v?.width ?? '', fieldBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.fieldBorder || {} } onChange={ v => set( { fieldBorder: v ?? {} } ) } enableAlpha />
 			<Clr label={ __( 'Hover Border Color', 'neural-forms-lite' ) } value={ a.fieldHoverBorderColor } onChange={ v => set( { fieldHoverBorderColor: v ?? '' } ) } />
 			<Clr label={ __( 'Focus Border Color', 'neural-forms-lite' ) } value={ a.fieldFocusBorderColor } onChange={ v => set( { fieldFocusBorderColor: v ?? '' } ) } />
 			<Gap />
@@ -555,7 +576,7 @@ export function TextareaFieldPanel( { a, set } ) {
 			<Clr label={ __( 'Focus Text Color', 'neural-forms-lite' ) } value={ a.textareaFocusTextColor } onChange={ v => set( { textareaFocusTextColor: v ?? '' } ) } />
 			<Clr label={ __( 'Placeholder Color', 'neural-forms-lite' ) } value={ a.textareaPlaceholderColor } onChange={ v => set( { textareaPlaceholderColor: v ?? '' } ) } />
 			<Sep />
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.textareaBorderColor, width: a.textareaBorderWidth, style: a.textareaBorderStyle } } onChange={ v => set( { textareaBorderColor: v?.color ?? '', textareaBorderWidth: v?.width ?? '', textareaBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.textareaBorder || {} } onChange={ v => set( { textareaBorder: v ?? {} } ) } enableAlpha />
 			<Clr label={ __( 'Hover Border Color', 'neural-forms-lite' ) } value={ a.textareaHoverBorderColor } onChange={ v => set( { textareaHoverBorderColor: v ?? '' } ) } />
 			<Clr label={ __( 'Focus Border Color', 'neural-forms-lite' ) } value={ a.textareaFocusBorderColor } onChange={ v => set( { textareaFocusBorderColor: v ?? '' } ) } />
 			<Gap />
@@ -672,7 +693,7 @@ export function FileUploadPanel( { a, set } ) {
 				</TabPanel>
 			</BaseControl>
 			<Clr label={ __( 'Text Color', 'neural-forms-lite' ) } value={ a.fileInputColor } onChange={ v => set( { fileInputColor: v ?? '' } ) } />
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.fileInputBorderColor, width: a.fileInputBorderWidth, style: a.fileInputBorderStyle } } onChange={ v => set( { fileInputBorderColor: v?.color ?? '', fileInputBorderWidth: v?.width ?? '', fileInputBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.fileInputBorder || {} } onChange={ v => set( { fileInputBorder: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<UnitControl label={ __( 'Border Radius', 'neural-forms-lite' ) } value={ a.fileInputBorderRadius } onChange={ v => set( { fileInputBorderRadius: v ?? '' } ) } />
 			<Gap />
@@ -697,7 +718,7 @@ export function FileUploadPanel( { a, set } ) {
 			<Gap />
 			<PaddingDimensions topKey="fileBtnPaddingTop" rightKey="fileBtnPaddingRight" bottomKey="fileBtnPaddingBottom" leftKey="fileBtnPaddingLeft" a={ a } set={ set } />
 			<Gap />
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.fileBtnBorderColor, width: a.fileBtnBorderWidth, style: a.fileBtnBorderStyle } } onChange={ v => set( { fileBtnBorderColor: v?.color ?? '', fileBtnBorderWidth: v?.width ?? '', fileBtnBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.fileBtnBorder || {} } onChange={ v => set( { fileBtnBorder: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<UnitControl label={ __( 'Border Radius', 'neural-forms-lite' ) } value={ a.fileBtnBorderRadius } onChange={ v => set( { fileBtnBorderRadius: v ?? '' } ) } />
 		</PanelBody>
@@ -833,7 +854,7 @@ export function BtnControls( { pfx, a, set, showAlign = true, showIcons = false,
 					</BaseControl>
 					<Clr label={ __( 'Text Color', 'neural-forms-lite' ) } value={ a[ pfx + 'TextColor' ] } onChange={ v => set( { [ pfx + 'TextColor' ]: v ?? '' } ) } />
 					<Sep />
-					<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a[ pfx + 'BorderColor' ], width: a[ pfx + 'BorderWidth' ], style: a[ pfx + 'BorderStyle' ] } } onChange={ v => set( { [ pfx + 'BorderColor' ]: v?.color ?? '', [ pfx + 'BorderWidth' ]: v?.width ?? '', [ pfx + 'BorderStyle' ]: v?.style ?? '' } ) } withSlider />
+					<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a[ pfx + 'Border' ] || {} } onChange={ v => set( { [ pfx + 'Border' ]: v ?? {} } ) } enableAlpha />
 					<Gap />
 					<BoxControl label={ __( 'Border Radius', 'neural-forms-lite' ) } values={ { top: a[ pfx + 'RadiusTL' ] || undefined, right: a[ pfx + 'RadiusTR' ] || undefined, bottom: a[ pfx + 'RadiusBR' ] || undefined, left: a[ pfx + 'RadiusBL' ] || undefined } } onChange={ v => set( { [ pfx + 'RadiusTL' ]: v.top ?? '', [ pfx + 'RadiusTR' ]: v.right ?? '', [ pfx + 'RadiusBR' ]: v.bottom ?? '', [ pfx + 'RadiusBL' ]: v.left ?? '' } ) } />
 					<Sep />
@@ -979,7 +1000,7 @@ export function RepeaterFieldPanel( { a, set } ) {
 					{ ( tab ) => tab.name === 'color' ? <Clr label="" value={ a.repeaterContainerBg } onChange={ v => set( { repeaterContainerBg: v ?? '' } ) } /> : <Grad label="" value={ a.repeaterContainerBgGradient } onChange={ v => set( { repeaterContainerBgGradient: v ?? '' } ) } /> }
 				</TabPanel>
 			</BaseControl>
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.repeaterContainerBorderColor, width: a.repeaterContainerBorderWidth, style: a.repeaterContainerBorderStyle } } onChange={ v => set( { repeaterContainerBorderColor: v?.color ?? '', repeaterContainerBorderWidth: v?.width ?? '', repeaterContainerBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.repeaterContainerBorder || {} } onChange={ v => set( { repeaterContainerBorder: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<UnitControl label={ __( 'Border Radius', 'neural-forms-lite' ) } value={ a.repeaterContainerBorderRadius } onChange={ v => set( { repeaterContainerBorderRadius: v ?? '' } ) } />
 			<Gap />
@@ -999,7 +1020,7 @@ export function RepeaterFieldPanel( { a, set } ) {
 					{ ( tab ) => tab.name === 'color' ? <Clr label="" value={ a.repeaterRowHoverBg } onChange={ v => set( { repeaterRowHoverBg: v ?? '' } ) } /> : <Grad label="" value={ a.repeaterRowHoverBgGradient } onChange={ v => set( { repeaterRowHoverBgGradient: v ?? '' } ) } /> }
 				</TabPanel>
 			</BaseControl>
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.repeaterRowBorderColor, width: a.repeaterRowBorderWidth, style: a.repeaterRowBorderStyle } } onChange={ v => set( { repeaterRowBorderColor: v?.color ?? '', repeaterRowBorderWidth: v?.width ?? '', repeaterRowBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.repeaterRowBorder || {} } onChange={ v => set( { repeaterRowBorder: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<UnitControl label={ __( 'Border Radius', 'neural-forms-lite' ) } value={ a.repeaterRowBorderRadius } onChange={ v => set( { repeaterRowBorderRadius: v ?? '' } ) } />
 			<Gap />
@@ -1024,7 +1045,7 @@ export function RepeaterFieldPanel( { a, set } ) {
 			<Gap />
 			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.repeaterAddBtnFontSize } onChange={ v => set( { repeaterAddBtnFontSize: v ?? '' } ) } />
 			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.repeaterAddBtnFontWeight || '' } options={ FW } onChange={ v => set( { repeaterAddBtnFontWeight: v } ) } />
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.repeaterAddBtnBorderColor, width: a.repeaterAddBtnBorderWidth, style: a.repeaterAddBtnBorderStyle } } onChange={ v => set( { repeaterAddBtnBorderColor: v?.color ?? '', repeaterAddBtnBorderWidth: v?.width ?? '', repeaterAddBtnBorderStyle: v?.style ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.repeaterAddBtnBorder || {} } onChange={ v => set( { repeaterAddBtnBorder: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<UnitControl label={ __( 'Border Radius', 'neural-forms-lite' ) } value={ a.repeaterAddBtnBorderRadius } onChange={ v => set( { repeaterAddBtnBorderRadius: v ?? '' } ) } />
 			<Gap />
@@ -1102,7 +1123,7 @@ export function MatrixFieldPanel( { a, set } ) {
 					{ ( tab ) => tab.name === 'color' ? <Clr label="" value={ a.matrixCellCheckedBg } onChange={ v => set( { matrixCellCheckedBg: v ?? '' } ) } /> : <Grad label="" value={ a.matrixCellCheckedBgGradient } onChange={ v => set( { matrixCellCheckedBgGradient: v ?? '' } ) } /> }
 				</TabPanel>
 			</BaseControl>
-			<BorderControl label={ __( 'Border', 'neural-forms-lite' ) } value={ { color: a.matrixCellBorderColor, width: a.matrixCellBorderWidth, style: 'solid' } } onChange={ v => set( { matrixCellBorderColor: v?.color ?? '', matrixCellBorderWidth: v?.width ?? '' } ) } withSlider />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.matrixCellBorder || {} } onChange={ v => set( { matrixCellBorder: v ?? {} } ) } enableAlpha />
 			<Gap />
 			<PaddingDimensions topKey="matrixCellPaddingTop" rightKey="matrixCellPaddingRight" bottomKey="matrixCellPaddingBottom" leftKey="matrixCellPaddingLeft" a={ a } set={ set } />
 			<Gap />

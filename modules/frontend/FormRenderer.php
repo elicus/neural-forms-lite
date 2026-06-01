@@ -323,6 +323,13 @@ class FormRenderer {
 		if ( $has_steps ) {
 			$form_attrs .= ' data-neural-forms-multistep="1"';
 			$form_attrs .= ' data-neural-forms-step-count="' . count( $top_steps ) . '"';
+			$step_transition = isset( $options['step_transition'] ) ? (string) $options['step_transition'] : '';
+			if ( $step_transition !== '' ) {
+				$form_attrs .= ' data-step-transition="' . esc_attr( $step_transition ) . '"';
+				$form_attrs .= ' data-step-transition-dir="' . esc_attr( (string) ( $options['step_transition_direction'] ?? 'auto' ) ) . '"';
+				$form_attrs .= ' data-step-transition-duration="' . esc_attr( (string) ( $options['step_transition_duration'] ?? 350 ) ) . '"';
+				$form_attrs .= ' data-step-transition-easing="' . esc_attr( (string) ( $options['step_transition_easing'] ?? 'ease' ) ) . '"';
+			}
 		}
 
 		// On-submit outcome - read by form-submit.js to decide between the
@@ -399,7 +406,19 @@ class FormRenderer {
 				. '</div>';
 		}
 
-		$html .= '<div class="neural-forms-form__fields">' . $progress_html . $fields_html . '</div>';
+		// When the form has steps the progress indicator and step divs are
+		// wrapped in an extra __steps-body container so JS step-transition
+		// animations can use it as a self-contained clipping/positioning
+		// context — nav buttons and submit sit outside it and are unaffected.
+		if ( $has_steps ) {
+			$html .= '<div class="neural-forms-form__fields">'
+				. '<div class="neural-forms-form__steps-body">'
+				. $progress_html . $fields_html
+				. '</div>'
+				. '</div>';
+		} else {
+			$html .= '<div class="neural-forms-form__fields">' . $progress_html . $fields_html . '</div>';
+		}
 
 		// Global (non-field) error container - populated by JS for 429, 5xx,
 		// and network failures. role="alert" implies aria-live="assertive" so
@@ -820,10 +839,10 @@ class FormRenderer {
 		}
 		$html .= '>';
 
-		if ( $title !== '' ) {
+		if ( $title !== '' && ( $options['show_step_labels'] ?? true ) ) {
 			$html .= '<h3 class="neural-forms-form__step-title">' . esc_html( $title ) . '</h3>';
 		}
-		if ( $desc !== '' ) {
+		if ( $desc !== '' && ( $options['show_step_descriptions'] ?? true ) ) {
 			$html .= '<p class="neural-forms-form__step-description">' . esc_html( $desc ) . '</p>';
 		}
 
