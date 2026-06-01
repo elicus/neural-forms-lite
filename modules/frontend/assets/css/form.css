@@ -67,7 +67,7 @@
     --neural-forms-input-py:       0.75rem;   /* input vertical padding               */
 
     /* Motion */
-    --neural-forms-transition:     border-color 0.15s ease, box-shadow 0.15s ease;
+    --neural-forms-transition:     border-color 0.15s ease;
 
     /* Fields - inputs, textareas, selects.
        --neural-forms-input-font-size is intentionally NOT defaulted
@@ -313,7 +313,7 @@
 .neural-forms-form__input:focus {
     outline: none;
     border-color: var(--neural-forms-border-focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--neural-forms-border-focus) 20%, transparent);
+    box-shadow: none;
     background-color: var(--neural-forms-field-focus-bg, var(--neural-forms-field-bg));
     color: var(--neural-forms-field-focus-text, var(--neural-forms-text));
 }
@@ -378,7 +378,7 @@
 .neural-forms-form__textarea:focus {
     outline: none;
     border-color: var(--neural-forms-textarea-border-focus, #4f46e5);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--neural-forms-textarea-border-focus, #4f46e5) 20%, transparent);
+    box-shadow: none;
     background-color: var(--neural-forms-textarea-focus-bg, var(--neural-forms-textarea-bg, #fff));
     color: var(--neural-forms-textarea-focus-text, var(--neural-forms-textarea-text, #111827));
 }
@@ -423,7 +423,7 @@
 .neural-forms-form__select:focus {
     outline: none;
     border-color: var(--neural-forms-border-focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--neural-forms-border-focus) 20%, transparent);
+    box-shadow: none;
 }
 
 .neural-forms-form__select:disabled {
@@ -546,7 +546,7 @@
 .neural-forms-form__input--date:focus {
     outline: none;
     border-color: var(--neural-forms-border-focus);
-    box-shadow: 0 0 0 1px var(--neural-forms-border-focus);
+    box-shadow: none;
 }
 
 
@@ -1040,7 +1040,7 @@
 .neural-forms-form__file-input:focus {
     outline: none;
     border-color: var(--neural-forms-border-focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--neural-forms-border-focus) 20%, transparent);
+    box-shadow: none;
 }
 
 .neural-forms-form__file-input:disabled {
