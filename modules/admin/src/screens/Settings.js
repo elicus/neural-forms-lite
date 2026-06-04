@@ -464,7 +464,7 @@ function CloudAiSection( {
 						onClick={ handleSignupGateClick }
 					>
 						{ proInstalled
-							? __( 'Open my account', 'neural-forms-lite' )
+							? __( 'Get API Key', 'neural-forms-lite' )
 							: __( 'Sign up free', 'neural-forms-lite' ) }
 					</button>
 				</div>
