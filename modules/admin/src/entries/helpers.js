@@ -414,6 +414,38 @@ export function creditsExhaustedPayload( err ) {
 }
 
 /**
+ * Proactive credits-exhausted check.
+ *
+ * Returns a payload (matching creditsExhaustedPayload's shape) when:
+ *   - Pro is the one rendering AI actions (capabilities allow them), AND
+ *   - the live plan snapshot says the subscription is active, AND
+ *   - the credit balance is zero or negative.
+ *
+ * Used by AiAnalysisCard + ReplyComposer to swap the action buttons
+ * for a "Credits exhausted" notice BEFORE the user clicks — saving the
+ * round-trip and the doomed-request error. Returns null otherwise so
+ * callers fall through to the normal action rendering.
+ *
+ * Subscription gate matters: a user on a free plan / no subscription
+ * shouldn't see this notice — they need the upgrade-to-Pro upsell,
+ * which is the existing canReanalyze=false path.
+ */
+export function liveCreditsExhausted() {
+	if ( typeof window === 'undefined' ) return null;
+	const plan = window?.neuralFormsAdmin?.plan;
+	if ( ! plan || typeof plan !== 'object' ) return null;
+	const status = String( plan?.subscription?.status || '' ).toLowerCase();
+	if ( status !== 'active' && status !== 'trialing' ) return null;
+	const credits = Number( plan?.balance?.credits ?? plan?.balance?.available ?? NaN );
+	if ( ! Number.isFinite( credits ) || credits > 0 ) return null;
+	return {
+		message:    '',
+		upgradeUrl: plan?.upgrade_url || 'https://neuralforms.ai/pricing',
+		balance:    plan?.balance || null,
+	};
+}
+
+/**
  * Pull the structured upgrade-modal payload from an upstream
  * CloudPlanException (feature_locked / quota_exceeded). Returns null
  * for ordinary errors so callers can fall back to a generic toast.

@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { ProSlot } from '../slot-registry';
-import { pickSubmitterEmail } from './helpers';
+import { pickSubmitterEmail, liveCreditsExhausted } from './helpers';
 import { UsageLine } from './EntryDetail';
 
 const PRO_UPGRADE_URL = 'https://neuralforms.ai/pricing';
@@ -209,15 +209,39 @@ export default function ReplyComposer( {
 				</button>
 
 				{ canPolish ? (
-					<ProSlot
-						name="EntryReplyActions"
-						fillProps={ {
-							body,
-							isPolishing: busy === 'polish',
-							sending:     busy === 'send',
-							handlePolish,
-						} }
-					/>
+					( () => {
+						// Proactive credits gate — same logic as the AI
+						// analysis card. When Pro is active but the
+						// plan balance is zero, swap the Refine button
+						// for a compact credit-exhausted hint so the
+						// user sees the same message everywhere AI
+						// would otherwise fire.
+						const exhausted = liveCreditsExhausted();
+						if ( exhausted ) {
+							return (
+								<a
+									className="neural-forms-entry-detail__polish-trigger neural-forms-entry-detail__polish-trigger--exhausted"
+									href={ exhausted.upgradeUrl || 'https://neuralforms.ai/pricing' }
+									target="_blank"
+									rel="noreferrer"
+									title={ __( 'Neural AI credits exhausted — click to buy more', 'neural-forms-lite' ) }
+								>
+									{ __( 'Buy more credits', 'neural-forms-lite' ) }
+								</a>
+							);
+						}
+						return (
+							<ProSlot
+								name="EntryReplyActions"
+								fillProps={ {
+									body,
+									isPolishing: busy === 'polish',
+									sending:     busy === 'send',
+									handlePolish,
+								} }
+							/>
+						);
+					} )()
 				) : (
 					<button
 						type="button"

@@ -26,6 +26,7 @@
 import { useEffect, useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { ProSlot } from '../slot-registry';
+import { liveCreditsExhausted } from './helpers';
 
 const TIER_LABEL = {
 	fast:     'Fast',
@@ -168,16 +169,57 @@ export default function AiAnalysisCard( {
 
 			<footer className="neural-forms-entry-detail__ai-rerun-buttons">
 				{ canReanalyze ? (
-					<ProSlot
-						name="EntryAiActions"
-						fillProps={ {
-							onReanalyzeClick: onReanalyze,
-							onRegenerateClick: onRegenerate,
-							isAiRerunning: !! reanalyzing,
-							aiData: entry,
-							hasPrev: !! hasAnalysis,
-						} }
-					/>
+					( () => {
+						// Proactive gate: when Pro is rendering these
+						// buttons but the live plan snapshot shows the
+						// subscription is active with zero credits,
+						// swap the buttons for a credit-exhausted
+						// notice. Avoids the doomed Cloud round-trip
+						// and tells the user how to recover.
+						const exhausted = liveCreditsExhausted();
+						if ( exhausted ) {
+							return (
+								<div className="neural-forms-entries-pro-notice neural-forms-entries-pro-notice--credits" role="status">
+									<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
+										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+											strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+											<circle cx="12" cy="12" r="9" />
+											<path d="M12 7v6" />
+											<path d="M12 16v.01" />
+										</svg>
+									</span>
+									<div className="neural-forms-entries-pro-notice__body">
+										<p className="neural-forms-entries-pro-notice__title">
+											{ __( 'Unable to process — Neural AI credits exhausted', 'neural-forms-lite' ) }
+										</p>
+										<p className="neural-forms-entries-pro-notice__desc">
+											{ __( 'Your Neural Forms Cloud balance has reached zero. Top up your credits to keep analyzing entries and generating replies.', 'neural-forms-lite' ) }
+										</p>
+									</div>
+									<a
+										className="neural-forms-entries-pro-notice__cta"
+										href={ exhausted.upgradeUrl || 'https://neuralforms.ai/pricing' }
+										target="_blank"
+										rel="noreferrer"
+									>
+										{ __( 'Buy more credits', 'neural-forms-lite' ) }
+									</a>
+								</div>
+							);
+						}
+						return (
+							<ProSlot
+								name="EntryAiActions"
+								fillProps={ {
+									onReanalyzeClick: onReanalyze,
+									onRegenerateClick: onRegenerate,
+									isAiRerunning: !! reanalyzing,
+									aiData: entry,
+									hasPrev: !! hasAnalysis,
+								} }
+							/>
+						);
+					} )()
 				) : (
 					<>
 						<button
