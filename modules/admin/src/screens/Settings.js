@@ -256,13 +256,29 @@ function CloudAiSection( {
 	const [ gateDismissed, setGateDismissed ] = useState( false );
 	const showSignupGate = ! form.cloud_api_key_set && ! gateDismissed;
 
+	// Pro presence detection (set by Pro's extend_script_data filter
+	// at window.neuralFormsAdmin.pro.version). Lite-alone vs. Pro
+	// changes both the gate copy and where the CTA points: Lite users
+	// don't yet have an account so they go to the pricing page; Pro
+	// users already have an account but haven't pasted their API key
+	// yet so they go straight to my-account to copy it.
+	const proInstalled = !! (
+		typeof window !== 'undefined'
+		&& window.neuralFormsAdmin
+		&& window.neuralFormsAdmin.pro
+		&& window.neuralFormsAdmin.pro.version
+	);
+	const gateUrl = proInstalled
+		? 'https://neuralforms.ai/my-account/'
+		: 'https://neuralforms.ai/pricing/';
+
 	function handleSignupGateClick() {
 		// Open in a new tab so the user can come back to Settings with
 		// the page state intact (the field they may have started typing
 		// in, the form snapshot, etc.). Local dismissal so they can
 		// inspect / interact with the section without the overlay until
 		// the next reload.
-		window.open( 'https://neuralforms.ai/pricing/', '_blank', 'noopener,noreferrer' );
+		window.open( gateUrl, '_blank', 'noopener,noreferrer' );
 		setGateDismissed( true );
 	}
 
@@ -433,17 +449,23 @@ function CloudAiSection( {
 						id="neural-forms-cloud-gate-title"
 						className="neural-forms-settings__cloud-gate-title"
 					>
-						{ __( 'Sign up for free to activate Lite features of Neural AI', 'neural-forms-lite' ) }
+						{ proInstalled
+							? __( 'Enter your API key to activate Neural AI', 'neural-forms-lite' )
+							: __( 'Sign up for free to activate Lite features of Neural AI', 'neural-forms-lite' ) }
 					</h3>
 					<p className="neural-forms-settings__cloud-gate-desc">
-						{ __( 'Connect your free Neural Forms Cloud account to unlock AI-powered entry analysis, suggested replies, and built-in spam detection.', 'neural-forms-lite' ) }
+						{ proInstalled
+							? __( 'Copy your API key from your Neural Forms account and paste it into the API Key field above to unlock AI analysis, suggested replies, and spam detection.', 'neural-forms-lite' )
+							: __( 'Connect your free Neural Forms Cloud account to unlock AI-powered entry analysis, suggested replies, and built-in spam detection.', 'neural-forms-lite' ) }
 					</p>
 					<button
 						type="button"
 						className="neural-forms-settings__cloud-gate-btn"
 						onClick={ handleSignupGateClick }
 					>
-						{ __( 'Sign up free', 'neural-forms-lite' ) }
+						{ proInstalled
+							? __( 'Open my account', 'neural-forms-lite' )
+							: __( 'Sign up free', 'neural-forms-lite' ) }
 					</button>
 				</div>
 			</div>
