@@ -7,78 +7,127 @@ use WP_Error;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Remote template library service.
+ * Local template library service.
  *
- * Lite's first-party hosted catalog lives at templates.neuralforms.ai
- * and ships a JSON catalog + per-template manifest / page / form JSON
- * files. This class handles the read path (fetching + caching the
- * catalog) and the import path (assembling a draft WordPress page
- * with any Neural Forms forms referenced from the template).
+ * Templates ship with the plugin (no remote host fetched). The Lite
+ * plugin ships its block-editor catalog under `templates/block-editor/`;
+ * Pro and other extension plugins register additional roots via the
+ * `neural_forms_template_library_roots` filter — e.g. Pro maps the
+ * `divi` builder to its own `templates/divi/` directory the same way.
+ *
+ * Folder convention (per root):
+ *   templates/<builder>/templates.json
+ *   templates/<builder>/<category>/<slug>.json
+ *   templates/<builder>/<category>/screenshots/<slug>.jpg
  *
  * Trust model
  * -----------
- * The remote host is fixed to `templates.neuralforms.ai`; every URL
- * passed to wp_remote_get() is validated against that allow-list (the
- * `neural_forms_template_library_allowed_hosts` filter exists so a
- * site can opt-in to a staging mirror, but the default is locked).
- * Imported form JSON is run through {@see ::sanitize_imported_form()}
- * which strips every integration / token / webhook / recipient key
- * before persisting via FormRepository — the template author can't
- * inject HubSpot tokens, Slack webhooks, or admin email recipients
- * into a downstream site.
+ * No outbound HTTP — the source of every file is the plugin's own
+ * filesystem, vetted at distribution time. import_url values in
+ * templates.json are RELATIVE paths only; resolve_local_path() runs
+ * realpath() and rejects anything that escapes the registered root,
+ * so a malformed catalog row can't read arbitrary files. Imported
+ * form JSON is still run through sanitize_imported_form() which
+ * strips every integration / token / webhook / recipient key before
+ * persisting — defence in depth against a poisoned template file.
  *
- * Caching
- * -------
- * The catalog is cached as a transient for 6 hours. Per-template
- * manifests / pages / forms are NOT cached — they're only fetched
- * at import time, which is rare and human-triggered.
+ * Bundle shapes (supported by import_template)
+ * --------------------------------------------
+ *   Form-only:  { form: {...} }              → creates one form, returns form_id
+ *   Page:       { page: {...}, forms: [...] } → existing draft-page flow
  *
- * Phase scope
- * -----------
- * MVP supports `builder: gutenberg` templates only. Divi / Elementor
- * branches are intentionally absent; the catalog field
- * `compatibility[]` is kept extensible so a future Divi import can
- * be added without breaking the catalog contract.
+ * The form-only shape is the recommended primary for the local
+ * template library; the page shape is retained for back-compat with
+ * templates that bundle a page + embedded forms.
+ *
+ * Extensibility
+ * -------------
+ * Filter `neural_forms_template_library_roots` to register additional
+ * roots, e.g.:
+ *
+ *   add_filter( 'neural_forms_template_library_roots', function ( $roots ) {
+ *       $roots['divi'][] = array(
+ *           'dir' => NEURAL_FORMS_PRO_PATH . 'templates/divi/',
+ *           'url' => NEURAL_FORMS_PRO_URL  . 'templates/divi/',
+ *       );
+ *       return $roots;
+ *   } );
  */
 class TemplateLibrary {
 
-	/** Default remote host. Filter the allow-list to add mirrors. */
-	const DEFAULT_HOST = 'templates.neuralforms.ai';
-
-	/** Catalog base — builder slug is appended to form the per-builder
-	 *  index URL (e.g. /gutenberg/templates.json). The flat layout
-	 *  scales to hundreds of templates without a single root catalog
-	 *  growing unbounded — each builder gets its own index and the
-	 *  plugin only fetches the one it needs. */
-	const CATALOG_BASE = 'https://templates.neuralforms.ai/';
-
-	/** Builders we support fetching for. The remote catalog host moved
-	 *  from /gutenberg/ to /block-editor/ in 2026-05; we keep
-	 *  'gutenberg' in the allow-list as a back-compat alias that
-	 *  rewrites to 'block-editor' before the URL is built (see
-	 *  fetch_catalog). divi / elementor slugs can be added here as
-	 *  catalogs ship without touching call sites. */
-	const SUPPORTED_BUILDERS = array( 'block-editor', 'gutenberg' );
-
-	/** Transient key prefix for the catalog cache. Suffixed by builder
-	 *  so a future divi/elementor cache doesn't collide. */
-	const CATALOG_TRANSIENT_PREFIX = 'neural_forms_template_catalog_';
-
-	/** Cache TTL in seconds. */
-	const CATALOG_TTL = 6 * HOUR_IN_SECONDS;
-
-	/** Outbound request timeout in seconds. */
-	const REQUEST_TIMEOUT = 15;
+	/** Builders the loader recognises. Plugins can register roots for
+	 *  any of these via the roots filter; the loader simply returns an
+	 *  empty catalog for builders with no registered roots. */
+	const SUPPORTED_BUILDERS = array( 'block-editor', 'gutenberg', 'divi', 'elementor' );
 
 	/**
-	 * Fetch the remote catalog and return only Gutenberg-compatible
-	 * templates. Returns a WP_Error on transport / decode failure so
-	 * the REST endpoint can surface a useful message to the admin.
+	 * Registered template roots, keyed by builder. Each value is a
+	 * list of root arrays { dir, url } so multiple plugins (Lite +
+	 * Pro + extensions) can contribute templates for the same builder
+	 * without stepping on each other.
 	 *
-	 * @param bool $bypass_cache When true, skips the transient lookup.
+	 * Filter `neural_forms_template_library_roots` to extend.
+	 *
+	 * @return array<string, array<int, array{dir:string,url:string}>>
+	 */
+	public static function get_template_roots(): array {
+		$roots = array(
+			'block-editor' => array(
+				array(
+					'dir' => NEURAL_FORMS_PATH . 'templates/block-editor/',
+					'url' => NEURAL_FORMS_URL  . 'templates/block-editor/',
+				),
+			),
+		);
+		$roots = (array) apply_filters( 'neural_forms_template_library_roots', $roots );
+
+		// Normalise — drop builders with no roots, drop malformed
+		// root entries.
+		$out = array();
+		foreach ( $roots as $builder => $list ) {
+			if ( ! is_string( $builder ) || ! is_array( $list ) ) {
+				continue;
+			}
+			$valid = array();
+			foreach ( $list as $root ) {
+				if ( is_array( $root ) && ! empty( $root['dir'] ) && ! empty( $root['url'] ) ) {
+					$valid[] = array(
+						'dir' => (string) $root['dir'],
+						'url' => (string) $root['url'],
+					);
+				}
+			}
+			if ( ! empty( $valid ) ) {
+				$out[ $builder ] = $valid;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Load the catalog for a builder from every registered root,
+	 * merging the templates[] arrays. Returns a WP_Error only for
+	 * unsupported builder slugs; missing / unreadable / malformed
+	 * JSON in any single root is silently skipped so one broken root
+	 * doesn't black out the whole catalog.
+	 *
+	 * $bypass_cache is preserved on the signature for API stability
+	 * but is now a no-op — local file reads are cheap and avoid
+	 * stale-cache surprises when a plugin ships a template update.
+	 *
+	 * @param bool   $bypass_cache  No-op (kept for signature stability).
+	 * @param string $builder       Builder slug.
 	 * @return array|WP_Error
 	 */
 	public static function fetch_catalog( bool $bypass_cache = false, string $builder = 'block-editor' ) {
+		unset( $bypass_cache ); // no remote cache to bypass anymore
+
+		// Back-compat: old clients that still send the legacy `gutenberg`
+		// slug get rewritten to the canonical `block-editor`.
+		if ( 'gutenberg' === $builder ) {
+			$builder = 'block-editor';
+		}
+
 		if ( ! in_array( $builder, self::SUPPORTED_BUILDERS, true ) ) {
 			return new WP_Error(
 				'template_unsupported_builder',
@@ -88,157 +137,297 @@ class TemplateLibrary {
 			);
 		}
 
-		// Back-compat: the catalog host moved from /gutenberg/ to
-		// /block-editor/ in 2026-05. Older clients that still send
-		// `?builder=gutenberg` get rewritten here so the request hits
-		// the live catalog instead of a 404.
+		$all_roots     = self::get_template_roots();
+		$builder_roots = isset( $all_roots[ $builder ] ) ? $all_roots[ $builder ] : array();
+
+		// No registered roots for this builder → return an empty,
+		// well-formed catalog. The React UI renders this as the
+		// "coming soon" / empty state instead of an error banner.
+		if ( empty( $builder_roots ) ) {
+			return array(
+				'version'    => '',
+				'builder'    => $builder,
+				'updated_at' => '',
+				'templates'  => array(),
+			);
+		}
+
+		$all_templates     = array();
+		$catalog_version   = '';
+		$catalog_updated   = '';
+		foreach ( $builder_roots as $root ) {
+			$index_path = rtrim( $root['dir'], '/\\' ) . '/templates.json';
+			if ( ! is_readable( $index_path ) ) {
+				continue;
+			}
+			// Local plugin asset, not a remote URL — wp_remote_get is
+			// wrong here. JSON parse failure for any single root is
+			// skipped silently rather than erroring out the whole
+			// catalog.
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$raw  = file_get_contents( $index_path );
+			$data = json_decode( (string) $raw, true );
+			if ( ! is_array( $data ) ) {
+				continue;
+			}
+
+			if ( '' === $catalog_version && isset( $data['version'] ) ) {
+				$catalog_version = (string) $data['version'];
+			}
+			if ( '' === $catalog_updated && isset( $data['updated_at'] ) ) {
+				$catalog_updated = (string) $data['updated_at'];
+			}
+
+			$templates = isset( $data['templates'] ) && is_array( $data['templates'] )
+				? $data['templates']
+				: array();
+
+			foreach ( $templates as $row ) {
+				if ( ! is_array( $row ) ) {
+					continue;
+				}
+				// Compatibility filter. If the row declares
+				// compatibility[], the builder slug must appear in
+				// it (accept the legacy `gutenberg` alias too).
+				// Rows with no compatibility array are accepted by
+				// default — the per-builder directory is itself an
+				// implicit compatibility declaration.
+				if ( isset( $row['compatibility'] ) && is_array( $row['compatibility'] ) ) {
+					$compat = array_map( 'strval', $row['compatibility'] );
+					if ( ! in_array( $builder, $compat, true )
+						&& ! ( 'block-editor' === $builder && in_array( 'gutenberg', $compat, true ) )
+					) {
+						continue;
+					}
+				}
+				$all_templates[] = self::normalize_catalog_row( $row, $root['url'] );
+			}
+		}
+
+		return array(
+			'version'    => $catalog_version,
+			'builder'    => $builder,
+			'updated_at' => $catalog_updated,
+			'templates'  => $all_templates,
+		);
+	}
+
+	/**
+	 * Resolve a relative import_url against a registered root dir,
+	 * with strict path-traversal protection.
+	 *
+	 * Rules:
+	 *   - relative path required (no absolute, no scheme)
+	 *   - no `..` segments
+	 *   - must end with `.json`
+	 *   - resolved realpath must be inside the realpath of the root
+	 *
+	 * @param string $root_dir  Registered template root dir.
+	 * @param string $relative  Value from templates.json's import_url.
+	 * @return string|WP_Error  Absolute filesystem path, or WP_Error.
+	 */
+	private static function resolve_local_path( string $root_dir, string $relative ) {
+		$relative = trim( $relative );
+		if ( '' === $relative ) {
+			return new WP_Error(
+				'template_invalid_path',
+				__( 'Template import_url is empty.', 'neural-forms-lite' ),
+				array( 'status' => 400 )
+			);
+		}
+		if ( strpos( $relative, '..' ) !== false ) {
+			return new WP_Error( 'template_invalid_path', __( 'Template path contains forbidden segment.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+		}
+		if ( preg_match( '#^[a-z][a-z0-9+.\-]*://#i', $relative ) ) {
+			return new WP_Error( 'template_invalid_path', __( 'Template path must be relative, not a URL.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+		}
+		// No absolute path (Unix `/` or Windows `C:\`).
+		if ( '/' === $relative[0] || '\\' === $relative[0] || preg_match( '#^[a-zA-Z]:[\\\\/]#', $relative ) ) {
+			return new WP_Error( 'template_invalid_path', __( 'Template path must be relative.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+		}
+		if ( ! preg_match( '/\.json$/i', $relative ) ) {
+			return new WP_Error( 'template_invalid_path', __( 'Template path must reference a .json file.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+		}
+
+		$base_real = realpath( rtrim( $root_dir, '/\\' ) );
+		if ( false === $base_real ) {
+			return new WP_Error( 'template_root_missing', __( 'Template root directory does not exist.', 'neural-forms-lite' ), array( 'status' => 500 ) );
+		}
+		$full = realpath( $base_real . DIRECTORY_SEPARATOR . str_replace( array( '/', '\\' ), DIRECTORY_SEPARATOR, $relative ) );
+		if ( false === $full ) {
+			return new WP_Error( 'template_file_missing', __( 'Template file does not exist.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+		if ( 0 !== strpos( $full, $base_real . DIRECTORY_SEPARATOR ) ) {
+			return new WP_Error( 'template_path_outside_root', __( 'Template path resolved outside the registered root.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+		}
+		return $full;
+	}
+
+	/**
+	 * Locate a template by id across every registered root for the
+	 * given builder.
+	 *
+	 * @param string $builder
+	 * @param string $template_id
+	 * @return array{template:array,root:array}|null
+	 */
+	private static function find_template( string $builder, string $template_id ): ?array {
+		$roots = self::get_template_roots();
+		$list  = isset( $roots[ $builder ] ) ? $roots[ $builder ] : array();
+		foreach ( $list as $root ) {
+			$index_path = rtrim( $root['dir'], '/\\' ) . '/templates.json';
+			if ( ! is_readable( $index_path ) ) {
+				continue;
+			}
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$raw  = file_get_contents( $index_path );
+			$data = json_decode( (string) $raw, true );
+			if ( ! is_array( $data ) ) {
+				continue;
+			}
+			$templates = isset( $data['templates'] ) && is_array( $data['templates'] ) ? $data['templates'] : array();
+			foreach ( $templates as $row ) {
+				if ( is_array( $row ) && isset( $row['id'] ) && (string) $row['id'] === $template_id ) {
+					return array( 'template' => $row, 'root' => $root );
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Import a template by (builder, template_id).
+	 *
+	 * The frontend may also pass the catalog's import_url for backward
+	 * compat with the old API, but we IGNORE it — looking up the
+	 * relative path via template_id in the local catalog is the only
+	 * source of truth, so a tampered frontend payload can't be used to
+	 * traverse the filesystem.
+	 *
+	 * Two bundle shapes are supported:
+	 *
+	 *   Form-only:   { form: {...} }
+	 *     Creates a single form via FormRepository and returns its id +
+	 *     edit URL. This is the primary shape for the local library.
+	 *
+	 *   Page+forms:  { page: {...}, forms: [...] }
+	 *     Imports each embedded form, rewrites the page block markup's
+	 *     formId references to the new local ids, and creates a draft
+	 *     page. Kept for back-compat with remote bundles that ship a
+	 *     full page layout around the form.
+	 *
+	 * @param string $builder      Builder slug (`block-editor`, `divi`, …).
+	 * @param string $template_id  Catalog id (matches templates.json row).
+	 * @return array|WP_Error
+	 */
+	public static function import_template( string $builder, string $template_id ) {
+		// Back-compat alias.
 		if ( 'gutenberg' === $builder ) {
 			$builder = 'block-editor';
 		}
 
-		$transient_key = self::CATALOG_TRANSIENT_PREFIX . $builder;
-		if ( ! $bypass_cache ) {
-			$cached = get_transient( $transient_key );
-			if ( is_array( $cached ) ) {
-				return $cached;
-			}
-		}
-
-		$catalog_url = self::CATALOG_BASE . $builder . '/templates.json';
-		$catalog     = self::request_json( $catalog_url );
-
-		// Catalog fetch is resilient by design. DNS failures, 4xx / 5xx
-		// from the remote, malformed JSON — none of those should
-		// surface as a scary "cURL error 6: Could not resolve host"
-		// banner inside the admin. Return an empty catalog with a
-		// `service_unavailable` flag instead so the React UI can render
-		// a friendly empty state. Cache the empty payload too (short
-		// TTL) so repeated screen visits don't hammer the network with
-		// retries while the remote is down.
-		if ( is_wp_error( $catalog ) ) {
-			$payload = array(
-				'version'             => '',
-				'builder'             => $builder,
-				'updated_at'          => '',
-				'templates'           => array(),
-				'service_unavailable' => true,
-			);
-			set_transient( $transient_key, $payload, 5 * MINUTE_IN_SECONDS );
-			return $payload;
-		}
-
-		$templates = isset( $catalog['templates'] ) && is_array( $catalog['templates'] )
-			? $catalog['templates']
-			: array();
-
-		// Filter to compatible templates only. Catalog entries
-		// without a `compatibility` array, or whose array doesn't
-		// include this builder, are excluded so a malformed row
-		// doesn't render as a broken card in the UI.
-		$visible = array();
-		foreach ( $templates as $row ) {
-			if ( ! is_array( $row ) ) {
-				continue;
-			}
-			$compat = isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
-				? array_map( 'strval', $row['compatibility'] )
-				: array();
-			if ( ! in_array( $builder, $compat, true ) ) {
-				continue;
-			}
-			$visible[] = self::normalize_catalog_row( $row );
-		}
-
-		$payload = array(
-			'version'    => isset( $catalog['version'] ) ? (string) $catalog['version'] : '',
-			'builder'    => isset( $catalog['builder'] ) ? (string) $catalog['builder'] : $builder,
-			'updated_at' => isset( $catalog['updated_at'] ) ? (string) $catalog['updated_at'] : '',
-			'templates'  => $visible,
-		);
-
-		set_transient( $transient_key, $payload, self::CATALOG_TTL );
-
-		return $payload;
-	}
-
-	/**
-	 * Import a template from a single self-contained bundle URL.
-	 *
-	 * MVP layout (templates.neuralforms.ai):
-	 *   /<builder>/templates.json                    ← index (catalog)
-	 *   /<builder>/<category>/<slug>.json            ← bundle  (this method)
-	 *   /<builder>/<category>/screenshots/<slug>.jpg ← card thumb
-	 *
-	 * The bundle is one JSON document carrying both the Gutenberg page
-	 * (block markup) and every form referenced from that markup — so
-	 * a successful import is one HTTP request, not three (catalog
-	 * already fetched the index, this is the second + final fetch).
-	 *
-	 * Flow:
-	 *   1. Validate the bundle URL host against the allow-list.
-	 *   2. Fetch the bundle JSON.
-	 *   3. Structural validation (builder, page, forms shape).
-	 *   4. For each `forms[]` row: sanitize the embedded `form`
-	 *      payload, insert via FormRepository, record
-	 *      sourceFormId → newLocalFormId.
-	 *   5. Replace formId attributes inside page.post_content using
-	 *      parse_blocks() / serialize_blocks(), with a regex fallback
-	 *      for safety.
-	 *   6. wp_kses_post() the rewritten content.
-	 *   7. wp_insert_post() as a draft page.
-	 *
-	 * Extensibility: the manifest-based multi-file layout (catalog →
-	 * manifest → page.json → forms[].file) is no longer fetched, but
-	 * the helpers it relied on (replace_form_ids_in_content,
-	 * sanitize_imported_form, validate_page_shape) are unchanged and
-	 * reusable if a future release reintroduces the multi-file flow
-	 * for very large templates.
-	 *
-	 * Returns an array with `page_id`, `edit_url`, `view_url`,
-	 * `imported_form_ids[]` on success; WP_Error on any failure.
-	 *
-	 * @param string $import_url Bundle URL on the allow-list.
-	 * @return array|WP_Error
-	 */
-	public static function import_template( string $import_url ) {
-		if ( ! self::is_allowed_url( $import_url ) ) {
+		if ( ! in_array( $builder, self::SUPPORTED_BUILDERS, true ) ) {
 			return new WP_Error(
-				'template_disallowed_host',
-				__( 'Template import URL is not on the allow-list.', 'neural-forms-lite' ),
+				'template_unsupported_builder',
+				/* translators: %s: builder slug requested by the client. */
+				sprintf( __( 'Template builder "%s" is not supported.', 'neural-forms-lite' ), $builder ),
 				array( 'status' => 400 )
 			);
 		}
 
-		$bundle = self::request_json( $import_url );
-		if ( is_wp_error( $bundle ) ) {
-			return $bundle;
+		$template_id = sanitize_key( $template_id );
+		if ( '' === $template_id ) {
+			return new WP_Error( 'template_missing_id', __( 'template_id is required.', 'neural-forms-lite' ), array( 'status' => 400 ) );
 		}
 
-		// Structural validation BEFORE we touch any value. Even though
-		// the catalog server is first-party, we treat its payloads as
-		// untrusted — a compromised CDN cache, a man-in-the-middle, or
-		// just a typo in template authoring shouldn't be enough to
-		// poison a downstream install.
+		$found = self::find_template( $builder, $template_id );
+		if ( null === $found ) {
+			return new WP_Error( 'template_not_found', __( 'Template not found in the local library.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+
+		$relative = isset( $found['template']['import_url'] ) ? (string) $found['template']['import_url'] : '';
+		$file     = self::resolve_local_path( $found['root']['dir'], $relative );
+		if ( is_wp_error( $file ) ) {
+			return $file;
+		}
+
+		// Local plugin asset — file_get_contents is appropriate; the
+		// realpath gate above already proved $file lives inside the
+		// registered root.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$raw    = file_get_contents( $file );
+		$bundle = json_decode( (string) $raw, true );
+		if ( ! is_array( $bundle ) ) {
+			return new WP_Error(
+				'template_invalid_bundle',
+				__( 'Template file is not valid JSON.', 'neural-forms-lite' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		// Bundle shape detection.
+		//   form-only: has `form` (object) and no `page`
+		//   page:      has `page` (object) [+ optional `forms[]`]
+		// Other shapes fall through to validate_bundle_shape, which
+		// errors with a useful message.
+		if ( isset( $bundle['form'] ) && is_array( $bundle['form'] ) && ! isset( $bundle['page'] ) ) {
+			return self::import_form_only_bundle( $bundle );
+		}
+
+		// Page+forms flow — original behaviour. Run the structural
+		// validator first so a malformed bundle surfaces a precise
+		// error instead of a confusing partial-import.
 		$shape_err = self::validate_bundle_shape( $bundle );
 		if ( $shape_err ) {
 			return $shape_err;
 		}
+		return self::import_page_bundle( $bundle );
+	}
 
-		// Builder gate — Lite imports Block-Editor / Gutenberg bundles.
-		// The remote host moved from /gutenberg/ to /block-editor/ in
-		// 2026-05; bundles now declare `builder: 'block-editor'`.
-		// Older bundles still declaring `gutenberg` continue to import
-		// (same payload shape — only the slug label changed).
-		$builder = isset( $bundle['builder'] ) ? (string) $bundle['builder'] : '';
-		if ( ! in_array( $builder, array( 'block-editor', 'gutenberg' ), true ) ) {
+	/**
+	 * Import a form-only bundle: { form: {...} } → one form created
+	 * via FormRepository. Returns the new form_id + an edit URL so the
+	 * builder can navigate the admin straight into editing it.
+	 *
+	 * @param array $bundle
+	 * @return array|WP_Error
+	 */
+	private static function import_form_only_bundle( array $bundle ) {
+		$form_data = isset( $bundle['form'] ) && is_array( $bundle['form'] ) ? $bundle['form'] : array();
+		if ( empty( $form_data ) ) {
 			return new WP_Error(
-				'template_unsupported_builder',
-				/* translators: %s: builder slug from the remote bundle. */
-				sprintf( __( 'Template builder "%s" is not supported yet.', 'neural-forms-lite' ), $builder ),
-				array( 'status' => 400 )
+				'template_empty_form',
+				__( 'Template bundle has an empty form payload.', 'neural-forms-lite' ),
+				array( 'status' => 500 )
 			);
 		}
+		$clean  = self::sanitize_imported_form( $form_data );
+		$new_id = FormRepository::create( $clean );
+		if ( ! $new_id ) {
+			return new WP_Error(
+				'template_form_insert_failed',
+				__( 'Failed to import the template form.', 'neural-forms-lite' ),
+				array( 'status' => 500 )
+			);
+		}
+		return array(
+			'form_id'           => (int) $new_id,
+			'edit_url'          => admin_url( 'admin.php?page=neural-forms&edit=' . (int) $new_id ),
+			'view_url'          => '',
+			'page_id'           => 0,
+			'imported_form_ids' => array( (int) $new_id ),
+		);
+	}
 
+	/**
+	 * Original page-bundle import: creates each embedded form,
+	 * rewrites formId references in page.post_content, inserts the
+	 * page as a draft.
+	 *
+	 * @param array $bundle  Already-validated bundle.
+	 * @return array|WP_Error
+	 */
+	private static function import_page_bundle( array $bundle ) {
 		$page  = isset( $bundle['page'] ) && is_array( $bundle['page'] ) ? $bundle['page'] : array();
 		$forms = isset( $bundle['forms'] ) && is_array( $bundle['forms'] ) ? $bundle['forms'] : array();
 
@@ -729,135 +918,76 @@ class TemplateLibrary {
 	}
 
 	/**
-	 * True when $url's host is on the allow-list.
-	 *
-	 * Filter `neural_forms_template_library_allowed_hosts` to add
-	 * mirrors (e.g. a staging environment) without modifying source.
-	 *
-	 * @param string $url
-	 * @return bool
-	 */
-	public static function is_allowed_url( string $url ): bool {
-		$url = trim( $url );
-		if ( $url === '' ) {
-			return false;
-		}
-		$host = wp_parse_url( $url, PHP_URL_HOST );
-		if ( ! is_string( $host ) || $host === '' ) {
-			return false;
-		}
-		$scheme = wp_parse_url( $url, PHP_URL_SCHEME );
-		if ( $scheme !== 'https' ) {
-			return false;
-		}
-
-		$allowed = (array) apply_filters(
-			'neural_forms_template_library_allowed_hosts',
-			array( self::DEFAULT_HOST )
-		);
-		$allowed = array_map( 'strtolower', array_map( 'strval', $allowed ) );
-		return in_array( strtolower( $host ), $allowed, true );
-	}
-
-	/**
 	 * Shape a catalog row into the minimal payload the React UI
 	 * consumes. Defensive against missing keys so a partial row
 	 * doesn't crash the card grid.
 	 *
-	 * @param array $row
+	 * Relative thumbnail / preview_url values from templates.json get
+	 * resolved against $root_url (the registered URL for the root
+	 * that owns this template), producing absolute plugin URLs the
+	 * browser can load directly. Already-absolute https URLs pass
+	 * through; http:// URLs are dropped so a template author can't
+	 * leak mixed-content references into the admin.
+	 *
+	 * `import_url` stays as the relative path — the server consults
+	 * it via find_template() + resolve_local_path() on import, and
+	 * the React UI doesn't fetch it directly.
+	 *
+	 * @param array  $row
+	 * @param string $root_url  Registered base URL for the root.
 	 * @return array
 	 */
-	private static function normalize_catalog_row( array $row ): array {
-		// Field names mirror the templates.json contract:
-		// name         (card title, was "title" in the older layout)
-		// preview_url  (HTML demo page opened in a new tab — was "preview")
-		// import_url   (the single self-contained template JSON the
-		// Import button POSTs through — was "manifest")
-		// thumbnail / category / compatibility / tags / description are
-		// unchanged. Any URL that fails the allow-list check is dropped
-		// to '' so the card still renders (just without that image /
-		// action) rather than failing the whole grid.
+	private static function normalize_catalog_row( array $row, string $root_url = '' ): array {
+		$resolve_url = static function ( $val ) use ( $root_url ) {
+			$val = trim( (string) $val );
+			if ( '' === $val ) {
+				return '';
+			}
+			if ( preg_match( '#^https://#i', $val ) ) {
+				return esc_url_raw( $val );
+			}
+			if ( preg_match( '#^http://#i', $val ) ) {
+				// Skip insecure references — prevents a template
+				// author from triggering mixed-content warnings.
+				return '';
+			}
+			if ( '' === $root_url ) {
+				return '';
+			}
+			return esc_url_raw( rtrim( $root_url, '/' ) . '/' . ltrim( $val, '/' ) );
+		};
+
+		// Category accepts either a string ("Contact Us") or an array
+		// (["Contact Us","Lead"]). Pass both shapes through — the
+		// React UI's normaliseCategories helper handles either.
+		$category = '';
+		if ( isset( $row['category'] ) ) {
+			if ( is_array( $row['category'] ) ) {
+				$category = array_values( array_map(
+					'sanitize_text_field',
+					array_map( 'strval', $row['category'] )
+				) );
+			} elseif ( is_string( $row['category'] ) ) {
+				$category = (string) $row['category'];
+			}
+		}
+
 		return array(
 			'id'            => isset( $row['id'] ) ? sanitize_key( (string) $row['id'] ) : '',
 			'name'          => isset( $row['name'] ) ? (string) $row['name'] : '',
 			'description'   => isset( $row['description'] ) ? (string) $row['description'] : '',
-			'category'      => isset( $row['category'] ) ? (string) $row['category'] : '',
+			'category'      => $category,
 			'compatibility' => isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
 				? array_map( 'strval', $row['compatibility'] )
 				: array(),
-			'thumbnail'     => isset( $row['thumbnail'] ) && self::is_allowed_url( (string) $row['thumbnail'] )
-				? esc_url_raw( (string) $row['thumbnail'] )
-				: '',
-			'preview_url'   => isset( $row['preview_url'] ) && self::is_allowed_url( (string) $row['preview_url'] )
-				? esc_url_raw( (string) $row['preview_url'] )
-				: '',
-			'import_url'    => isset( $row['import_url'] ) && self::is_allowed_url( (string) $row['import_url'] )
-				? esc_url_raw( (string) $row['import_url'] )
-				: '',
+			'thumbnail'     => isset( $row['thumbnail'] )   ? $resolve_url( $row['thumbnail'] )   : '',
+			'preview_url'   => isset( $row['preview_url'] ) ? $resolve_url( $row['preview_url'] ) : '',
+			// import_url stays as the relative path; clients should
+			// treat it as opaque and POST template_id back instead.
+			'import_url'    => isset( $row['import_url'] ) ? (string) $row['import_url'] : '',
 			'tags'          => isset( $row['tags'] ) && is_array( $row['tags'] )
 				? array_values( array_map( 'sanitize_text_field', array_map( 'strval', $row['tags'] ) ) )
 				: array(),
 		);
-	}
-
-	/**
-	 * Fetch a JSON document over HTTPS with a fixed timeout, validate
-	 * the status code, and decode the body. Returns a WP_Error on any
-	 * failure so the caller can render an admin-facing message.
-	 *
-	 * @param string $url
-	 * @return array|WP_Error
-	 */
-	private static function request_json( string $url ) {
-		$response = wp_remote_get(
-			$url,
-			array(
-				'timeout'     => self::REQUEST_TIMEOUT,
-				'redirection' => 2,
-				'headers'     => array(
-					'Accept' => 'application/json',
-				),
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			// Don't surface the raw transport message (e.g. "cURL
-			// error 6: Could not resolve host: …") — it's
-			// implementation noise the admin can't act on and it
-			// would advertise our deploy state when the host isn't
-			// live yet. Log the underlying message at debug level
-			// only, return a generic admin-facing message.
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( 'Neural Forms templates: transport failure — ' . $response->get_error_message() );
-			}
-			return new WP_Error(
-				'template_remote_failed',
-				__( 'Couldn\'t reach the template library right now. Please try again later.', 'neural-forms-lite' ),
-				array( 'status' => 502 )
-			);
-		}
-
-		$code = (int) wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $code ) {
-			return new WP_Error(
-				'template_remote_status',
-				/* translators: %d: HTTP status code returned by the remote template host. */
-				sprintf( __( 'Template host returned HTTP %d.', 'neural-forms-lite' ), $code ),
-				array( 'status' => 502 )
-			);
-		}
-
-		$body = wp_remote_retrieve_body( $response );
-		$json = json_decode( $body, true );
-		if ( ! is_array( $json ) ) {
-			return new WP_Error(
-				'template_remote_json',
-				__( 'Template host returned an invalid JSON payload.', 'neural-forms-lite' ),
-				array( 'status' => 502 )
-			);
-		}
-
-		return $json;
 	}
 }
