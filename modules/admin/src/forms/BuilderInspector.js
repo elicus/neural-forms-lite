@@ -318,6 +318,10 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				<RepeaterSettingsBlock field={ f } onChange={ set } />
 			) }
 
+			{ ( f.type === 'phone' || f.type === 'tel' ) && (
+				<PhoneCountrySettingsBlock field={ f } onChange={ set } />
+			) }
+
 			{ f.type === 'rating' && (
 				<label className="nf-inspector__field">
 					<span className="nf-inspector__label">{ __( 'Number of stars', 'neural-forms-lite' ) }</span>
@@ -789,6 +793,96 @@ function QuizSettingsBlock( { field, onChange } ) {
  * even though the validator scopes uniqueness to the repeater, child
  * ids never accidentally collide with top-level field ids.
  */
+/**
+ * Phone field — country code dropdown settings.
+ *
+ * Two settings:
+ *   - settings.enable_country_code (bool, default false)
+ *   - settings.default_country     (ISO 3166-1 alpha-2 string, default 'US')
+ *
+ * Off by default so adding a Phone field to an existing form doesn't
+ * suddenly change its layout — opt-in feature. When on, the frontend
+ * renders a flag picker + searchable country dropdown to the left of
+ * the tel input and prefills the dial code into the input value.
+ *
+ * The country dropdown here is intentionally short — admins rarely
+ * change the default and a 200-row dropdown in the inspector is
+ * overwhelming. The live frontend picker uses the full list (defined
+ * in form-submit.js). Admins who need a default outside this short
+ * list can type the ISO code directly via a `default_country` filter
+ * on the server side.
+ */
+const PHONE_DEFAULT_COUNTRIES = [
+	[ 'US', 'United States (+1)' ],
+	[ 'CA', 'Canada (+1)' ],
+	[ 'GB', 'United Kingdom (+44)' ],
+	[ 'AU', 'Australia (+61)' ],
+	[ 'IN', 'India (+91)' ],
+	[ 'DE', 'Germany (+49)' ],
+	[ 'FR', 'France (+33)' ],
+	[ 'ES', 'Spain (+34)' ],
+	[ 'IT', 'Italy (+39)' ],
+	[ 'NL', 'Netherlands (+31)' ],
+	[ 'BR', 'Brazil (+55)' ],
+	[ 'MX', 'Mexico (+52)' ],
+	[ 'AR', 'Argentina (+54)' ],
+	[ 'JP', 'Japan (+81)' ],
+	[ 'CN', 'China (+86)' ],
+	[ 'KR', 'South Korea (+82)' ],
+	[ 'SG', 'Singapore (+65)' ],
+	[ 'AE', 'United Arab Emirates (+971)' ],
+	[ 'SA', 'Saudi Arabia (+966)' ],
+	[ 'ZA', 'South Africa (+27)' ],
+	[ 'NZ', 'New Zealand (+64)' ],
+];
+
+function PhoneCountrySettingsBlock( { field, onChange } ) {
+	const s = ( field && typeof field.settings === 'object' && field.settings !== null )
+		? field.settings
+		: {};
+	const enabled = !! s.enable_country_code;
+	const country = typeof s.default_country === 'string' && /^[A-Za-z]{2}$/.test( s.default_country )
+		? s.default_country.toUpperCase()
+		: 'US';
+
+	const setSetting = ( key, value ) => onChange( {
+		settings: { ...s, [ key ]: value },
+	} );
+
+	return (
+		<>
+			<h4 className="nf-inspector__cl-title">{ __( 'Country code dropdown', 'neural-forms-lite' ) }</h4>
+
+			<label className="nf-inspector__field nf-inspector__field--inline">
+				<input
+					type="checkbox"
+					checked={ enabled }
+					onChange={ ( e ) => setSetting( 'enable_country_code', e.target.checked ) }
+				/>
+				<span>{ __( 'Show country flag + dial code picker', 'neural-forms-lite' ) }</span>
+			</label>
+
+			{ enabled && (
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Default country', 'neural-forms-lite' ) }</span>
+					<select
+						value={ country }
+						onChange={ ( e ) => setSetting( 'default_country', e.target.value ) }
+					>
+						{ PHONE_DEFAULT_COUNTRIES.map( ( [ iso, label ] ) => (
+							<option key={ iso } value={ iso }>{ label }</option>
+						) ) }
+					</select>
+				</label>
+			) }
+
+			<p className="nf-inspector__hint">
+				{ __( 'Visitors can switch countries on the frontend from a full searchable list — this only sets the initial flag.', 'neural-forms-lite' ) }
+			</p>
+		</>
+	);
+}
+
 function RepeaterSettingsBlock( { field, onChange } ) {
 	const s = ( field && typeof field.settings === 'object' && field.settings !== null )
 		? field.settings

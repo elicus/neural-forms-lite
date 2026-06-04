@@ -1229,9 +1229,64 @@ class FormRenderer {
 	/**
 	 * Phone input.
 	 * type="tel" triggers the phone/numeric keyboard on mobile devices.
+	 *
+	 * When the field's settings.enable_country_code is true, the input
+	 * is wrapped in a country picker (flag button + searchable dropdown
+	 * + tel input). The picker is built progressively by form-submit.js
+	 * on init — server-side we just emit the wrapper, the default
+	 * country's ISO code, and an empty placeholder flag span; JS
+	 * inflates the dropdown list and wires the open/select handlers.
+	 *
+	 * Without JS, the wrapper still degrades to a usable tel input
+	 * (the flag button is purely decorative and the dropdown is
+	 * hidden), so submissions still work.
 	 */
 	private static function render_phone( array $field, string $input_id, string $error_id ): string {
-		return '<input type="tel" ' . static::text_like_attrs( $field, $input_id, $error_id ) . '>';
+		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
+		$enabled  = ! empty( $settings['enable_country_code'] );
+		if ( ! $enabled ) {
+			return '<input type="tel" ' . static::text_like_attrs( $field, $input_id, $error_id ) . '>';
+		}
+
+		$default_country = strtoupper( (string) ( $settings['default_country'] ?? 'US' ) );
+		// 2-letter ISO only (regional-indicator emoji generation needs
+		// exactly two A-Z letters). Fall back to US for malformed data.
+		if ( ! preg_match( '/^[A-Z]{2}$/', $default_country ) ) {
+			$default_country = 'US';
+		}
+
+		// We render the tel input with the standard text_like_attrs so
+		// every other behaviour (required, placeholder, value, conditional
+		// logic) keeps working. JS adds the dial-code prefix on init.
+		$tel_attrs = static::text_like_attrs( $field, $input_id, $error_id );
+
+		$html  = '<div class="neural-forms-form__phone"'
+			. ' data-neural-forms-phone="1"'
+			. ' data-default-country="' . esc_attr( $default_country ) . '">';
+		$html .= '<button type="button"'
+			. ' class="neural-forms-form__phone-flag"'
+			. ' aria-haspopup="listbox"'
+			. ' aria-expanded="false"'
+			. ' aria-label="' . esc_attr__( 'Select country', 'neural-forms-lite' ) . '"'
+			. ' tabindex="0">';
+		$html .= '<span class="neural-forms-form__phone-flag-emoji" aria-hidden="true"></span>';
+		$html .= '<span class="neural-forms-form__phone-flag-chevron" aria-hidden="true">▾</span>';
+		$html .= '</button>';
+		$html .= '<input type="tel" ' . $tel_attrs . '>';
+		// Dropdown is rendered empty at SSR — form-submit.js populates
+		// it on first open from the in-JS country list so a no-JS
+		// visitor doesn't pay the markup cost.
+		$html .= '<div class="neural-forms-form__phone-dropdown" hidden role="dialog">';
+		$html .= '<input type="text"'
+			. ' class="neural-forms-form__phone-search"'
+			. ' placeholder="' . esc_attr__( 'Search country', 'neural-forms-lite' ) . '"'
+			. ' aria-label="' . esc_attr__( 'Search country', 'neural-forms-lite' ) . '"'
+			. ' autocomplete="off">';
+		$html .= '<ul class="neural-forms-form__phone-list" role="listbox"></ul>';
+		$html .= '</div>';
+		$html .= '</div>';
+
+		return $html;
 	}
 
 	/**

@@ -54,6 +54,7 @@
 		initWelcomeScreen( form );
 		initMultiStep( form );
 		initRepeaters( form );
+		initPhonePickers( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
 		// step-driven mutations are captured. Must run before the first
 		// submit so the "always" restoration path has the original bars
@@ -143,6 +144,283 @@
 			// welcome screen also reset progress, which isn't part of
 			// the current scope. Reserved for future "Restart" flow.
 			void nextBtn; void prevBtn;
+		} );
+	}
+
+	// ─── Phone country-code picker ──────────────────────────────────
+
+	/**
+	 * Country list for the phone picker. Each entry: [iso, name, dial].
+	 * Curated to the most commonly used countries — comprehensive
+	 * enough that "search by name or dial" finds anything reasonable,
+	 * small enough that the bundle isn't bloated with every
+	 * micronation. Filter `neural_forms_phone_countries` (server) or
+	 * window.neuralFormsPhoneCountries (client) to extend.
+	 *
+	 * Flag emoji is generated on the fly from the ISO code via the
+	 * Unicode regional-indicator-symbol trick — no per-country png.
+	 */
+	var NF_COUNTRIES = ( typeof window !== 'undefined' && Array.isArray( window.neuralFormsPhoneCountries ) )
+		? window.neuralFormsPhoneCountries
+		: [
+			[ 'AF', 'Afghanistan',          '+93'  ],
+			[ 'AL', 'Albania',              '+355' ],
+			[ 'DZ', 'Algeria',              '+213' ],
+			[ 'AR', 'Argentina',            '+54'  ],
+			[ 'AM', 'Armenia',              '+374' ],
+			[ 'AU', 'Australia',            '+61'  ],
+			[ 'AT', 'Austria',              '+43'  ],
+			[ 'AZ', 'Azerbaijan',           '+994' ],
+			[ 'BH', 'Bahrain',              '+973' ],
+			[ 'BD', 'Bangladesh',           '+880' ],
+			[ 'BY', 'Belarus',              '+375' ],
+			[ 'BE', 'Belgium',              '+32'  ],
+			[ 'BO', 'Bolivia',              '+591' ],
+			[ 'BA', 'Bosnia and Herzegovina', '+387' ],
+			[ 'BR', 'Brazil',               '+55'  ],
+			[ 'BG', 'Bulgaria',             '+359' ],
+			[ 'KH', 'Cambodia',             '+855' ],
+			[ 'CM', 'Cameroon',             '+237' ],
+			[ 'CA', 'Canada',               '+1'   ],
+			[ 'CL', 'Chile',                '+56'  ],
+			[ 'CN', 'China',                '+86'  ],
+			[ 'CO', 'Colombia',             '+57'  ],
+			[ 'CR', 'Costa Rica',           '+506' ],
+			[ 'HR', 'Croatia',              '+385' ],
+			[ 'CU', 'Cuba',                 '+53'  ],
+			[ 'CY', 'Cyprus',               '+357' ],
+			[ 'CZ', 'Czechia',              '+420' ],
+			[ 'DK', 'Denmark',              '+45'  ],
+			[ 'DO', 'Dominican Republic',   '+1'   ],
+			[ 'EC', 'Ecuador',              '+593' ],
+			[ 'EG', 'Egypt',                '+20'  ],
+			[ 'SV', 'El Salvador',          '+503' ],
+			[ 'EE', 'Estonia',              '+372' ],
+			[ 'ET', 'Ethiopia',             '+251' ],
+			[ 'FI', 'Finland',              '+358' ],
+			[ 'FR', 'France',               '+33'  ],
+			[ 'GE', 'Georgia',              '+995' ],
+			[ 'DE', 'Germany',              '+49'  ],
+			[ 'GH', 'Ghana',                '+233' ],
+			[ 'GR', 'Greece',               '+30'  ],
+			[ 'GT', 'Guatemala',            '+502' ],
+			[ 'HN', 'Honduras',             '+504' ],
+			[ 'HK', 'Hong Kong',            '+852' ],
+			[ 'HU', 'Hungary',              '+36'  ],
+			[ 'IS', 'Iceland',              '+354' ],
+			[ 'IN', 'India',                '+91'  ],
+			[ 'ID', 'Indonesia',            '+62'  ],
+			[ 'IR', 'Iran',                 '+98'  ],
+			[ 'IQ', 'Iraq',                 '+964' ],
+			[ 'IE', 'Ireland',              '+353' ],
+			[ 'IL', 'Israel',               '+972' ],
+			[ 'IT', 'Italy',                '+39'  ],
+			[ 'JM', 'Jamaica',              '+1'   ],
+			[ 'JP', 'Japan',                '+81'  ],
+			[ 'JO', 'Jordan',               '+962' ],
+			[ 'KZ', 'Kazakhstan',           '+7'   ],
+			[ 'KE', 'Kenya',                '+254' ],
+			[ 'KW', 'Kuwait',               '+965' ],
+			[ 'LV', 'Latvia',               '+371' ],
+			[ 'LB', 'Lebanon',              '+961' ],
+			[ 'LY', 'Libya',                '+218' ],
+			[ 'LT', 'Lithuania',            '+370' ],
+			[ 'LU', 'Luxembourg',           '+352' ],
+			[ 'MO', 'Macau',                '+853' ],
+			[ 'MY', 'Malaysia',             '+60'  ],
+			[ 'MT', 'Malta',                '+356' ],
+			[ 'MX', 'Mexico',               '+52'  ],
+			[ 'MD', 'Moldova',              '+373' ],
+			[ 'MC', 'Monaco',               '+377' ],
+			[ 'MN', 'Mongolia',             '+976' ],
+			[ 'ME', 'Montenegro',           '+382' ],
+			[ 'MA', 'Morocco',              '+212' ],
+			[ 'NP', 'Nepal',                '+977' ],
+			[ 'NL', 'Netherlands',          '+31'  ],
+			[ 'NZ', 'New Zealand',          '+64'  ],
+			[ 'NI', 'Nicaragua',            '+505' ],
+			[ 'NG', 'Nigeria',              '+234' ],
+			[ 'KP', 'North Korea',          '+850' ],
+			[ 'MK', 'North Macedonia',      '+389' ],
+			[ 'NO', 'Norway',               '+47'  ],
+			[ 'OM', 'Oman',                 '+968' ],
+			[ 'PK', 'Pakistan',             '+92'  ],
+			[ 'PA', 'Panama',               '+507' ],
+			[ 'PY', 'Paraguay',             '+595' ],
+			[ 'PE', 'Peru',                 '+51'  ],
+			[ 'PH', 'Philippines',          '+63'  ],
+			[ 'PL', 'Poland',               '+48'  ],
+			[ 'PT', 'Portugal',             '+351' ],
+			[ 'PR', 'Puerto Rico',          '+1'   ],
+			[ 'QA', 'Qatar',                '+974' ],
+			[ 'RO', 'Romania',              '+40'  ],
+			[ 'RU', 'Russia',               '+7'   ],
+			[ 'SA', 'Saudi Arabia',         '+966' ],
+			[ 'RS', 'Serbia',               '+381' ],
+			[ 'SG', 'Singapore',            '+65'  ],
+			[ 'SK', 'Slovakia',             '+421' ],
+			[ 'SI', 'Slovenia',             '+386' ],
+			[ 'ZA', 'South Africa',         '+27'  ],
+			[ 'KR', 'South Korea',          '+82'  ],
+			[ 'ES', 'Spain',                '+34'  ],
+			[ 'LK', 'Sri Lanka',            '+94'  ],
+			[ 'SE', 'Sweden',               '+46'  ],
+			[ 'CH', 'Switzerland',          '+41'  ],
+			[ 'SY', 'Syria',                '+963' ],
+			[ 'TW', 'Taiwan',               '+886' ],
+			[ 'TZ', 'Tanzania',             '+255' ],
+			[ 'TH', 'Thailand',             '+66'  ],
+			[ 'TN', 'Tunisia',              '+216' ],
+			[ 'TR', 'Türkiye',              '+90'  ],
+			[ 'UA', 'Ukraine',              '+380' ],
+			[ 'AE', 'United Arab Emirates', '+971' ],
+			[ 'GB', 'United Kingdom',       '+44'  ],
+			[ 'US', 'United States',        '+1'   ],
+			[ 'UY', 'Uruguay',              '+598' ],
+			[ 'UZ', 'Uzbekistan',           '+998' ],
+			[ 'VE', 'Venezuela',            '+58'  ],
+			[ 'VN', 'Vietnam',              '+84'  ],
+			[ 'YE', 'Yemen',                '+967' ],
+			[ 'ZM', 'Zambia',               '+260' ],
+			[ 'ZW', 'Zimbabwe',             '+263' ],
+		];
+
+	/** Generate a flag emoji from a 2-letter ISO code via regional indicators. */
+	function flagFromIso( iso ) {
+		var s = String( iso || '' ).toUpperCase();
+		if ( s.length !== 2 || ! /^[A-Z]{2}$/.test( s ) ) return '🏳️';
+		return String.fromCodePoint( 127397 + s.charCodeAt( 0 ) ) + String.fromCodePoint( 127397 + s.charCodeAt( 1 ) );
+	}
+
+	function findCountryByIso( iso ) {
+		var target = String( iso || '' ).toUpperCase();
+		for ( var i = 0; i < NF_COUNTRIES.length; i++ ) {
+			if ( NF_COUNTRIES[ i ][ 0 ] === target ) return NF_COUNTRIES[ i ];
+		}
+		return null;
+	}
+
+	/**
+	 * Wire every phone-picker wrapper inside the form.
+	 *
+	 * Picker UX:
+	 *   - Initial flag set from data-default-country, with the dial code
+	 *     prefilled into the tel input (only if it's currently empty —
+	 *     don't clobber a saved value).
+	 *   - Click flag → toggle dropdown open / closed.
+	 *   - Type in search → filter list by name or dial code.
+	 *   - Click an item → set flag + replace the leading dial code in the
+	 *     input (preserves any user-typed digits past the prefix), close.
+	 *   - Click outside / Escape → close.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function initPhonePickers( form ) {
+		var pickers = form.querySelectorAll( '[data-neural-forms-phone="1"]' );
+		for ( var p = 0; p < pickers.length; p++ ) {
+			initOnePhonePicker( pickers[ p ] );
+		}
+	}
+
+	function initOnePhonePicker( wrap ) {
+		var flagBtn  = wrap.querySelector( '.neural-forms-form__phone-flag' );
+		var flagSpan = wrap.querySelector( '.neural-forms-form__phone-flag-emoji' );
+		var input    = wrap.querySelector( 'input[type="tel"]' );
+		var dropdown = wrap.querySelector( '.neural-forms-form__phone-dropdown' );
+		var search   = wrap.querySelector( '.neural-forms-form__phone-search' );
+		var list     = wrap.querySelector( '.neural-forms-form__phone-list' );
+		if ( ! flagBtn || ! flagSpan || ! input || ! dropdown || ! list ) return;
+
+		var current = findCountryByIso( wrap.getAttribute( 'data-default-country' ) ) || findCountryByIso( 'US' );
+		if ( ! current ) return;
+
+		var hydrated = false;
+		function hydrate() {
+			if ( hydrated ) return;
+			var html = '';
+			for ( var i = 0; i < NF_COUNTRIES.length; i++ ) {
+				var c = NF_COUNTRIES[ i ];
+				html += '<li role="option" data-iso="' + c[ 0 ] + '" data-dial="' + c[ 2 ] + '" data-search="'
+					+ ( c[ 1 ] + ' ' + c[ 2 ] ).toLowerCase().replace( /"/g, '&quot;' )
+					+ '"><span class="neural-forms-form__phone-list-flag">' + flagFromIso( c[ 0 ] ) + '</span>'
+					+ '<span class="neural-forms-form__phone-list-name">' + c[ 1 ] + '</span>'
+					+ '<span class="neural-forms-form__phone-list-dial">' + c[ 2 ] + '</span></li>';
+			}
+			list.innerHTML = html;
+			hydrated = true;
+		}
+
+		function applyCountry( country, prefillInput ) {
+			current = country;
+			flagSpan.textContent = flagFromIso( country[ 0 ] );
+			wrap.setAttribute( 'data-current-country', country[ 0 ] );
+			if ( prefillInput ) {
+				var existing = input.value || '';
+				// Replace a leading "+XXX " (or "+XXX") prefix with the new
+				// dial code; otherwise just prepend the dial code to the
+				// untouched value. Keeps any digits the user already typed.
+				var stripped = existing.replace( /^\s*\+\d+\s*/, '' );
+				input.value  = country[ 2 ] + ( stripped ? ' ' + stripped.trim() : '' );
+			}
+		}
+
+		// Initial flag — set without prefilling if the input has any
+		// saved value; only prefill the dial code on a blank input.
+		applyCountry( current, ! ( input.value && input.value.trim() !== '' ) );
+
+		function open() {
+			hydrate();
+			dropdown.hidden = false;
+			flagBtn.setAttribute( 'aria-expanded', 'true' );
+			search.value = '';
+			filter( '' );
+			setTimeout( function () { try { search.focus(); } catch ( _ ) { /* noop */ } }, 0 );
+		}
+		function close() {
+			dropdown.hidden = true;
+			flagBtn.setAttribute( 'aria-expanded', 'false' );
+		}
+		function toggle() {
+			if ( dropdown.hidden ) open(); else close();
+		}
+
+		function filter( q ) {
+			var needle = String( q || '' ).toLowerCase().trim();
+			var items  = list.querySelectorAll( 'li' );
+			for ( var i = 0; i < items.length; i++ ) {
+				var hay = items[ i ].getAttribute( 'data-search' ) || '';
+				items[ i ].hidden = needle !== '' && hay.indexOf( needle ) === -1;
+			}
+		}
+
+		flagBtn.addEventListener( 'click', function ( e ) {
+			e.preventDefault();
+			e.stopPropagation();
+			toggle();
+		} );
+
+		search.addEventListener( 'input', function () { filter( search.value ); } );
+		search.addEventListener( 'keydown', function ( e ) {
+			if ( e.key === 'Escape' ) { e.preventDefault(); close(); flagBtn.focus(); }
+		} );
+
+		list.addEventListener( 'click', function ( e ) {
+			var li = e.target && e.target.closest && e.target.closest( 'li' );
+			if ( ! li ) return;
+			var iso = li.getAttribute( 'data-iso' );
+			var country = findCountryByIso( iso );
+			if ( country ) {
+				applyCountry( country, true );
+				close();
+				try { input.focus(); } catch ( _ ) { /* noop */ }
+			}
+		} );
+
+		// Close when clicking outside this picker.
+		document.addEventListener( 'click', function ( e ) {
+			if ( dropdown.hidden ) return;
+			if ( wrap.contains( e.target ) ) return;
+			close();
 		} );
 	}
 
