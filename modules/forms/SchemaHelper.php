@@ -878,8 +878,7 @@ class SchemaHelper {
 					: ( $node['button_text'] ?? '' )
 			),
 			'settings'    => array(
-				'alignment'   => $alignment,
-				'full_height' => ! empty( $settings_in['full_height'] ),
+				'alignment' => $alignment,
 			),
 		);
 	}

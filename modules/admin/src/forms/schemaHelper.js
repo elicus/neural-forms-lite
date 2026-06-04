@@ -248,7 +248,6 @@ export function createWelcomeScreen() {
 		buttonText: 'Start',
 		settings: {
 			alignment: 'center',
-			full_height: false,
 		},
 	};
 }

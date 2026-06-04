@@ -862,12 +862,8 @@ class FormRenderer {
 		if ( ! in_array( $alignment, [ 'left', 'center', 'right' ], true ) ) {
 			$alignment = 'center';
 		}
-		$full_height = ! empty( $settings['full_height'] );
 
 		$classes = 'neural-forms-form__welcome neural-forms-form__welcome--align-' . $alignment;
-		if ( $full_height ) {
-			$classes .= ' neural-forms-form__welcome--full-height';
-		}
 
 		$html  = '<div class="' . esc_attr( $classes ) . '"';
 		if ( $node_id !== '' ) {

@@ -168,12 +168,6 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
 .neural-forms-form__welcome--align-left   { text-align: left;   }
 .neural-forms-form__welcome--align-center { text-align: center; }
 .neural-forms-form__welcome--align-right  { text-align: right;  }
-.neural-forms-form__welcome--full-height {
-  min-height: 80vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 .neural-forms-form__welcome-inner { max-width: 560px; margin: 0 auto; }
 .neural-forms-form__welcome--align-left  .neural-forms-form__welcome-inner { margin-left: 0;  }
 .neural-forms-form__welcome--align-right .neural-forms-form__welcome-inner { margin-right: 0; }

@@ -1563,15 +1563,6 @@ function WelcomeScreenInspector( { hit, nodes, onChange } ) {
 				</select>
 			</label>
 
-			<label className="nf-inspector__field nf-inspector__field--check">
-				<input
-					type="checkbox"
-					checked={ !! settings.full_height }
-					onChange={ ( e ) => setSetting( 'full_height', e.target.checked ) }
-				/>
-				<span className="nf-inspector__label">{ __( 'Full height', 'neural-forms-lite' ) }</span>
-			</label>
-
 			<p className="nf-inspector__hint">
 				{ __( 'Welcome Screens never collect data and never appear in entries, exports, or notifications.', 'neural-forms-lite' ) }
 			</p>
