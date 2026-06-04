@@ -6,10 +6,11 @@
  * server. The builder UI handles them as draggable groups.
  */
 
-export const ROW_TYPE     = 'row';
-export const COLUMN_TYPE  = 'column';
-export const STEP_TYPE    = 'step';
-export const SECTION_TYPE = 'section';
+export const ROW_TYPE            = 'row';
+export const COLUMN_TYPE         = 'column';
+export const STEP_TYPE           = 'step';
+export const SECTION_TYPE        = 'section';
+export const WELCOME_SCREEN_TYPE = 'welcome_screen';
 export const MIN_COLUMNS  = 1;
 export const MAX_COLUMNS  = 4;
 export const VALID_GAPS   = [ 'none', 'small', 'medium', 'large' ];
@@ -27,10 +28,11 @@ function token( prefix ) {
 	return prefix + '_' + Date.now().toString( 36 ) + _idCounter.toString( 36 );
 }
 
-export const newRowId     = () => token( 'row' );
-export const newColumnId  = () => token( 'col' );
-export const newStepId    = () => token( 'step' );
-export const newSectionId = () => token( 'section' );
+export const newRowId            = () => token( 'row' );
+export const newColumnId         = () => token( 'col' );
+export const newStepId           = () => token( 'step' );
+export const newSectionId        = () => token( 'section' );
+export const newWelcomeScreenId  = () => token( 'welcome_screen' );
 export const newFieldId   = ( type ) => token( ( type || 'field' ).replace( /[^a-z0-9]+/gi, '' ).toLowerCase() );
 
 export function isRow( node ) {
@@ -56,6 +58,29 @@ export function isSection( node ) {
 }
 
 /**
+ * True when a node is a Welcome Screen — a top-level display block
+ * that renders before the form body and reveals it on Start click.
+ * Welcome screens never collect data, never validate, and never
+ * appear in entry values / exports / notifications.
+ */
+export function isWelcomeScreen( node ) {
+	return !! ( node && node.type === WELCOME_SCREEN_TYPE );
+}
+
+/**
+ * True when the schema's top-level fields contain a welcome screen.
+ * Used by the builder palette to enforce one-per-form and grey out
+ * the Add button when the slot is already taken.
+ */
+export function hasWelcomeScreen( fields ) {
+	if ( ! Array.isArray( fields ) ) return false;
+	for ( let i = 0; i < fields.length; i++ ) {
+		if ( isWelcomeScreen( fields[ i ] ) ) return true;
+	}
+	return false;
+}
+
+/**
  * True when a node looks like a layout column (lives inside a row).
  *
  * Columns historically had no `type` field, so we accept "shape
@@ -71,7 +96,7 @@ export function isColumn( node ) {
 }
 
 export function isLayoutNode( node ) {
-	return isRow( node ) || isColumn( node ) || isStep( node ) || isSection( node );
+	return isRow( node ) || isColumn( node ) || isStep( node ) || isSection( node ) || isWelcomeScreen( node );
 }
 
 /**
@@ -87,7 +112,8 @@ export function isRealField( node ) {
 	return node.type !== ROW_TYPE
 		&& node.type !== COLUMN_TYPE
 		&& node.type !== STEP_TYPE
-		&& node.type !== SECTION_TYPE;
+		&& node.type !== SECTION_TYPE
+		&& node.type !== WELCOME_SCREEN_TYPE;
 }
 
 export function clampColumnCount( n ) {
@@ -206,6 +232,29 @@ export function duplicateRow( row ) {
 export function duplicateField( field ) {
 	if ( ! isRealField( field ) ) return field;
 	return { ...field, id: newFieldId( field.type ) };
+}
+
+/**
+ * Build a brand-new Welcome Screen with default copy + brand colours
+ * left empty (theme inherits). One per form — the palette guards this.
+ */
+export function createWelcomeScreen() {
+	return {
+		id: newWelcomeScreenId(),
+		type: WELCOME_SCREEN_TYPE,
+		label: 'Welcome Screen',
+		title: "Let's get started",
+		description: 'This will only take a couple of minutes.',
+		buttonText: 'Start',
+		settings: {
+			alignment: 'center',
+			background_color: '',
+			text_color: '',
+			button_background: '',
+			button_text_color: '',
+			full_height: false,
+		},
+	};
 }
 
 /** Build a brand-new section. Sections are leaves - no children. */

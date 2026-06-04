@@ -50,7 +50,7 @@ import {
 	sameContainer,
 } from './dndHelpers';
 import { newField } from './FieldTypes';
-import { createRow, createStep, createSection } from './schemaHelper';
+import { createRow, createStep, createSection, createWelcomeScreen, hasWelcomeScreen } from './schemaHelper';
 
 // Debug — gated on localStorage. Same flag as before.
 const DEBUG_DND = ( () => {
@@ -144,6 +144,16 @@ export default function BuilderDndProvider( {
 				if ( data.layoutType === 'row' )     newNode = createRow( 2 );
 				if ( data.layoutType === 'step' )    newNode = createStep();
 				if ( data.layoutType === 'section' ) newNode = createSection();
+				if ( data.layoutType === 'welcome_screen' ) {
+					// One per form. If the dropper bypassed the
+					// palette's disabled state (drag-and-drop fast
+					// path), reject here so the schema stays valid.
+					if ( hasWelcomeScreen( nodes ) ) {
+						dlog( '  bail: welcome screen already present' );
+						return;
+					}
+					newNode = createWelcomeScreen();
+				}
 			}
 			if ( ! newNode ) { dlog( '  bail: palette type not recognised' ); return; }
 
@@ -155,6 +165,14 @@ export default function BuilderDndProvider( {
 			if ( newNode.type === 'step' && toLoc.kind !== 'root' ) {
 				dlog( '  bail: palette step into non-root' );
 				return;
+			}
+
+			// Welcome screens are top-level only and always pinned to
+			// index 0. Force the drop location regardless of where the
+			// user released — the visual semantics are unambiguous
+			// (welcome screen is the first thing on the form).
+			if ( newNode.type === 'welcome_screen' ) {
+				toLoc = { kind: 'root', index: 0 };
 			}
 			if ( ! canDropInto( newNode, toLoc ) ) {
 				dlog( '  bail: palette canDropInto rejected', { sourceType: newNode.type, targetKind: toLoc.kind } );

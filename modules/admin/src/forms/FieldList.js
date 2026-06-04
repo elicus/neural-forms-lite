@@ -13,7 +13,7 @@ import FieldRow from './FieldRow';
 import RowBlock from './RowBlock';
 import StepBlock from './StepBlock';
 import SectionBlock from './SectionBlock';
-import { isRow, isStep, isSection, resizeRow, duplicateRow, duplicateField, duplicateStep, duplicateSection } from './schemaHelper';
+import { isRow, isStep, isSection, isWelcomeScreen, resizeRow, duplicateRow, duplicateField, duplicateStep, duplicateSection } from './schemaHelper';
 
 export default function FieldList( {
 	nodes,
@@ -171,6 +171,40 @@ export default function FieldList( {
 					</p>
 				) }
 				{ nodes.map( ( node, idx ) => {
+						if ( isWelcomeScreen( node ) ) {
+							const ws = node;
+							const buttonText = ws.buttonText || ws.button_text || 'Start';
+							const isSel = ws.id === selectedId;
+							return (
+								<div
+									key={ ws.id }
+									className={ 'nf-welcome-block' + ( isSel ? ' is-selected' : '' ) }
+									onClick={ ( e ) => { e.stopPropagation(); select( ws.id ); } }
+									role="button"
+									tabIndex={ 0 }
+									onKeyDown={ ( e ) => {
+										if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); select( ws.id ); }
+									} }
+									aria-label="Welcome Screen — opens settings on click"
+								>
+									<div className="nf-welcome-block__tag">Welcome Screen</div>
+									<h3 className="nf-welcome-block__title">{ ws.title || "Let's get started" }</h3>
+									{ ws.description && (
+										<p className="nf-welcome-block__desc">{ ws.description }</p>
+									) }
+									<span className="nf-welcome-block__btn">{ buttonText }</span>
+									<div className="nf-welcome-block__actions">
+										<button
+											type="button"
+											className="nf-welcome-block__action"
+											onClick={ ( e ) => { e.stopPropagation(); removeNode( idx ); } }
+											aria-label="Delete Welcome Screen"
+											title="Delete"
+										>×</button>
+									</div>
+								</div>
+							);
+						}
 						if ( isSection( node ) ) {
 							return (
 								<SectionBlock

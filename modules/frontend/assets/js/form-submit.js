@@ -51,6 +51,7 @@
 			handleSubmit( e, form );
 		} );
 		initConditional( form );
+		initWelcomeScreen( form );
 		initMultiStep( form );
 		initRepeaters( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
@@ -78,6 +79,73 @@
 	 * After every mutation, refresh the add + remove button
 	 * visibility against data-min / data-max.
 	 */
+	/**
+	 * Welcome Screen reveal handler.
+	 *
+	 * Renderer places the welcome screen markup as the FIRST child
+	 * inside .neural-forms-form-wrap (a sibling of <form>) and sets
+	 * data-neural-forms-has-welcome on the wrap. Without JS, both the
+	 * welcome screen AND the form body are visible (graceful fallback
+	 * — visitor can still submit). With JS, the welcome screen takes
+	 * over and the form body stays hidden via the CSS rule that
+	 * targets [data-neural-forms-has-welcome] until Start is clicked.
+	 *
+	 * On Start click: drop the data flag (CSS reveals the form),
+	 * remove the welcome screen, focus the first input or jump
+	 * multi-step forms to step 1.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function initWelcomeScreen( form ) {
+		var wrap = form.closest( '.neural-forms-form-wrap' );
+		if ( ! wrap || wrap.getAttribute( 'data-neural-forms-has-welcome' ) !== '1' ) return;
+		var welcome = wrap.querySelector( '.neural-forms-form__welcome' );
+		var btn     = welcome ? welcome.querySelector( '[data-neural-forms-welcome-start="1"]' ) : null;
+		if ( ! welcome || ! btn ) {
+			// Defensive: if something stripped the markup, clear the
+			// flag so the form remains usable.
+			wrap.removeAttribute( 'data-neural-forms-has-welcome' );
+			return;
+		}
+
+		btn.addEventListener( 'click', function ( e ) {
+			e.preventDefault();
+			wrap.removeAttribute( 'data-neural-forms-has-welcome' );
+			wrap.classList.add( 'is-started' );
+			// Hide via inline display:none so a re-init doesn't bind
+			// the click twice if the form is somehow re-mounted.
+			welcome.style.display = 'none';
+
+			// Multi-step: ensure step 0 is the active step. initMultiStep
+			// already runs show(0) on init, but the welcome screen click
+			// is the natural "begin" moment — re-asserting it covers
+			// any path where another script may have advanced the step.
+			var nextBtn  = form.querySelector( '[data-step-action="next"]' );
+			var prevBtn  = form.querySelector( '[data-step-action="prev"]' );
+			var firstStep = form.querySelector( '.neural-forms-form__step' );
+			if ( firstStep ) {
+				// Focus the step's heading or first input.
+				var focusTarget = firstStep.querySelector( '.neural-forms-form__step-title' )
+					|| firstStep.querySelector( 'input, select, textarea' );
+				if ( focusTarget && typeof focusTarget.focus === 'function' ) {
+					try { focusTarget.focus( { preventScroll: false } ); } catch ( _ ) { focusTarget.focus(); }
+				}
+			} else {
+				// Single-step form — focus the first real input.
+				var first = form.querySelector( 'input:not([type="hidden"]), select, textarea' );
+				if ( first && typeof first.focus === 'function' ) {
+					try { first.focus(); } catch ( _ ) { /* noop */ }
+				}
+			}
+
+			// nextBtn / prevBtn references kept above for symmetry with
+			// the multi-step init; nothing to mutate here unless the
+			// welcome screen also reset progress, which isn't part of
+			// the current scope. Reserved for future "Restart" flow.
+			void nextBtn; void prevBtn;
+		} );
+	}
+
 	function initRepeaters( form ) {
 		var repeaters = form.querySelectorAll( '.neural-forms-repeater' );
 		for ( var i = 0; i < repeaters.length; i++ ) {

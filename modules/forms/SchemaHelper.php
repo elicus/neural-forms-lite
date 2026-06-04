@@ -31,10 +31,11 @@ defined( 'ABSPATH' ) || exit;
  */
 class SchemaHelper {
 
-	const ROW_TYPE     = 'row';
-	const COLUMN_TYPE  = 'column';
-	const STEP_TYPE    = 'step';
-	const SECTION_TYPE = 'section';
+	const ROW_TYPE            = 'row';
+	const COLUMN_TYPE         = 'column';
+	const STEP_TYPE           = 'step';
+	const SECTION_TYPE        = 'section';
+	const WELCOME_SCREEN_TYPE = 'welcome_screen';
 
 	const MIN_COLUMNS = 1;
 	const MAX_COLUMNS = 4;
@@ -102,6 +103,20 @@ class SchemaHelper {
 	 * NOT contain fields in 1.1.0. They appear as siblings of real
 	 * fields at root, inside step.fields, or inside column.fields.
 	 */
+	/**
+	 * True when a node is a Welcome Screen — a special top-level
+	 * display block that renders before the form fields and reveals
+	 * them on Start. Welcome screens never collect data and are
+	 * excluded from validation, submissions, entries, exports, AI
+	 * analysis, and notifications.
+	 */
+	public static function is_welcome_screen( $node ): bool {
+		if ( ! is_array( $node ) ) {
+			return false;
+		}
+		return ( $node['type'] ?? '' ) === self::WELCOME_SCREEN_TYPE;
+	}
+
 	public static function is_section( $node ): bool {
 		if ( ! is_array( $node ) ) {
 			return false;
@@ -132,7 +147,8 @@ class SchemaHelper {
 		return self::is_row( $node )
 			|| self::is_column( $node )
 			|| self::is_step( $node )
-			|| self::is_section( $node );
+			|| self::is_section( $node )
+			|| self::is_welcome_screen( $node );
 	}
 
 	/**
@@ -151,7 +167,25 @@ class SchemaHelper {
 		return $type !== self::ROW_TYPE
 			&& $type !== self::COLUMN_TYPE
 			&& $type !== self::STEP_TYPE
-			&& $type !== self::SECTION_TYPE;
+			&& $type !== self::SECTION_TYPE
+			&& $type !== self::WELCOME_SCREEN_TYPE;
+	}
+
+	/**
+	 * Locate the welcome screen node inside a top-level fields array,
+	 * or null when the form has none. Welcome screens MUST be top-level
+	 * (never inside row/step/section), so we don't recurse.
+	 *
+	 * @param array $fields Top-level form_schema.fields
+	 * @return array|null   The welcome_screen node or null.
+	 */
+	public static function find_welcome_screen( array $fields ): ?array {
+		foreach ( $fields as $node ) {
+			if ( self::is_welcome_screen( $node ) ) {
+				return is_array( $node ) ? $node : null;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -787,6 +821,21 @@ class SchemaHelper {
 				$out[] = self::normalize_section( $node );
 				continue;
 			}
+			if ( self::is_welcome_screen( $node ) ) {
+				// One per form: drop any duplicate occurrence so the
+				// schema persistence layer can't accidentally save two.
+				$has_welcome = false;
+				foreach ( $out as $existing ) {
+					if ( self::is_welcome_screen( $existing ) ) {
+						$has_welcome = true;
+						break;
+					}
+				}
+				if ( ! $has_welcome ) {
+					$out[] = self::normalize_welcome_screen( $node );
+				}
+				continue;
+			}
 			if ( self::is_real_field( $node ) ) {
 				$out[] = $node;
 				continue;
@@ -795,6 +844,48 @@ class SchemaHelper {
 		}
 		$schema['fields'] = $out;
 		return $schema;
+	}
+
+	/**
+	 * Normalise a Welcome Screen node to canonical shape — fills
+	 * missing settings with defaults, coerces alignment to a known
+	 * value, and clamps unknown setting keys to known ones so the
+	 * persisted schema is predictable.
+	 *
+	 * The buttonText / button_text alias is preserved on output
+	 * (buttonText is canonical) so both keys round-trip cleanly.
+	 *
+	 * @param array $node
+	 * @return array
+	 */
+	public static function normalize_welcome_screen( array $node ): array {
+		$settings_in = is_array( $node['settings'] ?? null ) ? $node['settings'] : array();
+		$alignment   = (string) ( $settings_in['alignment'] ?? 'center' );
+		if ( ! in_array( $alignment, array( 'left', 'center', 'right' ), true ) ) {
+			$alignment = 'center';
+		}
+		return array(
+			'id'          => (string) ( $node['id'] ?? '' ),
+			'type'        => self::WELCOME_SCREEN_TYPE,
+			'label'       => (string) ( $node['label'] ?? 'Welcome Screen' ),
+			'title'       => (string) ( $node['title'] ?? '' ),
+			'description' => (string) ( $node['description'] ?? '' ),
+			// buttonText (canonical) wins when non-empty; fall back to
+			// the snake_case alias for legacy / import payloads.
+			'buttonText'  => (string) (
+				( isset( $node['buttonText'] ) && $node['buttonText'] !== '' )
+					? $node['buttonText']
+					: ( $node['button_text'] ?? '' )
+			),
+			'settings'    => array(
+				'alignment'         => $alignment,
+				'background_color'  => (string) ( $settings_in['background_color']  ?? '' ),
+				'text_color'        => (string) ( $settings_in['text_color']        ?? '' ),
+				'button_background' => (string) ( $settings_in['button_background'] ?? '' ),
+				'button_text_color' => (string) ( $settings_in['button_text_color'] ?? '' ),
+				'full_height'       => ! empty( $settings_in['full_height'] ),
+			),
+		);
 	}
 
 	/**

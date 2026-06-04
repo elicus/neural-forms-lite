@@ -30,7 +30,7 @@ import BuilderDndProvider from './BuilderDnd';
 import PreviewModal from './PreviewModal';
 import BuilderTemplateModal from './BuilderTemplateModal';
 import { newField } from './FieldTypes';
-import { makeRow, createStep, createSection, isStep, collectIds, ensureUniqueIds } from './schemaHelper';
+import { makeRow, createStep, createSection, createWelcomeScreen, hasWelcomeScreen, isStep, collectIds, ensureUniqueIds } from './schemaHelper';
 import { buildTemplate } from './formTemplates';
 import createComparableSnapshot from './createComparableSnapshot';
 import useUnsavedChangesGuard  from './useUnsavedChangesGuard';
@@ -409,6 +409,17 @@ export default function Builder( { formId, isNew } ) {
 		selectStep( step.id );
 	};
 
+	const addWelcomeScreen = () => {
+		// One per form, locked to the very top of the schema.
+		// hasWelcomeScreen() is the source of truth — the palette
+		// also disables the chip when present, but we re-check here
+		// for defence against drag-drop / API misuse paths.
+		if ( hasWelcomeScreen( fields ) ) return;
+		const next = createWelcomeScreen();
+		setFields( [ next, ...fields ] );
+		selectNode( next.id );
+	};
+
 	const addBlankStarter = () => {
 		// Empty-canvas "Blank form" tile spawns the default text field
 		// so the user always lands on something editable.
@@ -693,6 +704,8 @@ export default function Builder( { formId, isNew } ) {
 							onAddRow={ addRow }
 							onAddStep={ addStep }
 							onAddSection={ addSection }
+							onAddWelcomeScreen={ addWelcomeScreen }
+							welcomeScreenPresent={ hasWelcomeScreen( fields ) }
 						/>
 						<main className="nf-builder-main">
 							<BuilderCanvas

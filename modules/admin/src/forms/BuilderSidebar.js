@@ -26,13 +26,20 @@ import LayoutPalette from './LayoutPalette';
 
 export default function BuilderSidebar( {
 	onAddField, onAddRow, onAddStep, onAddSection,
+	onAddWelcomeScreen, welcomeScreenPresent,
 } ) {
 	return (
 		<aside className="nf-builder-sidebar" aria-label={ __( 'Add fields and layout', 'neural-forms-lite' ) }>
 			<BasicFieldsPalette    onAddField={ onAddField } />
 			<SurveyFieldsPalette   onAddField={ onAddField } />
 			<AdvancedFieldsPalette onAddField={ onAddField } />
-			<LayoutPalette onAddRow={ onAddRow } onAddStep={ onAddStep } onAddSection={ onAddSection } />
+			<LayoutPalette
+				onAddRow={ onAddRow }
+				onAddStep={ onAddStep }
+				onAddSection={ onAddSection }
+				onAddWelcomeScreen={ onAddWelcomeScreen }
+				welcomeScreenPresent={ welcomeScreenPresent }
+			/>
 		</aside>
 	);
 }

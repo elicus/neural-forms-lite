@@ -110,6 +110,21 @@ class FormValidator {
 				continue;
 			}
 
+			if ( SchemaHelper::is_welcome_screen( $node ) ) {
+				if ( ! $is_top_level ) {
+					return new \WP_Error(
+						'invalid_form_data',
+						sprintf( 'Welcome Screen at %s cannot be nested. It must live at the top level of the form.', $node_path ),
+						array( 'status' => 422 )
+					);
+				}
+				$ws_error = self::validate_welcome_screen( $node, $seen_ids, $node_path );
+				if ( is_wp_error( $ws_error ) ) {
+					return $ws_error;
+				}
+				continue;
+			}
+
 			$field_error = self::validate_field( $node, $seen_ids, $node_path );
 			if ( is_wp_error( $field_error ) ) {
 				return $field_error;
@@ -150,6 +165,66 @@ class FormValidator {
 			return new \WP_Error(
 				'invalid_form_data',
 				sprintf( 'Duplicate id "%s". Step, row, column, section, and field ids share one namespace.', $id ),
+				array( 'status' => 422 )
+			);
+		}
+		$seen_ids[] = $id;
+
+		return true;
+	}
+
+	/**
+	 * Validate a Welcome Screen layout block.
+	 *
+	 * Welcome Screens are top-level display-only blocks that render
+	 * before the form fields. Rules:
+	 *   - id required and matches FIELD_ID_PATTERN
+	 *   - id unique in the shared layout/field namespace
+	 *   - one per form (the second occurrence is rejected here)
+	 *
+	 * Title / description / button_text are sanitised in
+	 * FormSettingsSanitizer, not gate-validated, so a form with an
+	 * empty title still saves (the builder may save mid-edit).
+	 */
+	private static function validate_welcome_screen( array $node, array &$seen_ids, string $path ) {
+		if ( empty( $node['id'] ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Welcome Screen at %s is missing an id.', $path ),
+				array( 'status' => 422 )
+			);
+		}
+
+		$id = (string) $node['id'];
+
+		if ( ! preg_match( self::FIELD_ID_PATTERN, $id ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf(
+					'Welcome Screen id "%s" is invalid. Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed.',
+					$id
+				),
+				array( 'status' => 422 )
+			);
+		}
+
+		// One welcome screen per form. Track with a sentinel inside
+		// $seen_ids so the dup check is co-located with the regular
+		// id-uniqueness pass.
+		$sentinel = '__welcome_screen_present__';
+		if ( in_array( $sentinel, $seen_ids, true ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				'A form can only have one Welcome Screen.',
+				array( 'status' => 422 )
+			);
+		}
+		$seen_ids[] = $sentinel;
+
+		if ( in_array( $id, $seen_ids, true ) ) {
+			return new \WP_Error(
+				'invalid_form_data',
+				sprintf( 'Duplicate id "%s". Step, row, column, section, welcome-screen, and field ids share one namespace.', $id ),
 				array( 'status' => 422 )
 			);
 		}
@@ -593,6 +668,7 @@ class FormValidator {
 		'step',
 		'section',
 		'column',
+		'welcome_screen', // welcome screen is a top-level form intro; never a repeater child
 		'poll',          // public voting fields don't make sense in a repeated personal context
 		'quiz_question',
 	);

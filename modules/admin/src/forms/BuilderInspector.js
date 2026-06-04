@@ -26,6 +26,7 @@ import {
 	isRow,
 	isStep,
 	isSection,
+	isWelcomeScreen,
 	clampColumnCount,
 	resizeRow,
 	VALID_GAPS,
@@ -100,9 +101,13 @@ function findNode( nodes, id ) {
 			continue;
 		}
 		if ( n.id === id ) {
+			let kind = 'field';
+			if ( isRow( n ) )            kind = 'row';
+			else if ( isSection( n ) )   kind = 'section';
+			else if ( isWelcomeScreen( n ) ) kind = 'welcome_screen';
 			return {
 				node: n,
-				kind: isRow( n ) ? 'row' : ( isSection( n ) ? 'section' : 'field' ),
+				kind,
 				stepIndex: -1,
 				stepChildIndex: -1,
 				topIndex: i,
@@ -1495,6 +1500,125 @@ function ColumnInspector() {
 	);
 }
 
+/**
+ * Inspector panel for the Welcome Screen layout block.
+ *
+ * Welcome Screens are display-only (no entry data, no validation),
+ * so the panel is purely presentational — text content + visual
+ * tuning. Saves go through replaceField like every other top-level
+ * node, so the schema round-trip / undo stack stay uniform.
+ */
+function WelcomeScreenInspector( { hit, nodes, onChange } ) {
+	const ws = hit.node;
+	const settings = ( ws.settings && typeof ws.settings === 'object' ) ? ws.settings : {};
+	const set = ( patch ) => onChange( replaceField( nodes, hit, { ...ws, ...patch } ) );
+	const setSetting = ( key, value ) => set( { settings: { ...settings, [ key ]: value } } );
+
+	const alignmentRaw = typeof settings.alignment === 'string' ? settings.alignment : 'center';
+	const alignment    = [ 'left', 'center', 'right' ].includes( alignmentRaw ) ? alignmentRaw : 'center';
+	const buttonText   = typeof ws.buttonText === 'string'
+		? ws.buttonText
+		: ( typeof ws.button_text === 'string' ? ws.button_text : '' );
+
+	return (
+		<>
+			<h3 className="nf-inspector__title">{ __( 'Welcome Screen', 'neural-forms-lite' ) }</h3>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Title', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof ws.title === 'string' ? ws.title : '' }
+					onChange={ ( e ) => set( { title: e.target.value } ) }
+					placeholder={ __( "Let's get started", 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Description', 'neural-forms-lite' ) }</span>
+				<textarea
+					rows={ 3 }
+					value={ typeof ws.description === 'string' ? ws.description : '' }
+					onChange={ ( e ) => set( { description: e.target.value } ) }
+					placeholder={ __( 'This will only take a couple of minutes.', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Button Text', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ buttonText }
+					onChange={ ( e ) => set( { buttonText: e.target.value } ) }
+					placeholder={ __( 'Start', 'neural-forms-lite' ) }
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Alignment', 'neural-forms-lite' ) }</span>
+				<select value={ alignment } onChange={ ( e ) => setSetting( 'alignment', e.target.value ) }>
+					<option value="left">{ __( 'Left', 'neural-forms-lite' ) }</option>
+					<option value="center">{ __( 'Center', 'neural-forms-lite' ) }</option>
+					<option value="right">{ __( 'Right', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Background Color', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof settings.background_color === 'string' ? settings.background_color : '' }
+					onChange={ ( e ) => setSetting( 'background_color', e.target.value ) }
+					placeholder="#ffffff"
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Text Color', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof settings.text_color === 'string' ? settings.text_color : '' }
+					onChange={ ( e ) => setSetting( 'text_color', e.target.value ) }
+					placeholder="#1f2937"
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Button Background', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof settings.button_background === 'string' ? settings.button_background : '' }
+					onChange={ ( e ) => setSetting( 'button_background', e.target.value ) }
+					placeholder="#080f5b"
+				/>
+			</label>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Button Text Color', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					value={ typeof settings.button_text_color === 'string' ? settings.button_text_color : '' }
+					onChange={ ( e ) => setSetting( 'button_text_color', e.target.value ) }
+					placeholder="#ffffff"
+				/>
+			</label>
+
+			<label className="nf-inspector__field nf-inspector__field--check">
+				<input
+					type="checkbox"
+					checked={ !! settings.full_height }
+					onChange={ ( e ) => setSetting( 'full_height', e.target.checked ) }
+				/>
+				<span className="nf-inspector__label">{ __( 'Full height', 'neural-forms-lite' ) }</span>
+			</label>
+
+			<p className="nf-inspector__hint">
+				{ __( 'Welcome Screens never collect data and never appear in entries, exports, or notifications.', 'neural-forms-lite' ) }
+			</p>
+		</>
+	);
+}
+
 function SectionInspector( { hit, nodes, onChange } ) {
 	const s = hit.node;
 	const settings = ( s.settings && typeof s.settings === 'object' ) ? s.settings : {};
@@ -1689,6 +1813,9 @@ export default function BuilderInspector( {
 			) }
 			{ hit && hit.kind === 'section' && (
 				<SectionInspector hit={ hit } nodes={ nodes } onChange={ onChange } />
+			) }
+			{ hit && hit.kind === 'welcome_screen' && (
+				<WelcomeScreenInspector hit={ hit } nodes={ nodes } onChange={ onChange } />
 			) }
 			{ hit && hit.kind === 'field' && (
 				<FieldInspector hit={ hit } nodes={ nodes } onChange={ onChange } formId={ formId } />

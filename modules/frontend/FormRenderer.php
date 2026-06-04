@@ -219,6 +219,21 @@ class FormRenderer {
 			$success_msg = __( 'Thank you! Your submission has been received.', 'neural-forms-lite' );
 		}
 
+		// Detect and split out the Welcome Screen before iterating the
+		// field tree. Welcome Screens are top-level display-only blocks
+		// rendered ABOVE the form body; they never recurse into rows /
+		// steps / sections. We strip them out of $fields so they don't
+		// double-render or get treated as a real field by render_nodes.
+		$welcome_screen = SchemaHelper::find_welcome_screen( $fields );
+		if ( $welcome_screen !== null ) {
+			$fields = array_values( array_filter(
+				$fields,
+				static function ( $node ) {
+					return ! ( is_array( $node ) && ( $node['type'] ?? '' ) === SchemaHelper::WELCOME_SCREEN_TYPE );
+				}
+			) );
+		}
+
 		// Render the field tree. A node is either:
 		//   - a layout row (type=row) with explicit columns; or
 		//   - a flat field, optionally with width=half for pair-rendering.
@@ -291,7 +306,24 @@ class FormRenderer {
 						. '</div>';
 
 		// ' Assemble '
-		$html  = '<div class="neural-forms-form-wrap">';
+		// When a welcome screen is present, the wrap gets a data flag so
+		// CSS hides the form body until JS removes it (or sets the
+		// is-started class). Keeps the no-JS fallback graceful — without
+		// JS the welcome screen renders but the form below is also
+		// visible, so visitors can still submit.
+		$wrap_attrs = ' class="neural-forms-form-wrap"';
+		if ( $welcome_screen !== null ) {
+			$wrap_attrs .= ' data-neural-forms-has-welcome="1"';
+		}
+		$html  = '<div' . $wrap_attrs . '>';
+
+		// Welcome Screen — top-level display block rendered before the
+		// form body. Hidden by CSS only when JS is available (the wrap's
+		// data-has-welcome attribute + a small JS toggle take care of
+		// the reveal). No JS = both visible = no broken first-paint.
+		if ( $welcome_screen !== null ) {
+			$html .= static::render_welcome_screen( $welcome_screen, $form_id );
+		}
 
 		// Optional form title - block attribute formTitle. When non-empty,
 		// emit it as a heading at the top of the form. The heading level is
@@ -792,6 +824,94 @@ class FormRenderer {
 	 * divider line via ::before) still works. An empty section is a
 	 * deliberate visual break.
 	 */
+	/**
+	 * Render the Welcome Screen — a top-level display block that
+	 * shows a title, description, and Start button before the actual
+	 * form fields. Clicking Start reveals the form body via JS.
+	 *
+	 * Settings (all optional, with sane fallbacks):
+	 *   - title              (string)  default "Let's get started"
+	 *   - description        (string)  default ""
+	 *   - button_text        (string)  default "Start"
+	 *   - settings.alignment        "left" | "center" | "right" — default "center"
+	 *   - settings.background_color  CSS colour, default unset
+	 *   - settings.text_color        CSS colour, default unset
+	 *   - settings.button_background CSS colour, default unset
+	 *   - settings.button_text_color CSS colour, default unset
+	 *   - settings.full_height       boolean — when true, the welcome
+	 *                                screen takes full viewport height
+	 *
+	 * The Welcome Screen never appears in submission data, entries,
+	 * exports, AI analysis, or notifications — it's a display element,
+	 * not a field.
+	 */
+	private static function render_welcome_screen( array $node, int $form_id ): string {
+		$node_id     = (string) ( $node['id'] ?? '' );
+		$title       = (string) ( $node['title'] ?? '' );
+		$description = (string) ( $node['description'] ?? '' );
+		$button_text = (string) ( $node['buttonText'] ?? $node['button_text'] ?? '' );
+		if ( $title === '' ) {
+			$title = __( "Let's get started", 'neural-forms-lite' );
+		}
+		if ( $button_text === '' ) {
+			$button_text = __( 'Start', 'neural-forms-lite' );
+		}
+
+		$settings   = is_array( $node['settings'] ?? null ) ? $node['settings'] : [];
+		$alignment  = (string) ( $settings['alignment'] ?? 'center' );
+		if ( ! in_array( $alignment, [ 'left', 'center', 'right' ], true ) ) {
+			$alignment = 'center';
+		}
+		$full_height = ! empty( $settings['full_height'] );
+
+		// Build inline style for design overrides. Each is rendered
+		// only when set so themes can carry through their own defaults
+		// when the admin leaves a colour blank.
+		$style_parts = [];
+		$bg          = (string) ( $settings['background_color'] ?? '' );
+		$fg          = (string) ( $settings['text_color']       ?? '' );
+		$btn_bg      = (string) ( $settings['button_background'] ?? '' );
+		$btn_fg      = (string) ( $settings['button_text_color'] ?? '' );
+		if ( $bg !== '' ) {
+			$style_parts[] = '--nf-welcome-bg:' . esc_attr( $bg );
+		}
+		if ( $fg !== '' ) {
+			$style_parts[] = '--nf-welcome-fg:' . esc_attr( $fg );
+		}
+		if ( $btn_bg !== '' ) {
+			$style_parts[] = '--nf-welcome-btn-bg:' . esc_attr( $btn_bg );
+		}
+		if ( $btn_fg !== '' ) {
+			$style_parts[] = '--nf-welcome-btn-fg:' . esc_attr( $btn_fg );
+		}
+		$style_attr = $style_parts ? ' style="' . implode( ';', $style_parts ) . '"' : '';
+
+		$classes = 'neural-forms-form__welcome neural-forms-form__welcome--align-' . $alignment;
+		if ( $full_height ) {
+			$classes .= ' neural-forms-form__welcome--full-height';
+		}
+
+		$html  = '<div class="' . esc_attr( $classes ) . '"';
+		if ( $node_id !== '' ) {
+			$html .= ' data-neural-forms-welcome-id="' . esc_attr( $node_id ) . '"';
+		}
+		$html .= ' data-neural-forms-welcome-for="' . (int) $form_id . '"';
+		$html .= $style_attr . '>';
+		$html .= '<div class="neural-forms-form__welcome-inner">';
+		$html .= '<h2 class="neural-forms-form__welcome-title">' . esc_html( $title ) . '</h2>';
+		if ( $description !== '' ) {
+			$html .= '<p class="neural-forms-form__welcome-desc">' . esc_html( $description ) . '</p>';
+		}
+		$html .= '<button type="button"'
+			. ' class="neural-forms-form__welcome-btn"'
+			. ' data-neural-forms-welcome-start="1">'
+			. esc_html( $button_text )
+			. '</button>';
+		$html .= '</div>';
+		$html .= '</div>';
+		return $html;
+	}
+
 	private static function render_section( array $section ): string {
 		$style = (string) ( $section['settings']['style'] ?? SchemaHelper::DEFAULT_SECTION_STYLE );
 		if ( ! in_array( $style, SchemaHelper::VALID_SECTION_STYLES, true ) ) {
