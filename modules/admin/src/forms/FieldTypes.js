@@ -91,6 +91,19 @@ export function newField( type, existingIds = [] ) {
 		base.stars = 5;
 	}
 
+	if ( type === 'phone' || type === 'tel' ) {
+		// Country picker on by default for newly-added phone fields so
+		// the flag + dial code dropdown shows without admins having to
+		// dig into the inspector toggle. Existing phone fields saved
+		// before this default landed don't carry the setting and
+		// continue to render as plain tel inputs, so no upgrade
+		// surprise. Admins can still toggle this off per-field.
+		base.settings = {
+			enable_country_code: true,
+			default_country: 'US',
+		};
+	}
+
 	if ( type === 'repeater' ) {
 		base.label    = 'Repeater';
 		base.required = false;
