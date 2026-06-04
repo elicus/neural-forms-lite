@@ -4233,7 +4233,14 @@
 #neural-forms-app .nf-welcome-block {
 	position: relative;
 	display: block;
+	/* Match .nf-card: live inside a minmax(0, 1fr) grid track without
+	 * pushing the column wider than the sibling field cards do.
+	 * box-sizing folds the padding/border inside the computed width
+	 * so the tile aligns with the field rows below it. */
 	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
 	text-align: center;
 	background: linear-gradient( 135deg, rgba( 8, 15, 91, 0.03 ) 0%, rgba( 21, 219, 149, 0.05 ) 100% ), #ffffff;
 	border: 1px dashed rgba( 8, 15, 91, 0.25 );
