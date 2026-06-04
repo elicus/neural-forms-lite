@@ -269,46 +269,24 @@ export default function Builder( { formId, isNew } ) {
 	};
 
 	const addField = ( type ) => {
-		// Selection priority: column wins, then step, otherwise root.
+		// Selection priority for palette clicks: step → root.
+		//
+		// Column targeting via selection used to win here too, but that
+		// made it impossible to add a standalone field at root once a
+		// row existed — creating the row auto-selected its column, and
+		// every subsequent palette click landed inside that column with
+		// no way out except drag-and-drop. Now palette clicks always
+		// append at the top level (or to the selected step's bottom);
+		// precise placement inside a row/column stays available via
+		// drag-and-drop, which targets a literal drop zone.
+		//
 		// The id pool is the FULL schema so generated ids stay unique
 		// across roots, steps, rows, and columns.
 		const next = newField( type, collectIds( fields ) );
 
-		const colTarget = locateColumn( selectedColumnId );
-		if ( colTarget && colTarget.kind === 'top-row' ) {
-			const nextFields = fields.slice();
-			const row = { ...nextFields[ colTarget.rowIdx ] };
-			const cols = row.columns.slice();
-			cols[ colTarget.colIdx ] = {
-				...cols[ colTarget.colIdx ],
-				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
-			};
-			row.columns = cols;
-			nextFields[ colTarget.rowIdx ] = row;
-			setFields( nextFields );
-			selectNode( next.id );
-			return;
-		}
-		if ( colTarget && colTarget.kind === 'step-row' ) {
-			const nextFields = fields.slice();
-			const step = { ...nextFields[ colTarget.stepIdx ] };
-			const children = step.fields.slice();
-			const row = { ...children[ colTarget.rowChildIdx ] };
-			const cols = row.columns.slice();
-			cols[ colTarget.colIdx ] = {
-				...cols[ colTarget.colIdx ],
-				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
-			};
-			row.columns = cols;
-			children[ colTarget.rowChildIdx ] = row;
-			step.fields = children;
-			nextFields[ colTarget.stepIdx ] = step;
-			setFields( nextFields );
-			selectNode( next.id );
-			return;
-		}
-
-		// Step selected, no column? Append into step.fields.
+		// Step selected? Append into step.fields. Steps are top-level
+		// layout, so this is the equivalent of "append to root" inside
+		// the active step.
 		const stepIdx = locateStep( selectedStepId );
 		if ( stepIdx !== -1 ) {
 			const nextFields = fields.slice();
@@ -348,41 +326,12 @@ export default function Builder( { formId, isNew } ) {
 	const addSection = () => {
 		// Routing matches addField: column > step > root. Sections
 		// are leaf layout nodes - they may live anywhere a field can.
+		//
+		// Same routing rule as addField: palette clicks append at root
+		// (or the selected step's bottom). Column targeting via
+		// drag-and-drop. The old "column selection wins" branch made
+		// it impossible to add a standalone section once a row existed.
 		const next = createSection();
-
-		const colTarget = locateColumn( selectedColumnId );
-		if ( colTarget && colTarget.kind === 'top-row' ) {
-			const nextFields = fields.slice();
-			const row  = { ...nextFields[ colTarget.rowIdx ] };
-			const cols = row.columns.slice();
-			cols[ colTarget.colIdx ] = {
-				...cols[ colTarget.colIdx ],
-				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
-			};
-			row.columns = cols;
-			nextFields[ colTarget.rowIdx ] = row;
-			setFields( nextFields );
-			selectNode( next.id );
-			return;
-		}
-		if ( colTarget && colTarget.kind === 'step-row' ) {
-			const nextFields = fields.slice();
-			const step  = { ...nextFields[ colTarget.stepIdx ] };
-			const innerChildren = step.fields.slice();
-			const row = { ...innerChildren[ colTarget.rowChildIdx ] };
-			const cols = row.columns.slice();
-			cols[ colTarget.colIdx ] = {
-				...cols[ colTarget.colIdx ],
-				fields: [ ...( cols[ colTarget.colIdx ].fields || [] ), next ],
-			};
-			row.columns = cols;
-			innerChildren[ colTarget.rowChildIdx ] = row;
-			step.fields = innerChildren;
-			nextFields[ colTarget.stepIdx ] = step;
-			setFields( nextFields );
-			selectNode( next.id );
-			return;
-		}
 
 		const stepIdx = locateStep( selectedStepId );
 		if ( stepIdx !== -1 ) {
