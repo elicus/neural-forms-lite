@@ -141,6 +141,66 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
 }
 .neural-forms-form__quiz-input,
 .neural-forms-form__poll-input { accent-color: #15db95; cursor: pointer; }
+
+/* ----------------------------------------------------------------- */
+/* Welcome Screen (preview-iframe twin of frontend form.css)          */
+/* ----------------------------------------------------------------- */
+/* Kept in sync with the Welcome Screen rules in                     */
+/* modules/frontend/assets/css/form.css. Duplicated here intentionally */
+/* because the preview iframe is sandbox="" and cannot pull form.css. */
+/* Without these rules the iframe renders both the welcome screen    */
+/* AND the form body simultaneously (no JS in the sandbox = no Start */
+/* click handler = no reveal), with an unstyled browser-default      */
+/* Start button. The wrap data-attribute hides the form body so the   */
+/* preview looks like the real frontend's initial state. */
+.neural-forms-form-wrap[data-neural-forms-has-welcome="1"] > form,
+.neural-forms-form-wrap[data-neural-forms-has-welcome="1"] > .neural-forms-form__title {
+  display: none;
+}
+.neural-forms-form__welcome {
+  background: transparent;
+  color: inherit;
+  border-radius: 12px;
+  padding: 32px 24px;
+  margin-bottom: 16px;
+}
+.neural-forms-form__welcome--align-left   { text-align: left;   }
+.neural-forms-form__welcome--align-center { text-align: center; }
+.neural-forms-form__welcome--align-right  { text-align: right;  }
+.neural-forms-form__welcome--full-height {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.neural-forms-form__welcome-inner { max-width: 560px; margin: 0 auto; }
+.neural-forms-form__welcome--align-left  .neural-forms-form__welcome-inner { margin-left: 0;  }
+.neural-forms-form__welcome--align-right .neural-forms-form__welcome-inner { margin-right: 0; }
+.neural-forms-form__welcome-title {
+  margin: 0 0 12px;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: inherit;
+}
+.neural-forms-form__welcome-desc {
+  margin: 0 0 24px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: inherit;
+  opacity: 0.85;
+}
+.neural-forms-form__welcome-btn {
+  display: inline-block;
+  background: #080f5b;
+  color: #ffffff;
+  border: 0;
+  border-radius: 6px;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .neural-forms-form__file-hint { color: #6b7280; font-size: 12px; margin: 4px 0 0; }
 .neural-forms-form__step {
   border-top: 2px solid #080f5b;
