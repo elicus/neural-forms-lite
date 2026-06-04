@@ -794,23 +794,20 @@ function QuizSettingsBlock( { field, onChange } ) {
  * ids never accidentally collide with top-level field ids.
  */
 /**
- * Phone field — country code dropdown settings.
+ * Phone field — default-country selector.
  *
- * Two settings:
- *   - settings.enable_country_code (bool, default false)
- *   - settings.default_country     (ISO 3166-1 alpha-2 string, default 'US')
+ * Single setting:
+ *   - settings.default_country (ISO 3166-1 alpha-2 string, default 'US')
  *
- * Off by default so adding a Phone field to an existing form doesn't
- * suddenly change its layout — opt-in feature. When on, the frontend
- * renders a flag picker + searchable country dropdown to the left of
- * the tel input and prefills the dial code into the input value.
+ * The frontend always renders a country flag picker + searchable
+ * dropdown to the left of the tel input. This block just picks which
+ * country is selected on first paint.
  *
- * The country dropdown here is intentionally short — admins rarely
- * change the default and a 200-row dropdown in the inspector is
- * overwhelming. The live frontend picker uses the full list (defined
- * in form-submit.js). Admins who need a default outside this short
- * list can type the ISO code directly via a `default_country` filter
- * on the server side.
+ * The dropdown here is intentionally short — admins rarely change the
+ * default and a 200-row dropdown in the inspector is overwhelming.
+ * The live frontend picker uses the full list (defined in
+ * form-submit.js). Admins who need a default outside this short list
+ * can override via a `default_country` filter on the server side.
  */
 const PHONE_DEFAULT_COUNTRIES = [
 	[ 'US', 'United States (+1)' ],
@@ -840,7 +837,6 @@ function PhoneCountrySettingsBlock( { field, onChange } ) {
 	const s = ( field && typeof field.settings === 'object' && field.settings !== null )
 		? field.settings
 		: {};
-	const enabled = !! s.enable_country_code;
 	const country = typeof s.default_country === 'string' && /^[A-Za-z]{2}$/.test( s.default_country )
 		? s.default_country.toUpperCase()
 		: 'US';
@@ -853,28 +849,17 @@ function PhoneCountrySettingsBlock( { field, onChange } ) {
 		<>
 			<h4 className="nf-inspector__cl-title">{ __( 'Country code dropdown', 'neural-forms-lite' ) }</h4>
 
-			<label className="nf-inspector__field nf-inspector__field--inline">
-				<input
-					type="checkbox"
-					checked={ enabled }
-					onChange={ ( e ) => setSetting( 'enable_country_code', e.target.checked ) }
-				/>
-				<span>{ __( 'Show country flag + dial code picker', 'neural-forms-lite' ) }</span>
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Default country', 'neural-forms-lite' ) }</span>
+				<select
+					value={ country }
+					onChange={ ( e ) => setSetting( 'default_country', e.target.value ) }
+				>
+					{ PHONE_DEFAULT_COUNTRIES.map( ( [ iso, label ] ) => (
+						<option key={ iso } value={ iso }>{ label }</option>
+					) ) }
+				</select>
 			</label>
-
-			{ enabled && (
-				<label className="nf-inspector__field">
-					<span className="nf-inspector__label">{ __( 'Default country', 'neural-forms-lite' ) }</span>
-					<select
-						value={ country }
-						onChange={ ( e ) => setSetting( 'default_country', e.target.value ) }
-					>
-						{ PHONE_DEFAULT_COUNTRIES.map( ( [ iso, label ] ) => (
-							<option key={ iso } value={ iso }>{ label }</option>
-						) ) }
-					</select>
-				</label>
-			) }
 
 			<p className="nf-inspector__hint">
 				{ __( 'Visitors can switch countries on the frontend from a full searchable list — this only sets the initial flag.', 'neural-forms-lite' ) }

@@ -1230,12 +1230,12 @@ class FormRenderer {
 	 * Phone input.
 	 * type="tel" triggers the phone/numeric keyboard on mobile devices.
 	 *
-	 * When the field's settings.enable_country_code is true, the input
-	 * is wrapped in a country picker (flag button + searchable dropdown
-	 * + tel input). The picker is built progressively by form-submit.js
-	 * on init — server-side we just emit the wrapper, the default
-	 * country's ISO code, and an empty placeholder flag span; JS
-	 * inflates the dropdown list and wires the open/select handlers.
+	 * The input is always wrapped in a country picker (flag button +
+	 * searchable dropdown + tel input). The picker is built
+	 * progressively by form-submit.js on init — server-side we just
+	 * emit the wrapper, the default country's ISO code, and an empty
+	 * placeholder flag span; JS inflates the dropdown list and wires
+	 * the open/select handlers.
 	 *
 	 * Without JS, the wrapper still degrades to a usable tel input
 	 * (the flag button is purely decorative and the dropdown is
@@ -1243,10 +1243,6 @@ class FormRenderer {
 	 */
 	private static function render_phone( array $field, string $input_id, string $error_id ): string {
 		$settings = is_array( $field['settings'] ?? null ) ? $field['settings'] : array();
-		$enabled  = ! empty( $settings['enable_country_code'] );
-		if ( ! $enabled ) {
-			return '<input type="tel" ' . static::text_like_attrs( $field, $input_id, $error_id ) . '>';
-		}
 
 		$default_country = strtoupper( (string) ( $settings['default_country'] ?? 'US' ) );
 		// 2-letter ISO only (regional-indicator emoji generation needs
