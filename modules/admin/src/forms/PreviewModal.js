@@ -148,15 +148,16 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
 /* Kept in sync with the Welcome Screen rules in                     */
 /* modules/frontend/assets/css/form.css. Duplicated here intentionally */
 /* because the preview iframe is sandbox="" and cannot pull form.css. */
-/* Without these rules the iframe renders both the welcome screen    */
-/* AND the form body simultaneously (no JS in the sandbox = no Start */
-/* click handler = no reveal), with an unstyled browser-default      */
-/* Start button. The wrap data-attribute hides the form body so the   */
-/* preview looks like the real frontend's initial state. */
-.neural-forms-form-wrap[data-neural-forms-has-welcome="1"] > form,
-.neural-forms-form-wrap[data-neural-forms-has-welcome="1"] > .neural-forms-form__title {
-  display: none;
-}
+/* */
+/* IMPORTANT: the frontend hides the form body until Start is clicked */
+/* (CSS rule keyed on the wrap's data-neural-forms-has-welcome). The */
+/* preview iframe is sandbox="" with no allow-scripts, so the JS that */
+/* removes the flag on Start click can't run — applying the hide rule */
+/* would leave the admin stuck looking at the welcome screen with no */
+/* way to see the rest of the form. We OMIT the hide rule here so the */
+/* preview stacks the welcome screen + form body together — admins see */
+/* every piece of the form's content at once, which is the actual goal */
+/* of the preview ("does my form look right?"). */
 .neural-forms-form__welcome {
   background: transparent;
   color: inherit;
