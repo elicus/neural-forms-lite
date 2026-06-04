@@ -864,28 +864,6 @@ class FormRenderer {
 		}
 		$full_height = ! empty( $settings['full_height'] );
 
-		// Build inline style for design overrides. Each is rendered
-		// only when set so themes can carry through their own defaults
-		// when the admin leaves a colour blank.
-		$style_parts = [];
-		$bg          = (string) ( $settings['background_color'] ?? '' );
-		$fg          = (string) ( $settings['text_color']       ?? '' );
-		$btn_bg      = (string) ( $settings['button_background'] ?? '' );
-		$btn_fg      = (string) ( $settings['button_text_color'] ?? '' );
-		if ( $bg !== '' ) {
-			$style_parts[] = '--nf-welcome-bg:' . esc_attr( $bg );
-		}
-		if ( $fg !== '' ) {
-			$style_parts[] = '--nf-welcome-fg:' . esc_attr( $fg );
-		}
-		if ( $btn_bg !== '' ) {
-			$style_parts[] = '--nf-welcome-btn-bg:' . esc_attr( $btn_bg );
-		}
-		if ( $btn_fg !== '' ) {
-			$style_parts[] = '--nf-welcome-btn-fg:' . esc_attr( $btn_fg );
-		}
-		$style_attr = $style_parts ? ' style="' . implode( ';', $style_parts ) . '"' : '';
-
 		$classes = 'neural-forms-form__welcome neural-forms-form__welcome--align-' . $alignment;
 		if ( $full_height ) {
 			$classes .= ' neural-forms-form__welcome--full-height';
@@ -895,8 +873,7 @@ class FormRenderer {
 		if ( $node_id !== '' ) {
 			$html .= ' data-neural-forms-welcome-id="' . esc_attr( $node_id ) . '"';
 		}
-		$html .= ' data-neural-forms-welcome-for="' . (int) $form_id . '"';
-		$html .= $style_attr . '>';
+		$html .= ' data-neural-forms-welcome-for="' . (int) $form_id . '">';
 		$html .= '<div class="neural-forms-form__welcome-inner">';
 		$html .= '<h2 class="neural-forms-form__welcome-title">' . esc_html( $title ) . '</h2>';
 		if ( $description !== '' ) {

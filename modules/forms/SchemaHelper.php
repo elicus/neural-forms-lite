@@ -878,12 +878,8 @@ class SchemaHelper {
 					: ( $node['button_text'] ?? '' )
 			),
 			'settings'    => array(
-				'alignment'         => $alignment,
-				'background_color'  => (string) ( $settings_in['background_color']  ?? '' ),
-				'text_color'        => (string) ( $settings_in['text_color']        ?? '' ),
-				'button_background' => (string) ( $settings_in['button_background'] ?? '' ),
-				'button_text_color' => (string) ( $settings_in['button_text_color'] ?? '' ),
-				'full_height'       => ! empty( $settings_in['full_height'] ),
+				'alignment'   => $alignment,
+				'full_height' => ! empty( $settings_in['full_height'] ),
 			),
 		);
 	}

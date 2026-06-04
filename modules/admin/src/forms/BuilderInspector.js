@@ -1563,46 +1563,6 @@ function WelcomeScreenInspector( { hit, nodes, onChange } ) {
 				</select>
 			</label>
 
-			<label className="nf-inspector__field">
-				<span className="nf-inspector__label">{ __( 'Background Color', 'neural-forms-lite' ) }</span>
-				<input
-					type="text"
-					value={ typeof settings.background_color === 'string' ? settings.background_color : '' }
-					onChange={ ( e ) => setSetting( 'background_color', e.target.value ) }
-					placeholder="#ffffff"
-				/>
-			</label>
-
-			<label className="nf-inspector__field">
-				<span className="nf-inspector__label">{ __( 'Text Color', 'neural-forms-lite' ) }</span>
-				<input
-					type="text"
-					value={ typeof settings.text_color === 'string' ? settings.text_color : '' }
-					onChange={ ( e ) => setSetting( 'text_color', e.target.value ) }
-					placeholder="#1f2937"
-				/>
-			</label>
-
-			<label className="nf-inspector__field">
-				<span className="nf-inspector__label">{ __( 'Button Background', 'neural-forms-lite' ) }</span>
-				<input
-					type="text"
-					value={ typeof settings.button_background === 'string' ? settings.button_background : '' }
-					onChange={ ( e ) => setSetting( 'button_background', e.target.value ) }
-					placeholder="#080f5b"
-				/>
-			</label>
-
-			<label className="nf-inspector__field">
-				<span className="nf-inspector__label">{ __( 'Button Text Color', 'neural-forms-lite' ) }</span>
-				<input
-					type="text"
-					value={ typeof settings.button_text_color === 'string' ? settings.button_text_color : '' }
-					onChange={ ( e ) => setSetting( 'button_text_color', e.target.value ) }
-					placeholder="#ffffff"
-				/>
-			</label>
-
 			<label className="nf-inspector__field nf-inspector__field--check">
 				<input
 					type="checkbox"

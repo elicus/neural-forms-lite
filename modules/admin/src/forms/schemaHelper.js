@@ -248,10 +248,6 @@ export function createWelcomeScreen() {
 		buttonText: 'Start',
 		settings: {
 			alignment: 'center',
-			background_color: '',
-			text_color: '',
-			button_background: '',
-			button_text_color: '',
 			full_height: false,
 		},
 	};
