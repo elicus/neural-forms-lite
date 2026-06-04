@@ -1986,8 +1986,24 @@ CSS;
                 // handler.
             }
         }
+        // Programmatic click on the main button. allowNativeClick flips
+        // the suppression flag below so our capture-phase interceptor
+        // lets the click through to the React onClick handler that
+        // actually navigates to the new-form page. Without the flag,
+        // calling btn.click() from the Blank Form menu item would just
+        // re-open the dropdown.
+        var allowNativeClick = false;
+        function fireBlankForm() {
+            allowNativeClick = true;
+            try { btn.click(); } catch ( e ) { /* noop */ }
+            // Reset on the next tick so any defensive re-fire (e.g. a
+            // second click from rapid menu interaction) can't slip
+            // through under the same flag value.
+            setTimeout( function () { allowNativeClick = false; }, 0 );
+        }
+
         var items = [
-            { id: 'blank',    label: data.i18n.blank,    enabled: true,  action: function () { btn.click(); } },
+            { id: 'blank',    label: data.i18n.blank,    enabled: true,  action: fireBlankForm },
             { id: 'template', label: data.i18n.template, enabled: true,  action: openTemplateLibrary },
         ];
 
@@ -2079,12 +2095,27 @@ CSS;
             menu.appendChild( li );
         } );
 
+        // Debounced close so a mouse moving from the button → menu
+        // (over the small gap between them) doesn't close the menu
+        // mid-transit. 200ms is long enough to bridge the gap and
+        // short enough that an actual mouse-out feels responsive.
+        var hideTimer = null;
+        function cancelHideTimer() {
+            if ( hideTimer ) { clearTimeout( hideTimer ); hideTimer = null; }
+        }
+        function scheduleHide() {
+            cancelHideTimer();
+            hideTimer = setTimeout( hideMenu, 200 );
+        }
+
         function showMenu() {
+            cancelHideTimer();
             menu.hidden = false;
             caret.setAttribute( 'aria-expanded', 'true' );
             setTimeout( function () { document.addEventListener( 'click', onDoc ); document.addEventListener( 'keydown', onKey ); }, 0 );
         }
         function hideMenu() {
+            cancelHideTimer();
             menu.hidden = true;
             caret.setAttribute( 'aria-expanded', 'false' );
             document.removeEventListener( 'click', onDoc );
@@ -2097,6 +2128,34 @@ CSS;
             if ( e.key === 'Escape' ) hideMenu();
         }
 
+        // Hover-to-open. The wrapper covers the button + caret + menu
+        // so mouseenter on any of them keeps the menu open.
+        wrapper.addEventListener( 'mouseenter', showMenu );
+        wrapper.addEventListener( 'mouseleave', scheduleHide );
+
+        // Click-to-open behaviour for keyboard / touch users. Intercept
+        // clicks on the main btn in the CAPTURE phase so the React
+        // onClick (which would otherwise navigate straight to the new
+        // form page) is preempted. Caret clicks and menu-item clicks
+        // are routed through their own handlers — we skip the
+        // interceptor for those targets so they still fire normally.
+        // The Blank Form menu item flips allowNativeClick so its
+        // programmatic btn.click() reaches React unhindered.
+        wrapper.addEventListener( 'click', function ( e ) {
+            if ( allowNativeClick ) return;
+            var t = e.target;
+            if ( caret.contains( t ) ) return;
+            if ( menu.contains( t ) )  return;
+            // Click landed on the main "+ New Form" btn (or its
+            // children) — suppress the native navigation and toggle
+            // the dropdown instead.
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if ( menu.hidden ) showMenu(); else hideMenu();
+        }, true );
+
+        // Caret retains its own click handler as a visual / keyboard
+        // affordance — same toggle semantics as clicking the main btn.
         caret.addEventListener( 'click', function ( e ) {
             e.stopPropagation();
             if ( menu.hidden ) showMenu(); else hideMenu();
