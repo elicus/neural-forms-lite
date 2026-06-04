@@ -6,12 +6,17 @@
  * stream. Empty columns still render a visible drop hint so the admin
  * can target them with the mouse.
  *
- * Selection: clicking the column's empty area selects it. Once
- * selected, the field palette in the left sidebar adds new fields
- * into THIS column instead of the root. The selection click only
- * fires on the column chrome (empty zone, padding) - clicks that
- * bubble up from a child field row are caught and ignored so the
- * field stays selected, not the column.
+ * Placement model:
+ *   - Drag a palette chip onto a column → field drops into that column.
+ *   - Click a palette chip in the sidebar → field appends at the
+ *     bottom of the form (root level). The previous "selected column
+ *     wins for palette clicks" routing made it impossible to add a
+ *     standalone field once any row existed, so palette clicks always
+ *     go to root now.
+ *
+ * The column's selection click is kept (it still fires onSelect for
+ * any future ColumnInspector content) but no longer changes where
+ * palette-added fields land.
  */
 
 import { useDroppable } from '@dnd-kit/core';
@@ -73,9 +78,7 @@ export default function Column( {
 			<SortableContext items={ ids } strategy={ verticalListSortingStrategy }>
 				{ fields.length === 0 && (
 					<div className="nf-column__placeholder">
-						{ isSelected
-							? __( 'Selected — choose a field from the left', 'neural-forms-lite' )
-							: __( 'Drop a field here, or click to add', 'neural-forms-lite' ) }
+						{ __( 'Drag a field here from the left', 'neural-forms-lite' ) }
 					</div>
 				) }
 				{ fields.map( ( field ) => renderField( field, { rowId, colIndex, columnId: column.id } ) ) }
