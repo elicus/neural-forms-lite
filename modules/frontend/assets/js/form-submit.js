@@ -359,8 +359,12 @@
 				// Replace a leading "+XXX " (or "+XXX") prefix with the new
 				// dial code; otherwise just prepend the dial code to the
 				// untouched value. Keeps any digits the user already typed.
+				// Trailing space after the dial code so visitor-typed
+				// digits don't run into the prefix — submission reads as
+				// "+1 9785880685" instead of "+19785880685" which is
+				// much easier to scan in entries / CSV exports.
 				var stripped = existing.replace( /^\s*\+\d+\s*/, '' );
-				input.value  = country[ 2 ] + ( stripped ? ' ' + stripped.trim() : '' );
+				input.value  = country[ 2 ] + ' ' + ( stripped ? stripped.trim() : '' );
 			}
 		}
 

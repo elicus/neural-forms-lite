@@ -724,11 +724,27 @@ export default function EntryDetail( {
 								);
 							}
 
+							// Phone fields: insert a separator between the
+							// dial code and the local number so values
+							// stored without a space (legacy submissions
+							// from before the picker added one
+							// automatically) read as "+1 9785880685"
+							// instead of "+19785880685". Only touches
+							// values that match the +DD-then-digits
+							// pattern; everything else passes through
+							// unchanged.
+							const isPhoneType = !! ( field && ( field.type === 'phone' || field.type === 'tel' ) );
+							let displayV = v;
+							if ( isPhoneType && typeof v === 'string' ) {
+								const m = v.match( /^(\+\d{1,4})(\d{4,})$/ );
+								if ( m ) displayV = m[ 1 ] + ' ' + m[ 2 ];
+							}
+
 							return (
 								<div className="neural-forms-entry-detail__field-row" key={ k }>
 									<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
 									<dd className="neural-forms-entry-detail__field-value">
-										{ typeof v === 'string' ? v : ( v == null ? '' : JSON.stringify( v ) ) }
+										{ typeof displayV === 'string' ? displayV : ( displayV == null ? '' : JSON.stringify( displayV ) ) }
 									</dd>
 								</div>
 							);
