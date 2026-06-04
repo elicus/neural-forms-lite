@@ -693,7 +693,14 @@
 	 * Mirrors the PHP evaluate_conditional() logic in SubmitEndpoint - both
 	 * sides must behave identically so hidden fields stay hidden on the server.
 	 *
-	 * @param  {string} operator      One of: equals, not_equals, contains, empty, not_empty.
+	 * Operators:
+	 *   equals / not_equals / contains / empty / not_empty
+	 *   gte / lte — numeric comparison; if either side does not parse as
+	 *     a finite number, returns false (rule not satisfied → field
+	 *     stays hidden). Safer than treating the comparison as true
+	 *     when the data shape is unexpected.
+	 *
+	 * @param  {string} operator      Rule operator.
 	 * @param  {string} controlValue  Current value of the controlling field.
 	 * @param  {string} ruleValue     The value declared in the rule (may be empty).
 	 * @return {boolean}              true = show the dependent field.
@@ -708,6 +715,13 @@
 			case 'contains':   return v.indexOf( r ) !== -1;
 			case 'empty':      return v.trim() === '';
 			case 'not_empty':  return v.trim() !== '';
+			case 'gte':
+			case 'lte': {
+				var vNum = parseFloat( v );
+				var rNum = parseFloat( r );
+				if ( ! isFinite( vNum ) || ! isFinite( rNum ) ) return false;
+				return operator === 'gte' ? vNum >= rNum : vNum <= rNum;
+			}
 			default:           return true;  // unknown operator - show by default
 		}
 	}

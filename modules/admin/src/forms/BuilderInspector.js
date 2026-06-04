@@ -1277,12 +1277,20 @@ function MatrixSettingsBlock( { field, onChange } ) {
  */
 
 const CL_OPERATORS = [
-	{ value: 'equals',     label: 'equals',          needsValue: true  },
-	{ value: 'not_equals', label: 'does not equal',  needsValue: true  },
-	{ value: 'contains',   label: 'contains',        needsValue: true  },
-	{ value: 'empty',      label: 'is empty',        needsValue: false },
-	{ value: 'not_empty',  label: 'is not empty',    needsValue: false },
+	{ value: 'equals',     label: 'equals',                          needsValue: true  },
+	{ value: 'not_equals', label: 'does not equal',                  needsValue: true  },
+	{ value: 'contains',   label: 'contains',                        needsValue: true  },
+	{ value: 'empty',      label: 'is empty',                        needsValue: false },
+	{ value: 'not_empty',  label: 'is not empty',                    needsValue: false },
+	{ value: 'gte',        label: 'is greater than or equal to',     needsValue: true, numericOnly: true },
+	{ value: 'lte',        label: 'is less than or equal to',        needsValue: true, numericOnly: true },
 ];
+
+/**
+ * Field types whose values are numeric — the only types where
+ * `gte` / `lte` make sense as a comparison operator.
+ */
+const CL_NUMERIC_SOURCE_TYPES = [ 'number', 'range', 'rating' ];
 
 function ConditionalLogicPanel( { field, onChange, nodes } ) {
 	const cl = field && typeof field.conditional_logic === 'object' && field.conditional_logic !== null
@@ -1323,7 +1331,14 @@ function ConditionalLogicPanel( { field, onChange, nodes } ) {
 	};
 
 	const sourceOptions = Array.isArray( sourceField?.options ) ? sourceField.options : [];
-	const sourceIsChoice = sourceField && [ 'select', 'radio' ].includes( sourceField.type ) && sourceOptions.length > 0;
+	const sourceIsChoice  = sourceField && [ 'select', 'radio' ].includes( sourceField.type ) && sourceOptions.length > 0;
+	const sourceIsNumeric = !! ( sourceField && CL_NUMERIC_SOURCE_TYPES.includes( sourceField.type ) );
+
+	// Operators visible in the dropdown — numericOnly ones hide when
+	// the source field can't be compared numerically (text, email, etc.).
+	const visibleOperators = CL_OPERATORS.filter(
+		( op ) => ! op.numericOnly || sourceIsNumeric
+	);
 
 	return (
 		<div className="nf-inspector__cl">
@@ -1354,7 +1369,20 @@ function ConditionalLogicPanel( { field, onChange, nodes } ) {
 						<span className="nf-inspector__label">{ __( 'Field', 'neural-forms-lite' ) }</span>
 						<select
 							value={ sourceId }
-							onChange={ ( e ) => setCL( { field: e.target.value, value: '' } ) }
+							onChange={ ( e ) => {
+								const nextSourceId = e.target.value;
+								const nextSource   = sources.find( ( s ) => s.id === nextSourceId );
+								const nextIsNumeric = !! ( nextSource && CL_NUMERIC_SOURCE_TYPES.includes( nextSource.type ) );
+								// If the current operator is numeric-only
+								// and the new source isn't numeric, drop
+								// back to 'equals' so the rule stays
+								// representable in the dropdown.
+								const opMetaCurrent = CL_OPERATORS.find( ( o ) => o.value === cl.operator );
+								const nextOperator = ( opMetaCurrent && opMetaCurrent.numericOnly && ! nextIsNumeric )
+									? 'equals'
+									: ( cl.operator || 'equals' );
+								setCL( { field: nextSourceId, value: '', operator: nextOperator } );
+							} }
 						>
 							{ sources.map( ( s ) => (
 								<option key={ s.id } value={ s.id }>
@@ -1378,7 +1406,7 @@ function ConditionalLogicPanel( { field, onChange, nodes } ) {
 								} );
 							} }
 						>
-							{ CL_OPERATORS.map( ( o ) => (
+							{ visibleOperators.map( ( o ) => (
 								<option key={ o.value } value={ o.value }>{ __( o.label, 'neural-forms-lite' ) }</option>
 							) ) }
 						</select>
@@ -1402,7 +1430,8 @@ function ConditionalLogicPanel( { field, onChange, nodes } ) {
 								</select>
 							) : (
 								<input
-									type="text"
+									type={ opMeta && opMeta.numericOnly ? 'number' : 'text' }
+									step={ opMeta && opMeta.numericOnly ? 'any' : undefined }
 									value={ typeof cl.value === 'string' ? cl.value : '' }
 									onChange={ ( e ) => setCL( { value: e.target.value } ) }
 								/>

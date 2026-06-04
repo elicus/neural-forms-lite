@@ -1942,6 +1942,21 @@ class SubmitEndpoint {
 			case 'not_empty':
 				return $control_val !== '';
 
+			case 'gte':
+			case 'lte':
+				// Numeric comparison. If either side isn't a finite
+				// number, fail closed — the field stays hidden on the
+				// server too, matching the JS evaluator's safe default
+				// for unexpected data shapes.
+				if ( ! is_numeric( $control_val ) || ! is_numeric( $rule_value ) ) {
+					return false;
+				}
+				$control_num = (float) $control_val;
+				$rule_num    = (float) $rule_value;
+				return $operator === 'gte'
+					? $control_num >= $rule_num
+					: $control_num <= $rule_num;
+
 			default:
 				return true;
 		}
