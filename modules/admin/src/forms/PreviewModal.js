@@ -42,6 +42,13 @@ export default function PreviewModal( { open, form, onClose } ) {
 				name:        form?.name || '',
 				form_schema: form?.form_schema || { fields: [] },
 				settings:    form?.settings    || {},
+				// Force show_labels on for the preview so the labels the
+				// admin typed into each field's settings actually render
+				// — without this, the renderer falls back to the block
+				// "Show Field Labels" toggle (defaults off), and the
+				// preview just shows placeholders, which contradicts the
+				// builder canvas where the labels ARE visible.
+				options:     { show_labels: true },
 			},
 		} )
 			.then( ( res ) => {
