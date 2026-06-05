@@ -414,6 +414,30 @@ class SettingsEndpoint {
 			}
 		}
 
+		// Mirror cloud_ai_enabled → ai_enabled. The two flags exist for
+		// historical reasons (cloud-connection state vs AI master switch)
+		// but they always move together in current product behaviour.
+		// The React Settings save handler sends a diff PATCH — it only
+		// includes the toggle the user touched — so toggling Cloud AI on
+		// would otherwise leave ai_enabled at its default false and the
+		// analyze/reply gate (check_ai_configured in EntriesEndpoint)
+		// would reject every call as "not configured". Keep the pair
+		// coherent server-side so a single save fixes both flags.
+		if ( isset( $updates['cloud_ai_enabled'] ) && ! isset( $updates['ai_enabled'] ) ) {
+			$updates['ai_enabled'] = (bool) $updates['cloud_ai_enabled'];
+		}
+		// Corrective sync for installs that hit the bug before this fix
+		// shipped: if cloud_ai_enabled is already true in Config but
+		// ai_enabled is still the default false, any save (even one that
+		// doesn't touch cloud_ai_enabled) will repair the pair.
+		if (
+			! isset( $updates['ai_enabled'] )
+			&& (bool) Config::get( 'cloud_ai_enabled' )
+			&& ! (bool) Config::get( 'ai_enabled' )
+		) {
+			$updates['ai_enabled'] = true;
+		}
+
 		// Guard: auto-process requires AI to be enabled.
 		$ai_enabled = $updates['ai_enabled'] ?? (bool) Config::get( 'ai_enabled' );
 		if ( ! $ai_enabled ) {
