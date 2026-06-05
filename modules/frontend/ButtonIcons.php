@@ -1,6 +1,8 @@
 <?php
 namespace NeuralForms\Frontend;
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * Curated inline-SVG icon registry for Neural Forms block buttons.
  *

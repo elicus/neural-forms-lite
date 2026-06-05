@@ -4,7 +4,7 @@ Tags: contact form, ai forms, lead inbox, gutenberg form, spam protection
 Requires at least: 6.8
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -207,6 +207,43 @@ Full documentation is available at [wpmozo.com/documentation/neural-forms](https
 
 == Changelog ==
 
+= 1.1.0 - 2026-06-06 =
+
+*Admin UI*
+
+* Split the admin bundle into per-screen bundles (Forms, Entries, Stats, Settings, Templates, Integrations, Import, Builder, Analytics) for faster loads and isolated updates.
+* Restored a refreshed Entries list and detail experience with per-form sidebar folders, URL routing, and richer field labels.
+* Added a template modal that reads local plugin templates and supports preview, import, and an "Imported" badge for templates already brought in.
+* Added an Integrations page with Pro-ready provider configuration surfaces.
+* Refreshed Stats, Settings, and Templates screens with consistent layouts and design.
+* Improved Builder UX: 3-panel layout, schema canonicalization, design panels shared across blocks.
+* Added Page Performance analytics block and an Analytics screen redesign.
+
+*Builder + Blocks*
+
+* Improved Gutenberg block formatting and shared design panels across the Form, Multi-step, Poll, and Quiz blocks.
+* Added Pro-ready Matrix and Repeater field gates in the builder (the fields render an upsell when Pro is not active).
+* Refreshed Welcome screen handling, conditional logic, and field-label resolution for Entries display.
+
+*AI*
+
+* Improved Neural AI prompt UX and the AI engine routing surface.
+* Added a proactive credits-exhausted gate on AI action buttons so failed runs don't surprise the user.
+* Improved Settings gating with Pro-aware copy.
+
+*Entries + Submission*
+
+* Improved entry display, matrix rendering, repeater rendering, and CSV export formatting.
+* Improved Reply-To handling on admin notifications.
+* Lowered poll/quiz submission cap from 1,000 → 200 per form to reduce abuse surface.
+* Improved entry validation, sanitization, and Pro-feature compatibility.
+
+*Compatibility + Security*
+
+* WPCS compliance pass; Plugin Check Tool report findings addressed.
+* Added defence-in-depth ABSPATH guards across all module classes.
+* Improved Lite/Pro gating: stable capability filter contract for `field_matrix`, `field_repeater`, `integrations`, AI features.
+
 = 1.0.0 - 2026-04-29 =
 
 Initial public release.
@@ -259,6 +296,9 @@ Initial public release.
 * Full uninstall.php cleanup: drops all tables, deletes options, clears cron events, removes log files.
 
 == Upgrade Notice ==
+
+= 1.1.0 =
+Per-screen admin bundles, refreshed Entries inbox and Builder, local template modal, Integrations surface, Page Performance analytics, and Pro-ready Matrix/Repeater field gates. Recommended.
 
 = 1.0.0 =
 Initial release.
