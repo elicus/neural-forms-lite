@@ -129,7 +129,7 @@ cloud echoes back `ai_tier` on every response for display + diagnostics.
 |---|---|---|
 | `fast` | OpenAI `gpt-4.1-nano` | Lite / free; universal speed floor |
 | `balanced` | Google `gemini-2.5-flash` | Pro (default); also the universal fallback if the smart/premium tier errors |
-| `smart` | Anthropic `claude-sonnet-4-5` | Pro Monthly / Pro Yearly |
+| `smart` | Anthropic `claude-sonnet-4-5` | Pro Starter / Pro Agency |
 | `premium` | Anthropic `claude-opus-4-1` | Pro Enterprise |
 
 Tier values are persisted on `neural_forms_entries.ai_tier` (string, nullable)
