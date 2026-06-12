@@ -232,6 +232,15 @@ class FormRenderer {
 					return ! ( is_array( $node ) && ( $node['type'] ?? '' ) === SchemaHelper::WELCOME_SCREEN_TYPE );
 				}
 			) );
+
+			// Block-level "Show Welcome Screen" toggle (default true).
+			// When off, the welcome screen node is still stripped from
+			// $fields above (it's never a real field), but its markup
+			// and the data-neural-forms-has-welcome wrap flag are
+			// skipped so the form body shows immediately.
+			if ( ! ( $options['show_welcome_screen'] ?? true ) ) {
+				$welcome_screen = null;
+			}
 		}
 
 		// Render the field tree. A node is either:
@@ -322,7 +331,7 @@ class FormRenderer {
 		// data-has-welcome attribute + a small JS toggle take care of
 		// the reveal). No JS = both visible = no broken first-paint.
 		if ( $welcome_screen !== null ) {
-			$html .= static::render_welcome_screen( $welcome_screen, $form_id );
+			$html .= static::render_welcome_screen( $welcome_screen, $form_id, $options );
 		}
 
 		// Optional form title - block attribute formTitle. When non-empty,
@@ -845,7 +854,7 @@ class FormRenderer {
 	 * exports, AI analysis, or notifications — it's a display element,
 	 * not a field.
 	 */
-	private static function render_welcome_screen( array $node, int $form_id ): string {
+	private static function render_welcome_screen( array $node, int $form_id, array $options = [] ): string {
 		$node_id     = (string) ( $node['id'] ?? '' );
 		$title       = (string) ( $node['title'] ?? '' );
 		$description = (string) ( $node['description'] ?? '' );
@@ -870,15 +879,43 @@ class FormRenderer {
 			$html .= ' data-neural-forms-welcome-id="' . esc_attr( $node_id ) . '"';
 		}
 		$html .= ' data-neural-forms-welcome-for="' . (int) $form_id . '">';
+		$welcome_title_lvl = strtolower( (string) ( $options['welcome_title_level'] ?? 'h2' ) );
+		if ( ! in_array( $welcome_title_lvl, [ 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ], true ) ) {
+			$welcome_title_lvl = 'h2';
+		}
+
 		$html .= '<div class="neural-forms-form__welcome-inner">';
-		$html .= '<h2 class="neural-forms-form__welcome-title">' . esc_html( $title ) . '</h2>';
+		$html .= '<' . $welcome_title_lvl . ' class="neural-forms-form__welcome-title">' . esc_html( $title ) . '</' . $welcome_title_lvl . '>';
 		if ( $description !== '' ) {
 			$html .= '<p class="neural-forms-form__welcome-desc">' . esc_html( $description ) . '</p>';
 		}
+		$welcome_btn_icon_svg = '';
+		if ( ! empty( $options['welcome_btn_icon'] ) ) {
+			$welcome_btn_icon_svg = ButtonIcons::get( (string) $options['welcome_btn_icon'] );
+		}
+
+		$welcome_btn_class = 'neural-forms-form__welcome-btn';
+		if ( $welcome_btn_icon_svg !== '' ) {
+			$welcome_btn_icon_pos = (string) ( $options['welcome_btn_icon_position'] ?? 'after' );
+			$welcome_btn_icon_cls = 'nf-btn-icon nf-btn-icon--' . esc_attr( $welcome_btn_icon_pos );
+			$welcome_btn_class   .= ' nf-btn--has-icon';
+			if ( ! empty( $options['welcome_btn_icon_hover'] ) ) {
+				$welcome_btn_class .= ' nf-btn--hover-icon';
+				$welcome_btn_icon_cls .= ' nf-btn-icon--hover';
+			}
+			$welcome_btn_icon_html  = '<span class="' . $welcome_btn_icon_cls . '" aria-hidden="true">' . $welcome_btn_icon_svg . '</span>';
+			$welcome_btn_label_html = '<span class="nf-btn-label">' . esc_html( $button_text ) . '</span>';
+			$welcome_btn_content    = $welcome_btn_icon_pos === 'before'
+				? $welcome_btn_icon_html . $welcome_btn_label_html
+				: $welcome_btn_label_html . $welcome_btn_icon_html;
+		} else {
+			$welcome_btn_content = esc_html( $button_text );
+		}
+
 		$html .= '<button type="button"'
-			. ' class="neural-forms-form__welcome-btn"'
+			. ' class="' . esc_attr( $welcome_btn_class ) . '"'
 			. ' data-neural-forms-welcome-start="1">'
-			. esc_html( $button_text )
+			. $welcome_btn_content
 			. '</button>';
 		$html .= '</div>';
 		$html .= '</div>';

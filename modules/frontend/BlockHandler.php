@@ -332,6 +332,9 @@ class BlockHandler {
 				|| $attributes['showStepLabels'] !== false,
 			'show_step_descriptions' => ! isset( $attributes['showStepDescriptions'] )
 				|| $attributes['showStepDescriptions'] !== false,
+			'show_welcome_screen'    => ! isset( $attributes['showWelcomeScreen'] )
+				|| $attributes['showWelcomeScreen'] !== false,
+			'welcome_title_level'    => (string) ( $attributes['welcomeTitleLevel'] ?? 'h2' ),
 		];
 
 		// Button-text overrides (1.1.0). Block attributes always carry a
@@ -386,6 +389,15 @@ class BlockHandler {
 				[ 'before', 'after' ], true
 			) ? (string) $attributes['navBtnNextIconPosition'] : 'after';
 			$render_options['nav_btn_next_icon_hover'] = ! empty( $attributes['navBtnNextIconShowOnHover'] );
+		}
+
+		if ( ! empty( $attributes['welcomeBtnIconEnabled'] ) && ! empty( $attributes['welcomeBtnIcon'] ) ) {
+			$render_options['welcome_btn_icon']          = (string) $attributes['welcomeBtnIcon'];
+			$render_options['welcome_btn_icon_position'] = in_array(
+				(string) ( $attributes['welcomeBtnIconPosition'] ?? 'after' ),
+				[ 'before', 'after' ], true
+			) ? (string) $attributes['welcomeBtnIconPosition'] : 'after';
+			$render_options['welcome_btn_icon_hover'] = ! empty( $attributes['welcomeBtnIconShowOnHover'] );
 		}
 
 		// Multi-Step block (and the form block, harmlessly): per-placement
@@ -625,6 +637,31 @@ class BlockHandler {
 			'labelTextDecoration', 'labelTextTransform', 'labelLineHeight',
 			'labelPaddingTop', 'labelPaddingRight', 'labelPaddingBottom', 'labelPaddingLeft',
 			'labelMarginTop', 'labelMarginRight', 'labelMarginBottom', 'labelMarginLeft',
+			// Welcome Screen
+			'showWelcomeScreen',
+			'welcomeBg', 'welcomeBgGradient', 'welcomeFullHeight',
+			'welcomeBgImage', 'welcomeBgImageSize', 'welcomeBgImagePosition', 'welcomeBgImageRepeat', 'welcomeBgImageBlend',
+			'welcomeBorder',
+			'welcomeBorderRadiusTL', 'welcomeBorderRadiusTR', 'welcomeBorderRadiusBR', 'welcomeBorderRadiusBL',
+			'welcomeAlign',
+			'welcomeShadowColor', 'welcomeShadowPosition', 'welcomeShadowH', 'welcomeShadowV', 'welcomeShadowBlur', 'welcomeShadowSpread',
+			'welcomeTitleLevel', 'welcomeTitleColor', 'welcomeTitleFontFamily',
+			'welcomeTitleFontSize', 'welcomeTitleFontStyle', 'welcomeTitleFontWeight',
+			'welcomeTitleLetterSpacing', 'welcomeTitleTextDecoration', 'welcomeTitleTextTransform', 'welcomeTitleLineHeight',
+			'welcomeDescColor', 'welcomeDescFontFamily',
+			'welcomeDescFontSize', 'welcomeDescFontStyle', 'welcomeDescFontWeight',
+			'welcomeDescLetterSpacing', 'welcomeDescTextDecoration', 'welcomeDescTextTransform', 'welcomeDescLineHeight',
+			'welcomeBtnTextColor', 'welcomeBtnBgColor', 'welcomeBtnBgGradient',
+			'welcomeBtnRadiusTL', 'welcomeBtnRadiusTR', 'welcomeBtnRadiusBR', 'welcomeBtnRadiusBL',
+			'welcomeBtnBorder',
+			'welcomeBtnFontSize', 'welcomeBtnFontFamily',
+			'welcomeBtnFontWeight', 'welcomeBtnFontStyle', 'welcomeBtnLetterSpacing', 'welcomeBtnTextDecoration', 'welcomeBtnTextTransform', 'welcomeBtnLineHeight',
+			'welcomeBtnPaddingTop', 'welcomeBtnPaddingRight', 'welcomeBtnPaddingBottom', 'welcomeBtnPaddingLeft',
+			'welcomeBtnHoverBg', 'welcomeBtnHoverBgGradient', 'welcomeBtnHoverColor', 'welcomeBtnHoverBorderColor',
+			'welcomeBtnTransitionDuration', 'welcomeBtnTransitionEasing',
+			'welcomeBtnIconEnabled', 'welcomeBtnIcon', 'welcomeBtnIconPosition', 'welcomeBtnIconShowOnHover',
+			'welcomePaddingTop', 'welcomePaddingRight', 'welcomePaddingBottom', 'welcomePaddingLeft',
+			'welcomeMarginTop', 'welcomeMarginRight', 'welcomeMarginBottom', 'welcomeMarginLeft',
 			// Textarea field
 			'textareaBg', 'textareaBgGradient', 'textareaHoverBg', 'textareaHoverBgGradient', 'textareaFocusBg', 'textareaFocusBgGradient',
 			'textareaTextColor', 'textareaFocusTextColor', 'textareaPlaceholderColor',
@@ -1486,6 +1523,322 @@ class BlockHandler {
 		}
 		if ( $title_rules ) {
 			$css .= $wrap_sel . ' .neural-forms-form__title{' . implode( ';', $title_rules ) . '}';
+		}
+
+		// ' Welcome Screen '
+		$welcome_sel   = $wrap_sel . ' .neural-forms-form__welcome';
+		$welcome_rules = [];
+
+		// Priority: image > gradient > color.
+		$welcome_bg          = (string) ( $attributes['welcomeBg']          ?? '' );
+		$welcome_bg_gradient = (string) ( $attributes['welcomeBgGradient']  ?? '' );
+		$welcome_bg_image    = (string) ( $attributes['welcomeBgImage']     ?? '' );
+		if ( $welcome_bg_image !== '' ) {
+			$wbg_size   = (string) ( $attributes['welcomeBgImageSize']     ?? '' );
+			$wbg_pos    = (string) ( $attributes['welcomeBgImagePosition'] ?? '' );
+			$wbg_repeat = (string) ( $attributes['welcomeBgImageRepeat']   ?? '' );
+			$wbg_blend  = (string) ( $attributes['welcomeBgImageBlend']    ?? '' );
+			$welcome_rules[] = 'background-image:url(' . esc_url( $welcome_bg_image ) . ')';
+			if ( in_array( $wbg_size, [ 'cover', 'contain', 'initial' ], true ) ) {
+				$welcome_rules[] = 'background-size:' . $wbg_size;
+			} elseif ( $wbg_size === 'stretch' ) {
+				$welcome_rules[] = 'background-size:100% 100%';
+			} else {
+				$welcome_rules[] = 'background-size:cover';
+			}
+			if ( in_array( $wbg_pos, [ 'top_left', 'top_center', 'top_right', 'center_left', 'center', 'center_right', 'bottom_left', 'bottom_center', 'bottom_right' ], true ) ) {
+				$welcome_rules[] = 'background-position:' . str_replace( '_', ' ', $wbg_pos );
+			} else {
+				$welcome_rules[] = 'background-position:center';
+			}
+			if ( in_array( $wbg_repeat, [ 'repeat', 'repeat-x', 'repeat-y', 'space', 'round', 'no-repeat' ], true ) ) {
+				$welcome_rules[] = 'background-repeat:' . $wbg_repeat;
+			} else {
+				$welcome_rules[] = 'background-repeat:no-repeat';
+			}
+			if ( in_array( $wbg_blend, [ 'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten' ], true ) ) {
+				$welcome_rules[] = 'background-blend-mode:' . $wbg_blend;
+			}
+		} elseif ( $welcome_bg_gradient !== '' ) {
+			$welcome_rules[] = 'background-image:' . sanitize_text_field( $welcome_bg_gradient );
+		} elseif ( $welcome_bg !== '' ) {
+			$hex = self::sanitize_color( $welcome_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$welcome_rules[] = 'background-color:' . $hex;
+			}
+		}
+
+		if ( ! empty( $attributes['welcomeFullHeight'] ) ) {
+			$welcome_rules[] = 'min-height:100vh';
+			$welcome_rules[] = 'display:flex';
+			$welcome_rules[] = 'align-items:center';
+			$welcome_rules[] = 'justify-content:center';
+		}
+
+		// Content alignment — mirrors the builder's
+		// .neural-forms-form__welcome--align-* classes (text-align on the
+		// welcome block + margin reset on the inner wrap so the centered
+		// max-width column hugs the chosen side).
+		$welcome_align = (string) ( $attributes['welcomeAlign'] ?? '' );
+		if ( in_array( $welcome_align, [ 'left', 'center', 'right' ], true ) ) {
+			$welcome_rules[] = 'text-align:' . $welcome_align;
+			if ( $welcome_align === 'left' ) {
+				$css .= $welcome_sel . ' .neural-forms-form__welcome-inner{margin-left:0}';
+			} elseif ( $welcome_align === 'right' ) {
+				$css .= $welcome_sel . ' .neural-forms-form__welcome-inner{margin-right:0}';
+			}
+		}
+
+		$css .= self::border_css( $welcome_sel, $attributes['welcomeBorder'] ?? [], '#d1d5db' );
+
+		// Per-corner border radius (matches Container's clipping rationale).
+		$wradius_tl = (string) ( $attributes['welcomeBorderRadiusTL'] ?? '' );
+		$wradius_tr = (string) ( $attributes['welcomeBorderRadiusTR'] ?? '' );
+		$wradius_br = (string) ( $attributes['welcomeBorderRadiusBR'] ?? '' );
+		$wradius_bl = (string) ( $attributes['welcomeBorderRadiusBL'] ?? '' );
+		if ( $wradius_tl !== '' || $wradius_tr !== '' || $wradius_br !== '' || $wradius_bl !== '' ) {
+			if ( $wradius_tl !== '' ) $welcome_rules[] = 'border-top-left-radius:'     . $len( $wradius_tl );
+			if ( $wradius_tr !== '' ) $welcome_rules[] = 'border-top-right-radius:'    . $len( $wradius_tr );
+			if ( $wradius_br !== '' ) $welcome_rules[] = 'border-bottom-right-radius:' . $len( $wradius_br );
+			if ( $wradius_bl !== '' ) $welcome_rules[] = 'border-bottom-left-radius:'  . $len( $wradius_bl );
+			$welcome_rules[] = 'overflow:hidden';
+		}
+
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'welcomePadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$welcome_rules[] = $css_prop . ':' . $spacing( $val );
+			}
+		}
+		foreach ( [ 'Top' => 'margin-top', 'Right' => 'margin-right', 'Bottom' => 'margin-bottom', 'Left' => 'margin-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'welcomeMargin' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$welcome_rules[] = $css_prop . ':' . $spacing( $val );
+			}
+		}
+
+		// Custom box shadow.
+		$wshadow_h      = (string) ( $attributes['welcomeShadowH']        ?? '' );
+		$wshadow_v      = (string) ( $attributes['welcomeShadowV']        ?? '' );
+		$wshadow_blur   = (string) ( $attributes['welcomeShadowBlur']     ?? '' );
+		$wshadow_spread = (string) ( $attributes['welcomeShadowSpread']   ?? '' );
+		$wshadow_color  = (string) ( $attributes['welcomeShadowColor']    ?? '' );
+		$wshadow_pos    = (string) ( $attributes['welcomeShadowPosition'] ?? '' );
+		if ( $wshadow_h !== '' || $wshadow_v !== '' || $wshadow_blur !== '' || $wshadow_spread !== '' || $wshadow_color !== '' ) {
+			$h = $wshadow_h !== '' ? sanitize_text_field( $wshadow_h ) : '0';
+			$v = $wshadow_v !== '' ? sanitize_text_field( $wshadow_v ) : '0';
+			$b = $wshadow_blur !== '' ? sanitize_text_field( $wshadow_blur ) : '0';
+			$s = $wshadow_spread !== '' ? sanitize_text_field( $wshadow_spread ) : '0';
+			$c = $wshadow_color !== '' ? self::sanitize_color( $wshadow_color ) : 'rgba(0,0,0,0.3)';
+			$inset = $wshadow_pos === 'inner' ? 'inset ' : '';
+			$welcome_rules[] = 'box-shadow:' . $inset . $h . ' ' . $v . ' ' . $b . ' ' . $s . ' ' . $c;
+		}
+
+		if ( $welcome_rules ) {
+			$css .= $welcome_sel . '{' . implode( ';', $welcome_rules ) . '}';
+		}
+		if ( ! empty( $attributes['welcomeFullHeight'] ) ) {
+			$css .= $wrap_sel . ' .neural-forms-form__welcome-inner{width:100%}';
+		}
+
+		$welcome_title_rules = [];
+		$welcome_title_color = (string) ( $attributes['welcomeTitleColor'] ?? '' );
+		if ( $welcome_title_color !== '' ) {
+			$hex = self::sanitize_color( $welcome_title_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$welcome_title_rules[] = 'color:' . $hex;
+			}
+		}
+		$welcome_title_fs = $len( (string) ( $attributes['welcomeTitleFontSize'] ?? '' ) );
+		if ( $welcome_title_fs !== '' ) {
+			$welcome_title_rules[] = 'font-size:' . $welcome_title_fs;
+		}
+		$welcome_title_fw = (string) ( $attributes['welcomeTitleFontWeight'] ?? '' );
+		if ( $welcome_title_fw !== '' ) {
+			$welcome_title_rules[] = 'font-weight:' . sanitize_text_field( $welcome_title_fw );
+		}
+		$welcome_title_ff = (string) ( $attributes['welcomeTitleFontFamily'] ?? '' );
+		if ( $welcome_title_ff !== '' ) {
+			$welcome_title_rules[] = 'font-family:' . sanitize_text_field( $welcome_title_ff );
+		}
+		$welcome_title_fstyle = (string) ( $attributes['welcomeTitleFontStyle'] ?? '' );
+		if ( $welcome_title_fstyle === 'italic' ) {
+			$welcome_title_rules[] = 'font-style:italic';
+		}
+		$welcome_title_ls = (string) ( $attributes['welcomeTitleLetterSpacing'] ?? '' );
+		if ( $welcome_title_ls !== '' ) {
+			$welcome_title_rules[] = 'letter-spacing:' . sanitize_text_field( $welcome_title_ls );
+		}
+		$welcome_title_td = (string) ( $attributes['welcomeTitleTextDecoration'] ?? '' );
+		if ( $welcome_title_td !== '' && in_array( $welcome_title_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
+			$welcome_title_rules[] = 'text-decoration:' . $welcome_title_td;
+		}
+		$welcome_title_tt = (string) ( $attributes['welcomeTitleTextTransform'] ?? '' );
+		if ( $welcome_title_tt !== '' && in_array( $welcome_title_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+			$welcome_title_rules[] = 'text-transform:' . $welcome_title_tt;
+		}
+		$welcome_title_lh = (string) ( $attributes['welcomeTitleLineHeight'] ?? '' );
+		if ( $welcome_title_lh !== '' ) {
+			$welcome_title_rules[] = 'line-height:' . sanitize_text_field( $welcome_title_lh );
+		}
+		if ( $welcome_title_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__welcome-title{' . implode( ';', $welcome_title_rules ) . '}';
+		}
+
+		$welcome_desc_rules = [];
+		$welcome_desc_color = (string) ( $attributes['welcomeDescColor'] ?? '' );
+		if ( $welcome_desc_color !== '' ) {
+			$hex = self::sanitize_color( $welcome_desc_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$welcome_desc_rules[] = 'color:' . $hex;
+			}
+		}
+		$welcome_desc_fs = $len( (string) ( $attributes['welcomeDescFontSize'] ?? '' ) );
+		if ( $welcome_desc_fs !== '' ) {
+			$welcome_desc_rules[] = 'font-size:' . $welcome_desc_fs;
+		}
+		$welcome_desc_fw = (string) ( $attributes['welcomeDescFontWeight'] ?? '' );
+		if ( $welcome_desc_fw !== '' ) {
+			$welcome_desc_rules[] = 'font-weight:' . sanitize_text_field( $welcome_desc_fw );
+		}
+		$welcome_desc_ff = (string) ( $attributes['welcomeDescFontFamily'] ?? '' );
+		if ( $welcome_desc_ff !== '' ) {
+			$welcome_desc_rules[] = 'font-family:' . sanitize_text_field( $welcome_desc_ff );
+		}
+		$welcome_desc_fstyle = (string) ( $attributes['welcomeDescFontStyle'] ?? '' );
+		if ( $welcome_desc_fstyle === 'italic' ) {
+			$welcome_desc_rules[] = 'font-style:italic';
+		}
+		$welcome_desc_ls = (string) ( $attributes['welcomeDescLetterSpacing'] ?? '' );
+		if ( $welcome_desc_ls !== '' ) {
+			$welcome_desc_rules[] = 'letter-spacing:' . sanitize_text_field( $welcome_desc_ls );
+		}
+		$welcome_desc_td = (string) ( $attributes['welcomeDescTextDecoration'] ?? '' );
+		if ( $welcome_desc_td !== '' && in_array( $welcome_desc_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
+			$welcome_desc_rules[] = 'text-decoration:' . $welcome_desc_td;
+		}
+		$welcome_desc_tt = (string) ( $attributes['welcomeDescTextTransform'] ?? '' );
+		if ( $welcome_desc_tt !== '' && in_array( $welcome_desc_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+			$welcome_desc_rules[] = 'text-transform:' . $welcome_desc_tt;
+		}
+		$welcome_desc_lh = (string) ( $attributes['welcomeDescLineHeight'] ?? '' );
+		if ( $welcome_desc_lh !== '' ) {
+			$welcome_desc_rules[] = 'line-height:' . sanitize_text_field( $welcome_desc_lh );
+		}
+		if ( $welcome_desc_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__welcome-desc{' . implode( ';', $welcome_desc_rules ) . '}';
+		}
+
+		// ——— Welcome Screen button (shared welcomeBtn* attributes, mirrors navBtn*) ———
+
+		$welcome_btn_sel       = $wrap_sel . ' .neural-forms-form__welcome-btn';
+		$welcome_btn_hover_sel = $welcome_btn_sel . ':hover:not(:disabled),' . $welcome_btn_sel . ':focus:not(:disabled)';
+		$welcome_btn_rules     = [];
+		$welcome_btn_hover_rules = [];
+
+		$css .= self::border_css( $welcome_btn_sel, $attributes['welcomeBtnBorder'] ?? [], 'transparent' );
+
+		foreach ( [ 'TL' => 'border-top-left-radius', 'TR' => 'border-top-right-radius', 'BR' => 'border-bottom-right-radius', 'BL' => 'border-bottom-left-radius' ] as $corner => $css_prop ) {
+			$val = (string) ( $attributes[ 'welcomeBtnRadius' . $corner ] ?? '' );
+			if ( $val !== '' ) {
+				$welcome_btn_rules[] = $css_prop . ':' . $spacing( $val );
+			}
+		}
+
+		$wbtn_font_family = (string) ( $attributes['welcomeBtnFontFamily'] ?? '' );
+		if ( $wbtn_font_family !== '' ) {
+			$welcome_btn_rules[] = 'font-family:' . sanitize_text_field( $wbtn_font_family );
+		}
+
+		$wbtn_fs = $len( (string) ( $attributes['welcomeBtnFontSize'] ?? '' ) );
+		if ( $wbtn_fs !== '' ) {
+			$welcome_btn_rules[] = 'font-size:' . $wbtn_fs;
+		}
+
+		// Always emit a transition rule: the welcome-btn's form.css default
+		// (opacity/transform only) doesn't cover background-color/color/
+		// border-color/filter, which is what the hover controls below
+		// change — without this, those hover changes apply instantly.
+		$wbtn_trans_dur  = (string) ( $attributes['welcomeBtnTransitionDuration'] ?? '' );
+		$wbtn_trans_ease = (string) ( $attributes['welcomeBtnTransitionEasing'] ?? '' );
+		$wbtn_dur  = $wbtn_trans_dur !== '' ? sanitize_text_field( $wbtn_trans_dur ) : '0.15s';
+		$wbtn_ease = $wbtn_trans_ease !== '' ? sanitize_text_field( $wbtn_trans_ease ) : 'ease';
+		$welcome_btn_rules[] = 'transition:background-color ' . $wbtn_dur . ' ' . $wbtn_ease . ',color ' . $wbtn_dur . ' ' . $wbtn_ease . ',border-color ' . $wbtn_dur . ' ' . $wbtn_ease . ',filter ' . $wbtn_dur . ' ' . $wbtn_ease;
+
+		$wbtn_fw = (string) ( $attributes['welcomeBtnFontWeight'] ?? '' );
+		if ( $wbtn_fw !== '' ) {
+			$welcome_btn_rules[] = 'font-weight:' . sanitize_text_field( $wbtn_fw );
+		}
+		$wbtn_fstyle = (string) ( $attributes['welcomeBtnFontStyle'] ?? '' );
+		if ( $wbtn_fstyle === 'italic' ) {
+			$welcome_btn_rules[] = 'font-style:italic';
+		}
+		$wbtn_ls = (string) ( $attributes['welcomeBtnLetterSpacing'] ?? '' );
+		if ( $wbtn_ls !== '' ) {
+			if ( is_numeric( $wbtn_ls ) ) { $wbtn_ls .= 'px'; }
+			$welcome_btn_rules[] = 'letter-spacing:' . sanitize_text_field( $wbtn_ls );
+		}
+		$wbtn_td = (string) ( $attributes['welcomeBtnTextDecoration'] ?? '' );
+		if ( $wbtn_td !== '' && in_array( $wbtn_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
+			$welcome_btn_rules[] = 'text-decoration:' . $wbtn_td;
+		}
+		$wbtn_tt = (string) ( $attributes['welcomeBtnTextTransform'] ?? '' );
+		if ( $wbtn_tt !== '' && in_array( $wbtn_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) {
+			$welcome_btn_rules[] = 'text-transform:' . $wbtn_tt;
+		}
+		$wbtn_lh = (string) ( $attributes['welcomeBtnLineHeight'] ?? '' );
+		if ( $wbtn_lh !== '' ) {
+			$welcome_btn_rules[] = 'line-height:' . sanitize_text_field( $wbtn_lh );
+		}
+
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'welcomeBtnPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$welcome_btn_rules[] = $css_prop . ':' . $spacing( $val );
+			}
+		}
+
+		$wbtn_bg          = (string) ( $attributes['welcomeBtnBgColor']    ?? '' );
+		$wbtn_bg_gradient = (string) ( $attributes['welcomeBtnBgGradient'] ?? '' );
+		if ( $wbtn_bg_gradient !== '' ) {
+			$welcome_btn_rules[] = 'background-image:' . sanitize_text_field( $wbtn_bg_gradient );
+		} elseif ( $wbtn_bg !== '' ) {
+			$hex = self::sanitize_color( $wbtn_bg );
+			if ( $hex !== null && $hex !== '' ) { $welcome_btn_rules[] = 'background-color:' . $hex; }
+		}
+		$wbtn_text_color = (string) ( $attributes['welcomeBtnTextColor'] ?? '' );
+		if ( $wbtn_text_color !== '' ) {
+			$hex = self::sanitize_color( $wbtn_text_color );
+			if ( $hex !== null && $hex !== '' ) { $welcome_btn_rules[] = 'color:' . $hex; }
+		}
+
+		$wbtn_hover_bg          = (string) ( $attributes['welcomeBtnHoverBg']          ?? '' );
+		$wbtn_hover_bg_gradient = (string) ( $attributes['welcomeBtnHoverBgGradient']  ?? '' );
+		$wbtn_hover_color       = (string) ( $attributes['welcomeBtnHoverColor']       ?? '' );
+		$wbtn_hover_border      = (string) ( $attributes['welcomeBtnHoverBorderColor'] ?? '' );
+		if ( $wbtn_hover_bg_gradient !== '' ) {
+			$welcome_btn_hover_rules[] = 'background-image:' . sanitize_text_field( $wbtn_hover_bg_gradient );
+		} elseif ( $wbtn_hover_bg !== '' ) {
+			$hex = self::sanitize_color( $wbtn_hover_bg );
+			if ( $hex !== null && $hex !== '' ) { $welcome_btn_hover_rules[] = 'background-color:' . $hex; }
+		}
+		if ( $wbtn_hover_color !== '' ) {
+			$hex = self::sanitize_color( $wbtn_hover_color );
+			if ( $hex !== null && $hex !== '' ) { $welcome_btn_hover_rules[] = 'color:' . $hex; }
+		}
+		if ( $wbtn_hover_border !== '' ) {
+			$hex = self::sanitize_color( $wbtn_hover_border );
+			if ( $hex !== null && $hex !== '' ) { $welcome_btn_hover_rules[] = 'border-color:' . $hex; }
+		}
+		if ( $welcome_btn_hover_rules ) {
+			$welcome_btn_hover_rules[] = 'filter:none';
+		}
+
+		if ( $welcome_btn_rules ) {
+			$css .= $welcome_btn_sel . '{' . implode( ';', $welcome_btn_rules ) . '}';
+		}
+		if ( $welcome_btn_hover_rules ) {
+			$css .= $welcome_btn_hover_sel . '{' . implode( ';', $welcome_btn_hover_rules ) . '}';
 		}
 
 		// ' Label typography / color / alignment '

@@ -17,6 +17,7 @@ import {
 	TextareaFieldPanel,
 	AcceptanceFieldPanel,
 	SubmitButtonPanel,
+	WelcomeScreenPanel,
 	MessagesPanel,
 	AdvancedPanel,
 	Sep, Gap, Clr, Grad,
@@ -91,7 +92,7 @@ function ResultsBarPanel( { a, set } ) {
 	);
 }
 
-export default function PollDesignExtras( { attributes, setAttributes } ) {
+export default function PollDesignExtras( { attributes, setAttributes, formHasWelcomeScreen = false } ) {
 	const a = attributes, set = setAttributes;
 	return (
 		<>
@@ -104,6 +105,7 @@ export default function PollDesignExtras( { attributes, setAttributes } ) {
 			<PollOptionsPanel     a={ a } set={ set } />
 			{ a.showPollResults !== false && <ResultsBarPanel a={ a } set={ set } /> }
 			<SubmitButtonPanel    a={ a } set={ set } />
+			{ formHasWelcomeScreen && a.showWelcomeScreen !== false && <WelcomeScreenPanel a={ a } set={ set } /> }
 			<MessagesPanel        a={ a } set={ set } />
 			<AdvancedPanel        a={ a } set={ set } />
 		</>

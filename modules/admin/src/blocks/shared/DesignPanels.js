@@ -826,7 +826,7 @@ function BtnIconSection( { enabledKey, iconKey, positionKey, hoverKey, defaultPo
 // iconsContent=<jsx> — renders arbitrary JSX at the same position (nav buttons, whose
 //                      prev/next attrs don't fit the single-prefix pattern).
 // Both showIcons and iconsContent land between Typography and Padding in the Normal tab.
-export function BtnControls( { pfx, a, set, showAlign = true, showIcons = false, iconsContent = null } ) {
+export function BtnControls( { pfx, a, set, showAlign = true, showFullWidth = true, showIcons = false, iconsContent = null } ) {
 	const [ btnTab, setBtnTab ] = useState( 'normal' );
 	const fullWidthKey = pfx + 'FullWidth';
 	return (
@@ -834,7 +834,9 @@ export function BtnControls( { pfx, a, set, showAlign = true, showIcons = false,
 			{ showAlign && (
 				<AlignControl label={ __( 'Alignment', 'neural-forms-lite' ) } value={ a[ pfx + 'Align' ] || 'left' } onChange={ v => set( { [ pfx + 'Align' ]: v ?? 'left' } ) } justify={ false } />
 			) }
-			<ToggleControl label={ __( 'Full Width', 'neural-forms-lite' ) } checked={ !!a[ fullWidthKey ] } onChange={ v => set( { [ fullWidthKey ]: v } ) } />
+			{ showFullWidth && (
+				<ToggleControl label={ __( 'Full Width', 'neural-forms-lite' ) } checked={ !!a[ fullWidthKey ] } onChange={ v => set( { [ fullWidthKey ]: v } ) } />
+			) }
 			<Sep />
 
 			{ /* ── Normal / Hover state switcher ── */ }
@@ -1145,6 +1147,164 @@ export function MatrixFieldPanel( { a, set } ) {
 }
 
 // ─── Advanced panel (identical across all blocks) ─────────────────────────────
+
+export function WelcomeScreenPanel( { a, set } ) {
+	return (
+		<PanelBody title={ __( 'Welcome Screen', 'neural-forms-lite' ) } initialOpen={ false }>
+			<BaseControl label={ __( 'Background', 'neural-forms-lite' ) } __nextHasNoMarginBottom>
+				<TabPanel initialTabName={ a.welcomeBgGradient ? 'gradient' : 'color' } tabs={ [ { name: 'color', title: __( 'Color', 'neural-forms-lite' ) }, { name: 'gradient', title: __( 'Gradient', 'neural-forms-lite' ) } ] }>
+					{ ( tab ) => tab.name === 'color' ? <Clr label="" value={ a.welcomeBg } onChange={ v => set( { welcomeBg: v ?? '' } ) } /> : <Grad label="" value={ a.welcomeBgGradient } onChange={ v => set( { welcomeBgGradient: v ?? '' } ) } /> }
+				</TabPanel>
+			</BaseControl>
+			<Gap />
+			<MediaUploadCheck>
+				<MediaUpload
+					onSelect={ media => set( { welcomeBgImage: media.url } ) }
+					allowedTypes={ [ 'image' ] }
+					accept="image/*"
+					value={ a.welcomeBgImage }
+					render={ ( { open } ) => (
+						<BaseControl label={ __( 'Background Image', 'neural-forms-lite' ) } __nextHasNoMarginBottom>
+							{ a.welcomeBgImage && (
+								<img src={ a.welcomeBgImage } alt="" style={ { display: 'block', width: '100%', height: 80, objectFit: 'cover', borderRadius: 4, marginBottom: 6 } } />
+							) }
+							<Button isPrimary onClick={ e => { e.stopPropagation(); open(); } } __next40pxDefaultSize>
+								{ a.welcomeBgImage ? __( 'Edit Image', 'neural-forms-lite' ) : __( 'Select Image', 'neural-forms-lite' ) }
+							</Button>
+							{ a.welcomeBgImage && (
+								<Button isLink isDestructive onClick={ () => set( { welcomeBgImage: '' } ) } style={ { marginLeft: '10px', verticalAlign: 'super' } } __next40pxDefaultSize>
+									{ __( 'Remove Image', 'neural-forms-lite' ) }
+								</Button>
+							) }
+						</BaseControl>
+					) }
+				/>
+			</MediaUploadCheck>
+			{ a.welcomeBgImage && (
+				<>
+					<Gap />
+					<SelectControl
+						label={ __( 'Background Image Size', 'neural-forms-lite' ) }
+						value={ a.welcomeBgImageSize || 'cover' }
+						options={ [
+							{ value: 'cover',   label: __( 'Cover',           'neural-forms-lite' ) },
+							{ value: 'contain', label: __( 'Fit',             'neural-forms-lite' ) },
+							{ value: 'initial', label: __( 'Actual Size',     'neural-forms-lite' ) },
+							{ value: 'stretch', label: __( 'Stretch to Fill', 'neural-forms-lite' ) },
+						] }
+						onChange={ v => set( { welcomeBgImageSize: v } ) }
+						__next40pxDefaultSize __nextHasNoMarginBottom
+					/>
+					<Gap />
+					<SelectControl
+						label={ __( 'Background Image Position', 'neural-forms-lite' ) }
+						value={ a.welcomeBgImagePosition || 'center' }
+						options={ [
+							{ value: 'top_left',      label: __( 'Top Left',      'neural-forms-lite' ) },
+							{ value: 'top_center',    label: __( 'Top Center',    'neural-forms-lite' ) },
+							{ value: 'top_right',     label: __( 'Top Right',     'neural-forms-lite' ) },
+							{ value: 'center_left',   label: __( 'Center Left',   'neural-forms-lite' ) },
+							{ value: 'center',        label: __( 'Center',        'neural-forms-lite' ) },
+							{ value: 'center_right',  label: __( 'Center Right',  'neural-forms-lite' ) },
+							{ value: 'bottom_left',   label: __( 'Bottom Left',   'neural-forms-lite' ) },
+							{ value: 'bottom_center', label: __( 'Bottom Center', 'neural-forms-lite' ) },
+							{ value: 'bottom_right',  label: __( 'Bottom Right',  'neural-forms-lite' ) },
+						] }
+						onChange={ v => set( { welcomeBgImagePosition: v } ) }
+						__next40pxDefaultSize __nextHasNoMarginBottom
+					/>
+					<Gap />
+					<SelectControl
+						label={ __( 'Background Image Repeat', 'neural-forms-lite' ) }
+						value={ a.welcomeBgImageRepeat || 'no-repeat' }
+						options={ [
+							{ value: 'repeat',    label: __( 'Repeat',                    'neural-forms-lite' ) },
+							{ value: 'repeat-x',  label: __( 'Repeat X (horizontal)',     'neural-forms-lite' ) },
+							{ value: 'repeat-y',  label: __( 'Repeat Y (vertical)',       'neural-forms-lite' ) },
+							{ value: 'space',     label: __( 'Repeat with space between', 'neural-forms-lite' ) },
+							{ value: 'round',     label: __( 'Repeat and Stretch',        'neural-forms-lite' ) },
+							{ value: 'no-repeat', label: __( 'No Repeat',                'neural-forms-lite' ) },
+						] }
+						onChange={ v => set( { welcomeBgImageRepeat: v } ) }
+						__next40pxDefaultSize __nextHasNoMarginBottom
+					/>
+					<Gap />
+					<SelectControl
+						label={ __( 'Background Image Blend', 'neural-forms-lite' ) }
+						value={ a.welcomeBgImageBlend || 'normal' }
+						options={ [
+							{ value: 'normal',   label: __( 'Normal',   'neural-forms-lite' ) },
+							{ value: 'multiply', label: __( 'Multiply', 'neural-forms-lite' ) },
+							{ value: 'screen',   label: __( 'Screen',   'neural-forms-lite' ) },
+							{ value: 'overlay',  label: __( 'Overlay',  'neural-forms-lite' ) },
+							{ value: 'darken',   label: __( 'Darken',   'neural-forms-lite' ) },
+							{ value: 'lighten',  label: __( 'Lighten',  'neural-forms-lite' ) },
+						] }
+						onChange={ v => set( { welcomeBgImageBlend: v } ) }
+						__next40pxDefaultSize __nextHasNoMarginBottom
+					/>
+				</>
+			) }
+			<Gap />
+			<ToggleControl
+				label={ __( 'Full Height', 'neural-forms-lite' ) }
+				help={ __( 'Stretch the welcome screen to fill the viewport height.', 'neural-forms-lite' ) }
+				checked={ !! a.welcomeFullHeight }
+				onChange={ v => set( { welcomeFullHeight: !! v } ) }
+			/>
+			<Sep />
+
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.welcomeBorder || {} } onChange={ v => set( { welcomeBorder: v ?? {} } ) } enableAlpha />
+			<Gap />
+			<BoxControl label={ __( 'Border Radius', 'neural-forms-lite' ) } values={ { top: a.welcomeBorderRadiusTL || undefined, right: a.welcomeBorderRadiusTR || undefined, bottom: a.welcomeBorderRadiusBR || undefined, left: a.welcomeBorderRadiusBL || undefined } } onChange={ v => set( { welcomeBorderRadiusTL: v.top ?? '', welcomeBorderRadiusTR: v.right ?? '', welcomeBorderRadiusBR: v.bottom ?? '', welcomeBorderRadiusBL: v.left ?? '' } ) } />
+			<Sep />
+
+			<PaddingMarginDimensions
+				pTop="welcomePaddingTop" pRight="welcomePaddingRight" pBottom="welcomePaddingBottom" pLeft="welcomePaddingLeft"
+				mTop="welcomeMarginTop" mRight="welcomeMarginRight" mBottom="welcomeMarginBottom" mLeft="welcomeMarginLeft"
+				a={ a } set={ set }
+			/>
+			<Sep />
+
+			<AlignControl label={ __( 'Content Alignment', 'neural-forms-lite' ) } value={ a.welcomeAlign || 'left' } onChange={ v => set( { welcomeAlign: v ?? 'left' } ) } justify={ false } />
+			<Sep />
+
+			<BaseControl label={ __( 'Box Shadow', 'neural-forms-lite' ) } __nextHasNoMarginBottom>
+				<Clr label={ __( 'Shadow Color', 'neural-forms-lite' ) } value={ a.welcomeShadowColor } onChange={ v => set( { welcomeShadowColor: v ?? '' } ) } />
+				<Gap />
+				<ToggleGroupControl label={ __( 'Position', 'neural-forms-lite' ) } value={ a.welcomeShadowPosition || 'outer' } onChange={ v => set( { welcomeShadowPosition: v } ) } isBlock __nextHasNoMarginBottom>
+					<ToggleGroupControlOption value="outer" label={ __( 'Outer', 'neural-forms-lite' ) } />
+					<ToggleGroupControlOption value="inner" label={ __( 'Inner', 'neural-forms-lite' ) } />
+				</ToggleGroupControl>
+				<Gap />
+				<UnitControl label={ __( 'Horizontal', 'neural-forms-lite' ) } value={ a.welcomeShadowH } onChange={ v => set( { welcomeShadowH: v ?? '' } ) } />
+				<Gap />
+				<UnitControl label={ __( 'Vertical', 'neural-forms-lite' ) } value={ a.welcomeShadowV } onChange={ v => set( { welcomeShadowV: v ?? '' } ) } />
+				<Gap />
+				<UnitControl label={ __( 'Blur', 'neural-forms-lite' ) } value={ a.welcomeShadowBlur } onChange={ v => set( { welcomeShadowBlur: v ?? '' } ) } />
+				<Gap />
+				<UnitControl label={ __( 'Spread', 'neural-forms-lite' ) } value={ a.welcomeShadowSpread } onChange={ v => set( { welcomeShadowSpread: v ?? '' } ) } />
+			</BaseControl>
+			<Sep />
+
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Title', 'neural-forms-lite' ) }</p>
+			<SelectControl label={ __( 'Heading Level', 'neural-forms-lite' ) } value={ a.welcomeTitleLevel || 'h2' } options={ [ 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ].map( h => ( { label: h.toUpperCase(), value: h } ) ) } onChange={ v => set( { welcomeTitleLevel: v } ) } />
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.welcomeTitleColor } onChange={ v => set( { welcomeTitleColor: v ?? '' } ) } />
+			<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.welcomeTitleFontFamily } onChange={ v => set( { welcomeTitleFontFamily: v } ) } />
+			<TypographyPanel pfx="welcomeTitle" a={ a } set={ set } />
+			<Sep />
+
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Description', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.welcomeDescColor } onChange={ v => set( { welcomeDescColor: v ?? '' } ) } />
+			<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.welcomeDescFontFamily } onChange={ v => set( { welcomeDescFontFamily: v } ) } />
+			<TypographyPanel pfx="welcomeDesc" a={ a } set={ set } />
+			<Sep />
+
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Button', 'neural-forms-lite' ) }</p>
+			<BtnControls pfx="welcomeBtn" a={ a } set={ set } showAlign={ false } showFullWidth={ false } showIcons={ true } />
+		</PanelBody>
+	);
+}
 
 export function AdvancedPanel( { a, set } ) {
 	return (

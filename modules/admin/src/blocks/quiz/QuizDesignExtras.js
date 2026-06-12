@@ -22,6 +22,7 @@ import {
 	TextareaFieldPanel,
 	AcceptanceFieldPanel,
 	SubmitButtonPanel,
+	WelcomeScreenPanel,
 	MessagesPanel,
 	AdvancedPanel,
 	Sep, Gap, Clr, Grad,
@@ -197,7 +198,7 @@ function ScoreSummaryPanel( { a, set } ) {
 	);
 }
 
-export default function QuizDesignExtras( { attributes, setAttributes } ) {
+export default function QuizDesignExtras( { attributes, setAttributes, formHasWelcomeScreen = false } ) {
 	const a = attributes, set = setAttributes;
 	return (
 		<>
@@ -210,6 +211,7 @@ export default function QuizDesignExtras( { attributes, setAttributes } ) {
 			<QuizOptionsPanel     a={ a } set={ set } />
 			{ a.showQuizResults !== false && <ScoreSummaryPanel a={ a } set={ set } /> }
 			<SubmitButtonPanel    a={ a } set={ set } />
+			{ formHasWelcomeScreen && a.showWelcomeScreen !== false && <WelcomeScreenPanel a={ a } set={ set } /> }
 			<MessagesPanel        a={ a } set={ set } />
 			<AdvancedPanel        a={ a } set={ set } />
 		</>

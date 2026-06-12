@@ -14,13 +14,14 @@
  * logic in one place across all 4 blocks.
  */
 
-import { useEffect, useState, useMemo } from '@wordpress/element';
+import { useEffect, useState, useMemo, cloneElement, isValidElement } from '@wordpress/element';
 import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
 import { PanelBody, SelectControl, TextControl, ToggleControl, Spinner, Notice, ExternalLink } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import ServerSideRender from '@wordpress/server-side-render';
 import api from '../../api';
 import { detectFormType, matchesBlockType, typeLabel } from './formType';
+import { hasWelcomeScreen } from '../../forms/schemaHelper';
 
 const EMPTY_COPY = {
 	form:      [ __( 'No simple forms found. Create a form first.', 'neural-forms-lite' ) ],
@@ -103,6 +104,11 @@ export default function FormSelector( {
 		? matchesBlockType( selectedForm, blockKind )
 		: true;
 	const selectedDetectedType = selectedForm ? detectFormType( selectedForm.form_schema ) : null;
+
+	// Whether the selected form's schema contains a Welcome Screen layout
+	// block — drives both the "Show Welcome Screen" toggle below and the
+	// Style-tab WelcomeScreenPanel (passed to `extras` via cloneElement).
+	const formHasWelcomeScreen = hasWelcomeScreen( selectedForm?.form_schema?.fields );
 
 	const options = [
 		{ label: PICK_COPY[ blockKind ] || PICK_COPY.form, value: '' },
@@ -257,6 +263,14 @@ export default function FormSelector( {
 								onChange={ ( v ) => setAttributes( { showPollResults: v } ) }
 							/>
 						) }
+						{ formHasWelcomeScreen && (
+							<ToggleControl
+								label={ __( 'Show Welcome Screen', 'neural-forms-lite' ) }
+								help={ __( 'When off, the form\'s Welcome Screen is skipped and the form body shows immediately.', 'neural-forms-lite' ) }
+								checked={ attributes.showWelcomeScreen !== false }
+								onChange={ ( v ) => setAttributes( { showWelcomeScreen: v } ) }
+							/>
+						) }
 
 						{ settingsExtrasTop }
 
@@ -275,7 +289,7 @@ export default function FormSelector( {
 
 			{ extras && (
 				<InspectorControls group="styles">
-					{ extras }
+					{ isValidElement( extras ) ? cloneElement( extras, { formHasWelcomeScreen } ) : extras }
 				</InspectorControls>
 			) }
 

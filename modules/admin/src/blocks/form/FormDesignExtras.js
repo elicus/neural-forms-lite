@@ -12,11 +12,12 @@ import {
 	RepeaterFieldPanel,
 	MatrixFieldPanel,
 	SubmitButtonPanel,
+	WelcomeScreenPanel,
 	MessagesPanel,
 	AdvancedPanel,
 } from '../shared/DesignPanels';
 
-export default function FormDesignExtras( { attributes, setAttributes } ) {
+export default function FormDesignExtras( { attributes, setAttributes, formHasWelcomeScreen = false } ) {
 	const a = attributes, set = setAttributes;
 	return (
 		<>
@@ -33,6 +34,7 @@ export default function FormDesignExtras( { attributes, setAttributes } ) {
 			<RepeaterFieldPanel   a={ a } set={ set } />
 			<MatrixFieldPanel     a={ a } set={ set } />
 			<SubmitButtonPanel    a={ a } set={ set } />
+			{ formHasWelcomeScreen && a.showWelcomeScreen !== false && <WelcomeScreenPanel a={ a } set={ set } /> }
 			<MessagesPanel        a={ a } set={ set } />
 			<AdvancedPanel        a={ a } set={ set } />
 		</>

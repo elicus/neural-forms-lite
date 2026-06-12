@@ -16,6 +16,7 @@ import {
 	MatrixFieldPanel,
 	NavButtonsPanel,
 	SubmitButtonPanel,
+	WelcomeScreenPanel,
 	MessagesPanel,
 	AdvancedPanel,
 	Sep, Gap, Clr, FW, PaddingMarginDimensions,
@@ -203,7 +204,7 @@ function StepNumbersPanel( { a, set } ) {
 	);
 }
 
-export default function MultiStepDesignExtras( { attributes, setAttributes } ) {
+export default function MultiStepDesignExtras( { attributes, setAttributes, formHasWelcomeScreen = false } ) {
 	const a = attributes, set = setAttributes;
 	return (
 		<>
@@ -224,6 +225,7 @@ export default function MultiStepDesignExtras( { attributes, setAttributes } ) {
 			<StepLayoutPanel      a={ a } set={ set } />
 			<NavButtonsPanel      a={ a } set={ set } />
 			<SubmitButtonPanel    a={ a } set={ set } />
+			{ formHasWelcomeScreen && a.showWelcomeScreen !== false && <WelcomeScreenPanel a={ a } set={ set } /> }
 			<MessagesPanel        a={ a } set={ set } />
 			<AdvancedPanel        a={ a } set={ set } />
 		</>

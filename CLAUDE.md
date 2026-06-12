@@ -32,9 +32,9 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Plugin header name:** `Neural Forms Lite`
 - **Main class:** `NeuralForms\NeuralForms` (namespace **not** renamed)
 - **Version constants:**
-  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `0.2.0`.
+  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.1.0`.
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
-  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.9.0`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
+  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.1.0`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
 **Identifiers deliberately NOT renamed** (changing these would break installs):
 
@@ -125,12 +125,12 @@ The cloud API selects a model tier per request using the caller's plan cap.
 The plugin does NOT pick the tier — it just forwards `entry_id` and the
 cloud echoes back `ai_tier` on every response for display + diagnostics.
 
-| Tier | Model (as of 0.2.0) | Used for |
+| Tier | Model (as of 1.1.0) | Used for |
 |---|---|---|
 | `fast` | OpenAI `gpt-4.1-nano` | Lite / free; universal speed floor |
-| `balanced` | Google `gemini-2.5-flash` | Pro (default); also the universal fallback if the smart/premium tier errors |
-| `smart` | Anthropic `claude-sonnet-4-5` | Pro Starter / Pro Agency |
-| `premium` | Anthropic `claude-opus-4-1` | Pro Enterprise |
+| `balanced` | Google `gemini-2.5-flash-lite` | Pro (default); also the universal fallback if the smart/premium tier errors |
+| `smart` | Anthropic `claude-haiku-4.5` | Pro Starter / Pro Agency |
+| `premium` | Anthropic `claude-opus-4-1` | Pro Enterprise — **unverified**: cloud commit `elicus/neural-forms-api@d249933` lists `ALLOWED_MODELS` as only gpt-4.1-nano / gemini-2.5-flash-lite / claude-haiku-4.5, which doesn't include an Opus entry. Confirm with cloud team whether `premium` still routes to Opus or has been collapsed/retired. |
 
 Tier values are persisted on `neural_forms_entries.ai_tier` (string, nullable)
 and surfaced in the entry detail UI so users can see which tier wrote a
@@ -174,6 +174,127 @@ Located in: `modules/admin/src/`
 Run `npm run build` inside `modules/admin/` after any JS/CSS change.
 The build outputs to `modules/admin/build/`.
 Root `package.json` provides workspace shortcuts: `npm run build` from plugin root.
+
+#### Form builder layout blocks
+
+Top-level, non-field nodes in a form schema: Row, Step, Section, and
+Welcome Screen. Shared helpers live in `modules/forms/SchemaHelper.php`
+(PHP) and `modules/admin/src/forms/schemaHelper.js` (JS).
+
+**Welcome Screen** (added 2026-06-04) — a display-only intro screen
+shown before the form fields. Max one per form (`LayoutPalette.js`
+disables the chip once `hasWelcomeScreen()` is true).
+
+- Fields: `title` (default "Let's get started"), `description` — the
+  "welcome text" body copy, default empty — `buttonText`/`button_text`
+  (default "Start"), `settings.alignment` (left/center/right).
+- Never collects data — excluded from entries, exports, AI analysis, and
+  notifications. Validated as top-level-only / exactly-one in
+  `FormValidator.php`.
+- Builder: `LayoutPalette.js` (palette chip), `FieldList.js`
+  (`.nf-welcome-block` tile), `BuilderInspector.js`
+  `WelcomeScreenInspector` (Title / Description / Button Text / Alignment).
+- Preview: `PreviewModal.js` mirrors the frontend CSS so the welcome
+  screen + form body stack together in the admin preview.
+- Frontend render: `FormRenderer.php::render_welcome_screen()` —
+  `.neural-forms-form__welcome*` classes, `data-neural-forms-has-welcome`
+  on the form wrap. Reveal behavior (Start button hides welcome, shows
+  form body; no-JS fallback shows both) lives in
+  `modules/frontend/assets/js/form-submit.js` `initWelcomeScreen()`.
+- A Full Height toggle and colour inspector controls (background/text/
+  button colours) were originally removed from the builder's
+  `WelcomeScreenInspector` (Content tab) to keep it minimal — don't
+  re-add them there.
+- **Gutenberg block design panel** (added 2026-06-12, Container parity
+  added same day) — every block's Style tab gets a "Welcome Screen"
+  panel (`WelcomeScreenPanel` in `modules/admin/src/blocks/shared/
+  DesignPanels.js`), mounted from `FormDesignExtras.js`,
+  `MultiStepDesignExtras.js`, `QuizDesignExtras.js`, and
+  `PollDesignExtras.js`. Mirrors `ContainerPanel`'s control set, in
+  this order: Background (color/gradient/image with size/position/
+  repeat/blend), Full Height, Border (`BorderBoxControl`), Border
+  Radius (4-corner), Dimensions (padding/margin), Content Alignment
+  (left/center/right — mirrors the existing `.neural-forms-form__
+  welcome--align-*` classes: `text-align` + inner margin reset, NOT
+  flexbox, to avoid changing default layout), Box Shadow, then
+  Title/Description/Button color+size+weight/hover controls. 19
+  `welcome*` attributes registered in `modules/frontend/block/
+  block.json`; CSS emitted by `BlockHandler::build_scoped_css()`
+  against `.neural-forms-form__welcome*` selectors, reusing
+  `border_css()` and the image>gradient>color priority pattern from
+  `ContainerPanel`'s CSS. Width/Max-Width/Alignment (page-level form
+  sizing) were deliberately NOT mirrored — the welcome screen is an
+  internal full-bleed section, not an independently sized box.
+- **Welcome Title — Form-Title parity** (added 2026-06-12) — the
+  Title section of `WelcomeScreenPanel` mirrors `TitlePanel` (the
+  form title's panel) minus Alignment and Dimensions (those stay
+  welcome-screen-specific: Content Alignment + the shared Dimensions
+  block above). Adds Heading Level (`welcomeTitleLevel`, h1-h6,
+  default h2), Font Family (`welcomeTitleFontFamily` via
+  `FontFamilySelect`), and the full `TypographyPanel` (pfx=
+  `welcomeTitle`) covering `welcomeTitleFontSize`,
+  `welcomeTitleFontStyle`, `welcomeTitleFontWeight`,
+  `welcomeTitleLetterSpacing`, `welcomeTitleTextDecoration`,
+  `welcomeTitleTextTransform`, `welcomeTitleLineHeight` — replacing
+  the old plain Font Size/Font Weight controls. 7 new attributes in
+  `block.json` + whitelist/CSS in `BlockHandler::build_scoped_css()`
+  (mirrors the `.neural-forms-form__title` rule-building in the same
+  file). Heading level is structural, not CSS: `BlockHandler::render()`
+  passes `welcome_title_level` through `$render_options` (same channel
+  as `title_level`), and `FormRenderer::render_welcome_screen()` now
+  takes `$options` and emits the configurable `<h1>`-`<h6>` tag
+  (default `h2`, same validation pattern as the form title).
+- **Welcome Description — Title parity** (added 2026-06-12) — the
+  Description section of `WelcomeScreenPanel` mirrors the Title section
+  minus Heading Level: Color (`welcomeDescColor`), Font Family
+  (`welcomeDescFontFamily` via `FontFamilySelect`), and the full
+  `TypographyPanel` (pfx=`welcomeDesc`) covering `welcomeDescFontSize`,
+  `welcomeDescFontStyle`, `welcomeDescFontWeight`,
+  `welcomeDescLetterSpacing`, `welcomeDescTextDecoration`,
+  `welcomeDescTextTransform`, `welcomeDescLineHeight` — replacing the
+  old plain Color/Font Size/Font Weight controls. 6 new attributes in
+  `block.json` + whitelist/CSS in `BlockHandler::build_scoped_css()`
+  targeting `.neural-forms-form__welcome-desc`.
+- **Welcome Button — Submit Button parity** (added 2026-06-12) — the
+  Button section of `WelcomeScreenPanel` now renders the shared
+  `BtnControls` component (same one used for the submit/nav buttons)
+  with `showAlign={false}` and `showFullWidth={false}` — Alignment and
+  Full Width are intentionally excluded (welcome screen already has its
+  own Content Alignment, and the button sizes to its content). Covers
+  Background (color/gradient), Text Color, Border (`BorderBoxControl`),
+  Border Radius (4-corner), Font Family + full `TypographyPanel`
+  (pfx=`welcomeBtn`), Padding (4-side), Transition Duration/Easing,
+  Hover Background/Color/Border Color, and icon support
+  (`welcomeBtnIconEnabled/Icon/IconPosition/IconShowOnHover`).
+  `BtnControls` itself gained a `showFullWidth` param (default `true`)
+  to support this. 28 new/changed attributes in `block.json`; CSS in
+  `BlockHandler::build_scoped_css()` mirrors the Multi-step `navBtn*`
+  duplicated-block pattern (border_css, per-corner radius, font-family/
+  size, typography, padding) plus the `fileBtn*` gradient-priority
+  pattern (`if (gradient) background-image elseif (color)
+  background-color`) for both normal and hover states, targeting
+  `.neural-forms-form__welcome-btn` /
+  `.neural-forms-form__welcome-btn:hover:not(:disabled),
+  ...:focus:not(:disabled)`. A `transition` rule is **always** emitted
+  (default `0.15s ease` covering background-color/color/border-color/
+  filter) — the welcome-btn's `form.css` default only transitions
+  opacity/transform, so without this the hover color/background changes
+  apply instantly. Icon rendering mirrors the submit button: `BlockHandler::
+  render()` populates `welcome_btn_icon*` render options,
+  `FormRenderer::render_welcome_screen()` builds the `nf-btn-icon` span
+  via `ButtonIcons::get()` and assembles icon-before/after label content.
+- **"Show Welcome Screen" toggle** — Display panel (Settings tab) in
+  `FormSelector.js`, attribute `showWelcomeScreen` (default `true`).
+  Only shown when the selected form's schema has a Welcome Screen
+  (`hasWelcomeScreen(selectedForm.form_schema.fields)`, computed in
+  `FormSelector.js` and passed to `extras` via `cloneElement` —
+  every *DesignExtras component now accepts `formHasWelcomeScreen`).
+  Gates both the Style-tab panel above and frontend rendering —
+  `FormRenderer.php::render_form()` skips `render_welcome_screen()`
+  when `show_welcome_screen` is `false`, via
+  `BlockHandler::render()`'s `$render_options`.
+- All of the above ship in the `blocks-extra` bundle —
+  `npm run build:blocks-extra`.
 
 ------------------------------------------------------------------------
 
@@ -234,7 +355,7 @@ Base: `/wp-json/neural-forms/v1`
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `ai_enabled` | `false` | Master AI switch (synced from `cloud_ai_enabled` by frontend) |
+| `ai_enabled` | `false` | Master AI switch (mirrored from `cloud_ai_enabled` server-side in `SettingsEndpoint::patch_settings()` on save) |
 | `ai_auto_process` | `true` | Auto-queue on submission |
 | `privacy_mode` | `false` | Skip IP + user-agent storage |
 | `sender_name` | `''` | Email From name |
@@ -335,9 +456,16 @@ Distinct error codes so the frontend can route to the right upgrade flow:
 ### Registry: `modules/core/Capabilities.php`
 
 ```php
-Capabilities::AI_SPAM_DETECT   // 'ai_spam_detect'
-Capabilities::AI_REANALYZE     // 'ai_reanalyze'
-Capabilities::AI_REFINE_REPLY  // 'ai_refine_reply'
+Capabilities::AI_SPAM_DETECT                  // 'ai_spam_detect'
+Capabilities::AI_REANALYZE                    // 'ai_reanalyze'
+Capabilities::AI_REFINE_REPLY                 // 'ai_refine_reply'
+Capabilities::AI_FORM_GENERATE                // 'ai_form_generate'
+Capabilities::AI_PROCESS_ENTRIES              // 'ai_process_entries' (added 0.2.0)
+Capabilities::PAGE_PERFORMANCE_ANALYTICS      // 'page_performance_analytics' (added 1.1.0)
+Capabilities::POLL_QUIZ_UNLIMITED_SUBMISSIONS // 'poll_quiz_unlimited_submissions' (added 1.1.0)
+Capabilities::FIELD_MATRIX                    // 'field_matrix' (added 1.1.0)
+Capabilities::FIELD_REPEATER                  // 'field_repeater' (added 1.1.0)
+Capabilities::INTEGRATIONS                    // 'integrations' (added 1.1.0)
 
 Capabilities::can( $cap )      // apply_filters("neural_forms_can_{$cap}", false)
 Capabilities::all()            // snapshot of every cap (localized to React)
@@ -351,6 +479,13 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `ai_spam_detect` | `neural_forms_can_ai_spam_detect` | Spam settings UI, `ai_spam_enabled` save, queue spam classification |
 | `ai_reanalyze` | `neural_forms_can_ai_reanalyze` | `POST /entries/{id}/retry-ai`, regenerate reply |
 | `ai_refine_reply` | `neural_forms_can_ai_refine_reply` | Polish/refine reply endpoint |
+| `ai_form_generate` | `neural_forms_can_ai_form_generate` | "Create with AI" option in the +New Form dropdown, which opens a prompt modal that POSTs to Pro's `/neural-forms-pro/v1/ai/generate-form` endpoint |
+| `ai_process_entries` | `neural_forms_can_ai_process_entries` | Per-form "Process with AI" mode (auto/manual) actually enqueueing/running entry analysis — Lite stores the setting but never calls the cloud without this cap |
+| `page_performance_analytics` | `neural_forms_can_page_performance_analytics` | Page Performance section of the Analytics screen (entries grouped by source page); source-page capture itself is unconditional in Lite, only the aggregation endpoint + UI are gated |
+| `poll_quiz_unlimited_submissions` | `neural_forms_can_poll_quiz_unlimited_submissions` | Lifts the 200 non-trash submission cap per poll/quiz form (`neural_forms_poll_quiz_submission_limit` filter sets the limit; `<= 0` also means unlimited). Local product limit, not a security boundary — see `SubmitEndpoint::check_poll_quiz_submission_limit()` |
+| `field_matrix` | `neural_forms_can_field_matrix` | Matrix field type (survey rows/columns, radio or checkbox selection) — Lite ships the full engine; locked installs show it as a Pro-upsell in the builder palette and the frontend renderer skips it |
+| `field_repeater` | `neural_forms_can_field_repeater` | Repeater field type (repeatable child-field groups) — Lite ships the full engine; locked installs show it as a Pro-upsell in the builder palette and the frontend renderer skips it |
+| `integrations` | `neural_forms_can_integrations` | Integrations admin page (HubSpot, WhatsApp, Mailchimp, Google Forms, Zapier tabs). Lite ships the page shell/menu/React screen as a locked upsell; no provider config is wired up on either side yet — each tab is a "Coming soon" card |
 
 ### Where the checks are applied
 
@@ -361,6 +496,14 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `modules/rest/endpoints/EntriesEndpoint.php` | `polish_reply()` | `AI_REFINE_REPLY` |
 | `modules/ai/AIQueueProcessor.php` | `maybe_apply_spam()` | `AI_SPAM_DETECT` |
 | `modules/rest/endpoints/SettingsEndpoint.php` | Save validation + defensive coercion | `AI_SPAM_DETECT` |
+| `modules/admin/AdminPanel.php` | `enqueue_new_form_dropdown_injector()` | `AI_FORM_GENERATE` |
+| `modules/ai/AiProcessingResolver.php` | resolver entry point | `AI_PROCESS_ENTRIES` |
+| `modules/rest/Endpoints/StatsEndpoint.php` | Page Performance aggregation | `PAGE_PERFORMANCE_ANALYTICS` |
+| `modules/rest/Endpoints/SubmitEndpoint.php` | `check_poll_quiz_submission_limit()` | `POLL_QUIZ_UNLIMITED_SUBMISSIONS` |
+| `modules/rest/Endpoints/SubmitEndpoint.php` | matrix field submission validation | `FIELD_MATRIX` |
+| `modules/frontend/FormRenderer.php` | Matrix field render | `FIELD_MATRIX` |
+| `modules/frontend/FormRenderer.php` | Repeater field render | `FIELD_REPEATER` |
+| `modules/frontend/BlockHandler.php` | block editor localization (`fieldMatrix`, `fieldRepeater`) | `FIELD_MATRIX`, `FIELD_REPEATER` |
 | `modules/admin/AdminPanel.php` | `script_data()` — localizes snapshot | all (via `Capabilities::all()`) |
 
 Capability check always runs **before** the Cloud plan check, so a Lite
@@ -387,6 +530,13 @@ is a breaking change for Pro.
 | `neural_forms_can_ai_spam_detect` filter | `Capabilities::can()` | `__return_true` to unlock spam detection |
 | `neural_forms_can_ai_reanalyze` filter | `Capabilities::can()` | `__return_true` to unlock reanalyze / regenerate reply |
 | `neural_forms_can_ai_refine_reply` filter | `Capabilities::can()` | `__return_true` to unlock polish reply |
+| `neural_forms_can_ai_form_generate` filter | `Capabilities::can()` | `__return_true` to unlock "Create with AI" form generation |
+| `neural_forms_can_ai_process_entries` filter | `Capabilities::can()` | `__return_true` to let the AI queue actually process entries |
+| `neural_forms_can_page_performance_analytics` filter | `Capabilities::can()` | `__return_true` to unlock Page Performance analytics |
+| `neural_forms_can_poll_quiz_unlimited_submissions` filter | `Capabilities::can()` | `__return_true` to lift the 200/form poll & quiz submission cap |
+| `neural_forms_can_field_matrix` filter | `Capabilities::can()` | `__return_true` to unlock the Matrix field type |
+| `neural_forms_can_field_repeater` filter | `Capabilities::can()` | `__return_true` to unlock the Repeater field type |
+| `neural_forms_can_integrations` filter | `Capabilities::can()` | `__return_true` to unlock the Integrations admin page |
 | `window.neuralForms.slots.registerFill` JS registry | Admin bundle at mount | Pro bundle registers SlotFills for premium UI regions |
 
 React SlotFill names exposed by Lite (via `@wordpress/components createSlotFill`):
@@ -395,7 +545,10 @@ React SlotFill names exposed by Lite (via `@wordpress/components createSlotFill`
 - `NeuralForms.EntryAiActions` — slot for AI actions (reanalyze, regenerate)
 - `NeuralForms.SettingsSpamPanel` — spam settings panel (Lite renders upsell fallback)
 - `NeuralForms.SettingsSiteProfile` — business-context card (Pro-owned feature; Lite only renders the upsell fallback)
-- `NeuralForms.SettingsIntegrations` — integrations tab (Divi status, etc.)
+- `NeuralForms.SettingsIntegrations` — integrations tab (Divi status, etc.) —
+  **not yet registered** in `modules/admin/src/slot-registry.js` as of
+  1.1.0 (only `EntryAiActions`, `EntryReplyActions`, `SettingsSpamPanel`,
+  `SettingsSiteProfile` are). Register it there before Pro can fill it.
 
 ------------------------------------------------------------------------
 
@@ -446,9 +599,9 @@ npm run build
 Per-screen scripts (use one when you only changed a single screen):
 `build:builder`, `build:results`, `build:blocks-extra`, `build:forms`,
 `build:entries`, `build:settings`, `build:stats`, `build:import`,
-`build:block`. Each emits exactly one JS + one CSS + one asset.php
-without touching sibling bundles (CleanWebpackPlugin is dropped from
-the split config).
+`build:integrations`, `build:templates`, `build:block`. Each emits
+exactly one JS + one CSS + one asset.php without touching sibling
+bundles (CleanWebpackPlugin is dropped from the split config).
 
 ------------------------------------------------------------------------
 
@@ -544,6 +697,8 @@ you rebuild a single bundle in isolation without touching siblings
 | `build/settings.js` | `src/settings-entry.js` | `npm run build:settings` | Settings screen — `src/screens/Settings.js` + `src/settings.css`. Pro fills `SettingsSpamPanel` and `SettingsSiteProfile` slots. |
 | `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Entries inbox — `src/entries/*` + `src/entries.css`. Pro fills `EntryAiActions` and `EntryReplyActions` slots. |
 | `build/import.js` | `src/import-entry.js` | `npm run build:import` | Import (CF7 migration) — 3-state list / preview / result flow over `/migration/cf7/*`. |
+| `build/integrations.js` | `src/integrations-entry.js` | `npm run build:integrations` | Integrations screen — `src/screens/Integrations.js` + `src/integrations.css` (Pro-ready provider config surfaces; also `src/forms/IntegrationsSection.js` in the builder). |
+| `build/templates.js` | `src/templates-entry.js` | `npm run build:templates` | Template library modal — `src/templates/TemplateLibrary.js` + `TemplateLibraryModal.js`. |
 | `build/block.js` | `src/block-index.js` | `npm run build:block` | Gutenberg form-rendering block (registered via `frontend/block/block.json`). |
 | `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks. |
 
@@ -562,9 +717,10 @@ Use Node 18 (or newer) for any `npm run build*` invocation:
 - **Forms list** — edit `src/screens/Forms.js` + `src/forms.css`,
   run `build:forms`. `AdminPanel::enqueue_*_injector()` still ships
   inline JS for the shortcode column, "+ New Form" split button, etc.
-- **Stats / Settings / Entries / Import** — edit the matching
-  `src/screens/` or `src/entries/` source + `src/<screen>.css`, run
-  the corresponding `build:<screen>`.
+- **Stats / Settings / Entries / Import / Integrations** — edit the
+  matching `src/screens/` or `src/entries/` source + `src/<screen>.css`,
+  run the corresponding `build:<screen>`.
+- **Template library modal** — edit `src/templates/`, run `build:templates`.
 - **Inline CSS/JS in PHP** — no build at all; ships the moment PHP
   is deployed.
 
