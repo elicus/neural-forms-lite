@@ -1910,23 +1910,38 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 }
 
 .neural-forms-form__phone-flag {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: #f9fafb;
+    background: transparent;
     border: 0;
-    border-right: 1px solid #e5e7eb;
     padding: 0 10px;
     cursor: pointer;
     font-size: 18px;
     line-height: 1;
-    color: #6b7280;
+    color: inherit;
     flex-shrink: 0;
+}
+
+/*
+   Separator drawn as a short vertical line (not a full-height border) so
+   it never reaches the wrapper's rounded corners, however large the
+   border-radius — avoids the overflow that a full-height border-right
+   causes on pill-shaped fields.
+ */
+.neural-forms-form__phone-flag::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    right: 0;
+    width: 1px;
+    background-color: #d1d5db;
 }
 
 .neural-forms-form__phone-flag:hover,
 .neural-forms-form__phone-flag:focus {
-    background: #f3f4f6;
     outline: none;
 }
 

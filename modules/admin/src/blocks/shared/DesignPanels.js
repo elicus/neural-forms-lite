@@ -1298,10 +1298,14 @@ export function WelcomeScreenPanel( { a, set } ) {
 			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.welcomeDescColor } onChange={ v => set( { welcomeDescColor: v ?? '' } ) } />
 			<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.welcomeDescFontFamily } onChange={ v => set( { welcomeDescFontFamily: v } ) } />
 			<TypographyPanel pfx="welcomeDesc" a={ a } set={ set } />
+			<Gap />
+			<UnitControl label={ __( 'Margin Top', 'neural-forms-lite' ) } value={ a.welcomeDescMarginTop } onChange={ v => set( { welcomeDescMarginTop: v ?? '' } ) } />
 			<Sep />
 
 			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Button', 'neural-forms-lite' ) }</p>
 			<BtnControls pfx="welcomeBtn" a={ a } set={ set } showAlign={ false } showFullWidth={ false } showIcons={ true } />
+			<Gap />
+			<UnitControl label={ __( 'Margin Top', 'neural-forms-lite' ) } value={ a.welcomeBtnMarginTop } onChange={ v => set( { welcomeBtnMarginTop: v ?? '' } ) } />
 		</PanelBody>
 	);
 }

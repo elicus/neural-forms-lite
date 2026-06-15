@@ -295,6 +295,17 @@ disables the chip once `hasWelcomeScreen()` is true).
   `BlockHandler::render()`'s `$render_options`.
 - All of the above ship in the `blocks-extra` bundle —
   `npm run build:blocks-extra`.
+- **Welcome Description/Button — Margin Top** (added 2026-06-15) — a
+  single "Margin Top" `UnitControl` was added to the end of the
+  Description section (`welcomeDescMarginTop` →
+  `.neural-forms-form__welcome-desc{margin-top:...}`) and the Button
+  section (`welcomeBtnMarginTop` →
+  `.neural-forms-form__welcome-btn{margin-top:...}`) of
+  `WelcomeScreenPanel`, to control vertical spacing between the
+  title/description/button stack. Deliberately top-only (not a full
+  4-side `PaddingMarginDimensions`/margin block) — Button already has
+  its own Padding via `BtnControls`, and the only need is spacing
+  between the stacked elements.
 
 ------------------------------------------------------------------------
 
@@ -622,6 +633,54 @@ The plugin folder has been renamed twice in its history (`formora` →
 rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
+
+### Phone field — Input Fields panel styling (fixed 2026-06-15)
+
+The Phone field (`render_phone()` in `FormRenderer.php`) wraps the
+`<input type="tel">` in `.neural-forms-form__phone` (the visible box,
+with the country-flag `.neural-forms-form__phone-flag` button on the
+left and a `.neural-forms-form__phone-dropdown` country picker as an
+absolutely-positioned child). `form.css` strips the inner `<input>` of
+its own border/radius/background so only the wrapper's box is visible.
+
+Because of this, the Input Fields design panel's border / radius /
+background / padding / focus / hover rules — which target
+`.neural-forms-form__input` / `.neural-forms-form__select` — didn't
+reach the Phone field's visible box. `BlockHandler::build_scoped_css()`
+now also emits each of those rule sets against
+`.neural-forms-form__phone` (and `:focus-within` / `:hover:not(:focus-
+within)` for the focus/hover variants), plus a higher-specificity reset
+(`0,3,1` vs form.css's `0,1,1`) that re-zeroes the inner
+`.neural-forms-form__phone > input[type="tel"]`'s border/radius/
+background so it doesn't double up with the wrapper.
+
+The flag button (`.neural-forms-form__phone-flag`) lost its own
+hardcoded background/border-right/colors (`form.css`) — it's now
+transparent with `color: inherit` so it blends into the wrapper's
+styled box.
+
+**Separator + pill-radius overflow (fixed 2026-06-15, second pass)** —
+a full-height `border-right` on the flag (even with matching
+`border-radius`/`overflow: hidden` on the flag) still pokes past the
+wrapper's curve once `fieldBorderRadius` is large enough to make the
+field pill-shaped — the straight border line is taller than the
+oval's curved edge at that x-position. Fixed by replacing the
+`border-right` separator with a `.neural-forms-form__phone-flag::after`
+pseudo-element: a short vertical line (`top: 8px; bottom: 8px`) that
+never reaches the wrapper's rounded corners regardless of radius.
+`BlockHandler::build_scoped_css()` sets its `background-color` from
+the field border color (`.neural-forms-form__phone-flag::after{
+background-color:... }`, computed the same way as before — handles
+both linked and split/`right`-side border shapes). The flag itself no
+longer needs `overflow: hidden` or left corner-radius mirroring (those
+PHP/CSS rules were removed) since the separator can't overflow on its
+own.
+
+**Do not** set `.neural-forms-form__phone { overflow: hidden }` to fix
+corner-overflow — the country-picker dropdown is an absolutely-
+positioned child of `.neural-forms-form__phone` (`top: calc(100% + 4px)`)
+and would get clipped. The pseudo-element separator above already
+prevents overflow without needing `overflow: hidden` anywhere.
 
 ### Entries (per-screen `build/entries.js` bundle)
 

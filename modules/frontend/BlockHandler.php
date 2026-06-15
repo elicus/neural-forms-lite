@@ -650,7 +650,7 @@ class BlockHandler {
 			'welcomeTitleLetterSpacing', 'welcomeTitleTextDecoration', 'welcomeTitleTextTransform', 'welcomeTitleLineHeight',
 			'welcomeDescColor', 'welcomeDescFontFamily',
 			'welcomeDescFontSize', 'welcomeDescFontStyle', 'welcomeDescFontWeight',
-			'welcomeDescLetterSpacing', 'welcomeDescTextDecoration', 'welcomeDescTextTransform', 'welcomeDescLineHeight',
+			'welcomeDescLetterSpacing', 'welcomeDescTextDecoration', 'welcomeDescTextTransform', 'welcomeDescLineHeight', 'welcomeDescMarginTop',
 			'welcomeBtnTextColor', 'welcomeBtnBgColor', 'welcomeBtnBgGradient',
 			'welcomeBtnRadiusTL', 'welcomeBtnRadiusTR', 'welcomeBtnRadiusBR', 'welcomeBtnRadiusBL',
 			'welcomeBtnBorder',
@@ -660,6 +660,7 @@ class BlockHandler {
 			'welcomeBtnHoverBg', 'welcomeBtnHoverBgGradient', 'welcomeBtnHoverColor', 'welcomeBtnHoverBorderColor',
 			'welcomeBtnTransitionDuration', 'welcomeBtnTransitionEasing',
 			'welcomeBtnIconEnabled', 'welcomeBtnIcon', 'welcomeBtnIconPosition', 'welcomeBtnIconShowOnHover',
+			'welcomeBtnMarginTop',
 			'welcomePaddingTop', 'welcomePaddingRight', 'welcomePaddingBottom', 'welcomePaddingLeft',
 			'welcomeMarginTop', 'welcomeMarginRight', 'welcomeMarginBottom', 'welcomeMarginLeft',
 			// Textarea field
@@ -1409,6 +1410,34 @@ class BlockHandler {
 			$field_idle_rules[] = 'color:' . self::sanitize_color( $field_text_color );
 		}
 		$css .= self::border_css( $field_sel, $field_border_obj, '#d1d5db' );
+		// The phone field's visible "box" is the .__phone wrapper, not the
+		// inner <input type="tel"> (which form.css strips of its own
+		// border/radius/background so it blends into the wrapper). Mirror
+		// the border rules onto the wrapper so Input Fields styling reaches it.
+		$css .= self::border_css( $wrap_sel . ' .neural-forms-form__phone', $field_border_obj, '#d1d5db' );
+		// $field_sel above (".__input") also matches the inner tel input
+		// and, scoped to the block uid, beats form.css's default reset
+		// (".__phone > input[type=tel]" at 0,1,1 vs our 0,3,0). Re-assert
+		// the reset at higher specificity (0,3,1) so only the wrapper
+		// shows a border/radius/background — no double border.
+		$css .= $wrap_sel . ' .neural-forms-form__phone > input[type="tel"]{border:0;border-radius:0;background-color:transparent}';
+
+		// Flag separator color — match whatever color the wrapper's right
+		// border resolves to. Computed directly (rather than via CSS
+		// `inherit`) so it's correct in both the frontend and the block
+		// editor's ServerSideRender preview.
+		$flag_border_color = '';
+		if ( ! empty( $field_border_obj ) ) {
+			if ( isset( $field_border_obj['right'] ) && is_array( $field_border_obj['right'] ) ) {
+				$flag_border_color = self::sanitize_color( (string) ( $field_border_obj['right']['color'] ?? '' ) );
+			} elseif ( ! isset( $field_border_obj['top'] ) ) {
+				$flag_border_color = self::sanitize_color( (string) ( $field_border_obj['color'] ?? '' ) );
+			}
+		}
+		if ( $flag_border_color !== '' ) {
+			$css .= $wrap_sel . ' .neural-forms-form__phone-flag::after{background-color:' . $flag_border_color . '}';
+		}
+
 		if ( $field_border_radius !== '' ) {
 			$field_idle_rules[] = 'border-radius:' . $len( $field_border_radius );
 		}
@@ -1422,6 +1451,7 @@ class BlockHandler {
 			$field_idle_sel = $wrap_sel . ' .neural-forms-form__input,'
 				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_idle_sel . '{' . implode( ';', $field_idle_rules ) . '}';
+			$css .= $wrap_sel . ' .neural-forms-form__phone{' . implode( ';', $field_idle_rules ) . '}';
 		}
 
 		// Focus-state direct rules — same reasoning as above. Form.css's
@@ -1446,6 +1476,9 @@ class BlockHandler {
 			$field_focus_sel = $wrap_sel . ' .neural-forms-form__input:focus,'
 				. $wrap_sel . ' .neural-forms-form__select:focus';
 			$css .= $field_focus_sel . '{' . implode( ';', $field_focus_rules ) . '}';
+			// Phone wrapper shows its own focus ring via :focus-within
+			// (the <input> itself never receives the visible border).
+			$css .= $wrap_sel . ' .neural-forms-form__phone:focus-within{' . implode( ';', $field_focus_rules ) . '}';
 		}
 
 		// ' Field padding (applies to inputs, selects — textarea has its own panel) '
@@ -1460,6 +1493,10 @@ class BlockHandler {
 			$field_pad_sel = $wrap_sel . ' .neural-forms-form__input,'
 				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_pad_sel . '{' . implode( ';', $field_pad_rules ) . '}';
+			// form.css hardcodes the tel input's own padding (9px 12px) at
+			// higher specificity (.__phone > input[type="tel"]) — match
+			// that specificity so the Input Fields padding setting wins.
+			$css .= $wrap_sel . ' .neural-forms-form__phone > input[type="tel"]{' . implode( ';', $field_pad_rules ) . '}';
 		}
 
 		// ' Title typography / color / alignment '
@@ -1725,6 +1762,10 @@ class BlockHandler {
 		if ( $welcome_desc_lh !== '' ) {
 			$welcome_desc_rules[] = 'line-height:' . sanitize_text_field( $welcome_desc_lh );
 		}
+		$welcome_desc_mt = (string) ( $attributes['welcomeDescMarginTop'] ?? '' );
+		if ( $welcome_desc_mt !== '' ) {
+			$welcome_desc_rules[] = 'margin-top:' . $spacing( $welcome_desc_mt );
+		}
 		if ( $welcome_desc_rules ) {
 			$css .= $wrap_sel . ' .neural-forms-form__welcome-desc{' . implode( ';', $welcome_desc_rules ) . '}';
 		}
@@ -1796,6 +1837,11 @@ class BlockHandler {
 			if ( $val !== '' ) {
 				$welcome_btn_rules[] = $css_prop . ':' . $spacing( $val );
 			}
+		}
+
+		$wbtn_mt = (string) ( $attributes['welcomeBtnMarginTop'] ?? '' );
+		if ( $wbtn_mt !== '' ) {
+			$welcome_btn_rules[] = 'margin-top:' . $spacing( $wbtn_mt );
 		}
 
 		$wbtn_bg          = (string) ( $attributes['welcomeBtnBgColor']    ?? '' );
@@ -1927,6 +1973,7 @@ class BlockHandler {
 			$field_corner_sel = $wrap_sel . ' .neural-forms-form__input,'
 				. $wrap_sel . ' .neural-forms-form__select';
 			$css .= $field_corner_sel . '{' . implode( ';', $field_corner_rules ) . '}';
+			$css .= $wrap_sel . ' .neural-forms-form__phone{' . implode( ';', $field_corner_rules ) . '}';
 		}
 
 		// ' Field hover state (bg + border color — textarea has its own panel) '
@@ -1946,6 +1993,7 @@ class BlockHandler {
 			$field_hover_sel = $wrap_sel . ' .neural-forms-form__input:hover:not(:focus),'
 				. $wrap_sel . ' .neural-forms-form__select:hover:not(:focus)';
 			$css .= $field_hover_sel . '{' . implode( ';', $field_hover_rules ) . '}';
+			$css .= $wrap_sel . ' .neural-forms-form__phone:hover:not(:focus-within){' . implode( ';', $field_hover_rules ) . '}';
 		}
 
 		// ' Textarea field — type-specific (.neural-forms-form__textarea) '
