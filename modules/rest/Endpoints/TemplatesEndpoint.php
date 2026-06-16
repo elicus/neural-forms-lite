@@ -115,7 +115,27 @@ class TemplatesEndpoint {
 				array( 'status' => 400 )
 			);
 		}
-		return TemplateLibrary::import_template( $import_url );
+
+		$result = TemplateLibrary::import_template( $import_url );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		// Record the import keyed by template_id so the next
+		// GET /templates can flip `imported: true` on the matching
+		// row and the React card shows the "Imported" pill with a
+		// link back to the page we just created. template_id is
+		// optional in the request schema for backward compat — older
+		// React bundles may not send it — but the catalog can't link
+		// the import back to a row without it.
+		$template_id = (string) $request->get_param( 'template_id' );
+		$page_id     = isset( $result['page_id'] ) ? (int) $result['page_id'] : 0;
+		$edit_url    = isset( $result['edit_url'] ) ? (string) $result['edit_url'] : '';
+		if ( $template_id !== '' && $page_id > 0 ) {
+			TemplateLibrary::record_import( $template_id, $page_id, $edit_url );
+		}
+
+		return $result;
 	}
 
 	/**

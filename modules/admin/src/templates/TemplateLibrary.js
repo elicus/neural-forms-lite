@@ -82,6 +82,7 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 	mode = 'page',
 	subtitle,
 	onImported,
+	onStateChange,
 }, ref ) {
 	const [ builder,         setBuilder         ] = useState( 'block-editor' );
 	const [ catalog,         setCatalog         ] = useState( null );
@@ -117,14 +118,33 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 		if ( forceRefresh ) setRefreshing( true );
 		else setLoading( true );
 		setError( '' );
-		return api( path )
+
+		// Hard-timeout race: api() races against a 15 s timer. Whichever
+		// settles first wins. This guarantees the spinner can never stick
+		// for more than ~15 s regardless of:
+		//   - api-fetch never resolving (rare but possible — e.g.
+		//     server-side wp_remote_get genuinely hanging past PHP's
+		//     own timeout, browser-extension interference, ORB
+		//     blocking the underlying transport)
+		//   - a state-setter inside .then() throwing before .finally
+		//   - any React render-layer oddity that would skip .finally
+		// On timeout the catalog stays at whatever it was previously
+		// (empty array if first load) and an inline error message is
+		// shown via setError.
+		const timeoutMs   = 15000;
+		const timeoutErr  = new Error( __( 'Refresh timed out. Please try again.', 'neural-forms-lite' ) );
+		const timeoutWin  = new Promise( ( _, reject ) => {
+			setTimeout( () => reject( timeoutErr ), timeoutMs );
+		} );
+
+		return Promise.race( [ api( path ), timeoutWin ] )
 			.then( ( res ) => {
 				setCatalog( res );
-				setLoading( false );
-				setRefreshing( false );
 			} )
 			.catch( ( err ) => {
 				setError( ( err && err.message ) || __( 'Failed to load templates.', 'neural-forms-lite' ) );
+			} )
+			.finally( () => {
 				setLoading( false );
 				setRefreshing( false );
 			} );
@@ -139,6 +159,40 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 		return () => { cancelled = true; };
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ builder ] );
+
+	// Watchdog: belt-and-suspenders guarantee that no "Refreshing…" /
+	// "Loading…" state can stay stuck longer than the timeout below.
+	// Even if api()'s Promise never settles (browser extension, network
+	// stall, dev-build invariant, anything weird), the spinner clears
+	// itself so the Refresh button stays usable. The cleanup function
+	// clears the timer the moment the state goes false through the
+	// normal .finally() path, so the watchdog only ever fires on a
+	// genuine hang.
+	useEffect( () => {
+		if ( ! refreshing ) return undefined;
+		const t = setTimeout( () => setRefreshing( false ), 25000 );
+		return () => clearTimeout( t );
+	}, [ refreshing ] );
+	useEffect( () => {
+		if ( ! loading ) return undefined;
+		const t = setTimeout( () => setLoading( false ), 25000 );
+		return () => clearTimeout( t );
+	}, [ loading ] );
+
+	// Push header-relevant state to the modal whenever it changes. The
+	// modal can't read this from the imperative ref reliably — it only
+	// re-renders when its own state changes — so we hand the values out
+	// proactively. The optional chaining means page-mode (no parent
+	// listener) costs nothing.
+	useEffect( () => {
+		if ( typeof onStateChange === 'function' ) {
+			onStateChange( {
+				updatedAt: catalog?.updated_at || '',
+				loading,
+				refreshing,
+			} );
+		}
+	}, [ catalog, loading, refreshing, onStateChange ] );
 
 	useImperativeHandle( ref, () => ( {
 		refresh:    () => loadCatalog( true, builder ),
@@ -369,7 +423,23 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 						</button>
 					) ) }
 				</nav>
-				<div className="neural-forms-templates__search">
+				<div
+					className={
+						'neural-forms-templates__search' +
+						( searchQuery ? ' has-query' : '' )
+					}
+				>
+					<svg
+						className="neural-forms-templates__search-icon"
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						aria-hidden="true"
+					>
+						<circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+						<line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+					</svg>
 					<input
 						type="search"
 						placeholder={ __( 'Search templates…', 'neural-forms-lite' ) }
@@ -377,6 +447,19 @@ const TemplateLibrary = forwardRef( function TemplateLibrary( {
 						onChange={ ( e ) => setSearchQuery( e.target.value ) }
 						aria-label={ __( 'Search templates', 'neural-forms-lite' ) }
 					/>
+					{ searchQuery && (
+						<button
+							type="button"
+							className="neural-forms-templates__search-clear"
+							onClick={ () => setSearchQuery( '' ) }
+							aria-label={ __( 'Clear search', 'neural-forms-lite' ) }
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+								<line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+								<line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+							</svg>
+						</button>
+					) }
 				</div>
 			</div>
 

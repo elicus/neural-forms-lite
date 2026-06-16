@@ -189,21 +189,52 @@
 
 /*
  * ─── toolbar (filters + search) ──────────────────────────────────
+ *
+ * Single-row toolbar: horizontally-scrolling filter strip on the left,
+ * fixed-width search on the right. The strip never wraps — overflow
+ * scrolls so adding categories doesn't visually stack into a second
+ * row that pushes search down. A faint divider sits between them so
+ * the search reads as its own affordance.
  */
 #neural-forms-app .neural-forms-templates__toolbar {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: 16px;
-	flex-wrap: wrap;
 	margin: 0 0 24px;
+	padding: 8px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
 }
 
 #neural-forms-app .neural-forms-templates__filters {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	gap: 8px;
 	flex: 1 1 auto;
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 2px;
+	margin: -2px;
+	scrollbar-width: thin;
+	scrollbar-color: #d1d5db transparent;
+}
+
+/* Hide WebKit scrollbar visual chrome but keep it functional on hover. */
+#neural-forms-app .neural-forms-templates__filters::-webkit-scrollbar {
+	height: 6px;
+}
+#neural-forms-app .neural-forms-templates__filters::-webkit-scrollbar-track {
+	background: transparent;
+}
+#neural-forms-app .neural-forms-templates__filters::-webkit-scrollbar-thumb {
+	background: transparent;
+	border-radius: 999px;
+	transition: background-color 0.15s ease;
+}
+#neural-forms-app .neural-forms-templates__filters:hover::-webkit-scrollbar-thumb {
+	background: #d1d5db;
 }
 
 #neural-forms-app .neural-forms-templates__filter {
@@ -214,23 +245,27 @@
 	-webkit-appearance: none;
 	background: #fff;
 	color: var(--nf-primary);
-	border: 1px solid #d1d5db;
+	border: 1px solid #e5e7eb;
 	border-radius: 999px;
 	padding: 6px 14px;
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 #neural-forms-app .neural-forms-templates__filter:hover {
 	border-color: var(--nf-primary);
+	box-shadow: 0 1px 2px rgba(8, 15, 91, 0.05);
 }
 
 #neural-forms-app .neural-forms-templates__filter.is-active {
 	background: var(--nf-primary);
 	color: #fff;
 	border-color: var(--nf-primary);
+	box-shadow: 0 1px 3px rgba(8, 15, 91, 0.18);
 }
 
 #neural-forms-app .neural-forms-templates__filter-count {
@@ -248,18 +283,22 @@
 }
 
 #neural-forms-app .neural-forms-templates__filter.is-active .neural-forms-templates__filter-count {
-	background: rgba( 255, 255, 255, 0.18 );
+	background: rgba( 255, 255, 255, 0.22 );
 	color: #fff;
 }
 
+/* Subtle vertical divider between the filter strip and the search. */
 #neural-forms-app .neural-forms-templates__search {
-	flex: 0 0 240px;
+	position: relative;
+	flex: 0 0 280px;
 	max-width: 100%;
+	padding-left: 12px;
+	border-left: 1px solid #e5e7eb;
 }
 
 #neural-forms-app .neural-forms-templates__search input {
 	width: 100%;
-	padding: 8px 14px;
+	padding: 9px 36px 9px 38px; /* room for the search icon left + clear button right */
 	border: 1px solid #d1d5db;
 	border-radius: 999px;
 	font-size: 13px;
@@ -272,6 +311,61 @@
 	outline: none;
 	border-color: var(--nf-primary);
 	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.12 );
+}
+
+#neural-forms-app .neural-forms-templates__search-icon {
+	position: absolute;
+	left: 24px;
+	top: 50%;
+	transform: translateY(-50%);
+	color: #9ca3af;
+	pointer-events: none;
+}
+
+#neural-forms-app .neural-forms-templates__search.has-query .neural-forms-templates__search-icon {
+	color: var(--nf-primary);
+}
+
+#neural-forms-app .neural-forms-templates__search-clear {
+	position: absolute;
+	right: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-radius: 999px;
+	color: #6b7280;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#neural-forms-app .neural-forms-templates__search-clear:hover {
+	background: rgba(8, 15, 91, 0.06);
+	color: var(--nf-primary);
+}
+
+/* Collapse the toolbar to two stacked rows on narrow screens.
+ * Filters keep their horizontal scroll; search drops underneath
+ * full-width with its left divider removed. */
+@media (max-width: 720px) {
+	#neural-forms-app .neural-forms-templates__toolbar {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	#neural-forms-app .neural-forms-templates__search {
+		flex: 1 1 auto;
+		padding-left: 0;
+		border-left: 0;
+		border-top: 1px solid #e5e7eb;
+		padding-top: 8px;
+		margin-top: 4px;
+	}
 }
 
 #neural-forms-app .neural-forms-templates__notice {

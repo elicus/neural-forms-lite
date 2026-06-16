@@ -27,13 +27,26 @@ import TemplateLibrary from './TemplateLibrary';
 export default function TemplateLibraryModal( { isOpen, onClose } ) {
 	const libRef = useRef( null );
 	const panelRef = useRef( null );
-	// Force re-render after refresh state ticks inside the imperative
-	// child so the header button can show "Refreshing…" without lifting
-	// the entire state out of TemplateLibrary.
-	const [ , setTick ] = useState( 0 );
+
+	// Modal owns its own header-state snapshot. Reading TemplateLibrary's
+	// state via the imperative ref on every render was a synchronization
+	// loop trap — the modal only re-rendered when its own state changed,
+	// but the values it read came from the child's state, so after one
+	// successful refresh the child's `refreshing` flipped false but the
+	// modal didn't know until something else triggered a re-render. The
+	// header now tracks its own refreshing flag bound to the actual
+	// promise lifecycle, with `updatedAt` cached after each successful
+	// refresh from a callback the child fires.
+	const [ refreshing,    setRefreshing    ] = useState( false );
+	const [ updatedAtSnap, setUpdatedAtSnap ] = useState( '' );
+	const [ loadingSnap,   setLoadingSnap   ] = useState( true );
 
 	useEffect( () => {
 		if ( ! isOpen ) return undefined;
+
+		// Reset header state every time the modal opens, in case a
+		// previous lifecycle left a stale "refreshing" value behind.
+		setRefreshing( false );
 
 		function onKey( e ) {
 			if ( e.key === 'Escape' ) {
@@ -66,14 +79,36 @@ export default function TemplateLibraryModal( { isOpen, onClose } ) {
 
 	if ( ! isOpen ) return null;
 
-	const refreshing = libRef.current ? libRef.current.isRefreshing() : false;
-	const loading    = libRef.current ? libRef.current.isLoading()    : false;
-	const updatedAt  = libRef.current ? libRef.current.getUpdatedAt() : '';
+	// Callback the child fires whenever its own catalog/loading state
+	// settles. Lets the modal cache the latest header values without
+	// reading from the imperative ref on every render.
+	function handleStateChange( snapshot ) {
+		if ( snapshot && typeof snapshot === 'object' ) {
+			if ( typeof snapshot.updatedAt === 'string' ) {
+				setUpdatedAtSnap( snapshot.updatedAt );
+			}
+			if ( typeof snapshot.loading === 'boolean' ) {
+				setLoadingSnap( snapshot.loading );
+			}
+		}
+	}
 
 	function handleRefresh() {
 		if ( ! libRef.current ) return;
-		Promise.resolve( libRef.current.refresh() ).finally( () => setTick( ( n ) => n + 1 ) );
-		setTick( ( n ) => n + 1 );
+		if ( refreshing ) return; // hard guard against double-click loops
+		setRefreshing( true );
+		// Belt-and-suspenders: even if the returned promise never
+		// settles (catastrophic transport failure, bug in api wrapper,
+		// browser extension swallowing the response), the modal's
+		// "Refreshing…" state is cleared after 16 s. That's 1 s past
+		// the TemplateLibrary-side Promise.race timeout, so the normal
+		// path always wins.
+		const safetyTimer = setTimeout( () => setRefreshing( false ), 16000 );
+		Promise.resolve( libRef.current.refresh() )
+			.finally( () => {
+				clearTimeout( safetyTimer );
+				setRefreshing( false );
+			} );
 	}
 
 	return (
@@ -101,10 +136,10 @@ export default function TemplateLibraryModal( { isOpen, onClose } ) {
 						</p>
 					</div>
 					<div className="nf-template-modal-header__actions">
-						{ !! updatedAt && (
+						{ !! updatedAtSnap && (
 							<span className="nf-template-modal-header__updated">
 								{ /* translators: %s: catalog updated_at timestamp from the remote catalog file. */ }
-								{ __( 'Catalog updated', 'neural-forms-lite' ) }{ ' ' }{ updatedAt }
+								{ __( 'Catalog updated', 'neural-forms-lite' ) }{ ' ' }{ updatedAtSnap }
 							</span>
 						) }
 						<Button
@@ -112,7 +147,7 @@ export default function TemplateLibraryModal( { isOpen, onClose } ) {
 							className="nf-template-modal-header__refresh"
 							onClick={ handleRefresh }
 							isBusy={ refreshing }
-							disabled={ refreshing || loading }
+							disabled={ refreshing || loadingSnap }
 						>
 							{ refreshing
 								? __( 'Refreshing…', 'neural-forms-lite' )
@@ -133,7 +168,8 @@ export default function TemplateLibraryModal( { isOpen, onClose } ) {
 					<TemplateLibrary
 						ref={ libRef }
 						mode="modal"
-						onImported={ () => setTick( ( n ) => n + 1 ) }
+						onImported={ () => {} }
+						onStateChange={ handleStateChange }
 					/>
 				</div>
 			</div>

@@ -158,6 +158,9 @@
 	border-bottom: 2px solid transparent;
 	color: var( --f-gray-500 );
 	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
 	font-family: inherit;
 	font-size: 13px;
 	font-weight: 500;
@@ -174,6 +177,51 @@
 .neural-forms-forms-list__tab--active {
 	border-bottom-color: var( --f-blue-600 );
 	color: var( --f-blue-600 );
+}
+
+/* Count badge inside each tab.
+ *
+ * Inactive: solid mid-gray fill with white numerals — high contrast
+ * against the page surface so the badge actually reads as a chip
+ * rather than blending into the background. The mid-gray (slate-500)
+ * is dark enough to stand out, neutral enough to not compete with
+ * the active tab's brand-blue badge.
+ *
+ * Active: solid brand-blue fill with white numerals. Matches the
+ * navy underline so the active tab reads as a single unit instead
+ * of three disconnected affordances.
+ */
+.neural-forms-forms-list__tab-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	height: 22px;
+	padding: 0 8px;
+	background: #94a3b8;
+	color: #fff;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	transition: background-color var( --f-transition );
+}
+
+.neural-forms-forms-list__tab:hover .neural-forms-forms-list__tab-count {
+	background: #64748b;
+}
+
+.neural-forms-forms-list__tab--active .neural-forms-forms-list__tab-count {
+	background: var( --f-blue-600 );
+	color: #fff;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.20 );
+}
+
+/* Total-forms accent in the header subtitle. Picks up the brand blue
+ * subtly so the number ties back to the active tab visually. */
+.neural-forms-forms-list__total {
+	color: var( --f-blue-600 );
+	font-weight: 700;
 }
 
 /* ── Table ───────────────────────────────────────────────────── */

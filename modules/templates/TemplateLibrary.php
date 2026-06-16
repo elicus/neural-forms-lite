@@ -62,7 +62,14 @@ class TemplateLibrary {
 
 	/** Transient key prefix for the catalog cache. Suffixed by builder
 	 *  so a future divi/elementor cache doesn't collide. */
-	const CATALOG_TRANSIENT_PREFIX = 'neural_forms_template_catalog_';
+	// v2 suffix bumps the cache key whenever the normalisation logic
+	// changes shape (e.g. v1→v2 added category-as-array support,
+	// HTML entity decode, and imported/imported_at/imported_edit_url
+	// injection). Bumping the key invalidates every site's cached
+	// catalog automatically, so a previously-cached row that contained
+	// the literal string "Array" from the old (string) coercion path
+	// can never be served after a code upgrade.
+	const CATALOG_TRANSIENT_PREFIX = 'neural_forms_template_catalog_v2_';
 
 	/** Cache TTL in seconds. */
 	const CATALOG_TTL = 6 * HOUR_IN_SECONDS;
@@ -803,27 +810,136 @@ class TemplateLibrary {
 		// unchanged. Any URL that fails the allow-list check is dropped
 		// to '' so the card still renders (just without that image /
 		// action) rather than failing the whole grid.
+
+		$id = isset( $row['id'] ) ? sanitize_key( (string) $row['id'] ) : '';
+
+		// Imported badge: read the per-site imports option and inject
+		// imported / imported_at / imported_edit_url onto matching
+		// rows so the React card can render the "Imported" pill and
+		// re-link the user back to the post they imported earlier.
+		$imports     = self::get_import_history();
+		$import_meta = ( $id !== '' && isset( $imports[ $id ] ) && is_array( $imports[ $id ] ) )
+			? $imports[ $id ]
+			: null;
+
 		return array(
-			'id'            => isset( $row['id'] ) ? sanitize_key( (string) $row['id'] ) : '',
-			'name'          => isset( $row['name'] ) ? (string) $row['name'] : '',
-			'description'   => isset( $row['description'] ) ? (string) $row['description'] : '',
-			'category'      => isset( $row['category'] ) ? (string) $row['category'] : '',
-			'compatibility' => isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
+			'id'                 => $id,
+			// HTML entity decode so names like "Demo 19 &#8211; Travel
+			// Itinerary Request" render as "Demo 19 – Travel …" instead
+			// of the raw entity. The catalog ships entity-encoded
+			// strings because it was originally authored through a WP
+			// editor; decoding here keeps a single point of truth and
+			// avoids per-card client-side decode logic.
+			'name'               => isset( $row['name'] )
+				? html_entity_decode( (string) $row['name'], ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+				: '',
+			'description'        => isset( $row['description'] )
+				? html_entity_decode( (string) $row['description'], ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+				: '',
+			// Category can ship as a string OR an array of strings per
+			// the 2026-05 catalog contract (see React comment in
+			// TemplateLibrary.js). Cast-to-string of an array yields
+			// the literal "Array" which is what produced the bogus
+			// "Array 20" filter pill. Preserve array shape; let the
+			// React side normalize it (already does — normaliseCategories).
+			'category'           => self::normalize_category_value( $row['category'] ?? null ),
+			'compatibility'      => isset( $row['compatibility'] ) && is_array( $row['compatibility'] )
 				? array_map( 'strval', $row['compatibility'] )
 				: array(),
-			'thumbnail'     => isset( $row['thumbnail'] ) && self::is_allowed_url( (string) $row['thumbnail'] )
+			'thumbnail'          => isset( $row['thumbnail'] ) && self::is_allowed_url( (string) $row['thumbnail'] )
 				? esc_url_raw( (string) $row['thumbnail'] )
 				: '',
-			'preview_url'   => isset( $row['preview_url'] ) && self::is_allowed_url( (string) $row['preview_url'] )
+			'preview_url'        => isset( $row['preview_url'] ) && self::is_allowed_url( (string) $row['preview_url'] )
 				? esc_url_raw( (string) $row['preview_url'] )
 				: '',
-			'import_url'    => isset( $row['import_url'] ) && self::is_allowed_url( (string) $row['import_url'] )
+			'import_url'         => isset( $row['import_url'] ) && self::is_allowed_url( (string) $row['import_url'] )
 				? esc_url_raw( (string) $row['import_url'] )
 				: '',
-			'tags'          => isset( $row['tags'] ) && is_array( $row['tags'] )
+			'tags'               => isset( $row['tags'] ) && is_array( $row['tags'] )
 				? array_values( array_map( 'sanitize_text_field', array_map( 'strval', $row['tags'] ) ) )
 				: array(),
+			'imported'           => null !== $import_meta,
+			'imported_at'        => $import_meta && isset( $import_meta['at'] ) ? (string) $import_meta['at'] : '',
+			'imported_edit_url'  => $import_meta && isset( $import_meta['edit_url'] ) ? (string) $import_meta['edit_url'] : '',
 		);
+	}
+
+	/**
+	 * Coerce the `category` field into a shape the React UI can render.
+	 * Accepts:
+	 *   - string  → returned as-is (entity-decoded)
+	 *   - array   → mapped entity-decoded strings
+	 *   - null / anything else → ''
+	 *
+	 * @param mixed $value
+	 * @return string|array
+	 */
+	private static function normalize_category_value( $value ) {
+		if ( is_array( $value ) ) {
+			$out = array();
+			foreach ( $value as $v ) {
+				if ( ! is_scalar( $v ) ) {
+					continue;
+				}
+				$str = trim( html_entity_decode( (string) $v, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+				if ( $str !== '' ) {
+					$out[] = $str;
+				}
+			}
+			return array_values( array_unique( $out ) );
+		}
+		if ( is_string( $value ) ) {
+			return trim( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		}
+		return '';
+	}
+
+	/**
+	 * Persistent record of which catalog templates this site has
+	 * imported. Keyed by template_id so the catalog GET can inject
+	 * `imported: true` + `imported_at` + `imported_edit_url` onto the
+	 * matching rows and the React card renders the "Imported" pill
+	 * with a link back to the edit screen.
+	 *
+	 * Storage shape:
+	 *   array<string,array{at:string, page_id:int, edit_url:string}>
+	 *
+	 * Stored as a WP option (autoloaded) — the catalog read is a hot
+	 * path and a single option round-trip is cheaper than transient
+	 * meta queries.
+	 */
+	const IMPORT_HISTORY_OPTION = 'neural_forms_template_imports';
+
+	/**
+	 * @return array<string,array{at:string, page_id:int, edit_url:string}>
+	 */
+	public static function get_import_history(): array {
+		$raw = get_option( self::IMPORT_HISTORY_OPTION, array() );
+		return is_array( $raw ) ? $raw : array();
+	}
+
+	/**
+	 * Record a successful template import. Idempotent — re-importing
+	 * the same template_id overwrites the previous record so the link
+	 * back from the "Imported" pill always points at the most recent
+	 * page.
+	 *
+	 * @param string $template_id Catalog row id.
+	 * @param int    $page_id     wp_posts row id created by the import.
+	 * @param string $edit_url    Admin edit link for that page.
+	 */
+	public static function record_import( string $template_id, int $page_id, string $edit_url ): void {
+		$template_id = sanitize_key( $template_id );
+		if ( $template_id === '' || $page_id <= 0 ) {
+			return;
+		}
+		$history                 = self::get_import_history();
+		$history[ $template_id ] = array(
+			'at'       => gmdate( 'c' ),
+			'page_id'  => $page_id,
+			'edit_url' => esc_url_raw( $edit_url ),
+		);
+		update_option( self::IMPORT_HISTORY_OPTION, $history, true );
 	}
 
 	/**

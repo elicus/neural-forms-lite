@@ -30,8 +30,8 @@
  * src/forms.css (self-contained per-screen bundle).
  */
 
-import { useEffect, useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { useEffect, useState, useCallback } from '@wordpress/element';
+import { __, sprintf, _n } from '@wordpress/i18n';
 import api from '../api';
 import TemplateLibraryModal from '../templates/TemplateLibraryModal';
 
@@ -47,8 +47,40 @@ export default function Forms() {
 	const [ loading, setLoading ] = useState( true );
 	const [ error,   setError   ] = useState( '' );
 	const [ isTemplateModalOpen, setTemplateModalOpen ] = useState( false );
+	// Per-tab counts surfaced as pill badges on each tab + summed for
+	// the header subtitle. Three parallel per_page=1 requests on mount
+	// (we only need each response's `total` field); reused on archive /
+	// restore / delete operations to keep the badges in sync.
+	const [ counts, setCounts ] = useState( { active: 0, drafts: 0, archived: 0 } );
 
 	const activeTab = TABS.find( ( t ) => t.id === tab ) || TABS[ 0 ];
+
+	const refreshCounts = useCallback( () => {
+		Promise.all(
+			TABS.map( ( t ) =>
+				api( `/forms?status=${ encodeURIComponent( t.statuses.join( ',' ) ) }&per_page=1` )
+					.then( ( res ) => {
+						if ( typeof res?.total === 'number' ) return res.total;
+						// Fallback if endpoint shape ever drifts — items
+						// length will at least round-trip a sensible
+						// number for the small-install case where this
+						// is most likely to matter.
+						if ( Array.isArray( res?.items ) ) return res.items.length;
+						if ( Array.isArray( res ) ) return res.length;
+						return 0;
+					} )
+					.catch( () => 0 )
+			)
+		).then( ( [ active, drafts, archived ] ) => {
+			setCounts( { active, drafts, archived } );
+		} );
+	}, [] );
+
+	useEffect( () => {
+		refreshCounts();
+	}, [ refreshCounts ] );
+
+	const totalCount = counts.active + counts.drafts + counts.archived;
 
 	// The "+ New Form → Use Template" item is rendered by an inline
 	// JS injector in AdminPanel.php (outside the React tree). It
@@ -107,6 +139,18 @@ export default function Forms() {
 					</h1>
 					<p className="neural-forms-forms-list__subtitle">
 						{ __( 'Create, manage, and publish your forms.', 'neural-forms-lite' ) }
+						{ totalCount > 0 && (
+							<>
+								{ ' · ' }
+								<span className="neural-forms-forms-list__total">
+									{ sprintf(
+										/* translators: %d: total number of forms across all statuses. */
+										_n( '%d form', '%d forms', totalCount, 'neural-forms-lite' ),
+										totalCount
+									) }
+								</span>
+							</>
+						) }
 					</p>
 				</div>
 				<a
@@ -118,21 +162,28 @@ export default function Forms() {
 			</header>
 
 			<nav className="neural-forms-forms-list__tabs" role="tablist">
-				{ TABS.map( ( t ) => (
-					<button
-						key={ t.id }
-						type="button"
-						role="tab"
-						aria-selected={ t.id === tab }
-						className={
-							'neural-forms-forms-list__tab' +
-							( t.id === tab ? ' neural-forms-forms-list__tab--active' : '' )
-						}
-						onClick={ () => setTab( t.id ) }
-					>
-						{ t.label }
-					</button>
-				) ) }
+				{ TABS.map( ( t ) => {
+					const c = counts[ t.id ] ?? 0;
+					return (
+						<button
+							key={ t.id }
+							type="button"
+							role="tab"
+							aria-selected={ t.id === tab }
+							className={
+								'neural-forms-forms-list__tab' +
+								( t.id === tab ? ' neural-forms-forms-list__tab--active' : '' )
+							}
+							onClick={ () => setTab( t.id ) }
+						>
+							<span className="neural-forms-forms-list__tab-label">{ t.label }</span>
+							<span className="neural-forms-forms-list__tab-count" aria-label={
+								/* translators: %d: number of forms in this status bucket. */
+								sprintf( __( '%d items', 'neural-forms-lite' ), c )
+							}>{ c }</span>
+						</button>
+					);
+				} ) }
 			</nav>
 
 			{ loading && (
@@ -187,9 +238,13 @@ export default function Forms() {
 							<FormRow
 								key={ form.id }
 								form={ form }
-								onRemove={ ( id ) =>
-									setItems( ( prev ) => prev.filter( ( f ) => f.id !== id ) )
-								}
+								onRemove={ ( id ) => {
+									setItems( ( prev ) => prev.filter( ( f ) => f.id !== id ) );
+									// Status change moves the row between
+									// tabs — refresh badges so each bucket
+									// count reflects reality.
+									refreshCounts();
+								} }
 							/>
 						) ) }
 					</tbody>
