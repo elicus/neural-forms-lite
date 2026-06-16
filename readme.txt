@@ -1,94 +1,123 @@
-=== Neural Forms Lite ===
+=== Neural Forms ===
 Contributors: elicus
-Tags: contact form, ai forms, lead inbox, gutenberg form, spam protection
+Tags: contact form, forms, ai forms, lead inbox, form builder, gutenberg form
 Requires at least: 6.8
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-AI contact form plugin with a built-in lead inbox — auto-summarizes submissions, drafts replies, and handles spam.
+WordPress form plugin with a built-in lead inbox. Build forms, manage submissions, and let AI analyze every entry and draft your replies.
 
 == Description ==
 
-Neural Forms Lite is a modern contact form plugin that turns your WordPress site into an AI-powered lead management system. Build forms visually, receive submissions in a clean lead inbox, and let AI summarize each lead, assign priority, and draft a reply — all from your WordPress dashboard.
+Neural Forms is a WordPress form plugin with a built-in lead inbox. Build forms with drag and drop, manage submissions in an email-style inbox, and let AI analyze every entry and draft your replies.
 
-### [View Demo](https://neuralforms.ai "View Demo")
+Most form plugins stop at collecting submissions. Neural Forms starts there. Every submission lands in your lead inbox with a status, a star, and (optionally) an AI-generated summary, category, priority score, and a draft reply ready to send.
 
-= Why Neural Forms? =
+[View Live Demo](https://neuralforms.ai)
 
-Most form plugins stop at collecting submissions. Neural Forms starts there. Every submission is automatically analyzed by AI, categorized by intent, scored by priority, and paired with a draft reply you can send with one click. It is the difference between a form plugin and a lead management system.
+= What's Included =
 
-= What You Get =
+* Drag and drop form builder with live preview
+* 18 field types: Text, Email, Textarea, Select, Checkbox, Number, Phone, URL, Date, Acceptance, Radio, Checkboxes, Range, Poll, Quiz, File Upload, Hidden, and Rating
+* Row and column layouts (1 to 4 columns per row, mobile-responsive)
+* Multi-step forms with steps, sections, and welcome screens
+* Native Gutenberg block with 150+ styling attributes
+* Shortcode support: [neural-forms id="42"]
+* Form template library: pick a template, click once, your form is live
+* Email-style lead inbox with status, starring, search, and date filters
+* Per-form views, bulk actions, and keyboard shortcuts
+* Per-entry message thread for replies
+* CSV export with date filtering
+* Cloudflare Turnstile and Google reCAPTCHA v2 spam protection
+* Admin email notifications and customer auto-responder
+* Privacy mode: disable IP and user-agent storage (GDPR-friendly)
+* One-click Contact Form 7 migration
+* Developer hooks, capability filters, and React SlotFill registry
 
-✅ **Visual Form Builder** — Drag-and-drop fields, live preview, and instant publishing via shortcode or Gutenberg block.
-✅ **16 Field Types** — Text, email, textarea, phone, URL, number, date, select, radio, checkbox, checkboxes, file upload, hidden, range, acceptance, and more.
-✅ **Lead Inbox** — View, search, filter, star, and triage submissions with status management. Keyboard shortcuts for power users.
-✅ **AI Auto-Analysis** — Every submission gets an AI-generated summary, category, priority score, and draft reply.
-✅ **Reply From Your Inbox** — Send replies directly from the entry detail view. Every reply is logged in a message thread.
-✅ **CSV Export** — Export entries per form with date-range filtering.
-✅ **Spam Protection** — Cloudflare Turnstile and Google reCAPTCHA v2 built in. Choose your provider.
-✅ **Email Notifications** — Configurable admin alerts and customer auto-responder emails.
-✅ **Privacy Mode** — Toggle IP and user-agent storage off with one click. GDPR-friendly.
-✅ **Contact Form 7 Import** — Detect and migrate your existing CF7 forms in one click.
-✅ **Full Block Editor Support** — Native Gutenberg block with 150+ styling attributes including per-corner radii, gradients, hover states, font controls, button transitions, and success/error message styling.
-✅ **Developer Friendly** — Action hooks, filter hooks, capability gates, and a React SlotFill registry for extensions.
+= AI Analysis on Every Submission =
 
-= AI That Actually Helps =
+100 free AI credits included on signup. Connect your free Neural Forms API key to unlock:
 
-Neural Forms uses the Neural Forms Cloud service to analyze submissions. When a visitor fills out your form:
+* Auto-summary on every submission
+* AI-assigned category (inquiry, support, sales, and more)
+* Priority score (0 to 100)
+* Auto-drafted reply ready to review and send
+* Multi-tier AI models (Fast tier in the free version)
 
-1. The submission text is securely sent to the Neural Forms Cloud API.
-2. AI reads the message and generates a summary, category (inquiry, support, sales, etc.), priority (low, medium, high, urgent), and a relevance score (0-100).
-3. A draft reply is written based on the context of your form and the visitor's message.
-4. Everything appears on the entry detail screen — ready for you to review, edit, and send.
+The form builder, lead inbox, email notifications, CAPTCHA, and CSV export all work without any AI key. AI features are optional and pause when free credits are consumed.
 
-The AI features require a Neural Forms Cloud API key, which you can get for free at [neuralforms.ai](https://neuralforms.ai).
+= How it works =
 
-= Perfect For =
+1. Install Neural Forms from your WordPress dashboard.
+2. Use the visual builder to add fields and configure settings, or pick a template from the library.
+3. Embed using the Gutenberg block or the [neural-forms id="42"] shortcode.
+4. (Optional) Enter your free Neural Forms API key in Settings to enable AI features.
+5. Manage leads in the inbox: review AI analysis, send replies, export entries.
 
-Freelancers and agencies managing client inquiries
-Small businesses handling contact and support forms
-SaaS companies triaging inbound leads
-Bloggers and creators collecting feedback
-WooCommerce stores managing pre-sale questions
-Anyone tired of reading raw form submissions
+No third-party accounts required for basic form functionality.
 
-= How It Works =
+= Built for =
 
-1. **Install and Activate** — Install Neural Forms Lite from your WordPress dashboard.
-2. **Create a Form** — Use the visual builder to add fields and configure settings.
-3. **Embed Anywhere** — Use the `[neural-forms id="42"]` shortcode or the Gutenberg block.
-4. **Connect AI (Optional)** — Enter your free Neural Forms Cloud API key in Settings.
-5. **Manage Leads** — View submissions in the inbox, review AI analysis, send replies.
-
-No configuration headaches. No third-party accounts required for basic form functionality.
+* Freelancers and agencies managing client inquiries
+* Small businesses handling contact and support forms
+* SaaS companies triaging inbound leads
+* Bloggers and creators collecting feedback
+* WooCommerce stores managing pre-sale questions
 
 = Neural Forms Pro =
 
-Looking for more? [Neural Forms Pro](https://neuralforms.ai/pricing) adds Divi 5 Visual Builder integration, AI spam detection, advanced AI models, and more. Visit [neuralforms.ai](https://neuralforms.ai) for details.
+Need more? [Neural Forms Pro](https://neuralforms.ai/pricing/) adds:
+
+* 7,500 to 25,000 AI credits per year (resets with renewal)
+* AI form generation: describe a form in plain English, AI builds it
+* Smart spam detection with adjustable threshold
+* Reanalyze, regenerate, and polish AI drafts
+* Site profile scraper for context-aware AI
+* Divi 5 Visual Builder module
+* Native integrations with HubSpot, Mailchimp, Zapier, WhatsApp, and Google Forms
+* Matrix and Repeater field types
+* Premium AI model tiers
+* Priority support
+* Auto updates
+
+Starting at $99 per year for unlimited sites. [See full pricing](https://neuralforms.ai/pricing/).
+
+= Built by Elicus =
+
+Neural Forms is built by Elicus, building plugins for WordPress since 2015. Our other products include Divi Extended, WPMozo, and Divi Plus, used on 300,000+ WordPress sites worldwide.
 
 = Documentation =
 
-Full documentation is available at [wpmozo.com/documentation/neural-forms](https://wpmozo.com/documentation/neural-forms/).
+Full documentation is available at [neuralforms.ai/documentation](https://neuralforms.ai/documentation/).
 
 = External Services =
 
-This plugin optionally connects to external third-party services. No connections are made unless you explicitly enable and configure them.
+This plugin connects to external third-party services. Most connections require explicit opt-in (entering an API key or selecting a service). One service (the template library) is contacted when you open the Templates screen to fetch the list of available form templates. The disclosures below describe each service, what data is sent, when, and why.
 
-**Neural Forms Cloud**
+**Neural Forms API**
 
-When you enable AI features and enter a Neural Forms Cloud API key in Settings, the plugin sends form submission content (the text your visitors enter) and form field metadata to the Neural Forms Cloud API for AI analysis. This includes generating submission summaries, categories, priority scores, and draft replies. No data is sent unless you have enabled Cloud AI and provided an API key. The plugin never sends IP addresses, WordPress admin credentials, or WordPress core data to this service.
+When you enable AI features and enter a Neural Forms API key in Settings, the plugin sends form submission content (the text your visitors enter) and form field metadata to the Neural Forms API at api.neuralforms.ai for AI analysis. This includes generating submission summaries, categories, priority scores, and draft replies. No data is sent unless you have enabled AI and provided an API key. The plugin never sends IP addresses, WordPress admin credentials, or WordPress core data to this service.
 
 * Service URL: [https://api.neuralforms.ai](https://api.neuralforms.ai)
 * Service website: [https://neuralforms.ai](https://neuralforms.ai)
-* Terms of Service: [https://neuralforms.ai/term-and-conditions](https://neuralforms.ai/term-and-conditions)
-* Privacy Policy: [https://neuralforms.ai/privacy-policy](https://neuralforms.ai/privacy-policy)
+* Terms of Service: [https://neuralforms.ai/terms-and-conditions/](https://neuralforms.ai/terms-and-conditions/)
+* Privacy Policy: [https://neuralforms.ai/privacy-policy/](https://neuralforms.ai/privacy-policy/)
+
+**Neural Forms Template Library**
+
+When you open the Templates screen in Neural Forms, the plugin connects to the template library at templates.neuralforms.ai to fetch the catalog of available form templates. When you click to import a specific template, the plugin fetches that template's content from the same host. The plugin sends the template ID and the builder type (block-editor) with each request. No form submission data, no visitor data, no WordPress admin information, and no API keys are sent. The catalog is cached locally for 6 hours to reduce remote requests. The host is fixed to templates.neuralforms.ai by default and validated against an allowlist before every request.
+
+* Service URL: [https://templates.neuralforms.ai](https://templates.neuralforms.ai)
+* Service website: [https://neuralforms.ai](https://neuralforms.ai)
+* Terms of Service: [https://neuralforms.ai/terms-and-conditions/](https://neuralforms.ai/terms-and-conditions/)
+* Privacy Policy: [https://neuralforms.ai/privacy-policy/](https://neuralforms.ai/privacy-policy/)
 
 **Cloudflare Turnstile**
 
-When you select Cloudflare Turnstile as your CAPTCHA provider and configure your site and secret keys, the plugin loads the Turnstile challenge script on pages with forms and verifies visitor responses server-side via the Cloudflare API. This service is only used when Turnstile is selected as the CAPTCHA provider in Settings.
+When you select Cloudflare Turnstile as your CAPTCHA provider and configure your site and secret keys, the plugin loads the Turnstile challenge script on pages with forms and verifies visitor responses server-side via the Cloudflare API. This service is used only when Turnstile is selected as the CAPTCHA provider in Settings.
 
 * Service website: [https://www.cloudflare.com/products/turnstile/](https://www.cloudflare.com/products/turnstile/)
 * Terms of Service: [https://www.cloudflare.com/website-terms/](https://www.cloudflare.com/website-terms/)
@@ -96,7 +125,7 @@ When you select Cloudflare Turnstile as your CAPTCHA provider and configure your
 
 **Google reCAPTCHA v2**
 
-When you select Google reCAPTCHA v2 as your CAPTCHA provider and configure your site and secret keys, the plugin loads the reCAPTCHA challenge script on pages with forms and verifies visitor responses server-side via the Google API. This service is only used when reCAPTCHA v2 is selected as the CAPTCHA provider in Settings.
+When you select Google reCAPTCHA v2 as your CAPTCHA provider and configure your site and secret keys, the plugin loads the reCAPTCHA challenge script on pages with forms and verifies visitor responses server-side via the Google API. This service is used only when reCAPTCHA v2 is selected as the CAPTCHA provider in Settings.
 
 * Service website: [https://www.google.com/recaptcha/](https://www.google.com/recaptcha/)
 * Terms of Service: [https://policies.google.com/terms](https://policies.google.com/terms)
@@ -106,17 +135,17 @@ When you select Google reCAPTCHA v2 as your CAPTCHA provider and configure your 
 
 Neural Forms ships pre-built JavaScript and CSS files in `modules/admin/build/` so the plugin works on a clean WordPress install without a Node toolchain. The compiled/generated files are:
 
-* `modules/admin/build/index.js` — admin React SPA (Forms, Entries, Stats, Settings)
-* `modules/admin/build/index.css` and `modules/admin/build/index-rtl.css` — admin styles
-* `modules/admin/build/block.js` — Gutenberg block (`neural-forms/form`) editor script
-* `modules/admin/build/index.asset.php` and `modules/admin/build/block.asset.php` — auto-generated WordPress dependency manifests
+* `modules/admin/build/index.js`: admin React SPA (Forms, Entries, Stats, Settings)
+* `modules/admin/build/index.css` and `modules/admin/build/index-rtl.css`: admin styles
+* `modules/admin/build/block.js`: Gutenberg block (`neural-forms/form`) editor script
+* `modules/admin/build/index.asset.php` and `modules/admin/build/block.asset.php`: auto-generated WordPress dependency manifests
 
-The complete, human-readable source for every generated/compressed file above is included inside this plugin package under:
+The complete, human-readable source for every generated file above is included inside this plugin package under:
 
-* `modules/admin/src/` — React + CSS source (admin SPA entry, block entry, screens, components, styles)
-* `modules/admin/package.json` — npm dependency list and build scripts
-* `modules/admin/package-lock.json` — exact dependency versions (lockfile)
-* `modules/admin/webpack.config.js` — webpack configuration (extends `@wordpress/scripts`)
+* `modules/admin/src/`: React + CSS source (admin SPA entry, block entry, screens, components, styles)
+* `modules/admin/package.json`: npm dependency list and build scripts
+* `modules/admin/package-lock.json`: exact dependency versions (lockfile)
+* `modules/admin/webpack.config.js`: webpack configuration (extends `@wordpress/scripts`)
 
 `modules/admin/build/index.js` is built from `modules/admin/src/index.js` and the modules it imports. `modules/admin/build/block.js` is built from `modules/admin/src/block-index.js`. Both are bundled by `@wordpress/scripts` (webpack + Babel) using the entry points declared in `modules/admin/webpack.config.js`. No obfuscation, packing, or encoding step is applied.
 
@@ -137,7 +166,7 @@ This regenerates the files in `modules/admin/build/` from `modules/admin/src/`.
 = Automatic Installation =
 
 1. Go to **Plugins > Add New** in your WordPress dashboard.
-2. Search for "Neural Forms Lite".
+2. Search for "Neural Forms".
 3. Click **Install Now**, then **Activate**.
 
 = Manual Installation =
@@ -150,40 +179,44 @@ This regenerates the files in `modules/admin/build/` from `modules/admin/src/`.
 = After Activation =
 
 1. Navigate to **Neural Forms > Forms** in your admin menu.
-2. Click **Add New** to create your first form.
+2. Click **Add New** to create your first form, or pick a template from the library.
 3. Add fields, configure settings, and publish.
 4. Embed using the Gutenberg block or the `[neural-forms id="YOUR_FORM_ID"]` shortcode.
-5. (Optional) Go to **Neural Forms > Settings** to connect Neural Forms Cloud for AI features.
+5. (Optional) Go to **Neural Forms > Settings** to enter your free Neural Forms API key for AI features.
 
 == Frequently Asked Questions ==
 
 = Do I need an API key to use Neural Forms? =
 
-No. The form builder, lead inbox, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (auto-summary, draft replies) require a free Neural Forms Cloud API key, which you can get at [neuralforms.ai](https://neuralforms.ai).
+No. The form builder, lead inbox, template library, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (auto-summary, draft replies) require a free Neural Forms API key, which you can get at [neuralforms.ai](https://neuralforms.ai). 100 free AI credits are included on signup.
 
 = What data does the AI feature send to your servers? =
 
-When AI is enabled, the plugin sends the form submission text (the visitor's answers) and the form schema (field types and labels) to the Neural Forms Cloud API at api.neuralforms.ai. No IP addresses, no WordPress admin emails, and no WordPress core data are sent. You can review the full [Privacy Policy](https://neuralforms.ai/privacy-policy).
+When AI is enabled, the plugin sends the form submission text (the visitor's answers) and the form schema (field types and labels) to the Neural Forms API at api.neuralforms.ai. No IP addresses, no WordPress admin emails, and no WordPress core data are sent. Full [Privacy Policy](https://neuralforms.ai/privacy-policy/).
 
-= Is Neural Forms GDPR compliant? =
+= What data does the template library send to your servers? =
 
-Neural Forms includes a Privacy Mode toggle that disables IP address and user-agent storage on submissions. When enabled, no personally identifiable visitor metadata is stored. For AI features, form submission content is processed by Neural Forms Cloud — see the [Privacy Policy](https://neuralforms.ai/privacy-policy) for data handling details.
+When you open the Templates screen, the plugin connects to templates.neuralforms.ai to fetch the catalog of available form templates. When you click to import a template, the plugin fetches that template's content. The plugin sends only the template ID and builder type with each request. No form submission data, no visitor data, no WordPress admin information, and no API keys are sent. The catalog is cached locally for 6 hours to minimize remote requests.
+
+= Is Neural Forms GDPR friendly? =
+
+Yes. Neural Forms includes a Privacy Mode toggle that disables IP address and user-agent storage on submissions. When enabled, no personally identifiable visitor metadata is stored. For AI features, form submission content is processed by the Neural Forms API. See the [Privacy Policy](https://neuralforms.ai/privacy-policy/) for full data handling details.
 
 = Will this slow down my site? =
 
-No. Neural Forms loads assets only on pages where a form is rendered. The admin bundle loads only on Neural Forms admin screens. AI processing happens asynchronously via WP-Cron — it never blocks the visitor's form submission.
+No. Neural Forms loads assets only on pages where a form is rendered. The admin bundle loads only on Neural Forms admin screens. AI processing happens asynchronously via WP-Cron and never blocks the visitor's form submission. The template catalog is cached for 6 hours so the Templates screen loads from cache after the first fetch.
 
 = Can I use this with the WordPress block editor (Gutenberg)? =
 
-Yes. Neural Forms ships a native Gutenberg block (neural-forms/form) with 150+ styling attributes. Search for "Neural Forms" in the block inserter.
+Yes. Neural Forms ships a native Gutenberg block (`neural-forms/form`) with 150+ styling attributes. Search for "Neural Forms" in the block inserter.
 
 = What field types are supported? =
 
-Text, email, textarea, phone, URL, number, date, select/dropdown, radio buttons, checkbox, checkboxes (multi), file upload, hidden, range/slider, and acceptance (terms). More field types are planned.
+Text, Email, Textarea, Select, Checkbox, Checkboxes, Number, Phone, URL, Date, Acceptance, Radio, Hidden, Range, Poll, Quiz, File Upload, and Rating. That is 18 field types in the free version. Two additional Pro fields (Matrix and Repeater) are available in Neural Forms Pro.
 
 = How does spam protection work? =
 
-Neural Forms supports Cloudflare Turnstile and Google reCAPTCHA v2 as CAPTCHA providers. Configure your preferred provider in Settings with your site and secret keys.
+Neural Forms supports Cloudflare Turnstile and Google reCAPTCHA v2 as CAPTCHA providers. Configure your preferred provider in Settings with your site and secret keys. Pro users also get AI spam detection with an adjustable threshold.
 
 = Can I import my Contact Form 7 forms? =
 
@@ -191,7 +224,7 @@ Yes. Go to **Neural Forms > Migration**, click **Scan for CF7 Forms**, and impor
 
 = Can I export my form submissions? =
 
-Yes. Go to **Neural Forms > Entries**, select a form, and click **Export CSV**. You can filter by date range before exporting.
+Yes. Go to **Neural Forms > Entries**, select a form, and click **Export CSV**. Filter by date range before exporting.
 
 = Does Neural Forms create custom database tables? =
 
@@ -199,52 +232,19 @@ Yes. Neural Forms creates 6 custom tables for forms, entries, AI responses, mess
 
 = Where can I find documentation? =
 
-Full documentation is available at [wpmozo.com/documentation/neural-forms](https://wpmozo.com/documentation/neural-forms/).
+Full documentation is available at [neuralforms.ai/documentation](https://neuralforms.ai/documentation/).
 
 == Screenshots ==
 
-1. **Lead Inbox** — Submission inbox with status management, starring, search, and date filters.
+1. **Lead Inbox**: Email-style submission inbox with status management, starring, search, and date filters. Click any entry to see the full submission and AI analysis.
+2. **AI-Analyzed Entry Detail**: Submission detail view showing the AI-generated summary, category badge, priority score, and the auto-drafted reply ready to send.
+3. **Drag and Drop Form Builder**: The form builder with field library on the left, live form preview in the center, and field settings on the right.
+4. **Template Library**: Pick a form template and click once to import. Templates include contact forms, surveys, quizzes, registrations, and more.
+5. **Gutenberg Block in Action**: Native Neural Forms block in the WordPress block editor with full styling controls.
 
 == Changelog ==
 
-= 1.1.0 - 2026-06-06 =
-
-*Admin UI*
-
-* Split the admin bundle into per-screen bundles (Forms, Entries, Stats, Settings, Templates, Integrations, Import, Builder, Analytics) for faster loads and isolated updates.
-* Restored a refreshed Entries list and detail experience with per-form sidebar folders, URL routing, and richer field labels.
-* Added a template modal that reads local plugin templates and supports preview, import, and an "Imported" badge for templates already brought in.
-* Added an Integrations page with Pro-ready provider configuration surfaces.
-* Refreshed Stats, Settings, and Templates screens with consistent layouts and design.
-* Improved Builder UX: 3-panel layout, schema canonicalization, design panels shared across blocks.
-* Added Page Performance analytics block and an Analytics screen redesign.
-
-*Builder + Blocks*
-
-* Improved Gutenberg block formatting and shared design panels across the Form, Multi-step, Poll, and Quiz blocks.
-* Added Pro-ready Matrix and Repeater field gates in the builder (the fields render an upsell when Pro is not active).
-* Refreshed Welcome screen handling, conditional logic, and field-label resolution for Entries display.
-
-*AI*
-
-* Improved Neural AI prompt UX and the AI engine routing surface.
-* Added a proactive credits-exhausted gate on AI action buttons so failed runs don't surprise the user.
-* Improved Settings gating with Pro-aware copy.
-
-*Entries + Submission*
-
-* Improved entry display, matrix rendering, repeater rendering, and CSV export formatting.
-* Improved Reply-To handling on admin notifications.
-* Lowered poll/quiz submission cap from 1,000 → 200 per form to reduce abuse surface.
-* Improved entry validation, sanitization, and Pro-feature compatibility.
-
-*Compatibility + Security*
-
-* WPCS compliance pass; Plugin Check Tool report findings addressed.
-* Added defence-in-depth ABSPATH guards across all module classes.
-* Improved Lite/Pro gating: stable capability filter contract for `field_matrix`, `field_repeater`, `integrations`, AI features.
-
-= 1.0.0 - 2026-04-29 =
+= 1.0.0 - 2026-06-16 =
 
 Initial public release.
 
@@ -252,8 +252,16 @@ Initial public release.
 
 * React-based admin form builder with drag-and-drop fields, validation, and live preview.
 * Frontend rendering via `[neural-forms]` shortcode and the native Gutenberg block.
-* 16 field types: text, email, textarea, select, checkbox, checkboxes, number, phone, tel, URL, date, acceptance, radio, hidden, range, file upload.
+* 18 field types: Text, Email, Textarea, Select, Checkbox, Checkboxes, Number, Phone, URL, Date, Acceptance, Radio, Hidden, Range, Poll, Quiz, File Upload, and Rating.
 * Submission pipeline with field-level validation and CAPTCHA verification.
+
+*Template Library*
+
+* Remote template catalog hosted at templates.neuralforms.ai
+* Fixed host allowlist enforced for every remote request
+* 6-hour transient cache on catalog to minimize remote calls
+* Per-template content fetched only on user-triggered import (not pre-fetched)
+* Imported form data sanitized to strip integrations, webhooks, recipients, and tokens before persisting
 
 *Lead Inbox*
 
@@ -262,13 +270,14 @@ Initial public release.
 * Bulk status changes with keyboard shortcuts.
 * Per-entry message thread with reply logging.
 
-*AI (via Neural Forms Cloud)*
+*AI (via Neural Forms API)*
 
-* Connection-first settings UX: enter Cloud API key, test connection, unlock AI controls.
+* Connection-first settings UX: enter API key, test connection, unlock AI controls.
 * Auto-analysis on every submission: summary, category, priority, relevance score, and draft reply.
-* Multi-tier AI model ladder (fast, balanced, smart, premium) selected by cloud based on plan.
+* Multi-tier AI model ladder (fast, balanced, smart, premium) selected by the AI service based on plan.
 * Draft history carousel: every analysis preserved (10 per entry, 30-day TTL on non-finalized drafts).
 * Click-budget protection: 5 AI actions per 2-hour window per entry.
+* 100 free AI credits included on signup.
 
 *Notifications*
 
@@ -279,26 +288,23 @@ Initial public release.
 
 * Cloudflare Turnstile and Google reCAPTCHA v2 support.
 * Privacy mode toggle: disable IP and user-agent storage.
-* API keys are write-only over REST — never exposed in responses.
+* API keys are write-only over REST and never exposed in responses.
 
 *Developer*
 
-* neural_forms_can_* capability filters for feature gating.
+* `neural_forms_can_*` capability filters for feature gating.
 * React SlotFill registry for UI extensions.
-* Action hooks: neural_forms_booted, neural_forms_entry_created, neural_forms_send_notifications, neural_forms_queue_ai_processing.
-* Filter hooks: neural_forms_validate_submission_field, neural_forms_render_form, neural_forms_spam_check, and more.
+* Action hooks: `neural_forms_booted`, `neural_forms_entry_created`, `neural_forms_send_notifications`, `neural_forms_queue_ai_processing`.
+* Filter hooks: `neural_forms_validate_submission_field`, `neural_forms_render_form`, `neural_forms_spam_check`, and more.
 
 *Maintenance*
 
 * Daily WP-Cron purge of stale AI draft rows.
 * 5-minute queue runner with 10-second post-submission nudge.
-* Schema versioning via NEURAL_FORMS_DB_VERSION with automatic dbDelta() on upgrade.
+* Schema versioning via `NEURAL_FORMS_DB_VERSION` with automatic dbDelta() on upgrade.
 * Full uninstall.php cleanup: drops all tables, deletes options, clears cron events, removes log files.
 
 == Upgrade Notice ==
-
-= 1.1.0 =
-Per-screen admin bundles, refreshed Entries inbox and Builder, local template modal, Integrations surface, Page Performance analytics, and Pro-ready Matrix/Repeater field gates. Recommended.
 
 = 1.0.0 =
 Initial release.
