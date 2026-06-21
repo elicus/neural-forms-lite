@@ -1,9 +1,20 @@
 # Changelog
 
-### 1.0.0 - 2026-05-16
+### 1.1.0 - 2026-06-22
 
 #### Added
+* Multi-step forms for breaking long forms into manageable steps.
+* Poll block and multi-step form block for the block editor.
+* Ready-to-use form templates so you can start with a working form in one click.
 
+#### Improved
+* Form dashboard layout for easier navigation.
+* Form builder with smoother drag and drop.
+* Inbox layout for faster scanning of submissions.
+
+### 1.0.0 - 2026-06-21
+
+#### Added
 * Visual form builder with 16 field types, live preview, and validation.
 * Lead inbox with status management, search, filters, and CSV export.
 * AI auto-analysis via Neural Forms Cloud with summary, priority, and draft reply.
