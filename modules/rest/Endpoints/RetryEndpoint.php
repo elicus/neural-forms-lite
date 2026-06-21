@@ -39,11 +39,15 @@ class RetryEndpoint {
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/entries/(?P<entry_id>[\d]+)/messages/(?P<message_id>[\d]+)/retry', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'retry_message' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<entry_id>[\d]+)/messages/(?P<message_id>[\d]+)/retry',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'retry_message' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 	}
 
 	// Handler
@@ -59,7 +63,7 @@ class RetryEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -67,7 +71,7 @@ class RetryEndpoint {
 			return new WP_Error(
 				'message_not_found',
 				__( 'Message not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -76,31 +80,31 @@ class RetryEndpoint {
 			return new WP_Error(
 				'message_mismatch',
 				__( 'Message does not belong to this entry.', 'neural-forms-lite' ),
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 
 		// Only outgoing messages with status=failed can be retried.
-		$meta   = $message['meta'] ?? [];
+		$meta   = $message['meta'] ?? array();
 		$status = $meta['status'] ?? '';
 
 		if ( $message['type'] !== 'outgoing' || $status !== 'failed' ) {
 			return new WP_Error(
 				'not_retryable',
 				__( 'Only failed outgoing messages can be retried.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
 		$to      = (string) ( $message['recipient'] ?? '' );
-		$subject = (string) ( $message['subject']   ?? '' );
-		$body    = (string) ( $message['body']       ?? '' );
+		$subject = (string) ( $message['subject'] ?? '' );
+		$body    = (string) ( $message['body'] ?? '' );
 
 		if ( ! is_email( $to ) ) {
 			return new WP_Error(
 				'invalid_recipient',
 				__( 'The stored recipient address is not valid.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -115,37 +119,45 @@ class RetryEndpoint {
 				'retry_send_failed',
 				'error',
 				'Retry: wp_mail() returned false - check WordPress email configuration.',
-				[ 'message_id' => $message_id, 'to' => $to ],
+				array(
+					'message_id' => $message_id,
+					'to'         => $to,
+				),
 				$entry_id
 			);
 
 			return new WP_Error(
 				'retry_send_failed',
 				__( 'Could not send the reply. Please check your WordPress email configuration.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		// Success - flip meta.status to 'sent' in-place.
-		$new_meta = array_merge( $meta, [ 'status' => 'sent' ] );
+		$new_meta = array_merge( $meta, array( 'status' => 'sent' ) );
 		EntryMessageRepository::update_meta( $message_id, $new_meta );
 
 		// A reply was (re)sent - the entry no longer needs a reply.
-		EntryRepository::update( $entry_id, [ 'needs_reply' => 0 ] );
+		EntryRepository::update( $entry_id, array( 'needs_reply' => 0 ) );
 
 		Logger::log(
 			'retry_sent',
 			'info',
 			/* translators: %s: recipient email address */
 			sprintf( __( 'Retry sent to %s.', 'neural-forms-lite' ), $to ),
-			[ 'message_id' => $message_id, 'to' => $to ],
+			array(
+				'message_id' => $message_id,
+				'to'         => $to,
+			),
 			$entry_id
 		);
 
-		return rest_ensure_response( [
-			'retried'    => true,
-			'message_id' => $message_id,
-		] );
+		return rest_ensure_response(
+			array(
+				'retried'    => true,
+				'message_id' => $message_id,
+			)
+		);
 	}
 
 	// Permission
@@ -158,7 +170,7 @@ class RetryEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to retry messages.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 }

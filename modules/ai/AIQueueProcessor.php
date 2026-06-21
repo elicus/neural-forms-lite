@@ -15,6 +15,7 @@ use NeuralForms\Storage\AIResponseRepository;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\AI\Contracts\AIAnalysisProviderInterface;
 use NeuralForms\AI\Exceptions\CloudPlanException;
+use NeuralForms\AI\Exceptions\CloudSafetyException;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -38,10 +39,66 @@ class AIQueueProcessor {
 	const MAX_ATTEMPTS = 3;
 	const BATCH_SIZE   = 5;
 
+	/**
+	 * Usage block from the most recent inline AI call (run_inline_analyze
+	 * or run_inline_regenerate_reply). REST endpoints read this right after
+	 * the call to surface "Credits used: X · Remaining: Y" to the user.
+	 *
+	 * Contract — same shape the cloud emits in `usage`:
+	 *   [ 'credits_used' => float, 'credits_remaining' => float|null, 'credits_deducted' => bool ]
+	 */
+	private static array $last_inline_usage = array();
+
+	/**
+	 * Aggregated summary for the most recent run() batch. Reset at the
+	 * top of run(); accumulated as each job succeeds. ProcessQueueEndpoint
+	 * reads this so admins can see how many credits were spent draining
+	 * the queue (and what's left).
+	 */
+	private static array $last_batch_summary = array(
+		'jobs_charged'      => 0,
+		'credits_used'      => 0.0,
+		'credits_remaining' => null,
+		'credits_deducted'  => false,
+	);
+
+	public static function last_inline_usage(): array {
+		return self::$last_inline_usage;
+	}
+
+	public static function last_batch_summary(): array {
+		return self::$last_batch_summary;
+	}
+
+	/**
+	 * Capture a single AI call's usage. Updates BOTH the inline snapshot
+	 * (so the next REST endpoint can read it) AND the running batch
+	 * aggregator (so process-queue can report totals). Always called after
+	 * PlanManager::apply_usage so the local credit cache stays consistent.
+	 */
+	private static function record_usage( array $usage ): void {
+		self::$last_inline_usage = $usage;
+		if ( empty( $usage ) ) {
+			return;
+		}
+		if ( ! ( $usage['credits_deducted'] ?? false ) ) {
+			return;
+		}
+
+		++self::$last_batch_summary['jobs_charged'];
+		self::$last_batch_summary['credits_used']    += (float) ( $usage['credits_used'] ?? 0 );
+		self::$last_batch_summary['credits_deducted'] = true;
+		if ( array_key_exists( 'credits_remaining', $usage ) ) {
+			self::$last_batch_summary['credits_remaining'] = null === $usage['credits_remaining']
+				? null
+				: (float) $usage['credits_remaining'];
+		}
+	}
+
 	// Boot / schedule
 
 	public static function boot(): void {
-		add_action( self::CRON_HOOK, [ self::class, 'run' ] );
+		add_action( self::CRON_HOOK, array( self::class, 'run' ) );
 	}
 
 	public static function schedule(): void {
@@ -66,10 +123,10 @@ class AIQueueProcessor {
 			// `neural-forms` domain pre-init triggers WP 6.7's
 			// `_load_textdomain_just_in_time` notice. The label is only seen on
 			// Tools '->-> Cron Events, so translating it is not worth the early-load.
-			$schedules['five_minutes'] = [
+			$schedules['five_minutes'] = array(
 				'interval' => 300,
 				'display'  => 'Every 5 minutes',
-			];
+			);
 		}
 		return $schedules;
 	}
@@ -77,12 +134,22 @@ class AIQueueProcessor {
 	// Cron worker
 
 	public static function run(): void {
+		// Reset the per-batch usage aggregator so ProcessQueueEndpoint can
+		// surface "X credits used · Y remaining" for THIS button click,
+		// independent of any prior cron tick.
+		self::$last_batch_summary = array(
+			'jobs_charged'      => 0,
+			'credits_used'      => 0.0,
+			'credits_remaining' => null,
+			'credits_deducted'  => false,
+		);
+
 		// Cron fires unconditionally - these guards stop us from rotating
 		// queue rows into "running" state (and burning a provider call slot)
 		// when the user has either turned AI off or hasn't connected Cloud
 		// yet. Logging at info so operators can see WHY a backlog isn't
 		// draining without flipping on debug logs.
-		if ( ! Config::get( 'ai_enabled'      ) ) {
+		if ( ! Config::get( 'ai_enabled' ) ) {
 			Logger::file( 'ai_queue', 'info', 'Queue skipped: ai_enabled is false.' );
 			return;
 		}
@@ -95,6 +162,16 @@ class AIQueueProcessor {
 		// lets a later key entry pick up the backlog with no manual retry.
 		if ( Config::get( 'cloud_api_key' ) === '' ) {
 			Logger::file( 'ai_queue', 'info', 'Queue skipped: cloud_api_key is empty.' );
+			return;
+		}
+
+		// Hold queued jobs when the cloud credit balance is exhausted. The
+		// cloud's QuotaGuard would reject each attempt with quota_exceeded
+		// and burn an attempts counter; bailing here keeps jobs pending
+		// (they'll run on the next 5-minute tick once a top-up restores
+		// credits). Soft check — fail-open before the first /v1/auth/me sync.
+		if ( \NeuralForms\Plan\PlanManager::is_credits_exhausted() ) {
+			Logger::file( 'ai_queue', 'warn', 'Queue paused: AI credit balance is zero. Buy credits to resume processing.' );
 			return;
 		}
 
@@ -156,7 +233,7 @@ class AIQueueProcessor {
 		$payload  = json_decode( $job['payload'], true );
 		$entry_id = isset( $payload['entry_id'] ) ? (int) $payload['entry_id'] : 0;
 
-		if ( $entry_id === 0 ) {
+		if ( 0 === $entry_id ) {
 			self::finish_job( (int) $job['id'], 'failed', 'Missing entry_id in payload.' );
 			return;
 		}
@@ -164,13 +241,13 @@ class AIQueueProcessor {
 		// Claim the job: mark in-flight so parallel cron runs skip it.
 		$wpdb->update(
 			$table,
-			[
+			array(
 				'status'   => 'processing',
 				'attempts' => (int) $job['attempts'] + 1,
-			],
-			[ 'id' => $job['id'] ],
-			[ '%s', '%d' ],
-			[ '%d' ]
+			),
+			array( 'id' => $job['id'] ),
+			array( '%s', '%d' ),
+			array( '%d' )
 		);
 		AIRepository::update_status( $entry_id, 'processing' );
 
@@ -182,13 +259,24 @@ class AIQueueProcessor {
 			}
 
 			$form_id = (int) ( $payload['form_id'] ?? $entry['form_id'] ?? 0 );
-			$form    = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? [] ) : [];
+			$form    = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? array() ) : array();
 
 			// Provider builds prompts (or calls the cloud) and returns a
 			// normalized array ready to pass directly into AIRepository.
 			Logger::file( 'ai_queue', 'info', "Job {$job['id']}: calling provider->analyze() for entry {$entry_id}." );
 			$result = $provider->analyze( $entry, $form );
-			Logger::file( 'ai_queue', 'info', "Job {$job['id']}: analyze returned, saving.", [ 'category' => $result['category'] ?? '', 'priority' => $result['priority'] ?? '' ] );
+			$usage  = is_array( $result['usage'] ?? null ) ? $result['usage'] : array();
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
+			Logger::file(
+				'ai_queue',
+				'info',
+				"Job {$job['id']}: analyze returned, saving.",
+				array(
+					'category' => $result['category'] ?? '',
+					'priority' => $result['priority'] ?? '',
+				)
+			);
 
 			// Queued jobs only originate from new-submission auto-processing
 			// (admin-initiated re-analyze now runs inline via REST, not the
@@ -214,6 +302,27 @@ class AIQueueProcessor {
 			self::handle_plan_exception( $e, 'ai_analyze' );
 			self::finish_job( (int) $job['id'], 'failed', $e->getMessage() );
 			AIRepository::update_status( $entry_id, 'failed', $e->getMessage() );
+			self::maybe_send_deferred_notifications_on_failure( $entry_id, $payload );
+			self::log_error( $entry_id, (int) $job['id'], (int) $job['attempts'] + 1, $e->getMessage() );
+		} catch ( CloudSafetyException $e ) {
+			// SafetyGate blocked the entry. No retries (a blocked input
+			// will block again) and no failure status — this is a
+			// distinct ai_status so the UI can badge the entry as
+			// "filtered" rather than "errored". The cloud already
+			// returned credits_deducted=false, so no billing concern.
+			$next_status = $e->is_unavailable() ? 'failed' : 'blocked_by_safety';
+			self::finish_job( (int) $job['id'], 'failed', $e->getMessage() );
+			AIRepository::update_status( $entry_id, $next_status, $e->getMessage() );
+			Logger::file(
+				'ai_queue',
+				'info',
+				sprintf(
+					'Job %d: blocked_by_safety entry=%d category=%s',
+					(int) $job['id'],
+					$entry_id,
+					$e->get_category() ?? '-'
+				)
+			);
 			self::maybe_send_deferred_notifications_on_failure( $entry_id, $payload );
 			self::log_error( $entry_id, (int) $job['id'], (int) $job['attempts'] + 1, $e->getMessage() );
 		} catch ( \Throwable $e ) {
@@ -256,7 +365,7 @@ class AIQueueProcessor {
 		$payload  = json_decode( $job['payload'], true );
 		$entry_id = isset( $payload['entry_id'] ) ? (int) $payload['entry_id'] : 0;
 
-		if ( $entry_id === 0 ) {
+		if ( 0 === $entry_id ) {
 			self::finish_job( (int) $job['id'], 'failed', 'Missing entry_id in payload.' );
 			return;
 		}
@@ -264,13 +373,13 @@ class AIQueueProcessor {
 		// Claim the job.
 		$wpdb->update(
 			$table,
-			[
+			array(
 				'status'   => 'processing',
 				'attempts' => (int) $job['attempts'] + 1,
-			],
-			[ 'id' => $job['id'] ],
-			[ '%s', '%d' ],
-			[ '%d' ]
+			),
+			array( 'id' => $job['id'] ),
+			array( '%s', '%d' ),
+			array( '%d' )
 		);
 		AIRepository::update_status( $entry_id, 'processing' );
 
@@ -282,10 +391,13 @@ class AIQueueProcessor {
 			}
 
 			$form_id = (int) ( $payload['form_id'] ?? $entry['form_id'] ?? 0 );
-			$form    = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? [] ) : [];
+			$form    = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? array() ) : array();
 
 			// Reply-only - never overwrites summary/category/priority/spam.
 			$result = $provider->regenerate_reply( $entry, $form );
+			$usage  = is_array( $result['usage'] ?? null ) ? $result['usage'] : array();
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
 
 			$tier_used = isset( $result['tier_used'] ) ? (string) $result['tier_used'] : null;
 			AIRepository::update_reply_draft( $entry_id, (string) $result['reply_draft'], $tier_used );
@@ -356,21 +468,23 @@ class AIQueueProcessor {
 			ARRAY_A
 		);
 
-		if ( empty( $jobs ) ) return;
+		if ( empty( $jobs ) ) {
+			return;
+		}
 
 		$error_msg = 'Cloud quota exceeded - remaining jobs cleared. ' . $reason;
 
 		foreach ( $jobs as $job ) {
 			$wpdb->update(
 				$table,
-				[
+				array(
 					'status'       => 'failed',
 					'processed_at' => current_time( 'mysql', true ),
 					'error'        => $error_msg,
-				],
-				[ 'id' => (int) $job['id'] ],
-				[ '%s', '%s', '%s' ],
-				[ '%d' ]
+				),
+				array( 'id' => (int) $job['id'] ),
+				array( '%s', '%s', '%s' ),
+				array( '%d' )
 			);
 
 			$payload  = json_decode( (string) $job['payload'], true );
@@ -394,15 +508,25 @@ class AIQueueProcessor {
 	 * anyway so the admin doesn't miss the submission entirely.
 	 */
 	private static function maybe_send_deferred_notifications_on_failure( int $entry_id, array $payload ): void {
-		if ( ! Config::get( 'ai_enabled' )                   ) return;
-		if ( ! Config::get( 'ai_spam_enabled' )               ) return;
-		if ( ! Config::get( 'email_skip_spam_notifications' ) ) return;
+		if ( ! Config::get( 'ai_enabled' ) ) {
+			return;
+		}
+		if ( ! Config::get( 'ai_spam_enabled' ) ) {
+			return;
+		}
+		if ( ! Config::get( 'email_skip_spam_notifications' ) ) {
+			return;
+		}
 
 		$form_id = (int) ( $payload['form_id'] ?? 0 );
-		if ( $form_id < 1 ) return;
+		if ( $form_id < 1 ) {
+			return;
+		}
 
 		$form = FormRepository::find( $form_id );
-		if ( ! $form ) return;
+		if ( ! $form ) {
+			return;
+		}
 
 		do_action( 'neural_forms_send_notifications', $entry_id, $form_id, $form );
 	}
@@ -419,13 +543,19 @@ class AIQueueProcessor {
 	 * process_regenerate_reply - to avoid double-sending.
 	 */
 	private static function maybe_send_deferred_notifications(
-		int   $entry_id,
+		int $entry_id,
 		array $result,
-		int   $form_id
+		int $form_id
 	): void {
-		if ( ! Config::get( 'ai_enabled' )                      ) return;
-		if ( ! Config::get( 'ai_spam_enabled' )                  ) return;
-		if ( ! Config::get( 'email_skip_spam_notifications' )    ) return;
+		if ( ! Config::get( 'ai_enabled' ) ) {
+			return;
+		}
+		if ( ! Config::get( 'ai_spam_enabled' ) ) {
+			return;
+		}
+		if ( ! Config::get( 'email_skip_spam_notifications' ) ) {
+			return;
+		}
 
 		// The whole point: suppress notifications for spam entries.
 		if ( $result['is_spam'] ?? false ) {
@@ -433,9 +563,13 @@ class AIQueueProcessor {
 		}
 
 		// Not spam - fire the notification hook now.
-		if ( $form_id < 1 ) return;
+		if ( $form_id < 1 ) {
+			return;
+		}
 		$form = FormRepository::find( $form_id );
-		if ( ! $form ) return;
+		if ( ! $form ) {
+			return;
+		}
 
 		do_action( 'neural_forms_send_notifications', $entry_id, $form_id, $form );
 	}
@@ -463,8 +597,8 @@ class AIQueueProcessor {
 			return;
 		}
 
-		$is_spam    = (bool) ( $result['is_spam']         ?? false );
-		$confidence = (int)  ( $result['spam_confidence'] ?? 0 );
+		$is_spam    = (bool) ( $result['is_spam'] ?? false );
+		$confidence = (int) ( $result['spam_confidence'] ?? 0 );
 		$mode       = (string) Config::get( 'ai_spam_mode' );
 		$threshold  = (int) Config::get( 'ai_spam_threshold' );
 
@@ -472,13 +606,13 @@ class AIQueueProcessor {
 		// Pro's SpamPolicy module replaces this via the filter below to add
 		// richer rules (learning, per-form overrides, etc.) without forking
 		// the processor.
-		$default_decision = [
+		$default_decision = array(
 			'action'     => ( $mode === 'auto' && $is_spam && $confidence >= $threshold )
 								? 'mark_spam'
 								: 'skip',
 			'reason'     => (string) ( $result['spam_reason'] ?? '' ),
 			'confidence' => $confidence,
-		];
+		);
 
 		/**
 		 * Filter the spam decision before it is applied.
@@ -493,27 +627,33 @@ class AIQueueProcessor {
 			$default_decision,
 			$result,
 			$entry_id,
-			[ 'mode' => $mode, 'threshold' => $threshold ]
+			array(
+				'mode'      => $mode,
+				'threshold' => $threshold,
+			)
 		);
 
 		if ( ! is_array( $decision ) || ( $decision['action'] ?? 'skip' ) !== 'mark_spam' ) {
 			return;
 		}
 
-		EntryRepository::update( $entry_id, [
-			'status'              => 'spam',
-			'ai_auto_spam_applied' => true,
-		] );
+		EntryRepository::update(
+			$entry_id,
+			array(
+				'status'               => 'spam',
+				'ai_auto_spam_applied' => true,
+			)
+		);
 
 		Logger::log(
 			'ai_auto_spam',
 			'info',
 			"AI auto-spam applied: entry {$entry_id}, confidence {$confidence}%",
-			[
+			array(
 				'confidence' => $confidence,
 				'reason'     => (string) ( $decision['reason'] ?? $result['spam_reason'] ?? '' ),
 				'threshold'  => $threshold,
-			],
+			),
 			$entry_id
 		);
 	}
@@ -559,14 +699,14 @@ class AIQueueProcessor {
 		global $wpdb;
 		$wpdb->update(
 			$wpdb->prefix . 'neural_forms_queue',
-			[
+			array(
 				'status'       => $status,
 				'processed_at' => current_time( 'mysql', true ),
 				'error'        => $error !== '' ? $error : '',
-			],
-			[ 'id' => $job_id ],
-			[ '%s', '%s', '%s' ],
-			[ '%d' ]
+			),
+			array( 'id' => $job_id ),
+			array( '%s', '%s', '%s' ),
+			array( '%d' )
 		);
 	}
 
@@ -575,7 +715,10 @@ class AIQueueProcessor {
 			'ai_processing_error',
 			'error',
 			$message,
-			[ 'job_id' => $job_id, 'attempt' => $attempt ],
+			array(
+				'job_id'  => $job_id,
+				'attempt' => $attempt,
+			),
 			$entry_id,
 			'ai_queue'
 		);
@@ -606,10 +749,13 @@ class AIQueueProcessor {
 			if ( ! $entry ) {
 				throw new \RuntimeException( "Entry {$entry_id} not found." );
 			}
-			$form = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? [] ) : [];
+			$form = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? array() ) : array();
 
 			Logger::file( 'ai_queue', 'info', "Inline analyze: entry {$entry_id}." );
 			$result = $provider->analyze( $entry, $form );
+			$usage  = is_array( $result['usage'] ?? null ) ? $result['usage'] : array();
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
 
 			AIRepository::save_analysis( $entry_id, $result );
 
@@ -626,16 +772,16 @@ class AIQueueProcessor {
 
 			Logger::file( 'ai_queue', 'info', "Inline analyze: complete for entry {$entry_id}." );
 
-			return AIRepository::get_analysis( $entry_id ) ?? [];
+			return AIRepository::get_analysis( $entry_id ) ?? array();
 		} catch ( CloudPlanException $e ) {
 			self::handle_plan_exception( $e, 'ai_analyze' );
 			AIRepository::update_status( $entry_id, 'failed', $e->getMessage() );
-			self::maybe_send_deferred_notifications_on_failure( $entry_id, [ 'form_id' => $form_id ] );
+			self::maybe_send_deferred_notifications_on_failure( $entry_id, array( 'form_id' => $form_id ) );
 			throw $e;
 		} catch ( \Throwable $e ) {
 			AIRepository::update_status( $entry_id, 'failed', $e->getMessage() );
-			self::maybe_send_deferred_notifications_on_failure( $entry_id, [ 'form_id' => $form_id ] );
-			Logger::both( 'ai_inline_analyze_failed', 'error', $e->getMessage(), [], $entry_id, 'ai_queue' );
+			self::maybe_send_deferred_notifications_on_failure( $entry_id, array( 'form_id' => $form_id ) );
+			Logger::both( 'ai_inline_analyze_failed', 'error', $e->getMessage(), array(), $entry_id, 'ai_queue' );
 			throw $e;
 		}
 	}
@@ -658,11 +804,14 @@ class AIQueueProcessor {
 			if ( ! $entry ) {
 				throw new \RuntimeException( "Entry {$entry_id} not found." );
 			}
-			$form = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? [] ) : [];
+			$form = $form_id > 0 ? ( FormRepository::find( $form_id ) ?? array() ) : array();
 
 			Logger::file( 'ai_queue', 'info', "Inline regenerate_reply: entry {$entry_id}." );
 			$result = $provider->regenerate_reply( $entry, $form );
-			$reply  = (string) ( $result['reply_draft'] ?? '' );
+			$usage  = is_array( $result['usage'] ?? null ) ? $result['usage'] : array();
+			\NeuralForms\Plan\PlanManager::apply_usage( $usage );
+			self::record_usage( $usage );
+			$reply     = (string) ( $result['reply_draft'] ?? '' );
 			$tier_used = isset( $result['tier_used'] ) ? (string) $result['tier_used'] : null;
 
 			AIRepository::update_reply_draft( $entry_id, $reply, $tier_used );
@@ -676,9 +825,8 @@ class AIQueueProcessor {
 			throw $e;
 		} catch ( \Throwable $e ) {
 			AIRepository::update_status( $entry_id, 'complete' );
-			Logger::both( 'ai_inline_regenerate_failed', 'error', $e->getMessage(), [], $entry_id, 'ai_queue' );
+			Logger::both( 'ai_inline_regenerate_failed', 'error', $e->getMessage(), array(), $entry_id, 'ai_queue' );
 			throw $e;
 		}
 	}
-
 }

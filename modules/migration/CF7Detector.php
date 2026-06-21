@@ -25,21 +25,23 @@ class CF7Detector {
 	 */
 	public static function get_forms(): array {
 		if ( ! self::is_cf7_active() ) {
-			return [];
+			return array();
 		}
 
-		$posts = get_posts( [
-			'post_type'      => \WPCF7_ContactForm::post_type,
-			'posts_per_page' => -1,
-			'post_status'    => 'any',
-			'orderby'        => 'title',
-			'order'          => 'ASC',
-		] );
+		$posts = get_posts(
+			array(
+				'post_type'      => \WPCF7_ContactForm::post_type,
+				'posts_per_page' => -1,
+				'post_status'    => 'any',
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			)
+		);
 
-		$forms = [];
+		$forms = array();
 
 		foreach ( $posts as $post ) {
-			$cf7  = \WPCF7_ContactForm::get_instance( $post->ID );
+			$cf7 = \WPCF7_ContactForm::get_instance( $post->ID );
 			if ( ! $cf7 ) {
 				continue;
 			}
@@ -47,13 +49,13 @@ class CF7Detector {
 			$tags        = self::parse_tags( $cf7 );
 			$field_types = array_values( array_unique( array_column( $tags, 'basetype' ) ) );
 
-			$forms[] = [
+			$forms[] = array(
 				'id'              => (int) $post->ID,
 				'title'           => $cf7->title(),
 				'field_count'     => count( $tags ),
 				'field_types'     => $field_types,
 				'has_unsupported' => self::has_unsupported( $field_types ),
-			];
+			);
 		}
 
 		return $forms;
@@ -71,16 +73,16 @@ class CF7Detector {
 	public static function parse_tags( $form ): array {
 		if ( is_int( $form ) ) {
 			if ( ! self::is_cf7_active() ) {
-				return [];
+				return array();
 			}
 			$form = \WPCF7_ContactForm::get_instance( $form );
 			if ( ! $form ) {
-				return [];
+				return array();
 			}
 		}
 
 		$raw_tags = $form->scan_form_tags();
-		$result   = [];
+		$result   = array();
 
 		foreach ( $raw_tags as $tag ) {
 			$tag = new \WPCF7_FormTag( $tag );
@@ -92,7 +94,7 @@ class CF7Detector {
 
 			$basetype = $tag->basetype;
 
-			$descriptor = [
+			$descriptor = array(
 				'basetype'      => $basetype,
 				'name'          => $tag->name,
 				'required'      => $tag->is_required(),
@@ -108,7 +110,7 @@ class CF7Detector {
 				'step'          => $tag->get_option( 'step', 'num', true ),
 				'filetypes'     => $tag->get_option( 'filetypes', '', true ),
 				'limit'         => $tag->get_option( 'limit', 'int', true ),
-			];
+			);
 
 			$result[] = $descriptor;
 		}
@@ -127,12 +129,12 @@ class CF7Detector {
 	 */
 	private static function extract_placeholder( \WPCF7_FormTag $tag ): string {
 		$ph = $tag->get_option( 'placeholder', '', true );
-		if ( $ph !== false && $ph !== '' ) {
+		if ( false !== $ph && $ph !== '' ) {
 			return (string) $ph;
 		}
 
 		$wm = $tag->get_option( 'watermark', '', true );
-		if ( $wm !== false && $wm !== '' ) {
+		if ( false !== $wm && $wm !== '' ) {
 			return (string) $wm;
 		}
 
@@ -147,12 +149,12 @@ class CF7Detector {
 	 */
 	private static function extract_default( \WPCF7_FormTag $tag ): string {
 		$default = $tag->get_option( 'default', '', true );
-		if ( $default !== false && $default !== '' ) {
+		if ( false !== $default && $default !== '' ) {
 			return (string) $default;
 		}
 
 		// For text-like fields, the first value is the default.
-		if ( in_array( $tag->basetype, [ 'text', 'email', 'url', 'tel', 'number', 'range', 'date', 'hidden' ], true ) ) {
+		if ( in_array( $tag->basetype, array( 'text', 'email', 'url', 'tel', 'number', 'range', 'date', 'hidden' ), true ) ) {
 			return (string) ( $tag->values[0] ?? '' );
 		}
 

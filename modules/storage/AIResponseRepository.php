@@ -4,9 +4,9 @@
 // This repository owns the wp_neural_forms_* tables and runs typed CRUD
 // against them. Object caching is intentionally not used here:
 // - REST handlers fetch fresh per request; entries / forms see frequent
-//   writes, so a stale cache would surface in the admin UI.
+// writes, so a stale cache would surface in the admin UI.
 // - Cache invalidation across the create/update/delete + bulk paths
-//   would add more risk than the few percent of latency it would save.
+// would add more risk than the few percent of latency it would save.
 namespace NeuralForms\Storage;
 
 defined( 'ABSPATH' ) || exit;
@@ -29,8 +29,8 @@ class AIResponseRepository {
 	const KIND_REGENERATE = 'regenerate';
 	const KIND_POLISH     = 'polish';
 
-	const VALID_KINDS = [ 'analyze', 'reanalyze', 'regenerate', 'polish' ];
-	const VALID_TIERS = [ 'fast', 'balanced', 'smart', 'premium' ];
+	const VALID_KINDS = array( 'analyze', 'reanalyze', 'regenerate', 'polish' );
+	const VALID_TIERS = array( 'fast', 'balanced', 'smart', 'premium' );
 
 	/** Per-entry cap on non-finalized drafts. Finalized rows are exempt. */
 	const MAX_DRAFTS_PER_ENTRY = 10;
@@ -51,8 +51,12 @@ class AIResponseRepository {
 	public static function insert( int $entry_id, string $kind, array $data ): int {
 		global $wpdb;
 
-		if ( $entry_id <= 0 ) return 0;
-		if ( ! in_array( $kind, self::VALID_KINDS, true ) ) return 0;
+		if ( $entry_id <= 0 ) {
+			return 0;
+		}
+		if ( ! in_array( $kind, self::VALID_KINDS, true ) ) {
+			return 0;
+		}
 
 		$tier = isset( $data['tier_used'] ) && in_array( $data['tier_used'], self::VALID_TIERS, true )
 			? (string) $data['tier_used']
@@ -60,29 +64,29 @@ class AIResponseRepository {
 
 		$inserted = $wpdb->insert(
 			self::table(),
-			[
+			array(
 				'entry_id'        => $entry_id,
 				'kind'            => $kind,
 				'tier_used'       => $tier,
 				'provider'        => (string) ( $data['ai_provider'] ?? '' ),
-				'model'           => (string) ( $data['ai_model']    ?? '' ),
-				'summary'         => (string) ( $data['summary']     ?? '' ),
-				'category'        => (string) ( $data['category']    ?? '' ),
-				'priority'        => (string) ( $data['priority']    ?? '' ),
+				'model'           => (string) ( $data['ai_model'] ?? '' ),
+				'summary'         => (string) ( $data['summary'] ?? '' ),
+				'category'        => (string) ( $data['category'] ?? '' ),
+				'priority'        => (string) ( $data['priority'] ?? '' ),
 				'reply_draft'     => (string) ( $data['reply_draft'] ?? '' ),
 				'polished_reply'  => (string) ( $data['polished_reply'] ?? '' ),
-				'is_spam'         => (int) (bool) ( $data['is_spam']  ?? false ),
-				'spam_confidence' => (int)  ( $data['spam_confidence'] ?? 0 ),
+				'is_spam'         => (int) (bool) ( $data['is_spam'] ?? false ),
+				'spam_confidence' => (int) ( $data['spam_confidence'] ?? 0 ),
 				'spam_reason'     => (string) ( $data['spam_reason'] ?? '' ),
 				'score'           => isset( $data['score'] ) ? (int) $data['score'] : null,
-				'tokens_used'     => (int)  ( $data['tokens_used']   ?? 0 ),
+				'tokens_used'     => (int) ( $data['tokens_used'] ?? 0 ),
 				'finalized'       => (int) (bool) ( $data['finalized'] ?? false ),
 				'created_at'      => current_time( 'mysql', true ),
-			],
-			[ '%d','%s','%s','%s','%s','%s','%s','%s','%s','%s','%d','%d','%s','%d','%d','%d','%s' ]
+			),
+			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s' )
 		);
 
-		if ( $inserted === false ) {
+		if ( false === $inserted ) {
 			return 0;
 		}
 
@@ -112,10 +116,10 @@ class AIResponseRepository {
 
 		$wpdb->update(
 			self::table(),
-			[ 'finalized' => 1 ],
-			[ 'id' => $response_id ],
-			[ '%d' ],
-			[ '%d' ]
+			array( 'finalized' => 1 ),
+			array( 'id' => $response_id ),
+			array( '%d' ),
+			array( '%d' )
 		);
 
 		\NeuralForms\AI\AIRepository::set_selected_response( $entry_id, $response_id );
@@ -153,7 +157,9 @@ class AIResponseRepository {
 			)
 		);
 
-		if ( empty( $ids ) ) return 0;
+		if ( empty( $ids ) ) {
+			return 0;
+		}
 
 		// IDs are intval-mapped above so the IN list is integer-only.
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
@@ -161,7 +167,7 @@ class AIResponseRepository {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare(
 				"DELETE FROM %i WHERE id IN ({$placeholders})",
-				...array_merge( [ self::table() ], array_map( 'intval', $ids ) )
+				...array_merge( array( self::table() ), array_map( 'intval', $ids ) )
 			)
 		);
 
@@ -175,7 +181,9 @@ class AIResponseRepository {
 	public static function purge_older_than( int $days = self::DRAFT_TTL_DAYS ): int {
 		global $wpdb;
 
-		if ( $days < 1 ) $days = 1;
+		if ( $days < 1 ) {
+			$days = 1;
+		}
 
 		$deleted = $wpdb->query(
 			$wpdb->prepare(
@@ -185,7 +193,7 @@ class AIResponseRepository {
 			)
 		);
 
-		return $deleted === false ? 0 : (int) $deleted;
+		return false === $deleted ? 0 : (int) $deleted;
 	}
 
 	// Read
@@ -217,7 +225,7 @@ class AIResponseRepository {
 			ARRAY_A
 		);
 
-		return is_array( $rows ) ? $rows : [];
+		return is_array( $rows ) ? $rows : array();
 	}
 
 	// Helpers

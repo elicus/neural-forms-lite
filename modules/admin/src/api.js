@@ -28,6 +28,11 @@ if ( rootUrl ) {
 /**
  * Resolve a path against the Lite namespace unless it already starts with
  * '/neural-forms-pro/' or '/wp/' or another absolute namespace prefix.
+ *
+ * Returns a RELATIVE path (e.g. '/neural-forms/v1/forms'). apiFetch's
+ * createRootURLMiddleware prepends the REST root to produce the final
+ * URL. Returning an absolute URL here would collide with the middleware
+ * and produce a double-prefixed URL that yields rest_no_route.
  */
 function resolvePath( path ) {
 	if ( typeof path !== 'string' || path === '' ) {
@@ -39,8 +44,11 @@ function resolvePath( path ) {
 	if ( path.startsWith( '/neural-forms/' ) || path.startsWith( '/neural-forms-pro/' ) || path.startsWith( '/wp/' ) ) {
 		return path;
 	}
-	const base = ( liteUrl || '/wp-json/neural-forms/v1' ).replace( /\/$/, '' );
-	return base + ( path.startsWith( '/' ) ? path : '/' + path );
+	// liteUrl is intentionally NOT used as a prefix - it's the full
+	// absolute URL (rest_url(NAMESPACE)) which would double-prefix once
+	// the rootURL middleware adds rest_url() on top. We only need the
+	// namespace fragment here.
+	return '/neural-forms/v1' + ( path.startsWith( '/' ) ? path : '/' + path );
 }
 
 export default function request( path, options = {} ) {

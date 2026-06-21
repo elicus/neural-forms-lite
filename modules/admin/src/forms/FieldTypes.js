@@ -19,8 +19,13 @@ export const FIELD_TYPES = [
 	{ value: 'radio',      label: 'Radio'       },
 	{ value: 'checkboxes', label: 'Checkboxes'  },
 	{ value: 'range',      label: 'Range'       },
-	{ value: 'file',       label: 'File Upload' },
-	{ value: 'hidden',     label: 'Hidden'      },
+	{ value: 'rating',        label: 'Rating'        },
+	{ value: 'matrix',        label: 'Matrix'        },
+	{ value: 'poll',          label: 'Poll'          },
+	{ value: 'quiz_question', label: 'Quiz'          },
+	{ value: 'repeater',      label: 'Repeater'      },
+	{ value: 'file',          label: 'File Upload'   },
+	{ value: 'hidden',        label: 'Hidden'        },
 ];
 
 export const TYPES_THAT_PAIR = FIELD_TYPES
@@ -28,10 +33,17 @@ export const TYPES_THAT_PAIR = FIELD_TYPES
 	.map( ( t ) => t.value );
 
 /**
- * Generate a unique-ish field id from a type. The form builder appends
- * a numeric suffix when the chosen id collides with an existing field
- * (FormValidator enforces uniqueness on save, so this is just a UX
- * convenience that avoids the 422).
+ * Legacy label-derived id generator. Kept exported for back-compat
+ * with any external caller that imports it directly, but is NO
+ * LONGER USED by `newField()` — that path now routes through
+ * `makeFieldId(type, existing)` from schemaHelper.js which uses a
+ * monotonic-counter token, guaranteeing uniqueness without relying
+ * on a possibly-stale `existingIds` snapshot.
+ *
+ * The old behaviour ("rating" → "rating_2" → "rating_3") was the
+ * source of the duplicate-id save error that this 0.2.0 change
+ * fixes: two paths could both miss the second add and both emit
+ * `id: "rating"`. See FormValidator's "Duplicate field id" guard.
  */
 export function defaultIdForType( type, existingIds = [] ) {
 	const base = type === 'tel' ? 'phone' : type;
@@ -44,9 +56,15 @@ export function defaultIdForType( type, existingIds = [] ) {
 	return candidate;
 }
 
+import { makeFieldId } from './schemaHelper';
+
 /** Default skeleton for a newly-added field of a given type. */
 export function newField( type, existingIds = [] ) {
-	const id    = defaultIdForType( type, existingIds );
+	// Routes through the centralised, collision-defended id factory
+	// in schemaHelper. existingIds is accepted as an Array OR Set
+	// and used purely as a defence — `newFieldId(type)` is already
+	// monotonic, so a collision is essentially impossible.
+	const id    = makeFieldId( type, existingIds );
 	const label = type[ 0 ].toUpperCase() + type.slice( 1 );
 
 	const base = {
@@ -67,6 +85,85 @@ export function newField( type, existingIds = [] ) {
 
 	if ( type === 'textarea' ) {
 		base.rows = 3;
+	}
+
+	if ( type === 'rating' ) {
+		base.stars = 5;
+	}
+
+	if ( type === 'phone' || type === 'tel' ) {
+		// Country picker is always rendered on phone fields — the only
+		// setting users can change is the default country. Seed it to
+		// US; admins switch via the inspector dropdown.
+		base.settings = {
+			default_country: 'US',
+		};
+	}
+
+	if ( type === 'repeater' ) {
+		base.label    = 'Repeater';
+		base.required = false;
+		base.settings = {
+			min_items:           1,
+			max_items:           5,
+			columns:             1,
+			add_button_label:    'Add item',
+			remove_button_label: 'Remove',
+		};
+		// fields[] is the child-field TEMPLATE. Each rendered iteration
+		// on the frontend stamps these templates with a per-index id
+		// prefix. Starts empty so the inspector can guide the user to
+		// add their first child field; the full child DnD experience
+		// lands in Commit 2.
+		base.fields = [];
+	}
+
+	if ( type === 'matrix' ) {
+		base.label    = 'Matrix';
+		base.required = false;
+		base.settings = {
+			selection_type: 'radio',
+			rows: [
+				{ label: 'Row 1', value: 'row_1' },
+				{ label: 'Row 2', value: 'row_2' },
+				{ label: 'Row 3', value: 'row_3' },
+			],
+			columns: [
+				{ label: 'Option 1', value: 'option_1', score: 1 },
+				{ label: 'Option 2', value: 'option_2', score: 2 },
+				{ label: 'Option 3', value: 'option_3', score: 3 },
+			],
+		};
+	}
+
+	if ( type === 'poll' ) {
+		base.label    = 'Poll';
+		base.required = false;
+		base.options  = [
+			{ value: 'option_1', label: 'Option 1' },
+			{ value: 'option_2', label: 'Option 2' },
+		];
+		base.settings = {
+			results_visibility: 'after_vote',
+			chart_type:         'bar',
+			allow_multiple:     false,
+			randomize_options:  false,
+		};
+	}
+
+	if ( type === 'quiz_question' ) {
+		base.label    = 'Quiz Question';
+		base.required = true;
+		base.options  = [
+			{ value: 'option_1', label: 'Option 1', is_correct: false },
+			{ value: 'option_2', label: 'Option 2', is_correct: true  },
+		];
+		base.settings = {
+			points:              1,
+			explanation:         '',
+			show_correct_answer: 'after_submit',
+			randomize_options:   false,
+		};
 	}
 
 	return base;

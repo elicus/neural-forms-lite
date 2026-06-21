@@ -6,18 +6,38 @@
   "license": "GPL-2.0-or-later",
   "author": "Elicus",
   "scripts": {
-    "build": "wp-scripts build --webpack-src-dir=src --output-path=build",
-    "start": "wp-scripts start --webpack-src-dir=src --output-path=build",
+    "build": "npm run build:builder && npm run build:results && npm run build:blocks-extra && npm run build:forms && npm run build:entries && npm run build:settings && npm run build:stats && npm run build:import && npm run build:integrations && npm run build:templates && npm run build:block",
+    "build:builder": "wp-scripts build --config webpack.split.config.js --env screen=builder",
+    "build:results": "wp-scripts build --config webpack.split.config.js --env screen=results",
+    "build:blocks-extra": "wp-scripts build --config webpack.split.config.js --env screen=blocks-extra",
+    "build:forms": "wp-scripts build --config webpack.split.config.js --env screen=forms",
+    "build:entries": "wp-scripts build --config webpack.split.config.js --env screen=entries",
+    "build:settings": "wp-scripts build --config webpack.split.config.js --env screen=settings",
+    "build:stats": "wp-scripts build --config webpack.split.config.js --env screen=stats",
+    "build:import": "wp-scripts build --config webpack.split.config.js --env screen=import",
+    "build:integrations": "wp-scripts build --config webpack.split.config.js --env screen=integrations",
+    "build:templates": "wp-scripts build --config webpack.split.config.js --env screen=templates",
+    "build:block": "wp-scripts build --config webpack.split.config.js --env screen=block",
     "lint:js": "wp-scripts lint-js src",
     "lint:css": "wp-scripts lint-style \"src/**/*.css\"",
     "format": "wp-scripts format src"
   },
   "devDependencies": {
-    "@wordpress/scripts": "^26.19.0"
+    "@wordpress/scripts": "26.19.0"
   },
   "dependencies": {
-    "@dnd-kit/core": "^6.1.0",
-    "@dnd-kit/sortable": "^8.0.0",
-    "@dnd-kit/utilities": "^3.2.2"
+    "@dnd-kit/core": "6.1.0",
+    "@dnd-kit/sortable": "8.0.0",
+    "@dnd-kit/utilities": "3.2.2"
+  },
+  "overrides": {
+    "json-parse-even-better-errors": "3.0.0",
+    "parse-json": "5.2.0",
+    "@npmcli/fs": "2.1.2",
+    "cacache": "16.1.3",
+    "minipass": "3.3.6",
+    "fs-minipass": "2.1.0",
+    "minipass-fetch": "1.4.1",
+    "tar": "6.1.11"
   }
 }

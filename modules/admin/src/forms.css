@@ -1,0 +1,448 @@
+/**
+ * Forms-list screen styles. Per-screen split bundle.
+ *
+ * Authored from the rich `build/index.css` rules (the protected
+ * bundle's Forms-list namespace). When the Forms screen is migrated
+ * off `build/index.js` to `build/forms.js`, the protected `index.css`
+ * is no longer enqueued here — so every rule the screen needs lives
+ * in this file.
+ *
+ * Class namespace: `.neural-forms-forms-list__*` (BEM). The shared
+ * `--f-*` tokens are scoped to `#neural-forms-app` to mirror the rich
+ * bundle's root.
+ *
+ * If you change rule values here, double-check against the canonical
+ * rules in build/index.css until that bundle is decommissioned.
+ */
+
+/* ── Token system (mirrors the rich-bundle palette) ──────────── */
+#neural-forms-app {
+	--f-blue-50:    #eef0f7;
+	--f-blue-100:   #d6dbeb;
+	--f-blue-200:   #a7b0d3;
+	--f-blue-400:   #5566bb;
+	--f-blue-500:   #1d2a8a;
+	--f-blue-600:   #080f5b;
+	--f-blue-700:   #050942;
+
+	--f-gray-50:    #f9fafb;
+	--f-gray-100:   #f3f4f6;
+	--f-gray-200:   #e5e7eb;
+	--f-gray-300:   #d1d5db;
+	--f-gray-400:   #9ca3af;
+	--f-gray-500:   #6b7280;
+	--f-gray-600:   #4b5563;
+	--f-gray-700:   #374151;
+	--f-gray-800:   #1f2937;
+	--f-gray-900:   #111827;
+
+	--f-green-50:   #e6fbf3;
+	--f-green-100:  #c6f5e2;
+	--f-green-200:  #8feed1;
+	--f-green-600:  #15db95;
+
+	--f-amber-50:   #fef3c7;
+	--f-amber-200:  #fde68a;
+	--f-amber-600:  #d97706;
+
+	--f-red-50:     #fef2f2;
+	--f-red-200:    #fca5a5;
+	--f-red-600:    #dc2626;
+
+	--f-radius-sm:  6px;
+	--f-radius-md:  8px;
+	--f-radius-lg:  10px;
+	--f-radius-xl:  14px;
+	--f-radius-full: 9999px;
+
+	--f-content-width: 960px;
+	--f-transition: 0.15s ease;
+
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	max-width: 1200px;
+}
+
+/* ── List container ─────────────────────────────────────────── */
+/* Canonical Neural Forms admin spacing — mirrors Analytics's
+ * #neural-forms-results-app so every screen lines up to the same
+ * top + left edge inside .wrap. */
+.neural-forms-forms-list {
+	max-width: 1200px;
+	margin: 0;
+	padding: 28px 24px 48px;
+	box-sizing: border-box;
+}
+
+@media ( max-width: 782px ) {
+	.neural-forms-forms-list {
+		padding: 20px 16px 40px;
+	}
+}
+
+/* ── Header (title + New Form) ──────────────────────────────── */
+.neural-forms-forms-list__header {
+	align-items: center;
+	display: flex;
+	gap: 16px;
+	justify-content: space-between;
+	margin-bottom: 24px;
+}
+
+.neural-forms-forms-list__copy {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+/* Canonical hero typography — `#neural-forms-app` prefix bumps
+ * specificity to (1,1,0) to beat WP core's `.wrap h1` (0,1,1). */
+#neural-forms-app .neural-forms-forms-list__title {
+	color: var( --f-blue-600 );
+	font-size: 26px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	margin: 0 0 8px;
+}
+
+#neural-forms-app .neural-forms-forms-list__subtitle {
+	color: #4b5563;
+	font-size: 14px;
+	line-height: 1.5;
+	max-width: none;	margin: 0;
+}
+
+.neural-forms-forms-list__new-btn {
+	align-items: center;
+	background: var( --f-blue-600 );
+	border: 1px solid var( --f-blue-600 );
+	border-radius: 4px;
+	color: #fff;
+	cursor: pointer;
+	display: inline-flex;
+	font-family: inherit;
+	font-size: 16px;
+	font-weight: 500;
+	gap: 6px;
+	line-height: 1;
+	padding: 14px 24px;
+	text-decoration: none;
+	transition: background var( --f-transition ), border-color var( --f-transition );
+}
+
+.neural-forms-forms-list__new-btn:hover {
+	background: var( --f-blue-700 );
+	border-color: var( --f-blue-700 );
+	color: #fff;
+}
+
+.neural-forms-forms-list__new-btn:focus-visible {
+	box-shadow: 0 0 0 4px rgba( 8, 15, 91, 0.15 );
+	outline: 2px solid var( --f-blue-600 );
+	outline-offset: 2px;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.neural-forms-forms-list__tabs {
+	border-bottom: 1px solid var( --f-gray-200 );
+	display: flex;
+	gap: 4px;
+	margin-bottom: 16px;
+}
+
+.neural-forms-forms-list__tab {
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+	background: transparent;
+	border: none;
+	border-bottom: 2px solid transparent;
+	color: var( --f-gray-500 );
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1;
+	margin-bottom: -1px;
+	padding: 10px 14px;
+	transition: color var( --f-transition ), border-color var( --f-transition );
+}
+
+.neural-forms-forms-list__tab:hover {
+	color: var( --f-gray-900 );
+}
+
+.neural-forms-forms-list__tab--active {
+	border-bottom-color: var( --f-blue-600 );
+	color: var( --f-blue-600 );
+}
+
+/* Count badge inside each tab.
+ *
+ * Inactive: solid mid-gray fill with white numerals — high contrast
+ * against the page surface so the badge actually reads as a chip
+ * rather than blending into the background. The mid-gray (slate-500)
+ * is dark enough to stand out, neutral enough to not compete with
+ * the active tab's brand-blue badge.
+ *
+ * Active: solid brand-blue fill with white numerals. Matches the
+ * navy underline so the active tab reads as a single unit instead
+ * of three disconnected affordances.
+ */
+.neural-forms-forms-list__tab-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	height: 22px;
+	padding: 0 8px;
+	background: #94a3b8;
+	color: #fff;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	transition: background-color var( --f-transition );
+}
+
+.neural-forms-forms-list__tab:hover .neural-forms-forms-list__tab-count {
+	background: #64748b;
+}
+
+.neural-forms-forms-list__tab--active .neural-forms-forms-list__tab-count {
+	background: var( --f-blue-600 );
+	color: #fff;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.20 );
+}
+
+/* Total-forms accent in the header subtitle. Picks up the brand blue
+ * subtly so the number ties back to the active tab visually. */
+.neural-forms-forms-list__total {
+	color: var( --f-blue-600 );
+	font-weight: 700;
+}
+
+/* ── Table ───────────────────────────────────────────────────── */
+.neural-forms-forms-list__table {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-collapse: separate;
+	border-radius: var( --f-radius-xl );
+	border-spacing: 0;
+	overflow: hidden;
+	width: 100%;
+}
+
+.neural-forms-forms-list__th {
+	background: var( --f-gray-50 );
+	border-bottom: 1px solid var( --f-gray-200 );
+	color: var( --f-gray-400 );
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	padding: 11px 16px;
+	text-align: left;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.neural-forms-forms-list__row {
+	transition: background var( --f-transition );
+}
+
+.neural-forms-forms-list__row:hover {
+	background: var( --f-gray-50 );
+}
+
+.neural-forms-forms-list__row:not( :last-child ) td {
+	border-bottom: 1px solid var( --f-gray-100 );
+}
+
+.neural-forms-forms-list__cell {
+	padding: 14px 16px;
+	vertical-align: middle;
+}
+
+.neural-forms-forms-list__cell--actions {
+	white-space: nowrap;
+}
+
+.neural-forms-forms-list__form-name {
+	background: none;
+	border: none;
+	color: var( --f-gray-900 );
+	cursor: pointer;
+	display: block;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 1.3;
+	margin-bottom: 3px;
+	padding: 0;
+	text-align: left;
+	text-decoration: none;
+	transition: color var( --f-transition );
+}
+
+.neural-forms-forms-list__form-name:hover {
+	color: var( --f-blue-600 );
+}
+
+.neural-forms-forms-list__form-name:focus-visible {
+	border-radius: 2px;
+	outline: 2px solid var( --f-blue-500 );
+	outline-offset: 2px;
+}
+
+.neural-forms-forms-list__form-slug {
+	color: var( --f-gray-400 );
+	display: block;
+	font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+	font-size: 12px;
+}
+
+/* ── Status pill ─────────────────────────────────────────────── */
+.neural-forms-forms-list__status {
+	align-items: center;
+	border-radius: var( --f-radius-full );
+	display: inline-flex;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1;
+	padding: 3px 10px;
+	white-space: nowrap;
+}
+
+.neural-forms-forms-list__status--draft {
+	background: var( --f-gray-100 );
+	color: var( --f-gray-500 );
+}
+
+.neural-forms-forms-list__status--active {
+	background: var( --f-green-50 );
+	color: var( --f-green-600 );
+}
+
+.neural-forms-forms-list__status--archived {
+	background: var( --f-amber-50 );
+	color: var( --f-amber-600 );
+}
+
+/* ── Action buttons ──────────────────────────────────────────── */
+.neural-forms-forms-list__action-btn {
+	align-items: center;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	cursor: pointer;
+	display: inline-flex;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1;
+	padding: 6px 14px;
+	text-decoration: none;
+	transition: background var( --f-transition ), border-color var( --f-transition ), color var( --f-transition );
+}
+
+.neural-forms-forms-list__action-btn--edit {
+	background: var( --f-blue-50 );
+	border-color: var( --f-blue-200 );
+	color: var( --f-blue-600 );
+	margin-right: 6px;
+}
+
+.neural-forms-forms-list__action-btn--edit:hover {
+	background: var( --f-blue-100 );
+	border-color: var( --f-blue-200 );
+}
+
+.neural-forms-forms-list__action-btn--delete {
+	background: transparent;
+	border-color: var( --f-gray-200 );
+	color: var( --f-gray-500 );
+	margin-right: 6px;
+}
+
+.neural-forms-forms-list__action-btn--delete:hover {
+	background: var( --f-red-50 );
+	border-color: var( --f-red-200 );
+	color: var( --f-red-600 );
+}
+
+.neural-forms-forms-list__action-btn--restore {
+	background: var( --f-green-50 );
+	border-color: var( --f-green-200 );
+	color: var( --f-green-600 );
+	margin-right: 6px;
+}
+
+.neural-forms-forms-list__action-btn--restore:hover {
+	background: var( --f-green-100 );
+	border-color: var( --f-green-200 );
+}
+
+/* ── Loading / error / empty states ─────────────────────────── */
+.neural-forms-forms-list__empty,
+.neural-forms-forms-list__error,
+.neural-forms-forms-list__loading {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-xl );
+	font-size: 14px;
+	line-height: 1.6;
+	padding: 56px 24px;
+	text-align: center;
+}
+
+.neural-forms-forms-list__loading {
+	color: var( --f-gray-400 );
+}
+
+.neural-forms-forms-list__error {
+	color: var( --f-red-600 );
+}
+
+.neural-forms-forms-list__empty {
+	color: var( --f-gray-500 );
+}
+
+.neural-forms-forms-list__empty-cta {
+	background: none;
+	border: none;
+	color: var( --f-blue-600 );
+	cursor: pointer;
+	font-family: inherit;
+	font-size: inherit;
+	padding: 0;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.neural-forms-forms-list__empty-cta:hover {
+	color: var( --f-blue-700 );
+}
+
+.neural-forms-forms-list__empty-import {
+	color: var( --f-gray-400 );
+	font-size: 13px;
+	margin-top: 8px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media ( max-width: 782px ) {
+	.neural-forms-forms-list__header {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.neural-forms-forms-list__new-btn {
+		justify-content: center;
+		width: 100%;
+	}
+
+	.neural-forms-forms-list__form-slug {
+		display: none;
+	}
+}

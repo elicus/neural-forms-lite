@@ -1,0 +1,2890 @@
+/**
+ * Integrations screen.
+ *
+ * Pro-locked admin page. Lite owns the React UI; Pro provides the
+ * backend (capability filter + REST endpoints under
+ * /neural-forms-pro/v1/integrations/...). When the INTEGRATIONS
+ * capability is locked (no Pro / Pro deactivated), the entire page
+ * renders a single Pro-upsell card.
+ *
+ * Render modes:
+ *   - capabilities.integrations === false → LockedView (upsell).
+ *   - capabilities.integrations === true  → five-tab WAI-ARIA tablist
+ *     - Zapier / HubSpot / Google Forms / WhatsApp / Mailchimp tabs
+ *       each render their own configure UI, backed by
+ *       /neural-forms-pro/v1/integrations/<provider>/... REST routes.
+ *
+ * REST surface used by ZapierPanel (admin-gated, capability-gated):
+ *   GET    /neural-forms-pro/v1/integrations/zapier/webhooks
+ *   POST   /neural-forms-pro/v1/integrations/zapier/webhooks
+ *   PUT    /neural-forms-pro/v1/integrations/zapier/webhooks/{id}
+ *   DELETE /neural-forms-pro/v1/integrations/zapier/webhooks/{id}
+ *   POST   /neural-forms-pro/v1/integrations/zapier/webhooks/{id}/test
+ *
+ * The Lite REST helper (../api.js) already handles the nonce middleware
+ * + cross-namespace path routing, so this screen just calls
+ * api( '/neural-forms-pro/v1/...' ) directly.
+ *
+ * Class naming: `.neural-forms-integrations__*` (BEM). All authored
+ * CSS in src/integrations.css ships with the per-screen
+ * build/integrations.* bundle.
+ */
+
+import { useState, useEffect, useCallback, useMemo, Fragment } from '@wordpress/element';
+import { __, sprintf } from '@wordpress/i18n';
+import api from '../api';
+
+const UPGRADE_URL = 'https://neuralforms.ai/pricing';
+
+const ZAPIER_HOOK_HOST = 'hooks.zapier.com';
+const ZAPIER_EVENT     = 'form_submission_created';
+
+// The server-side host allowlist is filterable via
+// `neural_forms_pro_zapier_allowed_hosts` (default: just hooks.zapier.com).
+// Developers running dev-only QA may extend it to webhook.site / ngrok /
+// pipedream so they can verify the wire payload without paying for
+// Zapier Premium. Because the React layer cannot read that PHP filter
+// at runtime, the client guard intentionally only enforces "valid
+// https URL"; the REST endpoint returns a specific `not_zapier_host`
+// 422 with a user-readable message when the host is not allowed, which
+// the form surfaces in its inline error banner.
+
+const PROVIDERS = [
+	{
+		id:    'hubspot',
+		name:  'HubSpot',
+		blurb: __( 'Sync new entries directly into your HubSpot CRM as contacts and deals so sales never miss a lead.', 'neural-forms-lite' ),
+		icon:  'H',
+	},
+	{
+		id:    'whatsapp',
+		name:  'WhatsApp',
+		blurb: __( 'Send instant submission alerts to your team — or auto-reply to submitters — through WhatsApp Business.', 'neural-forms-lite' ),
+		icon:  'W',
+	},
+	{
+		id:    'mailchimp',
+		name:  'Mailchimp',
+		blurb: __( 'Add submitters to your Mailchimp audiences automatically, with field-to-merge-tag mapping.', 'neural-forms-lite' ),
+		icon:  'M',
+	},
+	{
+		id:    'google_forms',
+		name:  __( 'Google Forms', 'neural-forms-lite' ),
+		blurb: __( 'Connect Google Forms to import form structures into Neural Forms.', 'neural-forms-lite' ),
+		icon:  'G',
+	},
+	{
+		id:    'zapier',
+		name:  'Zapier',
+		blurb: __( 'Send Neural Forms submissions to Zapier webhooks and connect with thousands of apps.', 'neural-forms-lite' ),
+		icon:  'Z',
+	},
+];
+
+// ─── Icons ──────────────────────────────────────────────────────
+
+function LockIcon() {
+	return (
+		<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+			<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+		</svg>
+	);
+}
+
+function HourglassIcon() {
+	return (
+		<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<path d="M6 2h12" />
+			<path d="M6 22h12" />
+			<path d="M6 2v4a6 6 0 0 0 12 0V2" />
+			<path d="M6 22v-4a6 6 0 0 1 12 0v4" />
+		</svg>
+	);
+}
+
+// ─── Locked (Lite-only) variant ─────────────────────────────────
+
+function LockedView() {
+	return (
+		<div className="neural-forms-integrations__lock-card" role="region" aria-label={ __( 'Integrations are a Pro feature', 'neural-forms-lite' ) }>
+			<div className="neural-forms-integrations__lock-icon" aria-hidden="true">
+				<LockIcon />
+			</div>
+			<div className="neural-forms-integrations__lock-body">
+				<div className="neural-forms-integrations__lock-eyebrow">
+					<span className="neural-forms-integrations__pro-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
+					<span className="neural-forms-integrations__lock-eyebrow-text">{ __( 'Premium feature', 'neural-forms-lite' ) }</span>
+				</div>
+				<h2 className="neural-forms-integrations__lock-title">
+					{ __( 'Integrations are available in Neural Forms Pro', 'neural-forms-lite' ) }
+				</h2>
+				<p className="neural-forms-integrations__lock-desc">
+					{ __( 'Send Neural Forms submissions to the tools you already run on — Zapier, HubSpot, WhatsApp, Mailchimp, Google Forms, and more. Upgrade to Neural Forms Pro to unlock this page and configure providers.', 'neural-forms-lite' ) }
+				</p>
+				<ul className="neural-forms-integrations__lock-list">
+					{ PROVIDERS.map( ( p ) => (
+						<li key={ p.id } className="neural-forms-integrations__lock-list-item">
+							<span className="neural-forms-integrations__provider-mark" aria-hidden="true">{ p.icon }</span>
+							<span>{ p.name }</span>
+						</li>
+					) ) }
+				</ul>
+				<a
+					className="neural-forms-integrations__cta"
+					href={ UPGRADE_URL }
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
+				</a>
+			</div>
+		</div>
+	);
+}
+
+// ─── Unlocked: Coming-soon card for the non-Zapier providers ─────
+
+function ComingSoonCard( { provider } ) {
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			<div className="neural-forms-integrations__soon-row">
+				<span className="neural-forms-integrations__soon-icon" aria-hidden="true">
+					<HourglassIcon />
+				</span>
+				<div className="neural-forms-integrations__soon-body">
+					<h3 className="neural-forms-integrations__soon-title">{ __( 'Coming soon', 'neural-forms-lite' ) }</h3>
+					<p className="neural-forms-integrations__soon-desc">
+						{ __( 'This integration is on the Neural Forms Pro roadmap. Your capability is already unlocked — once the provider ships, configuration will appear right here, no plugin update required.', 'neural-forms-lite' ) }
+					</p>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+// ─── Zapier configure panel ─────────────────────────────────────
+
+/**
+ * Mask a stored webhook URL for display. The full URL is the bearer
+ * token for an unauthenticated Catch Hook target — we never render
+ * the whole path in the admin UI (or in any future log surface).
+ *
+ * Output shape mirrors the PHP WebhookRepository::mask_url helper:
+ *   https://hooks.zapier.com/...cdef
+ */
+function maskWebhookUrl( url ) {
+	if ( ! url || typeof url !== 'string' ) return '';
+	try {
+		const u = new URL( url );
+		const path = ( u.pathname || '' ).replace( /^\//, '' );
+		const tail = path.length > 4 ? path.slice( -4 ) : path;
+		return `${ u.protocol }//${ u.host }/...${ tail }`;
+	} catch ( e ) {
+		return '';
+	}
+}
+
+/**
+ * Client-side URL validation. Intentionally permissive on host —
+ * the server's host allowlist is filterable for development QA
+ * (see the ZAPIER_HOOK_HOST comment above), and the React layer
+ * can't read that filter at runtime. We enforce the two hard rules
+ * the user can definitely fix client-side (parses as a URL, uses
+ * https) and let the server return a specific 422 when the host
+ * is not on the production / extended allowlist.
+ */
+function isValidZapierUrl( url ) {
+	try {
+		const u = new URL( url );
+		return u.protocol === 'https:';
+	} catch ( e ) {
+		return false;
+	}
+}
+
+/**
+ * Render an inline error message from a REST WP_Error response.
+ * Tries common shapes first (data.code / message), falls back to
+ * the literal exception message.
+ */
+function errorMessage( err, fallback ) {
+	if ( ! err ) return fallback;
+	if ( typeof err === 'string' ) return err;
+	if ( err.message ) return err.message;
+	if ( err.data && err.data.message ) return err.data.message;
+	return fallback;
+}
+
+function ZapierEmpty( { onAdd } ) {
+	return (
+		<div className="nf-zapier-empty">
+			<span className="nf-zapier-empty__mark" aria-hidden="true">Z</span>
+			<h3 className="nf-zapier-empty__title">
+				{ __( 'No Zapier connections yet', 'neural-forms-lite' ) }
+			</h3>
+			<p className="nf-zapier-empty__desc">
+				{ __( 'Create a Zap using Webhooks by Zapier → Catch Hook, then paste the webhook URL here. Each new submission will trigger the Zap.', 'neural-forms-lite' ) }
+			</p>
+			<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary nf-zapier-empty__cta" onClick={ onAdd }>
+				{ __( 'Add Zapier connection', 'neural-forms-lite' ) }
+			</button>
+		</div>
+	);
+}
+
+function ZapierList( { rows, formsById, onAdd, onEdit, onToggle, onTest, onDelete, busy } ) {
+	return (
+		<div className="neural-forms-integrations__zap-list-wrap">
+			<div className="neural-forms-integrations__zap-list-header">
+				<h3 className="neural-forms-integrations__zap-list-title">
+					{ __( 'Zapier connections', 'neural-forms-lite' ) }
+				</h3>
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onAdd }>
+					{ __( '+ Add connection', 'neural-forms-lite' ) }
+				</button>
+			</div>
+
+			<ul className="neural-forms-integrations__zap-list">
+				{ rows.map( ( row ) => {
+					const masked  = maskWebhookUrl( row.target_url );
+					const isAll   = ( row.form_id || 0 ) === 0;
+					const formName = isAll
+						? __( 'All forms', 'neural-forms-lite' )
+						: ( formsById[ row.form_id ] || sprintf( __( 'Form #%d', 'neural-forms-lite' ), row.form_id ) );
+					const isActive = row.status === 'active';
+					const rowBusy  = busy === row.id;
+
+					return (
+						<li key={ row.id } className="neural-forms-integrations__zap-row">
+							<div className="neural-forms-integrations__zap-row-main">
+								<div className="neural-forms-integrations__zap-row-line1">
+									<code className="neural-forms-integrations__zap-url">{ masked }</code>
+									<span className={ 'neural-forms-integrations__zap-status' + ( isActive ? ' is-active' : ' is-inactive' ) }>
+										{ isActive ? __( 'Active', 'neural-forms-lite' ) : __( 'Inactive', 'neural-forms-lite' ) }
+									</span>
+								</div>
+								<div className="neural-forms-integrations__zap-row-meta">
+									<span>{ __( 'Form: ', 'neural-forms-lite' ) }{ formName }</span>
+									<span>{ __( 'Event: ', 'neural-forms-lite' ) }{ __( 'New form submission', 'neural-forms-lite' ) }</span>
+									{ row.last_sent_at && (
+										<span>{ __( 'Last sent: ', 'neural-forms-lite' ) }{ row.last_sent_at }</span>
+									) }
+								</div>
+								{ row.last_error && (
+									<p className="neural-forms-integrations__zap-error">
+										{ __( 'Last error: ', 'neural-forms-lite' ) }{ row.last_error }
+									</p>
+								) }
+							</div>
+
+							<div className="neural-forms-integrations__zap-row-actions">
+								<button type="button" className="neural-forms-integrations__btn" onClick={ () => onTest( row ) } disabled={ rowBusy }>
+									{ rowBusy ? __( 'Sending…', 'neural-forms-lite' ) : __( 'Test', 'neural-forms-lite' ) }
+								</button>
+								<button type="button" className="neural-forms-integrations__btn" onClick={ () => onEdit( row ) }>
+									{ __( 'Edit', 'neural-forms-lite' ) }
+								</button>
+								<button type="button" className="neural-forms-integrations__btn" onClick={ () => onToggle( row ) }>
+									{ isActive ? __( 'Disable', 'neural-forms-lite' ) : __( 'Enable', 'neural-forms-lite' ) }
+								</button>
+								<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ () => onDelete( row ) }>
+									{ __( 'Delete', 'neural-forms-lite' ) }
+								</button>
+							</div>
+						</li>
+					);
+				} ) }
+			</ul>
+		</div>
+	);
+}
+
+function ZapierForm( { initial, forms, onCancel, onSubmit, saving, error } ) {
+	const isEdit = !! initial;
+	const [ url, setUrl ]       = useState( initial?.target_url || '' );
+	const [ formId, setFormId ] = useState( initial?.form_id || 0 );
+	const [ status, setStatus ] = useState( initial?.status || 'active' );
+
+	const urlValid    = url === '' || isValidZapierUrl( url );
+	const canSubmit   = isValidZapierUrl( url ) && ! saving;
+
+	const handleSubmit = ( ev ) => {
+		ev.preventDefault();
+		if ( ! canSubmit ) return;
+		onSubmit( {
+			event:      ZAPIER_EVENT,
+			target_url: url.trim(),
+			form_id:    formId,
+			status,
+		} );
+	};
+
+	return (
+		<form className="neural-forms-integrations__zap-form" onSubmit={ handleSubmit }>
+			<header className="neural-forms-integrations__zap-form-header">
+				<h3 className="neural-forms-integrations__zap-form-title">
+					{ isEdit
+						? __( 'Edit Zapier connection', 'neural-forms-lite' )
+						: __( 'Add Zapier connection', 'neural-forms-lite' )
+					}
+				</h3>
+				<p className="neural-forms-integrations__zap-form-help">
+					{ __( 'Create a Zap in Zapier using Webhooks by Zapier → Catch Hook, then paste the webhook URL here.', 'neural-forms-lite' ) }
+					{ ' ' }
+					<a href="https://zapier.com/apps/webhook/help" target="_blank" rel="noopener noreferrer">
+						{ __( 'Zapier Webhooks help', 'neural-forms-lite' ) }
+					</a>
+				</p>
+			</header>
+
+			<div className="nf-integration-form-grid">
+				<div className="neural-forms-integrations__zap-field nf-field-full">
+					<label className="neural-forms-integrations__zap-label" htmlFor="nf-zap-url">
+						{ __( 'Webhook URL', 'neural-forms-lite' ) }
+					</label>
+					<input
+						id="nf-zap-url"
+						type="url"
+						className={ 'neural-forms-integrations__zap-input' + ( ! urlValid ? ' is-invalid' : '' ) }
+						placeholder="https://hooks.zapier.com/hooks/catch/..."
+						value={ url }
+						onChange={ ( e ) => setUrl( e.target.value ) }
+						autoComplete="off"
+						required
+					/>
+					{ ! urlValid && (
+						<p className="neural-forms-integrations__zap-field-error">
+							{ __( 'Webhook URL must be a valid https:// URL.', 'neural-forms-lite' ) }
+						</p>
+					) }
+				</div>
+
+				<div className="neural-forms-integrations__zap-field">
+					<label className="neural-forms-integrations__zap-label" htmlFor="nf-zap-form">
+						{ __( 'Form', 'neural-forms-lite' ) }
+					</label>
+					<select
+						id="nf-zap-form"
+						className="neural-forms-integrations__zap-select"
+						value={ formId }
+						onChange={ ( e ) => setFormId( parseInt( e.target.value, 10 ) || 0 ) }
+					>
+						<option value={ 0 }>{ __( 'All forms', 'neural-forms-lite' ) }</option>
+						{ forms.map( ( f ) => (
+							<option key={ f.id } value={ f.id }>{ f.name }</option>
+						) ) }
+					</select>
+				</div>
+
+				<div className="neural-forms-integrations__zap-field">
+					<label className="neural-forms-integrations__zap-label" htmlFor="nf-zap-event">
+						{ __( 'Event', 'neural-forms-lite' ) }
+					</label>
+					<select id="nf-zap-event" className="neural-forms-integrations__zap-select" value={ ZAPIER_EVENT } onChange={ () => {} } disabled>
+						<option value={ ZAPIER_EVENT }>{ __( 'New form submission', 'neural-forms-lite' ) }</option>
+					</select>
+					<p className="neural-forms-integrations__zap-hint">
+						{ __( 'More triggers (spam detected, Neural AI analysed, high priority) will be available in a future release.', 'neural-forms-lite' ) }
+					</p>
+				</div>
+
+				<div className="neural-forms-integrations__zap-field">
+					<label className="neural-forms-integrations__zap-label" htmlFor="nf-zap-status">
+						{ __( 'Status', 'neural-forms-lite' ) }
+					</label>
+					<select id="nf-zap-status" className="neural-forms-integrations__zap-select" value={ status } onChange={ ( e ) => setStatus( e.target.value ) }>
+						<option value="active">{ __( 'Active', 'neural-forms-lite' ) }</option>
+						<option value="inactive">{ __( 'Inactive', 'neural-forms-lite' ) }</option>
+					</select>
+				</div>
+			</div>
+
+			{ error && (
+				<div className="neural-forms-integrations__zap-error-banner" role="alert">{ error }</div>
+			) }
+
+			<div className="neural-forms-integrations__zap-form-actions">
+				<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ ! canSubmit }>
+					{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save connection', 'neural-forms-lite' ) }
+				</button>
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onCancel } disabled={ saving }>
+					{ __( 'Cancel', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		</form>
+	);
+}
+
+function ZapierPanel( { provider, onStatusChange } ) {
+	const [ loading, setLoading ]   = useState( true );
+	const [ webhooks, setWebhooks ] = useState( [] );
+	const [ forms, setForms ]       = useState( [] );
+	const [ mode, setMode ]         = useState( { name: 'list' } );
+	const [ saving, setSaving ]     = useState( false );
+	const [ formError, setFormError ] = useState( '' );
+	const [ flash, setFlash ]       = useState( null );
+	const [ busy, setBusy ]         = useState( 0 );
+
+	const reloadWebhooks = useCallback( async () => {
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/zapier/webhooks' );
+			setWebhooks( Array.isArray( res?.webhooks ) ? res.webhooks : [] );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load Zapier connections.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	useEffect( () => {
+		let cancelled = false;
+		( async () => {
+			try {
+				const [ wh, fs ] = await Promise.all( [
+					api( '/neural-forms-pro/v1/integrations/zapier/webhooks' ),
+					api( '/forms?per_page=200' ),
+				] );
+				if ( cancelled ) return;
+				setWebhooks( Array.isArray( wh?.webhooks ) ? wh.webhooks : [] );
+				const list = Array.isArray( fs )
+					? fs
+					: ( Array.isArray( fs?.items ) ? fs.items : ( Array.isArray( fs?.forms ) ? fs.forms : [] ) );
+				setForms( list.map( ( f ) => ( { id: parseInt( f.id, 10 ), name: f.name || `Form #${ f.id }` } ) ) );
+			} catch ( e ) {
+				if ( cancelled ) return;
+				setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load Zapier connections.', 'neural-forms-lite' ) ) } );
+			} finally {
+				if ( ! cancelled ) setLoading( false );
+			}
+		} )();
+		return () => { cancelled = true; };
+	}, [] );
+
+	const formsById = useMemo( () => {
+		const map = {};
+		forms.forEach( ( f ) => { map[ f.id ] = f.name; } );
+		return map;
+	}, [ forms ] );
+
+	// Push Zapier status up to the tab dot. Zapier has no status
+	// endpoint (it's a webhook-list integration), so configured =
+	// at least one webhook row exists. The list is live so toggle /
+	// add / delete flow into the dot color automatically.
+	useEffect( () => {
+		if ( typeof onStatusChange !== 'function' ) return;
+		if ( loading ) {
+			onStatusChange( 'zapier', 'unknown' );
+			return;
+		}
+		onStatusChange( 'zapier', webhooks.length > 0 ? 'connected' : 'not_configured' );
+	}, [ onStatusChange, loading, webhooks.length ] );
+
+	const handleSubmit = useCallback( async ( payload ) => {
+		setSaving( true );
+		setFormError( '' );
+		try {
+			if ( mode.name === 'edit' ) {
+				await api( `/neural-forms-pro/v1/integrations/zapier/webhooks/${ mode.row.id }`, {
+					method: 'PUT',
+					data:   payload,
+				} );
+			} else {
+				await api( '/neural-forms-pro/v1/integrations/zapier/webhooks', {
+					method: 'POST',
+					data:   payload,
+				} );
+			}
+			await reloadWebhooks();
+			setMode( { name: 'list' } );
+			setFlash( { kind: 'success', message: __( 'Zapier connection saved.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFormError( errorMessage( e, __( 'Could not save the webhook.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	}, [ mode, reloadWebhooks ] );
+
+	const handleToggle = useCallback( async ( row ) => {
+		const next = row.status === 'active' ? 'inactive' : 'active';
+		try {
+			await api( `/neural-forms-pro/v1/integrations/zapier/webhooks/${ row.id }`, {
+				method: 'PUT',
+				data:   { status: next },
+			} );
+			await reloadWebhooks();
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not update the webhook.', 'neural-forms-lite' ) ) } );
+		}
+	}, [ reloadWebhooks ] );
+
+	const handleDelete = useCallback( async ( row ) => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Delete this Zapier connection? This cannot be undone.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		try {
+			await api( `/neural-forms-pro/v1/integrations/zapier/webhooks/${ row.id }`, {
+				method: 'DELETE',
+			} );
+			await reloadWebhooks();
+			setFlash( { kind: 'success', message: __( 'Zapier connection deleted.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not delete the webhook.', 'neural-forms-lite' ) ) } );
+		}
+	}, [ reloadWebhooks ] );
+
+	const handleTest = useCallback( async ( row ) => {
+		setBusy( row.id );
+		setFlash( null );
+		try {
+			const res = await api( `/neural-forms-pro/v1/integrations/zapier/webhooks/${ row.id }/test`, {
+				method: 'POST',
+			} );
+			if ( res?.success ) {
+				setFlash( { kind: 'success', message: __( 'Test payload sent to Zapier.', 'neural-forms-lite' ) } );
+			} else {
+				setFlash( {
+					kind:    'error',
+					message: sprintf(
+						/* translators: %s: error message */
+						__( 'Zapier returned an error: %s', 'neural-forms-lite' ),
+						res?.error || __( 'unknown error', 'neural-forms-lite' )
+					),
+				} );
+			}
+			await reloadWebhooks();
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not send the test payload.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setBusy( 0 );
+		}
+	}, [ reloadWebhooks ] );
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : mode.name === 'new' ? (
+				<ZapierForm
+					initial={ null }
+					forms={ forms }
+					onCancel={ () => { setFormError( '' ); setMode( { name: 'list' } ); } }
+					onSubmit={ handleSubmit }
+					saving={ saving }
+					error={ formError }
+				/>
+			) : mode.name === 'edit' ? (
+				<ZapierForm
+					initial={ mode.row }
+					forms={ forms }
+					onCancel={ () => { setFormError( '' ); setMode( { name: 'list' } ); } }
+					onSubmit={ handleSubmit }
+					saving={ saving }
+					error={ formError }
+				/>
+			) : webhooks.length === 0 ? (
+				<ZapierEmpty onAdd={ () => setMode( { name: 'new' } ) } />
+			) : (
+				<ZapierList
+					rows={ webhooks }
+					formsById={ formsById }
+					onAdd={ () => setMode( { name: 'new' } ) }
+					onEdit={ ( row ) => setMode( { name: 'edit', row } ) }
+					onToggle={ handleToggle }
+					onTest={ handleTest }
+					onDelete={ handleDelete }
+					busy={ busy }
+				/>
+			) }
+		</div>
+	);
+}
+
+// ─── Google Forms configure panel ───────────────────────────────
+
+/**
+ * State machine:
+ *   - loading       → initial status fetch
+ *   - no_creds      → site-level OAuth client_id / client_secret form
+ *   - disconnected  → "Connect Google Account" button
+ *   - connected     → forms list + import flow
+ *
+ * The OAuth handshake leaves the browser on
+ * /wp-admin/admin.php?page=neural-forms-integrations&nf_google=...
+ * On mount we read that flag, show the flash, and replaceState the
+ * URL clean so a refresh doesn't replay the banner.
+ *
+ * REST surface (admin-gated, capability-gated):
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/status
+ *   POST   /neural-forms-pro/v1/integrations/google-forms/settings
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/auth-url
+ *   POST   /neural-forms-pro/v1/integrations/google-forms/disconnect
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/forms
+ *   GET    /neural-forms-pro/v1/integrations/google-forms/forms/{id}/preview
+ *   POST   /neural-forms-pro/v1/integrations/google-forms/forms/{id}/import
+ */
+
+function CopyableInput( { value, label } ) {
+	const [ copied, setCopied ] = useState( false );
+	const onCopy = useCallback( () => {
+		if ( ! navigator?.clipboard ) return;
+		navigator.clipboard.writeText( value ).then( () => {
+			setCopied( true );
+			setTimeout( () => setCopied( false ), 1500 );
+		} );
+	}, [ value ] );
+	return (
+		<div className="neural-forms-integrations__zap-field">
+			<label className="neural-forms-integrations__zap-label">{ label }</label>
+			<div className="neural-forms-integrations__gf-copy-row">
+				<input className="neural-forms-integrations__zap-input" type="text" value={ value } readOnly onFocus={ ( e ) => e.target.select() } />
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onCopy } disabled={ ! value }>
+					{ copied ? __( 'Copied!', 'neural-forms-lite' ) : __( 'Copy', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		</div>
+	);
+}
+
+/**
+ * State 1 (no creds) AND state 2 edit mode: the Client ID + Secret form.
+ *
+ * Renders ONLY the form, never the Connect button — the parent panel
+ * decides whether to show the Connect button (state 2) or the
+ * forms-list (state 3). Splitting concerns makes the three states
+ * visually distinct: state 1 is "enter creds", state 2 is "you have
+ * creds, click Connect", state 3 is "fully connected".
+ *
+ * `onCancel` is only relevant when re-opening the form from state 2
+ * to update credentials; state 1 hides it (no prior state to return
+ * to).
+ */
+function GFCredsForm( { status, onSaved, onCancel } ) {
+	const [ clientId,     setClientId ]     = useState( status?.client_id || '' );
+	const [ clientSecret, setClientSecret ] = useState( '' );
+	const [ saving,       setSaving ]       = useState( false );
+	const [ err,          setErr ]          = useState( '' );
+	const hasCreds = !! status?.has_client_creds;
+
+	const onSave = async ( ev ) => {
+		ev.preventDefault();
+		setSaving( true );
+		setErr( '' );
+		try {
+			const data = { client_id: clientId };
+			if ( clientSecret !== '' ) data.client_secret = clientSecret;
+			const next = await api( '/neural-forms-pro/v1/integrations/google-forms/settings', { method: 'POST', data } );
+			setClientSecret( '' );
+			onSaved( next );
+		} catch ( e ) {
+			setErr( errorMessage( e, __( 'Could not save credentials.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	return (
+		<form className="neural-forms-integrations__zap-form" onSubmit={ onSave }>
+			<header className="neural-forms-integrations__zap-form-header">
+				<h3 className="neural-forms-integrations__zap-form-title">
+					{ hasCreds
+						? __( 'Update Google Cloud OAuth credentials', 'neural-forms-lite' )
+						: __( 'Google Cloud OAuth credentials', 'neural-forms-lite' )
+					}
+				</h3>
+				<p className="neural-forms-integrations__zap-form-help">
+					{ __( 'Create OAuth 2.0 credentials in Google Cloud Console under APIs & Services → Credentials. Use the redirect URI below verbatim, then paste the client ID and secret here.', 'neural-forms-lite' ) }
+					{ ' ' }
+					<a href="https://developers.google.com/identity/protocols/oauth2" target="_blank" rel="noopener noreferrer">
+						{ __( 'Google OAuth 2.0 docs', 'neural-forms-lite' ) }
+					</a>
+				</p>
+			</header>
+
+			<CopyableInput value={ status?.redirect_uri || '' } label={ __( 'Authorised redirect URI (paste into Google Cloud)', 'neural-forms-lite' ) } />
+			<p className="neural-forms-integrations__zap-hint">
+				{ __( 'Add this exact redirect URI to your Google OAuth client. Google does not accept .local domains — use localhost with a port, a staging domain, or a tunnel.', 'neural-forms-lite' ) }
+			</p>
+
+			<div className="nf-integration-form-grid">
+				<div className="neural-forms-integrations__zap-field nf-field-full">
+					<label className="neural-forms-integrations__zap-label" htmlFor="nf-gf-client-id">
+						{ __( 'Client ID', 'neural-forms-lite' ) }
+					</label>
+					<input
+						id="nf-gf-client-id"
+						type="text"
+						className="neural-forms-integrations__zap-input"
+						value={ clientId }
+						onChange={ ( e ) => setClientId( e.target.value ) }
+						placeholder="123-abc.apps.googleusercontent.com"
+						required
+					/>
+				</div>
+
+				<div className="neural-forms-integrations__zap-field nf-field-full">
+					<label className="neural-forms-integrations__zap-label" htmlFor="nf-gf-client-secret">
+						{ __( 'Client Secret', 'neural-forms-lite' ) }
+					</label>
+					<input
+						id="nf-gf-client-secret"
+						type="password"
+						className="neural-forms-integrations__zap-input"
+						value={ clientSecret }
+						onChange={ ( e ) => setClientSecret( e.target.value ) }
+						placeholder={ hasCreds ? '•••••••• (' + __( 'leave blank to keep existing', 'neural-forms-lite' ) + ')' : '' }
+						aria-describedby="nf-gf-client-secret-help"
+					/>
+					<p id="nf-gf-client-secret-help" className="neural-forms-integrations__zap-hint">
+						{ __( 'The secret is encrypted at rest and never displayed again. Leave blank to keep the existing value.', 'neural-forms-lite' ) }
+					</p>
+				</div>
+			</div>
+
+			{ err && <div className="neural-forms-integrations__zap-error-banner" role="alert">{ err }</div> }
+
+			<div className="neural-forms-integrations__zap-form-actions">
+				<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving || ! clientId || ( ! hasCreds && ! clientSecret ) }>
+					{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save credentials', 'neural-forms-lite' ) }
+				</button>
+				{ onCancel && (
+					<button type="button" className="neural-forms-integrations__btn" onClick={ onCancel } disabled={ saving }>
+						{ __( 'Cancel', 'neural-forms-lite' ) }
+					</button>
+				) }
+			</div>
+		</form>
+	);
+}
+
+/**
+ * State 2: Client ID + Secret saved, OAuth handshake not yet
+ * completed. Shows the new "Connect Google Account" CTA + edit /
+ * clear options. The credentials FORM is intentionally hidden in
+ * this state so the next action is unambiguous.
+ */
+function GFCredsSavedCard( { status, onConnect, onEdit, onClear, connecting, clearing } ) {
+	return (
+		<div className="neural-forms-integrations__gf-saved">
+			<div className="neural-forms-integrations__gf-saved-body">
+				<span className="neural-forms-integrations__zap-status is-active">
+					{ __( 'Credentials saved', 'neural-forms-lite' ) }
+				</span>
+				<p className="neural-forms-integrations__zap-form-help">
+					{ __( 'Your Google Cloud OAuth credentials are stored. Click Connect Google Account to authorise Neural Forms to read your Google Forms.', 'neural-forms-lite' ) }
+				</p>
+				{ status?.client_id && (
+					<dl className="neural-forms-integrations__gf-saved-grid">
+						<div>
+							<dt>{ __( 'Client ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.client_id }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Client Secret', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.client_secret_set ? __( 'Stored (never displayed)', 'neural-forms-lite' ) : __( 'Not set', 'neural-forms-lite' ) }</dd>
+						</div>
+					</dl>
+				) }
+			</div>
+			<div className="neural-forms-integrations__zap-form-actions">
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onConnect } disabled={ connecting }>
+					{ connecting ? __( 'Connecting…', 'neural-forms-lite' ) : __( 'Connect Google Account', 'neural-forms-lite' ) }
+				</button>
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onEdit } disabled={ connecting || clearing }>
+					{ __( 'Update credentials', 'neural-forms-lite' ) }
+				</button>
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ onClear } disabled={ connecting || clearing }>
+					{ clearing ? __( 'Clearing…', 'neural-forms-lite' ) : __( 'Clear credentials', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function GFFormsList( { forms, loading, error, onRefresh, onPreview, busyId } ) {
+	if ( loading ) return <p className="neural-forms-integrations__zap-loading">{ __( 'Loading Google Forms…', 'neural-forms-lite' ) }</p>;
+	if ( error )   return <div className="neural-forms-integrations__zap-error-banner" role="alert">{ error }</div>;
+	if ( ! forms || forms.length === 0 ) {
+		return (
+			<div className="neural-forms-integrations__zap-empty">
+				<h3 className="neural-forms-integrations__zap-empty-title">{ __( 'No Google Forms found', 'neural-forms-lite' ) }</h3>
+				<p className="neural-forms-integrations__zap-empty-desc">
+					{ __( 'Create a form at forms.google.com, then click Refresh.', 'neural-forms-lite' ) }
+				</p>
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onRefresh }>
+					{ __( 'Refresh forms', 'neural-forms-lite' ) }
+				</button>
+			</div>
+		);
+	}
+	return (
+		<div className="neural-forms-integrations__zap-list-wrap">
+			<div className="neural-forms-integrations__zap-list-header">
+				<h3 className="neural-forms-integrations__zap-list-title">{ __( 'Your Google Forms', 'neural-forms-lite' ) }</h3>
+				<button type="button" className="neural-forms-integrations__btn" onClick={ onRefresh }>{ __( 'Refresh', 'neural-forms-lite' ) }</button>
+			</div>
+			<ul className="neural-forms-integrations__zap-list">
+				{ forms.map( ( f ) => (
+					<li key={ f.id } className="neural-forms-integrations__zap-row">
+						<div className="neural-forms-integrations__zap-row-main">
+							<div className="neural-forms-integrations__zap-row-line1">
+								<strong>{ f.name || __( '(untitled)', 'neural-forms-lite' ) }</strong>
+								<code className="neural-forms-integrations__zap-url">{ f.id.slice( 0, 8 ) }…</code>
+							</div>
+							{ f.modified_time && (
+								<div className="neural-forms-integrations__zap-row-meta">
+									<span>{ __( 'Modified: ', 'neural-forms-lite' ) }{ f.modified_time }</span>
+								</div>
+							) }
+						</div>
+						<div className="neural-forms-integrations__zap-row-actions">
+							<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ () => onPreview( f ) } disabled={ busyId === f.id }>
+								{ busyId === f.id ? __( 'Loading…', 'neural-forms-lite' ) : __( 'Preview & Import', 'neural-forms-lite' ) }
+							</button>
+						</div>
+					</li>
+				) ) }
+			</ul>
+		</div>
+	);
+}
+
+function GFPreviewModal( { preview, onCancel, onImport, importing } ) {
+	if ( ! preview ) return null;
+	const { name, description, schema, warnings, summary } = preview;
+	const fields = schema?.fields || [];
+	return (
+		<div className="neural-forms-integrations__gf-modal" role="dialog" aria-modal="true" aria-label={ __( 'Preview Google Form import', 'neural-forms-lite' ) }>
+			<div className="neural-forms-integrations__gf-modal-body">
+				<header className="neural-forms-integrations__gf-modal-header">
+					<h3 className="neural-forms-integrations__zap-form-title">{ name || __( 'Imported form', 'neural-forms-lite' ) }</h3>
+					{ description && <p className="neural-forms-integrations__zap-form-help">{ description }</p> }
+				</header>
+
+				<div className="neural-forms-integrations__gf-modal-summary">
+					<span>{ sprintf( __( '%d fields mapped', 'neural-forms-lite' ), summary?.mapped_items || 0 ) }</span>
+					{ ( summary?.fallback_items || 0 ) > 0 && (
+						<span>{ sprintf( __( '%d fallback', 'neural-forms-lite' ), summary.fallback_items ) }</span>
+					) }
+					{ ( summary?.skipped_items || 0 ) > 0 && (
+						<span>{ sprintf( __( '%d skipped', 'neural-forms-lite' ), summary.skipped_items ) }</span>
+					) }
+				</div>
+
+				<div className="neural-forms-integrations__gf-modal-fields">
+					<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Fields', 'neural-forms-lite' ) }</h4>
+					<ul className="neural-forms-integrations__gf-modal-field-list">
+						{ fields.map( ( f, i ) => (
+							<li key={ i }>
+								<strong>{ f.label || f.id }</strong>
+								<span className="neural-forms-integrations__gf-modal-type">{ f.type }</span>
+								{ f.required && <span className="neural-forms-integrations__gf-modal-req">{ __( 'required', 'neural-forms-lite' ) }</span> }
+							</li>
+						) ) }
+					</ul>
+				</div>
+
+				{ warnings && warnings.length > 0 && (
+					<div className="neural-forms-integrations__gf-modal-warnings">
+						<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Warnings', 'neural-forms-lite' ) }</h4>
+						<ul>
+							{ warnings.map( ( w, i ) => (
+								<li key={ i } className={ 'neural-forms-integrations__gf-warning-' + ( w.kind || 'note' ) }>
+									<strong>{ w.field_title }:</strong> { w.message }
+								</li>
+							) ) }
+						</ul>
+					</div>
+				) }
+
+				<div className="neural-forms-integrations__zap-form-actions">
+					<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ onImport } disabled={ importing || fields.length === 0 }>
+						{ importing ? __( 'Importing…', 'neural-forms-lite' ) : __( 'Import as Neural Form', 'neural-forms-lite' ) }
+					</button>
+					<button type="button" className="neural-forms-integrations__btn" onClick={ onCancel } disabled={ importing }>
+						{ __( 'Cancel', 'neural-forms-lite' ) }
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function GoogleFormsPanel( { provider, onStatusChange } ) {
+	const [ loading,  setLoading ]  = useState( true );
+	const [ status,   setStatus ]   = useState( null );
+	const [ flash,    setFlash ]    = useState( null );
+	const [ forms,    setForms ]    = useState( [] );
+	const [ formsLoading, setFormsLoading ] = useState( false );
+	const [ formsError, setFormsError ] = useState( '' );
+	const [ connecting, setConnecting ] = useState( false );
+	const [ clearing,   setClearing ]   = useState( false );
+	// "editing" controls the state-2 → state-1 toggle when the user
+	// clicks "Update credentials" from the credentials-saved card.
+	const [ editing,    setEditing ]    = useState( false );
+	const [ preview, setPreview ]   = useState( null );
+	const [ previewLoading, setPreviewLoading ] = useState( false );
+	const [ previewError, setPreviewError ] = useState( '' );
+	const [ busyFormId, setBusyFormId ] = useState( '' );
+	const [ importing, setImporting ] = useState( false );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/google-forms/status' );
+			setStatus( s );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load Google Forms status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const reloadForms = useCallback( async () => {
+		setFormsLoading( true );
+		setFormsError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/forms' );
+			setForms( Array.isArray( res?.forms ) ? res.forms : [] );
+		} catch ( e ) {
+			setFormsError( errorMessage( e, __( 'Could not load Google Forms.', 'neural-forms-lite' ) ) );
+		} finally {
+			setFormsLoading( false );
+		}
+	}, [] );
+
+	// First mount: read URL flag, fetch status.
+	useEffect( () => {
+		const url    = new URL( window.location.href );
+		const gFlag  = url.searchParams.get( 'nf_google' );
+		const reason = url.searchParams.get( 'reason' );
+		if ( gFlag === 'connected' ) {
+			setFlash( { kind: 'success', message: __( 'Google account connected.', 'neural-forms-lite' ) } );
+		} else if ( gFlag === 'error' ) {
+			setFlash( { kind: 'error', message: sprintf(
+				/* translators: %s: Google error code */
+				__( 'Google connection failed: %s', 'neural-forms-lite' ),
+				reason || __( 'unknown error', 'neural-forms-lite' )
+			) } );
+		}
+		if ( gFlag ) {
+			url.searchParams.delete( 'nf_google' );
+			url.searchParams.delete( 'reason' );
+			window.history.replaceState( null, '', url.toString() );
+		}
+		( async () => {
+			await reloadStatus();
+			setLoading( false );
+		} )();
+	}, [ reloadStatus ] );
+
+	// Auto-load forms when we transition to connected.
+	useEffect( () => {
+		if ( status?.connected && forms.length === 0 && ! formsLoading && formsError === '' ) {
+			reloadForms();
+		}
+	}, [ status?.connected ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// Push Google Forms status up to the tab dot. Configured =
+	// either a connected OAuth account is on file (live link), OR
+	// stored client credentials are present (credentials saved but
+	// OAuth not completed). The has_credentials flag is the
+	// authoritative "client_id + client_secret stored" boolean.
+	useEffect( () => {
+		if ( typeof onStatusChange !== 'function' ) return;
+		if ( loading || status === null ) {
+			onStatusChange( 'google_forms', 'unknown' );
+			return;
+		}
+		const configured = !! status?.connected || !! status?.has_credentials;
+		onStatusChange( 'google_forms', configured ? 'connected' : 'not_configured' );
+	}, [ onStatusChange, loading, status ] );
+
+	const handleConnect = useCallback( async () => {
+		setConnecting( true );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/auth-url' );
+			if ( res?.url ) {
+				window.location.href = res.url;
+			} else {
+				throw new Error( __( 'Auth URL was not returned by the server.', 'neural-forms-lite' ) );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not start the Google connection flow.', 'neural-forms-lite' ) ) } );
+			setConnecting( false );
+		}
+	}, [] );
+
+	const handleDisconnect = useCallback( async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect Google? Your imported forms will keep working — only the live Google connection is removed.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/google-forms/disconnect', { method: 'POST' } );
+			setStatus( s );
+			setForms( [] );
+			setFlash( { kind: 'success', message: __( 'Google account disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const handleClearCreds = useCallback( async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Clear saved OAuth credentials? You\'ll need to enter your Client ID and Secret again to reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setClearing( true );
+		try {
+			// `clear_client_secret: true` is the dedicated flag in the
+			// Pro /settings endpoint (C1) for wiping the stored secret.
+			// We also blank the client_id explicitly so the saved card
+			// disappears.
+			const next = await api( '/neural-forms-pro/v1/integrations/google-forms/settings', {
+				method: 'POST',
+				data:   { client_id: '', clear_client_secret: true },
+			} );
+			setStatus( next );
+			setEditing( false );
+			setFlash( { kind: 'success', message: __( 'Google credentials cleared.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not clear credentials.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setClearing( false );
+		}
+	}, [] );
+
+	const handlePreview = useCallback( async ( form ) => {
+		setBusyFormId( form.id );
+		setPreviewError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/forms/' + encodeURIComponent( form.id ) + '/preview' );
+			setPreview( res );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Preview failed.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setBusyFormId( '' );
+		}
+	}, [] );
+
+	const handleImport = useCallback( async () => {
+		if ( ! preview?.source?.google_form_id ) return;
+		setImporting( true );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/google-forms/forms/' + encodeURIComponent( preview.source.google_form_id ) + '/import', { method: 'POST' } );
+			setPreview( null );
+			setFlash( { kind: 'success', message: sprintf(
+				/* translators: %s: imported form name */
+				__( 'Imported "%s" as a new Neural Form.', 'neural-forms-lite' ),
+				res?.name || ''
+			) } );
+		} catch ( e ) {
+			setPreviewError( errorMessage( e, __( 'Import failed.', 'neural-forms-lite' ) ) );
+		} finally {
+			setImporting( false );
+		}
+	}, [ preview ] );
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ /* Three explicit states:
+			    *   loading      → spinner
+			    *   connected    → forms list + Refresh + Disconnect
+			    *   has creds    → GFCredsSavedCard (state 2): Connect / Update / Clear
+			    *   no creds OR editing → GFCredsForm (state 1)
+			    */ }
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : status?.connected ? (
+				<>
+					<div className="neural-forms-integrations__gf-connected">
+						<div>
+							<strong>{ __( 'Connected as: ', 'neural-forms-lite' ) }</strong>
+							<span>{ status.account_email || __( 'your Google account', 'neural-forms-lite' ) }</span>
+						</div>
+						<div className="neural-forms-integrations__zap-row-actions">
+							<button type="button" className="neural-forms-integrations__btn" onClick={ reloadForms }>{ __( 'Refresh forms', 'neural-forms-lite' ) }</button>
+							<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect }>{ __( 'Disconnect', 'neural-forms-lite' ) }</button>
+						</div>
+					</div>
+					<GFFormsList forms={ forms } loading={ formsLoading } error={ formsError } onRefresh={ reloadForms } onPreview={ handlePreview } busyId={ busyFormId } />
+				</>
+			) : status?.has_client_creds && ! editing ? (
+				<GFCredsSavedCard
+					status={ status }
+					onConnect={ handleConnect }
+					onEdit={ () => setEditing( true ) }
+					onClear={ handleClearCreds }
+					connecting={ connecting }
+					clearing={ clearing }
+				/>
+			) : (
+				<GFCredsForm
+					status={ status }
+					onSaved={ ( s ) => { setStatus( s ); setEditing( false ); setFlash( { kind: 'success', message: __( 'Credentials saved.', 'neural-forms-lite' ) } ); } }
+					onCancel={ editing ? () => setEditing( false ) : null }
+				/>
+			) }
+
+			{ preview && (
+				<GFPreviewModal
+					preview={ preview }
+					onCancel={ () => setPreview( null ) }
+					onImport={ handleImport }
+					importing={ importing }
+				/>
+			) }
+			{ previewError && (
+				<div className="neural-forms-integrations__zap-error-banner" role="alert">{ previewError }</div>
+			) }
+		</div>
+	);
+}
+
+// ─── HubSpot global connection panel ─────────────────────────────
+
+/**
+ * State machine:
+ *   loading       → initial status fetch
+ *   disconnected  → token + portal id form
+ *   connected     → status card + Test / Update / Disconnect actions
+ *   editing       → connected install showing the credentials form
+ *                   so the admin can rotate the token
+ *
+ * REST surface consumed (Pro / C1):
+ *   GET    /neural-forms-pro/v1/integrations/hubspot/status
+ *   POST   /neural-forms-pro/v1/integrations/hubspot/settings
+ *   POST   /neural-forms-pro/v1/integrations/hubspot/test
+ *   POST   /neural-forms-pro/v1/integrations/hubspot/disconnect
+ *
+ * Token handling:
+ *   The token field is type=password. Once the user clicks Save,
+ *   the input state is cleared so the raw token only lives in
+ *   memory for the duration of the save request. The server-side
+ *   status response only ever surfaces `masked_token` (e.g.
+ *   "pat-****cdef") — never the raw value — so subsequent renders
+ *   show the mask. The Pro endpoint also follows the "empty token
+ *   in patch = keep existing" pattern, so an update-credentials
+ *   flow can leave the token field blank when the admin only
+ *   wants to fix the portal id.
+ */
+function HubSpotPanel( { provider, onStatusChange } ) {
+	const [ loading,    setLoading ]    = useState( true );
+	const [ status,     setStatus ]     = useState( null );
+	const [ flash,      setFlash ]      = useState( null );
+	const [ editing,    setEditing ]    = useState( false );
+	const [ saving,     setSaving ]     = useState( false );
+	const [ testing,    setTesting ]    = useState( false );
+	const [ disconnecting, setDisconnecting ] = useState( false );
+
+	// Credentials form state — short-lived. Cleared on every save.
+	const [ token,   setToken ]   = useState( '' );
+	const [ portal,  setPortal ]  = useState( '' );
+	const [ saveError, setSaveError ] = useState( '' );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/hubspot/status' );
+			setStatus( s );
+			// Whenever we re-load fresh status, seed the portal field
+			// so the user can edit it without losing the displayed
+			// value. Token field stays empty.
+			setPortal( String( s?.portal_id || '' ) );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load HubSpot status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	useEffect( () => {
+		let cancelled = false;
+		( async () => {
+			await reloadStatus();
+			if ( ! cancelled ) setLoading( false );
+		} )();
+		return () => { cancelled = true; };
+	}, [ reloadStatus ] );
+
+	const connected = !! status?.connected;
+	const hasToken  = !! status?.has_token;
+	const showForm  = ! hasToken || editing;
+
+	// Push status up to the tab row so the colored dot stays in sync
+	// with save/test/disconnect events. `connected` is the
+	// authoritative "this provider is wired up" boolean; we treat
+	// has_token as a configured-but-not-tested fallback so the user
+	// gets a green dot the moment they save credentials, not only
+	// after a Test Connection round-trip succeeds.
+	useEffect( () => {
+		if ( typeof onStatusChange !== 'function' ) return;
+		if ( loading || status === null ) {
+			onStatusChange( 'hubspot', 'unknown' );
+			return;
+		}
+		onStatusChange( 'hubspot', ( connected || hasToken ) ? 'connected' : 'not_configured' );
+	}, [ onStatusChange, loading, status, connected, hasToken ] );
+
+	const validate = () => {
+		const t = token.trim();
+		const p = portal.trim();
+		// On first save (no token on file yet) the token is required.
+		if ( ! hasToken && t === '' ) {
+			return __( 'HubSpot Private App Access Token is required.', 'neural-forms-lite' );
+		}
+		// Portal ID is required for the future submission-delivery
+		// path (C5). Enforce it now so admins don't end up in a
+		// half-configured state.
+		if ( p === '' ) {
+			return __( 'HubSpot Portal ID is required.', 'neural-forms-lite' );
+		}
+		if ( ! /^[0-9]+$/.test( p ) ) {
+			return __( 'HubSpot Portal ID must be a number.', 'neural-forms-lite' );
+		}
+		return '';
+	};
+
+	const handleSave = async ( ev ) => {
+		ev.preventDefault();
+		const err = validate();
+		if ( err ) { setSaveError( err ); return; }
+		setSaveError( '' );
+		setSaving( true );
+		try {
+			const data = { portal_id: portal.trim() };
+			// Empty token in patch = "keep existing token" (matches
+			// the Pro endpoint's UX contract from C1).
+			if ( token.trim() !== '' ) data.access_token = token.trim();
+			const next = await api( '/neural-forms-pro/v1/integrations/hubspot/settings', {
+				method: 'POST',
+				data,
+			} );
+			setStatus( next );
+			// Clear the raw token from JS memory the moment the
+			// save returns. Subsequent renders show only the
+			// server-returned masked_token.
+			setToken( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: hasToken
+				? __( 'HubSpot credentials updated. Click Test connection to verify.', 'neural-forms-lite' )
+				: __( 'HubSpot credentials saved. Click Test connection to verify.', 'neural-forms-lite' )
+			} );
+		} catch ( e ) {
+			setSaveError( errorMessage( e, __( 'Could not save HubSpot credentials.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	const handleTest = async () => {
+		setTesting( true );
+		setFlash( null );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/hubspot/test', { method: 'POST' } );
+			// The /test endpoint returns the structured result PLUS
+			// the latest status — apply both so the connected badge
+			// + last_checked_at refresh in one round-trip.
+			if ( res?.status ) setStatus( res.status );
+			if ( res?.success ) {
+				setFlash( { kind: 'success', message: __( 'HubSpot connection verified.', 'neural-forms-lite' ) } );
+			} else {
+				setFlash( {
+					kind: 'error',
+					message: sprintf(
+						/* translators: %s: error message */
+						__( 'HubSpot returned an error: %s', 'neural-forms-lite' ),
+						res?.error || __( 'unknown error', 'neural-forms-lite' )
+					),
+				} );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not test the HubSpot connection.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setTesting( false );
+		}
+	};
+
+	const handleDisconnect = async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect HubSpot? Per-form mappings will be preserved but submissions will stop reaching HubSpot until you reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setDisconnecting( true );
+		try {
+			const next = await api( '/neural-forms-pro/v1/integrations/hubspot/disconnect', { method: 'POST' } );
+			setStatus( next );
+			setToken( '' );
+			setPortal( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: __( 'HubSpot disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setDisconnecting( false );
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setEditing( false );
+		setToken( '' );
+		setPortal( String( status?.portal_id || '' ) );
+		setSaveError( '' );
+	};
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : showForm ? (
+				<form className="neural-forms-integrations__zap-form" onSubmit={ handleSave }>
+					<header className="neural-forms-integrations__zap-form-header">
+						<h3 className="neural-forms-integrations__zap-form-title">
+							{ hasToken ? __( 'Update HubSpot credentials', 'neural-forms-lite' ) : __( 'Connect HubSpot', 'neural-forms-lite' ) }
+						</h3>
+						<p className="neural-forms-integrations__zap-form-help">
+							{ __( 'Create a HubSpot Private App and copy its Access Token from the Auth tab. The Portal ID (also called "Hub ID") appears at the top of any HubSpot screen URL.', 'neural-forms-lite' ) }
+							{ ' ' }
+							<a href="https://developers.hubspot.com/docs/apps/legacy-apps/private-apps/overview" target="_blank" rel="noopener noreferrer">
+								{ __( 'HubSpot private app docs', 'neural-forms-lite' ) }
+							</a>
+						</p>
+					</header>
+
+					<div className="nf-integration-form-grid">
+						<div className="neural-forms-integrations__zap-field nf-field-full">
+							<label className="neural-forms-integrations__zap-label" htmlFor="nf-hs-token">
+								{ __( 'Private App Access Token', 'neural-forms-lite' ) }
+							</label>
+							<input
+								id="nf-hs-token"
+								type="password"
+								className="neural-forms-integrations__zap-input"
+								value={ token }
+								onChange={ ( e ) => setToken( e.target.value ) }
+								placeholder={ hasToken ? '••••••••••••' : 'pat-na1-...' }
+								autoComplete="off"
+								aria-describedby="nf-hs-token-help"
+							/>
+							<p id="nf-hs-token-help" className="neural-forms-integrations__zap-hint">
+								{ hasToken
+									? __( 'Leave blank to keep the existing token. Enter a new value to rotate.', 'neural-forms-lite' )
+									: __( 'Required. The token is encrypted at rest and never displayed again.', 'neural-forms-lite' )
+								}
+							</p>
+						</div>
+
+						<div className="neural-forms-integrations__zap-field">
+							<label className="neural-forms-integrations__zap-label" htmlFor="nf-hs-portal">
+								{ __( 'Portal ID / Hub ID', 'neural-forms-lite' ) }
+							</label>
+							<input
+								id="nf-hs-portal"
+								type="text"
+								inputMode="numeric"
+								className="neural-forms-integrations__zap-input"
+								value={ portal }
+								onChange={ ( e ) => setPortal( e.target.value ) }
+								placeholder="12345678"
+								autoComplete="off"
+								aria-describedby="nf-hs-portal-help"
+							/>
+							<p id="nf-hs-portal-help" className="neural-forms-integrations__zap-hint">
+								{ __( 'Find your HubSpot account / portal ID from your HubSpot account menu or settings — it also appears in the URL of every HubSpot page.', 'neural-forms-lite' ) }
+							</p>
+						</div>
+					</div>
+
+					{ saveError && (
+						<div className="neural-forms-integrations__zap-error-banner" role="alert">{ saveError }</div>
+					) }
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving }>
+							{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }
+						</button>
+						{ editing && (
+							<button type="button" className="neural-forms-integrations__btn" onClick={ handleCancelEdit } disabled={ saving }>
+								{ __( 'Cancel', 'neural-forms-lite' ) }
+							</button>
+						) }
+					</div>
+				</form>
+			) : (
+				<div className="neural-forms-integrations__hs-status">
+					<div className="neural-forms-integrations__hs-status-header">
+						<span className={ 'neural-forms-integrations__zap-status ' + ( connected ? 'is-active' : 'is-inactive' ) }>
+							{ connected ? __( 'Connected', 'neural-forms-lite' ) : __( 'Not verified', 'neural-forms-lite' ) }
+						</span>
+					</div>
+
+					<dl className="neural-forms-integrations__hs-status-grid">
+						<div>
+							<dt>{ __( 'Portal ID', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.portal_id || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Access Token', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.masked_token || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Last checked', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.last_checked_at || __( 'Never', 'neural-forms-lite' ) }</dd>
+						</div>
+						{ status.last_error && (
+							<div className="neural-forms-integrations__hs-status-error">
+								<dt>{ __( 'Last error', 'neural-forms-lite' ) }</dt>
+								<dd>{ status.last_error }</dd>
+							</div>
+						) }
+					</dl>
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ handleTest } disabled={ testing }>
+							{ testing ? __( 'Testing…', 'neural-forms-lite' ) : __( 'Test connection', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( true ); setToken( '' ); } }>
+							{ __( 'Update credentials', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect } disabled={ disconnecting }>
+							{ disconnecting ? __( 'Disconnecting…', 'neural-forms-lite' ) : __( 'Disconnect', 'neural-forms-lite' ) }
+						</button>
+					</div>
+				</div>
+			) }
+		</div>
+	);
+}
+
+// ─── Tab body switcher ──────────────────────────────────────────
+
+// ─── WhatsApp global connection panel ────────────────────────────
+
+/**
+ * State machine:
+ *   loading       → initial status fetch
+ *   disconnected  → credentials form (Save settings only;
+ *                   Test connection lives on the status card)
+ *   editing       → connected install showing the form again so
+ *                   the admin can rotate the token
+ *   configured    → status grid + Test/Update/Disconnect actions
+ *                   + templates list (auto-loaded once)
+ *
+ * REST surface (Pro / C1):
+ *   GET    /neural-forms-pro/v1/integrations/whatsapp/status
+ *   POST   /neural-forms-pro/v1/integrations/whatsapp/settings
+ *   POST   /neural-forms-pro/v1/integrations/whatsapp/test
+ *   POST   /neural-forms-pro/v1/integrations/whatsapp/disconnect
+ *   GET    /neural-forms-pro/v1/integrations/whatsapp/templates
+ *
+ * Token handling:
+ *   The token input is type=password. After Save resolves we
+ *   immediately setToken('') so the raw value only lives in JS
+ *   memory for the lifetime of the save request. The server-side
+ *   status response never returns the raw access_token — only
+ *   `masked_token` + `has_token: bool` — so subsequent renders
+ *   show the mask. Backend supports "empty token in patch = keep
+ *   existing" so the update-credentials flow allows leaving the
+ *   token field blank when only changing other fields.
+ *
+ * Backend "Test connection" contract (C1):
+ *   POST /test ONLY validates the (token, phone_number_id) pair —
+ *   it does NOT send a template message. The button label
+ *   reflects that ("Test connection", not "Send test message").
+ *   A separate explicit "Send test template" action is a future
+ *   addition once delivery wiring lands.
+ */
+function WhatsAppPanel( { provider, onStatusChange } ) {
+	const [ loading, setLoading ] = useState( true );
+	const [ status,  setStatus ]  = useState( null );
+	const [ flash,   setFlash ]   = useState( null );
+	const [ editing, setEditing ] = useState( false );
+
+	const [ saving,        setSaving ]        = useState( false );
+	const [ testing,       setTesting ]       = useState( false );
+	const [ disconnecting, setDisconnecting ] = useState( false );
+
+	const [ templates,        setTemplates ]        = useState( [] );
+	const [ templatesLoading, setTemplatesLoading ] = useState( false );
+	const [ templatesError,   setTemplatesError ]   = useState( '' );
+	const [ templatesLoaded,  setTemplatesLoaded ]  = useState( false );
+
+	// Credentials form state — short-lived.
+	const [ token,         setToken ]         = useState( '' );
+	const [ phoneId,       setPhoneId ]       = useState( '' );
+	const [ wabaId,        setWabaId ]        = useState( '' );
+	const [ graphVersion,  setGraphVersion ]  = useState( 'v22.0' );
+	const [ recipient,     setRecipient ]     = useState( '' );
+	const [ templateName,  setTemplateName ]  = useState( 'neural_forms_entry_alert' );
+	const [ templateLang,  setTemplateLang ]  = useState( 'en_US' );
+	const [ saveError,     setSaveError ]     = useState( '' );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/whatsapp/status' );
+			setStatus( s );
+			// Seed the form fields from the server-side status when
+			// it loads so the Update-credentials path doesn't have
+			// to re-collect every field. The token field stays empty.
+			setPhoneId(      String( s?.phone_number_id        || '' ) );
+			setWabaId(       String( s?.waba_id                || '' ) );
+			setGraphVersion( String( s?.graph_version          || 'v22.0' ) );
+			setTemplateName( String( s?.default_template_name  || 'neural_forms_entry_alert' ) );
+			setTemplateLang( String( s?.template_language      || 'en_US' ) );
+			// default_recipient comes back MASKED (+91******9999).
+			// Don't seed it into the input — admins would otherwise
+			// edit a masked value and accidentally save the stars.
+			setRecipient( '' );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load WhatsApp status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const reloadTemplates = useCallback( async ( { silent = false } = {} ) => {
+		setTemplatesLoading( true );
+		if ( ! silent ) setTemplatesError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/whatsapp/templates' );
+			setTemplates( Array.isArray( res?.templates ) ? res.templates : [] );
+			setTemplatesError( '' );
+		} catch ( e ) {
+			setTemplates( [] );
+			setTemplatesError( errorMessage( e, __( 'Could not load WhatsApp templates.', 'neural-forms-lite' ) ) );
+		} finally {
+			setTemplatesLoading( false );
+			setTemplatesLoaded( true );
+		}
+	}, [] );
+
+	useEffect( () => {
+		let cancelled = false;
+		( async () => {
+			await reloadStatus();
+			if ( ! cancelled ) setLoading( false );
+		} )();
+		return () => { cancelled = true; };
+	}, [ reloadStatus ] );
+
+	// Auto-load templates once we know the connection is configured.
+	useEffect( () => {
+		if ( status?.has_token && ! templatesLoaded && ! templatesLoading ) {
+			reloadTemplates( { silent: true } );
+		}
+	}, [ status?.has_token ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const hasToken      = !! status?.has_token;
+	const showForm      = ! hasToken || editing;
+
+	// Push WhatsApp status up to the tab dot. Configured = a saved
+	// access token is on file (the server-side status endpoint masks
+	// the token but exposes the has_token boolean).
+	useEffect( () => {
+		if ( typeof onStatusChange !== 'function' ) return;
+		if ( loading || status === null ) {
+			onStatusChange( 'whatsapp', 'unknown' );
+			return;
+		}
+		onStatusChange( 'whatsapp', hasToken ? 'connected' : 'not_configured' );
+	}, [ onStatusChange, loading, status, hasToken ] );
+
+	const validate = () => {
+		if ( ! hasToken && token.trim() === '' ) {
+			return __( 'Access Token is required on first save.', 'neural-forms-lite' );
+		}
+		const phone = phoneId.trim();
+		if ( phone === '' || ! /^[0-9]+$/.test( phone ) ) {
+			return __( 'Phone Number ID is required and must be numeric.', 'neural-forms-lite' );
+		}
+		const waba = wabaId.trim();
+		if ( waba === '' || ! /^[0-9]+$/.test( waba ) ) {
+			return __( 'WhatsApp Business Account ID is required and must be numeric.', 'neural-forms-lite' );
+		}
+		const gv = graphVersion.trim();
+		if ( gv !== '' && ! /^v\d+\.\d+$/.test( gv ) ) {
+			return __( 'Graph API version must look like v22.0.', 'neural-forms-lite' );
+		}
+		if ( recipient.trim() !== '' ) {
+			const digits = recipient.replace( /[^0-9]/g, '' );
+			if ( digits.length < 7 || digits.length > 15 ) {
+				return __( 'Default Test Recipient must contain 7–15 digits.', 'neural-forms-lite' );
+			}
+		}
+		return '';
+	};
+
+	const handleSave = async ( ev ) => {
+		ev.preventDefault();
+		const err = validate();
+		if ( err ) { setSaveError( err ); return; }
+		setSaveError( '' );
+		setSaving( true );
+		try {
+			const data = {
+				phone_number_id:       phoneId.trim(),
+				waba_id:               wabaId.trim(),
+				graph_version:         graphVersion.trim() || 'v22.0',
+				default_recipient:     recipient.trim(),
+				default_template_name: templateName.trim(),
+				template_language:     templateLang.trim() || 'en_US',
+			};
+			if ( token.trim() !== '' ) data.access_token = token.trim();
+			const next = await api( '/neural-forms-pro/v1/integrations/whatsapp/settings', {
+				method: 'POST',
+				data,
+			} );
+			setStatus( next );
+			// Clear raw token from memory immediately.
+			setToken( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: hasToken
+				? __( 'WhatsApp credentials updated. Click Test connection to verify.', 'neural-forms-lite' )
+				: __( 'WhatsApp credentials saved. Click Test connection to verify.', 'neural-forms-lite' )
+			} );
+			// Refresh templates list against the new WABA id.
+			setTemplatesLoaded( false );
+		} catch ( e ) {
+			setSaveError( errorMessage( e, __( 'Could not save WhatsApp settings.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	const handleTest = async () => {
+		setTesting( true );
+		setFlash( null );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/whatsapp/test', { method: 'POST' } );
+			if ( res?.status ) setStatus( res.status );
+			if ( res?.success ) {
+				setFlash( { kind: 'success', message: __( 'WhatsApp connection verified.', 'neural-forms-lite' ) } );
+			} else {
+				setFlash( {
+					kind:    'error',
+					message: sprintf(
+						/* translators: %s: error message */
+						__( 'WhatsApp returned an error: %s', 'neural-forms-lite' ),
+						res?.error || __( 'unknown error', 'neural-forms-lite' )
+					),
+				} );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not test the WhatsApp connection.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setTesting( false );
+		}
+	};
+
+	const handleDisconnect = async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect WhatsApp? Stored credentials will be removed and notifications will stop until you reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setDisconnecting( true );
+		try {
+			const next = await api( '/neural-forms-pro/v1/integrations/whatsapp/disconnect', { method: 'POST' } );
+			setStatus( next );
+			setToken( '' );
+			setEditing( false );
+			setTemplates( [] );
+			setTemplatesLoaded( false );
+			setFlash( { kind: 'success', message: __( 'WhatsApp disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setDisconnecting( false );
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setEditing( false );
+		setToken( '' );
+		setSaveError( '' );
+		// Re-seed form fields from latest known status so any
+		// in-progress edits are discarded.
+		setPhoneId(      String( status?.phone_number_id       || '' ) );
+		setWabaId(       String( status?.waba_id               || '' ) );
+		setGraphVersion( String( status?.graph_version         || 'v22.0' ) );
+		setRecipient( '' );
+		setTemplateName( String( status?.default_template_name || 'neural_forms_entry_alert' ) );
+		setTemplateLang( String( status?.template_language     || 'en_US' ) );
+	};
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : showForm ? (
+				<form className="neural-forms-integrations__zap-form" onSubmit={ handleSave }>
+					<header className="neural-forms-integrations__zap-form-header">
+						<h3 className="neural-forms-integrations__zap-form-title">
+							{ hasToken ? __( 'Update WhatsApp settings', 'neural-forms-lite' ) : __( 'Connect WhatsApp', 'neural-forms-lite' ) }
+						</h3>
+						<p className="neural-forms-integrations__zap-form-help">
+							{ __( 'Use a permanent System User access token from Meta Business Manager. Temporary tokens from API Setup expire quickly. For production, create a System User with the whatsapp_business_messaging and whatsapp_business_management permissions.', 'neural-forms-lite' ) }
+							{ ' ' }
+							<a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens/" target="_blank" rel="noopener noreferrer">
+								{ __( 'Meta WhatsApp access token docs', 'neural-forms-lite' ) }
+							</a>
+							{ ' · ' }
+							<a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started/" target="_blank" rel="noopener noreferrer">
+								{ __( 'WhatsApp Cloud API get started', 'neural-forms-lite' ) }
+							</a>
+						</p>
+					</header>
+
+					<div className="nf-integration-form-grid">
+					<div className="neural-forms-integrations__zap-field nf-field-full">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-token">
+							{ __( 'Access Token', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-token"
+							type="password"
+							className="neural-forms-integrations__zap-input"
+							value={ token }
+							onChange={ ( e ) => setToken( e.target.value ) }
+							placeholder={ hasToken ? '••••••••••••' : 'EAAJ...' }
+							autoComplete="off"
+							aria-describedby="nf-wa-token-help"
+						/>
+						<p id="nf-wa-token-help" className="neural-forms-integrations__zap-hint">
+							{ hasToken
+								? __( 'Leave blank to keep the existing token. Enter a new value to rotate.', 'neural-forms-lite' )
+								: __( 'Required. The token is encrypted at rest and never displayed again.', 'neural-forms-lite' )
+							}
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-phone-id">
+							{ __( 'Phone Number ID', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-phone-id"
+							type="text"
+							inputMode="numeric"
+							className="neural-forms-integrations__zap-input"
+							value={ phoneId }
+							onChange={ ( e ) => setPhoneId( e.target.value ) }
+							placeholder="123456789012345"
+							autoComplete="off"
+							aria-describedby="nf-wa-phone-id-help"
+						/>
+						<p id="nf-wa-phone-id-help" className="neural-forms-integrations__zap-hint">
+							{ __( 'Find this in Meta App Dashboard → WhatsApp → API Setup, alongside the WhatsApp Business Account ID below.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-waba-id">
+							{ __( 'WhatsApp Business Account ID', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-waba-id"
+							type="text"
+							inputMode="numeric"
+							className="neural-forms-integrations__zap-input"
+							value={ wabaId }
+							onChange={ ( e ) => setWabaId( e.target.value ) }
+							placeholder="987654321098765"
+							autoComplete="off"
+						/>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-graph-version">
+							{ __( 'Graph API Version', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-graph-version"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ graphVersion }
+							onChange={ ( e ) => setGraphVersion( e.target.value ) }
+							placeholder="v22.0"
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Default v22.0. Update only if Meta has paused your account on a specific version.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-recipient">
+							{ __( 'Default Test Recipient', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-recipient"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ recipient }
+							onChange={ ( e ) => setRecipient( e.target.value ) }
+							placeholder={ hasToken ? ( status?.default_recipient || '+91 99999 99999' ) : '+91 99999 99999' }
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Optional. Used by the future "Send test template" action. Stored digits-only and masked in the status card.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-tpl-name">
+							{ __( 'Default Template Name', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-tpl-name"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ templateName }
+							onChange={ ( e ) => setTemplateName( e.target.value ) }
+							placeholder="neural_forms_entry_alert"
+							autoComplete="off"
+						/>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-wa-tpl-lang">
+							{ __( 'Template Language', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-wa-tpl-lang"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ templateLang }
+							onChange={ ( e ) => setTemplateLang( e.target.value ) }
+							placeholder="en_US"
+							autoComplete="off"
+						/>
+					</div>
+					</div>
+
+					{ saveError && (
+						<div className="neural-forms-integrations__zap-error-banner" role="alert">{ saveError }</div>
+					) }
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving }>
+							{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }
+						</button>
+						{ editing && (
+							<button type="button" className="neural-forms-integrations__btn" onClick={ handleCancelEdit } disabled={ saving }>
+								{ __( 'Cancel', 'neural-forms-lite' ) }
+							</button>
+						) }
+					</div>
+				</form>
+			) : (
+				<div className="neural-forms-integrations__hs-status">
+					<div className="neural-forms-integrations__hs-status-header">
+						<span className={ 'neural-forms-integrations__zap-status ' + ( status?.connected ? 'is-active' : 'is-inactive' ) }>
+							{ status?.connected ? __( 'Connected', 'neural-forms-lite' ) : __( 'Configured — not verified', 'neural-forms-lite' ) }
+						</span>
+					</div>
+
+					<dl className="neural-forms-integrations__hs-status-grid">
+						<div>
+							<dt>{ __( 'Phone Number ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.phone_number_id || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'WABA ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.waba_id || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Graph API Version', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.graph_version || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Access Token', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.masked_token || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Default Recipient', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.default_recipient || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Default Template', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.default_template_name || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Template Language', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.template_language || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Last checked', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.last_checked_at || __( 'Never', 'neural-forms-lite' ) }</dd>
+						</div>
+						{ status.last_error && (
+							<div className="neural-forms-integrations__hs-status-error">
+								<dt>{ __( 'Last error', 'neural-forms-lite' ) }</dt>
+								<dd>{ status.last_error }</dd>
+							</div>
+						) }
+					</dl>
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ handleTest } disabled={ testing }>
+							{ testing ? __( 'Testing…', 'neural-forms-lite' ) : __( 'Test connection', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( true ); setToken( '' ); } }>
+							{ __( 'Update settings', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => reloadTemplates() } disabled={ templatesLoading }>
+							{ templatesLoading ? __( 'Refreshing…', 'neural-forms-lite' ) : __( 'Refresh templates', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect } disabled={ disconnecting }>
+							{ disconnecting ? __( 'Disconnecting…', 'neural-forms-lite' ) : __( 'Disconnect', 'neural-forms-lite' ) }
+						</button>
+					</div>
+
+					<WhatsAppTemplatesCard
+						templates={ templates }
+						loading={ templatesLoading }
+						error={ templatesError }
+						loaded={ templatesLoaded }
+					/>
+				</div>
+			) }
+		</div>
+	);
+}
+
+function WhatsAppTemplatesCard( { templates, loading, error, loaded } ) {
+	if ( loading ) {
+		return <p className="neural-forms-integrations__zap-loading">{ __( 'Loading templates…', 'neural-forms-lite' ) }</p>;
+	}
+	if ( error ) {
+		return <div className="neural-forms-integrations__zap-error-banner" role="alert">{ error }</div>;
+	}
+	if ( ! loaded ) return null;
+	if ( ! templates || templates.length === 0 ) {
+		return (
+			<div className="neural-forms-integrations__wa-templates-empty">
+				<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Templates', 'neural-forms-lite' ) }</h4>
+				<p>{ __( 'No templates found. Create and approve a WhatsApp template in Meta Business Manager → WhatsApp Manager → Templates before sending notifications.', 'neural-forms-lite' ) }</p>
+				<p className="neural-forms-integrations__zap-hint">
+					{ __( 'Recommended template:', 'neural-forms-lite' ) }
+				</p>
+				<ul className="neural-forms-integrations__zap-hint" style={ { marginLeft: '18px' } }>
+					<li>{ __( 'Name: neural_forms_entry_alert', 'neural-forms-lite' ) }</li>
+					<li>{ __( 'Category: UTILITY', 'neural-forms-lite' ) }</li>
+					<li>{ __( 'Body: New Neural Forms entry received. Form: {{1}} Submitter: {{2}} Priority: {{3}} View entry: {{4}}', 'neural-forms-lite' ) }</li>
+				</ul>
+			</div>
+		);
+	}
+	return (
+		<div className="neural-forms-integrations__wa-templates">
+			<h4 className="neural-forms-integrations__zap-list-title">
+				{ sprintf( __( 'Templates (%d)', 'neural-forms-lite' ), templates.length ) }
+			</h4>
+			<table className="neural-forms-integrations__wa-templates-table">
+				<thead>
+					<tr>
+						<th>{ __( 'Name', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Language', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Status', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Category', 'neural-forms-lite' ) }</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ templates.map( ( t, i ) => {
+						const status = String( t.status || '' ).toUpperCase();
+						const badgeClass = status === 'APPROVED'
+							? 'is-approved'
+							: ( status === 'REJECTED' ? 'is-rejected' : 'is-pending' );
+						return (
+							<tr key={ ( t.name || '' ) + ':' + ( t.language || '' ) + ':' + i }>
+								<td><code>{ t.name }</code></td>
+								<td>{ t.language || '—' }</td>
+								<td>
+									<span className={ 'neural-forms-integrations__wa-tpl-badge ' + badgeClass }>{ status || '—' }</span>
+								</td>
+								<td>{ t.category || '—' }</td>
+							</tr>
+						);
+					} ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+// ─── Mailchimp panel (global connection) ────────────────────────
+
+function MailchimpPanel( { provider, onStatusChange } ) {
+	const [ loading, setLoading ] = useState( true );
+	const [ status,  setStatus ]  = useState( null );
+	const [ flash,   setFlash ]   = useState( null );
+	const [ editing, setEditing ] = useState( false );
+
+	const [ saving,        setSaving ]        = useState( false );
+	const [ testing,       setTesting ]       = useState( false );
+	const [ disconnecting, setDisconnecting ] = useState( false );
+
+	const [ audiences,        setAudiences ]        = useState( [] );
+	const [ audiencesLoading, setAudiencesLoading ] = useState( false );
+	const [ audiencesError,   setAudiencesError ]   = useState( '' );
+	const [ audiencesLoaded,  setAudiencesLoaded ]  = useState( false );
+
+	// Per-audience expanded merge-fields detail. Keyed by audience id;
+	// each entry is { loading, error, fields } — null while never opened.
+	const [ mergeFields, setMergeFields ] = useState( {} );
+
+	// Credentials form state — short-lived.
+	const [ apiKey,       setApiKey ]       = useState( '' );
+	const [ serverPrefix, setServerPrefix ] = useState( '' );
+	const [ defStatus,    setDefStatus ]    = useState( 'subscribed' );
+	const [ defTagsRaw,   setDefTagsRaw ]   = useState( '' );
+	const [ saveError,    setSaveError ]    = useState( '' );
+
+	const reloadStatus = useCallback( async () => {
+		try {
+			const s = await api( '/neural-forms-pro/v1/integrations/mailchimp/status' );
+			setStatus( s );
+			// Seed form fields from server-side status so Update-credentials
+			// path doesn't need to re-collect every field. API key stays
+			// empty — server-side blank-means-keep update flow.
+			setServerPrefix( String( s?.server_prefix  || '' ) );
+			setDefStatus(    String( s?.default_status || 'subscribed' ) );
+			setDefTagsRaw(   Array.isArray( s?.default_tags ) ? s.default_tags.join( ', ' ) : '' );
+			setApiKey( '' );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load Mailchimp status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [] );
+
+	const reloadAudiences = useCallback( async ( { silent = false } = {} ) => {
+		setAudiencesLoading( true );
+		if ( ! silent ) setAudiencesError( '' );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/mailchimp/audiences' );
+			setAudiences( Array.isArray( res?.audiences ) ? res.audiences : [] );
+			setAudiencesError( '' );
+		} catch ( e ) {
+			setAudiences( [] );
+			setAudiencesError( errorMessage( e, __( 'Could not load Mailchimp audiences.', 'neural-forms-lite' ) ) );
+		} finally {
+			setAudiencesLoading( false );
+			setAudiencesLoaded( true );
+		}
+	}, [] );
+
+	useEffect( () => {
+		let cancelled = false;
+		( async () => {
+			await reloadStatus();
+			if ( ! cancelled ) setLoading( false );
+		} )();
+		return () => { cancelled = true; };
+	}, [ reloadStatus ] );
+
+	// Auto-load audiences once we know the connection is configured.
+	useEffect( () => {
+		if ( status?.has_api_key && ! audiencesLoaded && ! audiencesLoading ) {
+			reloadAudiences( { silent: true } );
+		}
+	}, [ status?.has_api_key ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const hasKey   = !! status?.has_api_key;
+	const showForm = ! hasKey || editing;
+
+	// Push Mailchimp status up to the tab dot. Configured = an API
+	// key is on file (has_api_key boolean from the status endpoint).
+	useEffect( () => {
+		if ( typeof onStatusChange !== 'function' ) return;
+		if ( loading || status === null ) {
+			onStatusChange( 'mailchimp', 'unknown' );
+			return;
+		}
+		onStatusChange( 'mailchimp', hasKey ? 'connected' : 'not_configured' );
+	}, [ onStatusChange, loading, status, hasKey ] );
+
+	const SERVER_PREFIX_RE = /^[a-z]{1,5}\d{1,3}$/;
+
+	const validate = () => {
+		const key = apiKey.trim();
+		if ( ! hasKey && key === '' ) {
+			return __( 'Mailchimp API key is required on first save.', 'neural-forms-lite' );
+		}
+		// Either an explicit server prefix OR an api_key with a
+		// detectable suffix must resolve. If admin left both blank on
+		// first save, surface a helpful hint instead of waiting on
+		// the backend 422.
+		const explicit = serverPrefix.trim().toLowerCase();
+		if ( explicit !== '' && ! SERVER_PREFIX_RE.test( explicit ) ) {
+			return __( 'Server prefix must look like "us21" (lowercase letters then digits).', 'neural-forms-lite' );
+		}
+		const looksLikeKeyWithSuffix = key !== '' && /-[a-z]{1,5}\d{1,3}$/i.test( key );
+		if ( ! hasKey && explicit === '' && ! looksLikeKeyWithSuffix ) {
+			return __( 'Server prefix is required — your API key has no recognisable "-us21" suffix.', 'neural-forms-lite' );
+		}
+		if ( defStatus !== 'subscribed' && defStatus !== 'pending' ) {
+			return __( 'Default status must be either "subscribed" or "pending".', 'neural-forms-lite' );
+		}
+		return '';
+	};
+
+	const parseTags = ( raw ) => {
+		if ( typeof raw !== 'string' ) return [];
+		return raw
+			.split( ',' )
+			.map( ( t ) => t.trim() )
+			.filter( ( t ) => t !== '' )
+			.slice( 0, 20 );
+	};
+
+	const handleSave = async ( ev ) => {
+		ev.preventDefault();
+		const err = validate();
+		if ( err ) { setSaveError( err ); return; }
+		setSaveError( '' );
+		setSaving( true );
+		try {
+			const data = {
+				server_prefix:  serverPrefix.trim(),
+				default_status: defStatus,
+				default_tags:   parseTags( defTagsRaw ),
+			};
+			if ( apiKey.trim() !== '' ) data.api_key = apiKey.trim();
+			const next = await api( '/neural-forms-pro/v1/integrations/mailchimp/settings', {
+				method: 'POST',
+				data,
+			} );
+			setStatus( next );
+			// Clear raw API key from memory immediately after save.
+			setApiKey( '' );
+			setEditing( false );
+			setFlash( { kind: 'success', message: hasKey
+				? __( 'Mailchimp credentials updated. Click Test connection to verify.', 'neural-forms-lite' )
+				: __( 'Mailchimp credentials saved. Click Test connection to verify.', 'neural-forms-lite' )
+			} );
+			// Trigger an audiences refresh once the new key is in
+			// place; otherwise the cached list could belong to a
+			// different account.
+			setAudiencesLoaded( false );
+			setMergeFields( {} );
+		} catch ( e ) {
+			setSaveError( errorMessage( e, __( 'Could not save Mailchimp settings.', 'neural-forms-lite' ) ) );
+		} finally {
+			setSaving( false );
+		}
+	};
+
+	const handleTest = async () => {
+		setTesting( true );
+		setFlash( null );
+		try {
+			const res = await api( '/neural-forms-pro/v1/integrations/mailchimp/test', { method: 'POST' } );
+			if ( res?.status ) setStatus( res.status );
+			if ( res?.success ) {
+				setFlash( { kind: 'success', message: __( 'Mailchimp connection verified.', 'neural-forms-lite' ) } );
+			} else {
+				setFlash( {
+					kind:    'error',
+					message: sprintf(
+						/* translators: %s: error message */
+						__( 'Mailchimp returned an error: %s', 'neural-forms-lite' ),
+						res?.error || __( 'unknown error', 'neural-forms-lite' )
+					),
+				} );
+			}
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not test the Mailchimp connection.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setTesting( false );
+		}
+	};
+
+	const handleDisconnect = async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( __( 'Disconnect Mailchimp? Stored credentials will be removed and subscribers will stop syncing until you reconnect.', 'neural-forms-lite' ) ) ) {
+			return;
+		}
+		setDisconnecting( true );
+		try {
+			const next = await api( '/neural-forms-pro/v1/integrations/mailchimp/disconnect', { method: 'POST' } );
+			setStatus( next );
+			setApiKey( '' );
+			setEditing( false );
+			setAudiences( [] );
+			setAudiencesLoaded( false );
+			setMergeFields( {} );
+			setFlash( { kind: 'success', message: __( 'Mailchimp disconnected.', 'neural-forms-lite' ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		} finally {
+			setDisconnecting( false );
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setEditing( false );
+		setApiKey( '' );
+		setSaveError( '' );
+		// Re-seed form fields from latest known status so any
+		// in-progress edits are discarded.
+		setServerPrefix( String( status?.server_prefix  || '' ) );
+		setDefStatus(    String( status?.default_status || 'subscribed' ) );
+		setDefTagsRaw(   Array.isArray( status?.default_tags ) ? status.default_tags.join( ', ' ) : '' );
+	};
+
+	const handleToggleMergeFields = useCallback( async ( audienceId ) => {
+		setMergeFields( ( prev ) => {
+			const existing = prev[ audienceId ];
+			if ( existing && ! existing.error ) {
+				// Already open + no error → collapse.
+				const next = { ...prev };
+				delete next[ audienceId ];
+				return next;
+			}
+			// Otherwise mark as loading and continue the fetch below.
+			return { ...prev, [ audienceId ]: { loading: true, error: '', fields: [] } };
+		} );
+
+		// We always re-fetch on open so a stale error doesn't get
+		// stuck — only the collapse path above short-circuits.
+		try {
+			const res = await api(
+				'/neural-forms-pro/v1/integrations/mailchimp/audiences/'
+				+ encodeURIComponent( audienceId ) + '/merge-fields'
+			);
+			const fields = Array.isArray( res?.merge_fields ) ? res.merge_fields : [];
+			setMergeFields( ( prev ) => {
+				// If the user toggled it off between request + response,
+				// honour their intent rather than re-opening the panel.
+				if ( ! prev[ audienceId ] ) return prev;
+				return { ...prev, [ audienceId ]: { loading: false, error: '', fields } };
+			} );
+		} catch ( e ) {
+			const msg = errorMessage( e, __( 'Could not load merge fields.', 'neural-forms-lite' ) );
+			setMergeFields( ( prev ) => {
+				if ( ! prev[ audienceId ] ) return prev;
+				return { ...prev, [ audienceId ]: { loading: false, error: msg, fields: [] } };
+			} );
+		}
+	}, [] );
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">
+					{ provider.icon }
+				</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : showForm ? (
+				<form className="neural-forms-integrations__zap-form" onSubmit={ handleSave }>
+					<header className="neural-forms-integrations__zap-form-header">
+						<h3 className="neural-forms-integrations__zap-form-title">
+							{ hasKey ? __( 'Update Mailchimp settings', 'neural-forms-lite' ) : __( 'Connect Mailchimp', 'neural-forms-lite' ) }
+						</h3>
+						<p className="neural-forms-integrations__zap-form-help">
+							{ __( 'Generate an API key from Mailchimp → Profile → Extras → API keys. The server prefix is the part after the hyphen in your API key, for example us21.', 'neural-forms-lite' ) }
+							{ ' ' }
+							<a href="https://mailchimp.com/help/about-api-keys/" target="_blank" rel="noopener noreferrer">
+								{ __( 'Mailchimp API key guide', 'neural-forms-lite' ) }
+							</a>
+						</p>
+					</header>
+
+					<div className="nf-integration-form-grid">
+					<div className="neural-forms-integrations__zap-field nf-field-full">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-mc-api-key">
+							{ __( 'API Key', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-mc-api-key"
+							type="password"
+							className="neural-forms-integrations__zap-input"
+							value={ apiKey }
+							onChange={ ( e ) => setApiKey( e.target.value ) }
+							placeholder={ hasKey ? '••••••••••••' : 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-us21' }
+							autoComplete="off"
+							aria-describedby="nf-mc-api-key-help"
+						/>
+						<p id="nf-mc-api-key-help" className="neural-forms-integrations__zap-hint">
+							{ hasKey
+								? __( 'Leave blank to keep the existing API key. Enter a new value to rotate.', 'neural-forms-lite' )
+								: __( 'Required. The API key is encrypted at rest and never displayed again.', 'neural-forms-lite' )
+							}
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-mc-server-prefix">
+							{ __( 'Server Prefix / Data Center', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-mc-server-prefix"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ serverPrefix }
+							onChange={ ( e ) => setServerPrefix( e.target.value ) }
+							placeholder="us21"
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Auto-detected from the API key suffix if left empty. Override here to use a different data centre.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-mc-default-status">
+							{ __( 'Default subscriber status', 'neural-forms-lite' ) }
+						</label>
+						<select
+							id="nf-mc-default-status"
+							className="neural-forms-integrations__zap-input"
+							value={ defStatus }
+							onChange={ ( e ) => setDefStatus( e.target.value ) }
+						>
+							<option value="subscribed">{ __( 'Subscribed', 'neural-forms-lite' ) }</option>
+							<option value="pending">{ __( 'Pending — double opt-in', 'neural-forms-lite' ) }</option>
+						</select>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Pending sends a confirmation email; Subscribed adds the contact immediately. Forms can override this per submission in C3.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+
+					<div className="neural-forms-integrations__zap-field nf-field-full">
+						<label className="neural-forms-integrations__zap-label" htmlFor="nf-mc-default-tags">
+							{ __( 'Default tags', 'neural-forms-lite' ) }
+						</label>
+						<input
+							id="nf-mc-default-tags"
+							type="text"
+							className="neural-forms-integrations__zap-input"
+							value={ defTagsRaw }
+							onChange={ ( e ) => setDefTagsRaw( e.target.value ) }
+							placeholder="Website Lead, Neural Forms"
+							autoComplete="off"
+						/>
+						<p className="neural-forms-integrations__zap-hint">
+							{ __( 'Comma-separated. Up to 20 tags. Per-form settings can override this list.', 'neural-forms-lite' ) }
+						</p>
+					</div>
+					</div>
+
+					{ saveError && (
+						<div className="neural-forms-integrations__zap-error-banner" role="alert">{ saveError }</div>
+					) }
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving }>
+							{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }
+						</button>
+						{ editing && (
+							<button type="button" className="neural-forms-integrations__btn" onClick={ handleCancelEdit } disabled={ saving }>
+								{ __( 'Cancel', 'neural-forms-lite' ) }
+							</button>
+						) }
+					</div>
+				</form>
+			) : (
+				<div className="neural-forms-integrations__hs-status">
+					<div className="neural-forms-integrations__hs-status-header">
+						<span className={ 'neural-forms-integrations__zap-status ' + ( status?.connected ? 'is-active' : 'is-inactive' ) }>
+							{ status?.connected ? __( 'Connected', 'neural-forms-lite' ) : __( 'Configured — not verified', 'neural-forms-lite' ) }
+						</span>
+					</div>
+
+					<dl className="neural-forms-integrations__hs-status-grid">
+						<div>
+							<dt>{ __( 'Account name', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.account_name || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Account ID', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.account_id || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Server prefix', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.server_prefix || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'API key', 'neural-forms-lite' ) }</dt>
+							<dd><code>{ status.masked_api_key || '—' }</code></dd>
+						</div>
+						<div>
+							<dt>{ __( 'Default status', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.default_status || '—' }</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Default tags', 'neural-forms-lite' ) }</dt>
+							<dd>
+								{ Array.isArray( status.default_tags ) && status.default_tags.length
+									? status.default_tags.join( ', ' )
+									: '—'
+								}
+							</dd>
+						</div>
+						<div>
+							<dt>{ __( 'Last checked', 'neural-forms-lite' ) }</dt>
+							<dd>{ status.last_checked_at || __( 'Never', 'neural-forms-lite' ) }</dd>
+						</div>
+						{ status.last_error && (
+							<div className="neural-forms-integrations__hs-status-error">
+								<dt>{ __( 'Last error', 'neural-forms-lite' ) }</dt>
+								<dd>{ status.last_error }</dd>
+							</div>
+						) }
+					</dl>
+
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ handleTest } disabled={ testing }>
+							{ testing ? __( 'Testing…', 'neural-forms-lite' ) : __( 'Test connection', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( true ); setApiKey( '' ); } }>
+							{ __( 'Update settings', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => reloadAudiences() } disabled={ audiencesLoading }>
+							{ audiencesLoading ? __( 'Refreshing…', 'neural-forms-lite' ) : __( 'Refresh audiences', 'neural-forms-lite' ) }
+						</button>
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect } disabled={ disconnecting }>
+							{ disconnecting ? __( 'Disconnecting…', 'neural-forms-lite' ) : __( 'Disconnect', 'neural-forms-lite' ) }
+						</button>
+					</div>
+
+					<MailchimpAudiencesCard
+						audiences={ audiences }
+						loading={ audiencesLoading }
+						error={ audiencesError }
+						loaded={ audiencesLoaded }
+						mergeFields={ mergeFields }
+						onToggleMergeFields={ handleToggleMergeFields }
+					/>
+				</div>
+			) }
+		</div>
+	);
+}
+
+function MailchimpAudiencesCard( { audiences, loading, error, loaded, mergeFields, onToggleMergeFields } ) {
+	if ( loading && ! loaded ) {
+		return <p className="neural-forms-integrations__zap-loading">{ __( 'Loading audiences…', 'neural-forms-lite' ) }</p>;
+	}
+	if ( error ) {
+		return <div className="neural-forms-integrations__zap-error-banner" role="alert">{ error }</div>;
+	}
+	if ( ! loaded ) return null;
+	if ( ! audiences || audiences.length === 0 ) {
+		return (
+			<div className="neural-forms-integrations__mc-audiences-empty">
+				<h4 className="neural-forms-integrations__zap-list-title">{ __( 'Audiences', 'neural-forms-lite' ) }</h4>
+				<p>{ __( 'No audiences found. Create one in Mailchimp → Audience → Audience dashboard, then click Refresh audiences here.', 'neural-forms-lite' ) }</p>
+			</div>
+		);
+	}
+	return (
+		<div className="neural-forms-integrations__mc-audiences">
+			<h4 className="neural-forms-integrations__zap-list-title">
+				{ sprintf( __( 'Audiences (%d)', 'neural-forms-lite' ), audiences.length ) }
+			</h4>
+			<table className="neural-forms-integrations__mc-audiences-table">
+				<thead>
+					<tr>
+						<th>{ __( 'Name', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Audience ID', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Members', 'neural-forms-lite' ) }</th>
+						<th>{ __( 'Merge fields', 'neural-forms-lite' ) }</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ audiences.map( ( a ) => {
+						const expanded = mergeFields[ a.id ];
+						const isOpen   = !! expanded;
+						return (
+							<Fragment key={ a.id }>
+								<tr>
+									<td>{ a.name || '—' }</td>
+									<td><code>{ a.id }</code></td>
+									<td>{ Number.isFinite( a.member_count ) ? a.member_count.toLocaleString() : '0' }</td>
+									<td>
+										<button
+											type="button"
+											className="neural-forms-integrations__btn neural-forms-integrations__btn--small"
+											onClick={ () => onToggleMergeFields( a.id ) }
+											aria-expanded={ isOpen ? 'true' : 'false' }
+										>
+											{ isOpen
+												? __( 'Hide merge fields', 'neural-forms-lite' )
+												: __( 'View merge fields', 'neural-forms-lite' )
+											}
+										</button>
+									</td>
+								</tr>
+								{ isOpen && (
+									<tr className="neural-forms-integrations__mc-merge-row">
+										<td colSpan={ 4 }>
+											<MailchimpMergeFieldsView entry={ expanded } />
+										</td>
+									</tr>
+								) }
+							</Fragment>
+						);
+					} ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+function MailchimpMergeFieldsView( { entry } ) {
+	if ( entry.loading ) {
+		return <p className="neural-forms-integrations__zap-loading">{ __( 'Loading merge fields…', 'neural-forms-lite' ) }</p>;
+	}
+	if ( entry.error ) {
+		return <div className="neural-forms-integrations__zap-error-banner" role="alert">{ entry.error }</div>;
+	}
+	if ( ! entry.fields || entry.fields.length === 0 ) {
+		return (
+			<p className="neural-forms-integrations__zap-hint">
+				{ __( 'This audience has no merge fields defined beyond EMAIL. Only the email address will be synced.', 'neural-forms-lite' ) }
+			</p>
+		);
+	}
+	return (
+		<table className="neural-forms-integrations__mc-merge-table">
+			<thead>
+				<tr>
+					<th>{ __( 'Tag', 'neural-forms-lite' ) }</th>
+					<th>{ __( 'Name', 'neural-forms-lite' ) }</th>
+					<th>{ __( 'Type', 'neural-forms-lite' ) }</th>
+					<th>{ __( 'Required', 'neural-forms-lite' ) }</th>
+				</tr>
+			</thead>
+			<tbody>
+				{ entry.fields.map( ( f, i ) => (
+					<tr key={ ( f.tag || '' ) + ':' + i }>
+						<td><code>{ f.tag }</code></td>
+						<td>{ f.name || '—' }</td>
+						<td>{ f.type || '—' }</td>
+						<td>{ f.required ? __( 'Yes', 'neural-forms-lite' ) : __( 'No', 'neural-forms-lite' ) }</td>
+					</tr>
+				) ) }
+			</tbody>
+		</table>
+	);
+}
+
+// ─── Tab body switcher ──────────────────────────────────────────
+
+function TabPanel( { provider, onStatusChange } ) {
+	// All five providers receive an onStatusChange callback so their
+	// individual status hooks can push connected/not_configured back
+	// up to UnlockedView's status map (drives the tab dot color).
+	// Unknown panels (ComingSoonCard fallback) don't have a status to
+	// report and silently ignore the prop.
+	if ( provider.id === 'zapier' ) {
+		return <ZapierPanel provider={ provider } onStatusChange={ onStatusChange } />;
+	}
+	if ( provider.id === 'google_forms' ) {
+		return <GoogleFormsPanel provider={ provider } onStatusChange={ onStatusChange } />;
+	}
+	if ( provider.id === 'hubspot' ) {
+		return <HubSpotPanel provider={ provider } onStatusChange={ onStatusChange } />;
+	}
+	if ( provider.id === 'whatsapp' ) {
+		return <WhatsAppPanel provider={ provider } onStatusChange={ onStatusChange } />;
+	}
+	if ( provider.id === 'mailchimp' ) {
+		return <MailchimpPanel provider={ provider } onStatusChange={ onStatusChange } />;
+	}
+	return <ComingSoonCard provider={ provider } />;
+}
+
+// Default tab — HubSpot is the first provider, so this is the
+// landing tab on a fresh visit. We recover from URL (?integration=…)
+// and hash (#integration=…) so deep links survive page reloads, and
+// validate the recovered value against the known provider IDs so a
+// malformed URL silently falls back to HubSpot instead of leaving
+// the screen with no panel.
+const DEFAULT_PROVIDER = 'hubspot';
+
+function readInitialProvider() {
+	if ( typeof window === 'undefined' ) return DEFAULT_PROVIDER;
+	const ids = PROVIDERS.map( ( p ) => p.id );
+	let candidate = '';
+	try {
+		const url = new URL( window.location.href );
+		candidate = url.searchParams.get( 'integration' ) || '';
+		if ( ! candidate && url.hash ) {
+			const m = url.hash.match( /integration=([a-z0-9_]+)/i );
+			if ( m ) candidate = m[ 1 ];
+		}
+	} catch ( e ) {
+		candidate = '';
+	}
+	return ids.indexOf( candidate ) !== -1 ? candidate : DEFAULT_PROVIDER;
+}
+
+function UnlockedView() {
+	const [ activeId, setActiveId ] = useState( readInitialProvider );
+
+	// Per-provider status map — drives the colored dot in each tab.
+	// Three states:
+	//   'connected'      → green
+	//   'not_configured' → red
+	//   'unknown'        → grey (initial / pre-load)
+	//
+	// Two-stage update path:
+	//
+	//   1. PRELOAD (this useEffect below) — one GET request on mount
+	//      against /neural-forms-pro/v1/integrations/status returns
+	//      `configured` booleans for all five providers. Lets every
+	//      tab paint the correct green/red dot on first render
+	//      without the user clicking each tab.
+	//
+	//   2. LIVE UPDATE (onStatusChange below) — each provider panel
+	//      ALSO reports its own status whenever it mounts / saves /
+	//      tests / disconnects. So saving Mailchimp credentials
+	//      flips its dot from red → green immediately even though
+	//      the preload already ran.
+	const [ providerStatus, setProviderStatus ] = useState( () => {
+		const seed = {};
+		PROVIDERS.forEach( ( p ) => { seed[ p.id ] = 'unknown'; } );
+		return seed;
+	} );
+
+	const onStatusChange = useCallback( ( providerId, status ) => {
+		setProviderStatus( ( prev ) => (
+			prev[ providerId ] === status ? prev : { ...prev, [ providerId ]: status }
+		) );
+	}, [] );
+
+	// Status preload — fires once on UnlockedView mount. We do NOT
+	// re-run on tab change; per-panel onStatusChange covers updates
+	// after that. The endpoint returns booleans only — no tokens,
+	// API keys, webhook URLs, or OAuth payloads cross this wire.
+	useEffect( () => {
+		let cancelled = false;
+		api( '/neural-forms-pro/v1/integrations/status' )
+			.then( ( res ) => {
+				if ( cancelled ) return;
+				const providers = ( res && typeof res === 'object' && res.providers ) || {};
+				setProviderStatus( ( prev ) => {
+					const next = { ...prev };
+					PROVIDERS.forEach( ( p ) => {
+						const row = providers[ p.id ];
+						if ( ! row ) {
+							// Provider missing from the response — treat
+							// as not configured rather than leaving it
+							// gray forever.
+							next[ p.id ] = 'not_configured';
+							return;
+						}
+						next[ p.id ] = row.configured ? 'connected' : 'not_configured';
+					} );
+					return next;
+				} );
+			} )
+			.catch( () => {
+				if ( cancelled ) return;
+				// Endpoint failed (network blip, Pro deactivated mid-
+				// session, server error). Fall every still-unknown row
+				// down to 'not_configured' so dots don't stay gray
+				// forever; the per-panel updates will correct any of
+				// these once a panel mounts and confirms its status.
+				setProviderStatus( ( prev ) => {
+					const next = { ...prev };
+					PROVIDERS.forEach( ( p ) => {
+						if ( next[ p.id ] === 'unknown' ) {
+							next[ p.id ] = 'not_configured';
+						}
+					} );
+					return next;
+				} );
+			} );
+		return () => { cancelled = true; };
+	}, [] );
+
+	const onKeyDown = useCallback( ( ev ) => {
+		const idx = PROVIDERS.findIndex( ( p ) => p.id === activeId );
+		if ( idx === -1 ) return;
+		let next = idx;
+		if ( ev.key === 'ArrowRight' || ev.key === 'ArrowDown' ) {
+			next = ( idx + 1 ) % PROVIDERS.length;
+		} else if ( ev.key === 'ArrowLeft' || ev.key === 'ArrowUp' ) {
+			next = ( idx - 1 + PROVIDERS.length ) % PROVIDERS.length;
+		} else if ( ev.key === 'Home' ) {
+			next = 0;
+		} else if ( ev.key === 'End' ) {
+			next = PROVIDERS.length - 1;
+		} else {
+			return;
+		}
+		ev.preventDefault();
+		setActiveId( PROVIDERS[ next ].id );
+		const tab = document.getElementById( `neural-forms-integrations-tab-${ PROVIDERS[ next ].id }` );
+		if ( tab && typeof tab.focus === 'function' ) tab.focus();
+	}, [ activeId ] );
+
+	const active = PROVIDERS.find( ( p ) => p.id === activeId ) || PROVIDERS[ 0 ];
+
+	return (
+		<>
+			<div
+				className="neural-forms-integrations__tablist"
+				role="tablist"
+				aria-label={ __( 'Integration providers', 'neural-forms-lite' ) }
+				onKeyDown={ onKeyDown }
+			>
+				{ PROVIDERS.map( ( p ) => {
+					const selected = p.id === activeId;
+					const status   = providerStatus[ p.id ] || 'unknown';
+					const dotTitle =
+						status === 'connected'      ? __( 'Connected', 'neural-forms-lite' )
+						: status === 'not_configured' ? __( 'Not configured', 'neural-forms-lite' )
+						: __( 'Checking status', 'neural-forms-lite' );
+					return (
+						<button
+							key={ p.id }
+							id={ `neural-forms-integrations-tab-${ p.id }` }
+							type="button"
+							role="tab"
+							aria-selected={ selected }
+							aria-controls={ `neural-forms-integrations-panel-${ p.id }` }
+							tabIndex={ selected ? 0 : -1 }
+							className={
+								'neural-forms-integrations__tab'
+								+ ( selected ? ' neural-forms-integrations__tab--active' : '' )
+							}
+							onClick={ () => setActiveId( p.id ) }
+						>
+							<span
+								className={ 'nf-status-dot nf-status-dot--' + status.replace( '_', '-' ) }
+								title={ dotTitle }
+								aria-hidden="true"
+							/>
+							<span className="screen-reader-text">{ dotTitle }</span>
+							<span className="neural-forms-integrations__provider-mark" aria-hidden="true">{ p.icon }</span>
+							<span>{ p.name }</span>
+						</button>
+					);
+				} ) }
+			</div>
+
+			<div
+				id={ `neural-forms-integrations-panel-${ active.id }` }
+				role="tabpanel"
+				aria-labelledby={ `neural-forms-integrations-tab-${ active.id }` }
+				className="neural-forms-integrations__panel"
+				tabIndex={ 0 }
+			>
+				<TabPanel provider={ active } onStatusChange={ onStatusChange } />
+			</div>
+		</>
+	);
+}
+
+// ─── Top-level screen ───────────────────────────────────────────
+
+export default function Integrations() {
+	const admin = ( typeof window !== 'undefined' && window.neuralFormsAdmin ) || {};
+	const caps  = ( admin.plugin && admin.plugin.capabilities ) || {};
+	const unlocked = !! caps.integrations;
+
+	return (
+		<div className="neural-forms-integrations">
+			<header className="neural-forms-integrations__header">
+				<div className="neural-forms-integrations__header-text">
+					<h1 className="neural-forms-integrations__page-title">
+						{ __( 'Integrations', 'neural-forms-lite' ) }
+					</h1>
+					<p className="neural-forms-integrations__page-desc">
+						{ __( 'Connect Neural Forms to the tools your team already uses. Configure providers below.', 'neural-forms-lite' ) }
+					</p>
+				</div>
+			</header>
+
+			{ unlocked ? <UnlockedView /> : <LockedView /> }
+		</div>
+	);
+}

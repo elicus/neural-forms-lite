@@ -17,64 +17,81 @@ defined( 'ABSPATH' ) || exit;
  */
 class Database {
 
-    /**
-     * Run from Activator::activate() and on upgrade checks.
-     * Safe to call multiple times - dbDelta only applies changes.
-     */
-    public static function create_tables(): void {
-        global $wpdb;
+	/**
+	 * Run from Activator::activate() and on upgrade checks.
+	 * Safe to call multiple times - dbDelta only applies changes.
+	 */
+	public static function create_tables(): void {
+		global $wpdb;
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-        $charset = $wpdb->get_charset_collate();
+		$charset = $wpdb->get_charset_collate();
 
-        $tables = [
-            self::sql_forms( $charset ),
-            self::sql_entries( $charset ),
-            self::sql_logs( $charset ),
-            self::sql_queue( $charset ),
-            self::sql_entry_messages( $charset ),
-            self::sql_ai_responses( $charset ),
-        ];
+		$tables = array(
+			self::sql_forms( $charset ),
+			self::sql_entries( $charset ),
+			self::sql_logs( $charset ),
+			self::sql_queue( $charset ),
+			self::sql_entry_messages( $charset ),
+			self::sql_ai_responses( $charset ),
+		);
 
-        foreach ( $tables as $sql ) {
-            dbDelta( $sql );
-        }
+		foreach ( $tables as $sql ) {
+			dbDelta( $sql );
+		}
 
-        update_option( 'neural_forms_db_version', NEURAL_FORMS_DB_VERSION );
-    }
+		update_option( 'neural_forms_db_version', NEURAL_FORMS_DB_VERSION );
+	}
 
-    /**
-     * Returns true if the stored DB version is behind the current one.
-     */
-    public static function needs_upgrade(): bool {
-        return version_compare(
-            get_option( 'neural_forms_db_version', '0' ),
-            NEURAL_FORMS_DB_VERSION,
-            '<'
-        );
-    }
+	/**
+	 * Returns true if the stored DB version is behind the current one.
+	 */
+	public static function needs_upgrade(): bool {
+		return version_compare(
+			get_option( 'neural_forms_db_version', '0' ),
+			NEURAL_FORMS_DB_VERSION,
+			'<'
+		);
+	}
 
-    /**
-     * Runs create_tables() only when the DB version is behind.
-     * Called on every plugins_loaded so column additions are applied
-     * automatically on existing installs without a deactivate/reactivate.
-     *
-     * dbDelta() is safe to call repeatedly - it only applies changes.
-     */
-    public static function maybe_upgrade(): void {
-        if ( self::needs_upgrade() ) {
-            self::create_tables();
-        }
-    }
+	/**
+	 * Runs create_tables() only when the DB version is behind.
+	 * Called on every plugins_loaded so column additions are applied
+	 * automatically on existing installs without a deactivate/reactivate.
+	 *
+	 * dbDelta() is safe to call repeatedly - it only applies changes.
+	 */
+	public static function maybe_upgrade(): void {
+		if ( self::needs_upgrade() ) {
+			self::create_tables();
 
-    // Table definitions
+			// 1.1.0+ slug uniqueness repair. Existing installs may
+			// have accumulated duplicate form slugs before the
+			// hardened generate_unique_slug() guards landed in
+			// create/update. Repair is idempotent: a clean table is a
+			// no-op. Wrapped in a class_exists guard so this method
+			// never fatals during a partial-load upgrade where the
+			// forms autoloader hasn't run yet.
+			if ( class_exists( '\\NeuralForms\\Forms\\FormRepository' ) ) {
+				try {
+					\NeuralForms\Forms\FormRepository::repair_duplicate_slugs();
+				} catch ( \Throwable $e ) {
+					// Don't break the upgrade if repair throws — the
+					// schema work has already succeeded.
+					unset( $e );
+				}
+			}
+		}
+	}
 
-    private static function sql_forms( string $charset ): string {
-        global $wpdb;
-        $table = $wpdb->prefix . 'neural_forms_forms';
+	// Table definitions
 
-        return "CREATE TABLE {$table} (
+	private static function sql_forms( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_forms';
+
+		return "CREATE TABLE {$table} (
   id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   name varchar(255) NOT NULL,
   slug varchar(255) NOT NULL,
@@ -89,13 +106,13 @@ class Database {
   UNIQUE KEY slug (slug),
   KEY status (status)
 ) {$charset};";
-    }
+	}
 
-    private static function sql_entries( string $charset ): string {
-        global $wpdb;
-        $table = $wpdb->prefix . 'neural_forms_entries';
+	private static function sql_entries( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_entries';
 
-        return "CREATE TABLE {$table} (
+		return "CREATE TABLE {$table} (
   id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   form_id bigint(20) UNSIGNED NOT NULL,
   form_version varchar(32) DEFAULT NULL,
@@ -129,28 +146,28 @@ class Database {
   KEY is_starred (is_starred),
   KEY ai_status (ai_status)
 ) {$charset};";
-    }
+	}
 
-    /**
-     * Draft history for AI responses on an entry - fuels the carousel UI
-     * (prev/next) so merchants can flip between reanalyze/regenerate/polish
-     * outputs before picking one to use as the canonical reply.
-     *
-     * Retention rules (enforced by AIResponseRepository + WP-Cron):
-     *   - per-entry cap: at most 10 non-finalized drafts. Oldest evicted.
-     *   - age cap: drafts older than 30 days are purged nightly.
-     *   - the draft pointed at by entries.ai_selected_response_id is
-     *     exempt from both caps (preserved forever).
-     *
-     * `kind` narrows the source endpoint: analyze | reanalyze | regenerate
-     * | polish. `tier_used` is what the API routed to (post plan clamp).
-     * `tokens_used` is the sum of input+output tokens per provider reply.
-     */
-    private static function sql_ai_responses( string $charset ): string {
-        global $wpdb;
-        $table = $wpdb->prefix . 'neural_forms_entry_ai_responses';
+	/**
+	 * Draft history for AI responses on an entry - fuels the carousel UI
+	 * (prev/next) so merchants can flip between reanalyze/regenerate/polish
+	 * outputs before picking one to use as the canonical reply.
+	 *
+	 * Retention rules (enforced by AIResponseRepository + WP-Cron):
+	 *   - per-entry cap: at most 10 non-finalized drafts. Oldest evicted.
+	 *   - age cap: drafts older than 30 days are purged nightly.
+	 *   - the draft pointed at by entries.ai_selected_response_id is
+	 *     exempt from both caps (preserved forever).
+	 *
+	 * `kind` narrows the source endpoint: analyze | reanalyze | regenerate
+	 * | polish. `tier_used` is what the API routed to (post plan clamp).
+	 * `tokens_used` is the sum of input+output tokens per provider reply.
+	 */
+	private static function sql_ai_responses( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_entry_ai_responses';
 
-        return "CREATE TABLE {$table} (
+		return "CREATE TABLE {$table} (
   id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   entry_id bigint(20) UNSIGNED NOT NULL,
   kind varchar(20) NOT NULL,
@@ -174,13 +191,13 @@ class Database {
   KEY finalized (finalized),
   KEY created_at (created_at)
 ) {$charset};";
-    }
+	}
 
-    private static function sql_logs( string $charset ): string {
-        global $wpdb;
-        $table = $wpdb->prefix . 'neural_forms_logs';
+	private static function sql_logs( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_logs';
 
-        return "CREATE TABLE {$table} (
+		return "CREATE TABLE {$table} (
   id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   entry_id bigint(20) UNSIGNED DEFAULT NULL,
   event_type varchar(100) NOT NULL,
@@ -192,13 +209,13 @@ class Database {
   KEY entry_id (entry_id),
   KEY event_type (event_type)
 ) {$charset};";
-    }
+	}
 
-    private static function sql_queue( string $charset ): string {
-        global $wpdb;
-        $table = $wpdb->prefix . 'neural_forms_queue';
+	private static function sql_queue( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_queue';
 
-        return "CREATE TABLE {$table} (
+		return "CREATE TABLE {$table} (
   id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   job_type varchar(100) NOT NULL,
   payload text NOT NULL,
@@ -211,13 +228,13 @@ class Database {
   KEY status (status),
   KEY scheduled_at (scheduled_at)
 ) {$charset};";
-    }
+	}
 
-    private static function sql_entry_messages( string $charset ): string {
-        global $wpdb;
-        $table = $wpdb->prefix . 'neural_forms_entry_messages';
+	private static function sql_entry_messages( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_entry_messages';
 
-        return "CREATE TABLE {$table} (
+		return "CREATE TABLE {$table} (
   id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   entry_id bigint(20) UNSIGNED NOT NULL,
   type varchar(20) NOT NULL DEFAULT 'outgoing',
@@ -231,5 +248,5 @@ class Database {
   KEY entry_id (entry_id),
   KEY type (type)
 ) {$charset};";
-    }
+	}
 }

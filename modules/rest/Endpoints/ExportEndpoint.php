@@ -2,6 +2,9 @@
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Forms\FormRepository;
+use NeuralForms\Forms\MatrixFormatter;
+use NeuralForms\Forms\RepeaterFormatter;
+use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
 use WP_Error;
@@ -45,7 +48,7 @@ class ExportEndpoint {
 	 * Fixed CSV columns: header label => entry array key.
 	 * Order here defines output order.
 	 */
-	private const FIXED_COLS = [
+	private const FIXED_COLS = array(
 		'entry_id'           => 'id',
 		'form_id'            => 'form_id',
 		'form_name'          => 'form_name',
@@ -57,7 +60,7 @@ class ExportEndpoint {
 		'ai_spam_confidence' => 'ai_spam_confidence',
 		'needs_reply'        => 'needs_reply',
 		'is_starred'         => 'is_starred',
-	];
+	);
 
 	// Route registration
 
@@ -66,52 +69,56 @@ class ExportEndpoint {
 
 		// Must be registered before /entries/(?P<id>[\d]+) in EntriesEndpoint,
 		// though in practice "export" never matches the numeric ID pattern.
-		register_rest_route( $ns, '/entries/export', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'export' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'form_id' => [
-					'default'           => 0,
-					'sanitize_callback' => 'absint',
-				],
-				'view'    => [
-					'default'           => '',
-					'sanitize_callback' => 'sanitize_text_field',
-					'validate_callback' => static function ( $value ): bool {
-						return $value === ''
-							|| in_array( $value, EntryRepository::VALID_VIEWS, true );
-					},
-				],
-				'search'    => [
-					'default'           => '',
-					'sanitize_callback' => 'sanitize_text_field',
-				],
-				'date_from' => [
-					'default'           => '',
-					'sanitize_callback' => 'sanitize_text_field',
-					'validate_callback' => static function ( $value ): bool {
-						return $value === ''
-							|| (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value );
-					},
-				],
-				'date_to'    => [
-					'default'           => '',
-					'sanitize_callback' => 'sanitize_text_field',
-					'validate_callback' => static function ( $value ): bool {
-						return $value === ''
-							|| (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value );
-					},
-				],
-				'sort_order' => [
-					'default'           => 'desc',
-					'sanitize_callback' => static function ( $v ): string {
-						$v = strtolower( trim( (string) $v ) );
-						return in_array( $v, [ 'asc', 'desc' ], true ) ? $v : 'desc';
-					},
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/export',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'export' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'form_id'    => array(
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
+					),
+					'view'       => array(
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => static function ( $value ): bool {
+							return $value === ''
+								|| in_array( $value, EntryRepository::VALID_VIEWS, true );
+						},
+					),
+					'search'     => array(
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'date_from'  => array(
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => static function ( $value ): bool {
+							return $value === ''
+								|| (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value );
+						},
+					),
+					'date_to'    => array(
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => static function ( $value ): bool {
+							return $value === ''
+								|| (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value );
+						},
+					),
+					'sort_order' => array(
+						'default'           => 'desc',
+						'sanitize_callback' => static function ( $v ): string {
+							$v = strtolower( trim( (string) $v ) );
+							return in_array( $v, array( 'asc', 'desc' ), true ) ? $v : 'desc';
+						},
+					),
+				),
+			)
+		);
 	}
 
 	// Handler
@@ -128,7 +135,7 @@ class ExportEndpoint {
 	 *                        that occur before output starts.
 	 */
 	public function export( WP_REST_Request $request ) {
-		$form_id    = (int)    $request->get_param( 'form_id' );
+		$form_id    = (int) $request->get_param( 'form_id' );
 		$view       = (string) $request->get_param( 'view' );
 		$search     = (string) $request->get_param( 'search' );
 		$date_from  = (string) $request->get_param( 'date_from' );
@@ -140,18 +147,21 @@ class ExportEndpoint {
 			return new WP_Error(
 				'missing_filter',
 				__( 'A valid form_id, view, or search term is required.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
 		// Fetch entries - capped at 5 000 by list_for_export().
-		$entries   = EntryRepository::list_for_export( $form_id, [
-			'view'       => $view,
-			'search'     => $search,
-			'date_from'  => $date_from,
-			'date_to'    => $date_to,
-			'sort_order' => $sort_order,
-		] );
+		$entries   = EntryRepository::list_for_export(
+			$form_id,
+			array(
+				'view'       => $view,
+				'search'     => $search,
+				'date_from'  => $date_from,
+				'date_to'    => $date_to,
+				'sort_order' => $sort_order,
+			)
+		);
 		$truncated = count( $entries ) === 5000;
 
 		// Discover dynamic columns and build the header row.
@@ -205,7 +215,7 @@ class ExportEndpoint {
 	 * @return string  Encoded CSV record terminated by "\r\n".
 	 */
 	private static function csv_row( array $row ): string {
-		$cells = [];
+		$cells = array();
 		foreach ( $row as $value ) {
 			$value = (string) $value;
 			if ( preg_match( '/[",\r\n]/', $value ) ) {
@@ -239,12 +249,18 @@ class ExportEndpoint {
 	 *   [1] - $header_row: flat string array for fputcsv().
 	 */
 	private function build_columns( int $form_id, array $entries ): array {
-		$dynamic_cols = [];
+		$dynamic_cols = array();
 
 		if ( $form_id > 0 ) {
-			// ' Single-form: use schema order '
+			// Single-form export: use schema order. Flatten the tree so
+			// rows + columns don't pollute the CSV header with layout ids -
+			// only real fields become columns.
 			$form          = FormRepository::find( $form_id );
-			$schema_fields = $form ? ( $form['form_schema']['fields'] ?? [] ) : [];
+			$schema_fields = $form
+				? SchemaHelper::flatten_fields(
+					is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array()
+				)
+				: array();
 
 			foreach ( $schema_fields as $field ) {
 				$field    = (array) $field;
@@ -254,19 +270,64 @@ class ExportEndpoint {
 					continue;
 				}
 
-				if ( ( $field['type'] ?? '' ) === 'file' ) {
-					$dynamic_cols[] = [ 'header' => $field_id . '_filename', 'source_id' => $field_id, 'part' => 'filename' ];
-					$dynamic_cols[] = [ 'header' => $field_id . '_url',      'source_id' => $field_id, 'part' => 'url'      ];
+				$type = (string) ( $field['type'] ?? '' );
+
+				if ( $type === 'file' ) {
+					$dynamic_cols[] = array(
+						'header'    => $field_id . '_filename',
+						'source_id' => $field_id,
+						'part'      => 'filename',
+					);
+					$dynamic_cols[] = array(
+						'header'    => $field_id . '_url',
+						'source_id' => $field_id,
+						'part'      => 'url',
+					);
+				} elseif ( $type === 'repeater' ) {
+					// Repeater expands to one CSV column per
+					// (item_index, child) up to max_items. File children
+					// add two sub-columns (__filename + __url) — same
+					// convention as flat file fields. The exporter
+					// captures the child schema + part so build_row can
+					// resolve labels without re-fetching the form.
+					foreach ( RepeaterFormatter::csv_columns( $field ) as $rc ) {
+						$dynamic_cols[] = array(
+							'header'     => $rc['header'],
+							'source_id'  => $field_id,
+							'part'       => 'repeater_cell',
+							'item_index' => $rc['item_index'],
+							'child'      => $rc['child'],
+							'cell_part'  => $rc['part'], // value | filename | url
+						);
+					}
+				} elseif ( $type === 'matrix' ) {
+					// Matrix expands to one CSV column per configured row.
+					// `field` is captured so build_row can map stored
+					// column values back to labels without re-fetching
+					// the schema.
+					foreach ( MatrixFormatter::csv_columns( $field ) as $mc ) {
+						$dynamic_cols[] = array(
+							'header'    => $mc['header'],
+							'source_id' => $field_id,
+							'part'      => 'matrix_row',
+							'row_value' => $mc['row_value'],
+							'field'     => $field,
+						);
+					}
 				} else {
-					$dynamic_cols[] = [ 'header' => $field_id, 'source_id' => $field_id, 'part' => null ];
+					$dynamic_cols[] = array(
+						'header'    => $field_id,
+						'source_id' => $field_id,
+						'part'      => null,
+					);
 				}
 			}
 		} else {
 			// ' All-forms / search-only: union of field ids from entries '
 			// First pass: collect all field ids in first-seen order; detect file
 			// fields by value shape (array with both 'filename' and 'url' keys).
-			$seen        = [];  // field_id => true (ordered by first appearance)
-			$file_fields = [];  // field_id => true for confirmed file fields
+			$seen        = array();  // field_id => true (ordered by first appearance)
+			$file_fields = array();  // field_id => true for confirmed file fields
 
 			foreach ( $entries as $entry ) {
 				foreach ( $entry['data'] as $field_id => $value ) {
@@ -285,10 +346,22 @@ class ExportEndpoint {
 
 			foreach ( array_keys( $seen ) as $field_id ) {
 				if ( isset( $file_fields[ $field_id ] ) ) {
-					$dynamic_cols[] = [ 'header' => $field_id . '_filename', 'source_id' => $field_id, 'part' => 'filename' ];
-					$dynamic_cols[] = [ 'header' => $field_id . '_url',      'source_id' => $field_id, 'part' => 'url'      ];
+					$dynamic_cols[] = array(
+						'header'    => $field_id . '_filename',
+						'source_id' => $field_id,
+						'part'      => 'filename',
+					);
+					$dynamic_cols[] = array(
+						'header'    => $field_id . '_url',
+						'source_id' => $field_id,
+						'part'      => 'url',
+					);
 				} else {
-					$dynamic_cols[] = [ 'header' => $field_id, 'source_id' => $field_id, 'part' => null ];
+					$dynamic_cols[] = array(
+						'header'    => $field_id,
+						'source_id' => $field_id,
+						'part'      => null,
+					);
 				}
 			}
 		}
@@ -299,7 +372,7 @@ class ExportEndpoint {
 			$header_row[] = $col['header'];
 		}
 
-		return [ $dynamic_cols, $header_row ];
+		return array( $dynamic_cols, $header_row );
 	}
 
 	// Row building
@@ -317,13 +390,13 @@ class ExportEndpoint {
 	 */
 	private function build_row( array $entry, array $dynamic_cols ): array {
 		// Fixed columns.
-		$row = [];
+		$row = array();
 		foreach ( self::FIXED_COLS as $entry_key ) {
 			$row[] = $this->normalize_value( $entry[ $entry_key ] ?? null );
 		}
 
 		// Dynamic columns.
-		$data = $entry['data'] ?? [];
+		$data = $entry['data'] ?? array();
 		foreach ( $dynamic_cols as $col ) {
 			$raw = $data[ $col['source_id'] ] ?? null;
 
@@ -331,6 +404,17 @@ class ExportEndpoint {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['filename'] ?? '' ) : '' );
 			} elseif ( $col['part'] === 'url' ) {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['url'] ?? '' ) : '' );
+			} elseif ( $col['part'] === 'matrix_row' ) {
+				$field    = is_array( $col['field'] ?? null ) ? $col['field'] : array();
+				$row_val  = (string) ( $col['row_value'] ?? '' );
+				$rendered = MatrixFormatter::csv_row_value( $raw, $field, $row_val );
+				$row[]    = self::escape_csv_formula( $rendered );
+			} elseif ( $col['part'] === 'repeater_cell' ) {
+				$child      = is_array( $col['child'] ?? null ) ? $col['child'] : array();
+				$item_index = isset( $col['item_index'] ) ? (int) $col['item_index'] : 0;
+				$cell_part  = (string) ( $col['cell_part'] ?? 'value' );
+				$rendered   = RepeaterFormatter::csv_row_value( $raw, $item_index, $child, $cell_part );
+				$row[]      = self::escape_csv_formula( $rendered );
 			} else {
 				$row[] = $this->normalize_value( $raw );
 			}
@@ -356,7 +440,7 @@ class ExportEndpoint {
 	 * @return string
 	 */
 	private function normalize_value( $value ): string {
-		if ( $value === null || $value === '' ) {
+		if ( null === $value || $value === '' ) {
 			return '';
 		}
 
@@ -372,8 +456,21 @@ class ExportEndpoint {
 				return '';
 			}
 
-			// Plain arrays (multi-select field values, etc.).
-			return implode( ', ', array_map( 'strval', $value ) );
+			// Nested arrays (e.g. matrix on the all-forms export path
+			// where the per-row sub-columns can't be built without
+			// schema). Flatten one level so the CSV stays string-only:
+			// scalars stringify directly; arrays-of-scalars join with
+			// commas. This is best-effort — per-form CSV expands matrix
+			// into proper sub-columns via the matrix_row case above.
+			$parts = array();
+			foreach ( $value as $v ) {
+				if ( is_scalar( $v ) ) {
+					$parts[] = (string) $v;
+				} elseif ( is_array( $v ) ) {
+					$parts[] = implode( ', ', array_map( 'strval', array_filter( $v, 'is_scalar' ) ) );
+				}
+			}
+			return implode( ', ', $parts );
 		}
 
 		return self::escape_csv_formula( (string) $value );
@@ -387,7 +484,7 @@ class ExportEndpoint {
 	 * cell to be treated as a text literal.
 	 */
 	private static function escape_csv_formula( string $value ): string {
-		if ( $value !== '' && in_array( $value[0], [ '=', '+', '-', '@', "\t", "\r" ], true ) ) {
+		if ( $value !== '' && in_array( $value[0], array( '=', '+', '-', '@', "\t", "\r" ), true ) ) {
 			return "'" . $value;
 		}
 
@@ -416,12 +513,12 @@ class ExportEndpoint {
 	 * @return string
 	 */
 	private function build_filename(
-		int    $form_id,
+		int $form_id,
 		string $view,
 		string $search,
 		string $form_name,
 		string $date_from = '',
-		string $date_to   = ''
+		string $date_to = ''
 	): string {
 		if ( $form_id > 0 && $form_name !== '' ) {
 			$scope = sanitize_title( $form_name );
@@ -462,7 +559,7 @@ class ExportEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to export entries.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 }

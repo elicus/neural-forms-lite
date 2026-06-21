@@ -1,0 +1,4328 @@
+/**
+ * Builder-only stylesheet.
+ *
+ * Lives separately from src/index.css so the split builder bundle has
+ * its own CSS file. The 1.0.0 admin bundle (build/index.css) is left
+ * untouched - this stylesheet ships as build/builder.css and is
+ * enqueued only on the form editor screen.
+ *
+ * The .nf-builder-* / .nf-row* / .nf-column* / .nf-inspector* /
+ * .nf-form-settings* / .nf-preview-modal* selectors below are also
+ * present in src/index.css for the existing rich admin bundle - the
+ * duplication is deliberate: each bundle owns its own CSS so neither
+ * one can break the other if rebuilt independently.
+ */
+
+/* Brand color tokens - Neural Forms admin scheme.
+ * Primary navy #080f5b drives the dominant interactive surfaces
+ * (buttons, active tabs, selection outlines, header text accents).
+ * Accent green #15db95 is used sparingly for live/success states
+ * (Active status pill, Saved indicator, focus glow). Variables are
+ * scoped to #neural-forms-app so they cannot leak into wp-admin. */
+#neural-forms-app {
+	--nf-primary: #080f5b;
+	--nf-primary-hover: #050a45;
+	--nf-primary-soft: rgba( 8, 15, 91, 0.08 );
+	--nf-primary-ring: rgba( 8, 15, 91, 0.18 );
+	--nf-accent: #15db95;
+	--nf-accent-hover: #0fb47a;
+	--nf-accent-soft: rgba( 21, 219, 149, 0.14 );
+	--nf-accent-ring: rgba( 21, 219, 149, 0.30 );
+	--nf-border-active: var( --nf-primary );
+}
+
+/* Generic admin chrome reused by Builder */
+
+#neural-forms-app .neural-forms-screen {
+	margin: 0;
+}
+
+#neural-forms-app .neural-forms-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 7px 14px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #1f2937;
+	cursor: pointer;
+}
+
+#neural-forms-app .neural-forms-btn:hover {
+	border-color: #9ca3af;
+}
+
+#neural-forms-app .neural-forms-btn:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .neural-forms-btn--primary {
+	background: var( --nf-primary );
+	border-color: var( --nf-primary );
+	color: #fff;
+}
+
+#neural-forms-app .neural-forms-btn--primary:hover {
+	background: var( --nf-primary-hover );
+	border-color: var( --nf-primary-hover );
+}
+
+/* Mint-accented primary button — used by the Generate-with-AI card's
+ * CTA in the Pro state. Same shape as --primary so disabled/hover
+ * transitions read as the same family; brand accent #15db95 swaps the
+ * fill so the AI entry point pops against the navy palette. */
+#neural-forms-app .neural-forms-btn--accent {
+	background: var( --nf-accent );
+	border-color: var( --nf-accent );
+	color: #052b1f;
+}
+
+#neural-forms-app .neural-forms-btn--accent:hover {
+	background: #10c483;
+	border-color: #10c483;
+	color: #052b1f;
+}
+
+/* Results header link: an <a> styled as a button. WP admin's default
+ * link styles (blue underline) would otherwise leak through and clash
+ * with the surrounding button cluster. */
+#neural-forms-app .nf-builder-header__results,
+#neural-forms-app .nf-builder-header__results:hover,
+#neural-forms-app .nf-builder-header__results:focus,
+#neural-forms-app .nf-builder-header__results:visited {
+	color: #1f2937;
+	text-decoration: none;
+}
+
+#neural-forms-app .nf-builder-header__results:focus {
+	outline: 2px solid var( --nf-primary );
+	outline-offset: 1px;
+}
+
+#neural-forms-app .neural-forms-screen--error {
+	color: #b91c1c;
+	padding: 20px;
+}
+
+/* Field block (canvas + inline edit row) */
+
+#neural-forms-app .nf-builder-field {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 8px;
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-builder-field.is-dragging {
+	box-shadow: 0 4px 14px rgba( 17, 24, 39, 0.12 );
+}
+
+#neural-forms-app .nf-builder-field__handle {
+	background: transparent;
+	border: 0;
+	cursor: grab;
+	color: #9ca3af;
+	font-size: 18px;
+	padding: 0 6px;
+}
+
+#neural-forms-app .nf-builder-field__main {
+	display: grid;
+	grid-template-columns: 1fr 1fr 130px auto auto auto auto;
+	gap: 8px;
+	align-items: center;
+}
+
+#neural-forms-app .nf-builder-field__label,
+#neural-forms-app .nf-builder-field__placeholder,
+#neural-forms-app .nf-builder-field__type {
+	padding: 6px 8px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 13px;
+	box-sizing: border-box;
+	width: 100%;
+}
+
+#neural-forms-app .nf-builder-field__required {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	color: #4b5563;
+}
+
+#neural-forms-app .nf-builder-field__icon-btn {
+	background: transparent;
+	border: 0;
+	cursor: pointer;
+	font-size: 14px;
+	color: #6b7280;
+	padding: 4px 6px;
+	border-radius: 4px;
+}
+
+#neural-forms-app .nf-builder-field__icon-btn:hover {
+	background: #f3f4f6;
+}
+
+#neural-forms-app .nf-builder-field__icon-btn--remove:hover {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-builder-field__footer {
+	grid-column: 2;
+	display: flex;
+	gap: 16px;
+	margin-top: 8px;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-builder-field__cl-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* Layout row + columns */
+
+#neural-forms-app .nf-row {
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 8px;
+	/* The row sits inside the canvas (.nf-builder-canvas-shell). Bound
+	 * it to the parent so a wide nested column or controls cluster
+	 * can't push it past the canvas edge. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-row__header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 12px;
+	flex-wrap: wrap;
+}
+
+/* Three logical clusters: left (identity), middle (column count),
+ * right (gap + row actions). Right cluster uses margin-left:auto
+ * to push itself to the end of the row. On narrow widths the whole
+ * header wraps; the .right group stays grouped together. */
+#neural-forms-app .nf-row__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-row__group--right {
+	margin-left: auto;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-row__group--middle {
+	flex-shrink: 0;
+}
+
+#neural-forms-app .nf-row__handle {
+	background: transparent;
+	border: 0;
+	cursor: grab;
+	color: #9ca3af;
+	padding: 0 4px;
+}
+
+#neural-forms-app .nf-row__title {
+	font-size: 12px;
+	font-weight: 700;
+	color: #111827;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+#neural-forms-app .nf-row__pill {
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+/* Segmented control - column count + gap */
+
+#neural-forms-app .nf-row__seg {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	background: #f3f4f6;
+	border-radius: 6px;
+}
+
+#neural-forms-app .nf-row__seg--gap {
+	gap: 4px;
+	padding-left: 8px;
+}
+
+#neural-forms-app .nf-row__seg-prefix {
+	font-size: 11px;
+	font-weight: 600;
+	color: #6b7280;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-right: 2px;
+}
+
+#neural-forms-app .nf-row__seg-btn {
+	background: transparent;
+	border: 0;
+	padding: 4px 10px;
+	font-size: 12px;
+	font-weight: 500;
+	color: #4b5563;
+	border-radius: 4px;
+	cursor: pointer;
+	min-width: 28px;
+	text-align: center;
+}
+
+#neural-forms-app .nf-row__seg-btn:hover:not(.is-active):not(:disabled) {
+	background: rgba( 255, 255, 255, 0.7 );
+	color: #111827;
+}
+
+#neural-forms-app .nf-row__seg-btn.is-active {
+	background: #fff;
+	color: var( --nf-primary );
+	font-weight: 600;
+	box-shadow:
+		0 1px 2px rgba( 17, 24, 39, 0.06 ),
+		0 0 0 1px var( --nf-primary-ring );
+}
+
+/* Accent the active gap value with the mint focus glow.
+ * Column-count active stays navy-only; gap is where mint earns its
+ * sparing use as a "live setting" hint. */
+#neural-forms-app .nf-row__seg--gap .nf-row__seg-btn.is-active {
+	box-shadow:
+		0 1px 2px rgba( 17, 24, 39, 0.06 ),
+		0 0 0 1px var( --nf-accent-ring );
+}
+
+#neural-forms-app .nf-row__actions {
+	/* margin-left:auto removed - the parent .nf-row__group--right
+	 * now owns the right-side push so gap and actions stay grouped. */
+	display: inline-flex;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-row__icon-btn {
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-row__icon-btn:hover {
+	background: #fff;
+}
+
+#neural-forms-app .nf-row__icon-btn--danger:hover {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-row__grid {
+	display: grid;
+	gap: 12px;
+	/* Bounding the row grid to its parent prevents a wide column or a
+	 * long inline preview from pushing the row past the canvas. */
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* CRITICAL — every track is minmax(0, 1fr), NOT plain 1fr.
+ *
+ * Plain 1fr resolves to `minmax(auto, 1fr)`. The `auto` minimum is
+ * the track's intrinsic content size, so a column with a long input
+ * label or a wide preview blows past the row's container, which then
+ * pushes the canvas past the inspector. minmax(0, 1fr) lets each
+ * track shrink to 0 if needed, so the row always fits its parent.
+ * This was THE primary cause of the 3-/4-column overflow. */
+#neural-forms-app .nf-row__grid--cols-1 { grid-template-columns: minmax(0, 1fr); }
+#neural-forms-app .nf-row__grid--cols-2 { grid-template-columns: repeat( 2, minmax(0, 1fr) ); }
+#neural-forms-app .nf-row__grid--cols-3 { grid-template-columns: repeat( 3, minmax(0, 1fr) ); }
+#neural-forms-app .nf-row__grid--cols-4 { grid-template-columns: repeat( 4, minmax(0, 1fr) ); }
+
+#neural-forms-app .nf-row__grid--gap-none   { gap: 0; }
+#neural-forms-app .nf-row__grid--gap-small  { gap: 6px; }
+#neural-forms-app .nf-row__grid--gap-medium { gap: 12px; }
+#neural-forms-app .nf-row__grid--gap-large  { gap: 20px; }
+
+#neural-forms-app .nf-column {
+	background: #fff;
+	border: 1px dashed #d1d5db;
+	border-radius: 8px;
+	padding: 8px;
+	min-height: 64px;
+	/* Same reasoning as the row tracks: a column track is
+	 * minmax(0, 1fr), but the column's OWN content (a card with a
+	 * long label) would still expand past the track without these.
+	 * box-sizing keeps the 8px padding inside the track. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-column.is-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-column.is-over {
+	border-color: var( --nf-primary );
+	background: var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-column.is-empty {
+	cursor: pointer;
+	transition: border-color 0.15s, background-color 0.15s;
+}
+
+#neural-forms-app .nf-column.is-empty:hover {
+	border-color: var( --nf-primary );
+	background: var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-column.is-selected {
+	border-color: var( --nf-primary );
+	border-style: solid;
+	background: var( --nf-primary-soft );
+	box-shadow: 0 0 0 2px var( --nf-primary-ring );
+}
+
+#neural-forms-app .nf-column__placeholder {
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+	text-align: center;
+	padding: 4px 8px;
+}
+
+#neural-forms-app .nf-column.is-selected .nf-column__placeholder {
+	color: var( --nf-primary );
+	font-weight: 500;
+	font-style: normal;
+}
+
+/* Below ~1024px the canvas track is around 600-700px (page minus
+ * 220px palette + 280px inspector + gaps + padding). 4-up rows
+ * become unreadable there, so collapse them to 2-up first; 3-up
+ * stays. A few hundred px later (≤900) all multi-column rows stack. */
+@media ( max-width: 1024px ) {
+	#neural-forms-app .nf-row__grid--cols-4 {
+		grid-template-columns: repeat( 2, minmax(0, 1fr) );
+	}
+}
+
+@media ( max-width: 900px ) {
+	#neural-forms-app .nf-row__grid--cols-2,
+	#neural-forms-app .nf-row__grid--cols-3,
+	#neural-forms-app .nf-row__grid--cols-4 {
+		grid-template-columns: minmax( 0, 1fr );
+	}
+}
+
+/* 3-panel shell */
+
+#neural-forms-app .nf-builder-shell {
+	display: flex;
+	flex-direction: column;
+	min-height: calc( 100vh - 32px );
+	background: #f6f7f9;
+}
+
+#neural-forms-app .nf-builder-header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 12px 20px;
+	background: #fff;
+	border-bottom: 1px solid #e5e7eb;
+	flex-wrap: wrap;
+	box-shadow: 0 1px 0 rgba( 17, 24, 39, 0.02 );
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-builder-header__left {
+	flex: 1 1 240px;
+	min-width: 200px;
+}
+
+#neural-forms-app .nf-builder-header__name {
+	width: 100%;
+	font-size: 18px;
+	font-weight: 600;
+	padding: 8px 10px;
+	border: 1px solid transparent;
+	background: transparent;
+	border-radius: 6px;
+}
+
+#neural-forms-app .nf-builder-header__name:hover,
+#neural-forms-app .nf-builder-header__name:focus {
+	border-color: #d1d5db;
+	background: #fff;
+	outline: none;
+}
+
+#neural-forms-app .nf-builder-header__tabs {
+	display: inline-flex;
+	gap: 4px;
+	padding: 4px;
+	background: #f3f4f6;
+	border-radius: 8px;
+}
+
+#neural-forms-app .nf-builder-header__tab {
+	background: transparent;
+	border: 0;
+	padding: 6px 16px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #4b5563;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-builder-header__tab.is-active {
+	background: #fff;
+	color: #111827;
+	box-shadow: 0 1px 2px rgba( 17, 24, 39, 0.06 );
+}
+
+#neural-forms-app .nf-builder-header__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Save button — single source of truth for save status (replaces the
+   old standalone .nf-builder-header__saved label). Stable min-width so
+   the cluster doesn't reflow when the label flips between
+   Save / Saving… / Saved / Retry save. */
+#neural-forms-app .nf-builder-header__save {
+	min-width: 96px;
+	justify-content: center;
+}
+
+/* Clean state ("Saved", disabled). Soft mint tint so the button still
+   looks intentional rather than greyed-out. We override the base
+   primary navy: a disabled primary button looks broken; a deliberate
+   success-tinted disabled button looks confirming. */
+#neural-forms-app .nf-builder-header__save--clean[disabled],
+#neural-forms-app .nf-builder-header__save--clean[aria-disabled="true"] {
+	background: #ecfdf5;
+	color: #047857;
+	border-color: #a7f3d0;
+	cursor: default;
+	opacity: 1;
+}
+
+/* Retry state — keep primary chrome but tint the border red so the
+   user sees it's a recoverable action, not a fresh save. */
+#neural-forms-app .nf-builder-header__save--retry {
+	border-color: #ef4444;
+}
+
+/* Inline save error — sits BELOW the action row so the button cluster
+   never reflows. Right-aligned to align with the Save button column. */
+#neural-forms-app .nf-builder-header__save-error {
+	flex-basis: 100%;
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #b91c1c;
+	text-align: right;
+}
+
+#neural-forms-app .nf-builder-body {
+	display: grid;
+	/* minmax(0, 1fr) on the center track is what makes the canvas
+	 * shrink to fit when the inspector is open and a row is wide.
+	 * Without it, intrinsic content size of nested cards / row grids
+	 * forces the center track wider than the page, which pushes the
+	 * inspector off-screen and produces a horizontal scrollbar. */
+	grid-template-columns: 260px minmax( 0, 1fr ) 320px;
+	gap: 16px;
+	padding: 16px;
+	flex: 1;
+	min-height: 0;
+}
+
+/* Wider settings shell with stable width.
+ *
+ * width: min(1120px, calc(100vw - 96px)) keeps the page comfortably
+ * wide on big screens (capped at 1120px so line-lengths stay
+ * professional) AND breathes on smaller screens with a 48px safe
+ * margin on each side. The fixed grid below guarantees the layout
+ * NEVER shifts when switching sections - the 320px nav and the
+ * minmax(0, 1fr) panel always own the same boxes regardless of
+ * content height. */
+#neural-forms-app .nf-builder-body--settings {
+	display: block;
+	width: min( 1120px, calc( 100vw - 96px ) );
+	max-width: 100%;
+	margin: 0 auto;
+	padding: 32px 0 48px;
+}
+
+#neural-forms-app .nf-builder-body--settings .nf-form-settings {
+	width: 100%;
+}
+
+#neural-forms-app .nf-form-settings--split .nf-form-settings__intro {
+	margin-bottom: 20px;
+}
+
+#neural-forms-app .nf-form-settings__intro-title {
+	margin: 0 0 4px;
+	font-size: 20px;
+	font-weight: 700;
+	color: var( --nf-primary );
+	letter-spacing: -0.01em;
+}
+
+#neural-forms-app .nf-form-settings__intro-hint {
+	margin: 0;
+	color: #4b5563;
+	font-size: 13px;
+}
+
+/* Fixed two-track grid - ALWAYS 320px nav + 1fr panel. minmax(0, 1fr)
+ * on the panel track stops it from refusing to shrink below its
+ * content's intrinsic min-width, which would otherwise let a long
+ * placeholder push the whole page wider on one section and snap it
+ * back on the next. align-items:start keeps the nav top-aligned with
+ * the panel header. */
+#neural-forms-app .nf-form-settings__layout {
+	display: grid;
+	grid-template-columns: 320px minmax( 0, 1fr );
+	gap: 24px;
+	align-items: start;
+}
+
+#neural-forms-app .nf-form-settings__nav {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	position: sticky;
+	top: 16px;
+}
+
+#neural-forms-app .nf-form-settings__nav-item {
+	background: transparent;
+	border: 0;
+	border-left: 4px solid transparent;
+	text-align: left;
+	padding: 12px 14px;
+	border-radius: 8px;
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	color: #1f2937;
+	transition: background-color 0.12s, border-color 0.12s;
+}
+
+#neural-forms-app .nf-form-settings__nav-item:hover:not(.is-active) {
+	background: #f9fafb;
+}
+
+#neural-forms-app .nf-form-settings__nav-item.is-active {
+	background: var( --nf-primary-soft );
+	border-left-color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-form-settings__nav-item.is-active .nf-form-settings__nav-label {
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-form-settings__nav-label {
+	font-size: 13px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-form-settings__nav-hint {
+	font-size: 11px;
+	color: #6b7280;
+	font-weight: 400;
+	line-height: 1.45;
+}
+
+/* Stable panel: width is locked by the grid; min-height keeps the
+ * card height consistent so switching sections never causes a
+ * visible jump. 420px fits the largest section (notifications +
+ * email field with hint) without forcing whitespace on shorter ones. */
+#neural-forms-app .nf-form-settings__panel {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 24px 28px 26px;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	min-height: 420px;
+}
+
+#neural-forms-app .nf-form-settings__panel-header {
+	margin-bottom: 18px;
+	padding-bottom: 14px;
+	border-bottom: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-form-settings__panel-header .nf-form-settings__title {
+	margin: 0 0 4px;
+	font-size: 16px;
+	font-weight: 700;
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-form-settings__panel-header .nf-form-settings__hint {
+	margin: 0;
+	color: #6b7280;
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-form-settings__body {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+/* Brand-aligned focus ring on every form control inside the panel.
+ * Navy primary outline with a soft mint glow for the "live" hint -
+ * sparing accent use that matches the rest of the builder. */
+#neural-forms-app .nf-form-settings__panel input[type="text"]:focus,
+#neural-forms-app .nf-form-settings__panel input[type="email"]:focus,
+#neural-forms-app .nf-form-settings__panel input[type="url"]:focus,
+#neural-forms-app .nf-form-settings__panel select:focus,
+#neural-forms-app .nf-form-settings__panel textarea:focus {
+	outline: none;
+	border-color: var( --nf-primary );
+	box-shadow:
+		0 0 0 3px var( --nf-primary-soft ),
+		0 0 0 4px var( --nf-accent-ring );
+}
+
+#neural-forms-app .nf-form-settings__field-hint {
+	display: block;
+	color: #6b7280;
+	font-size: 11px;
+	font-weight: 400;
+	margin-top: 4px;
+}
+
+#neural-forms-app .nf-form-settings__note {
+	margin: 4px 0 0;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+@media ( max-width: 880px ) {
+	#neural-forms-app .nf-builder-body--settings {
+		width: min( 100%, calc( 100vw - 32px ) );
+		padding: 24px 0 32px;
+	}
+
+	#neural-forms-app .nf-form-settings__layout {
+		grid-template-columns: 1fr;
+	}
+
+	#neural-forms-app .nf-form-settings__nav {
+		position: static;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	#neural-forms-app .nf-form-settings__nav-item {
+		flex: 1 1 140px;
+		border-left: 0;
+		border-bottom: 4px solid transparent;
+	}
+
+	#neural-forms-app .nf-form-settings__nav-item.is-active {
+		border-left-color: transparent;
+		border-bottom-color: var( --nf-primary );
+	}
+
+	#neural-forms-app .nf-form-settings__nav-hint {
+		display: none;
+	}
+}
+
+#neural-forms-app .nf-builder-sidebar {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	overflow-y: auto;
+	max-height: calc( 100vh - 120px );
+}
+
+#neural-forms-app .nf-builder-sidebar__section + .nf-builder-sidebar__section {
+	margin-top: 20px;
+}
+
+#neural-forms-app .nf-builder-sidebar__title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+	margin: 0 0 10px;
+}
+
+#neural-forms-app .nf-builder-sidebar__grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px 8px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 500;
+	color: #374151;
+	transition: background-color 0.15s, border-color 0.15s, transform 0.05s;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip:hover {
+	background: #fff;
+	border-color: var( --nf-primary );
+	color: #111827;
+}
+
+#neural-forms-app .nf-builder-sidebar__chip:active {
+	transform: translateY( 1px );
+}
+
+#neural-forms-app .nf-builder-sidebar__chip--layout {
+	background: var( --nf-primary-soft );
+	border-color: var( --nf-primary-ring );
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-builder-sidebar__chip--layout:hover {
+	background: #fff;
+	border-color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-builder-main {
+	min-width: 0;
+}
+
+#neural-forms-app .nf-builder-canvas-shell {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	min-height: 320px;
+	/* The canvas wraps everything inside the center track. Bound it
+	 * to its grid track so a long row / wide preview stays contained. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-builder-canvas-empty {
+	/* Calm starter screen - no heavy dashed border. The starter
+	 * component owns its own layout; this wrapper just provides
+	 * comfortable padding and centring. */
+	display: block;
+	padding: 32px 8px;
+	color: inherit;
+	text-align: left;
+}
+
+#neural-forms-app .nf-builder-canvas-empty__title {
+	font-size: 15px;
+	font-weight: 600;
+	color: #374151;
+	margin: 0 0 4px;
+}
+
+#neural-forms-app .nf-builder-canvas-empty__hint {
+	margin: 0;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-builder-field.is-selected,
+#neural-forms-app .nf-row.is-selected {
+	box-shadow:
+		0 0 0 2px var( --nf-primary ),
+		0 8px 18px var( --nf-primary-soft );
+	border-radius: 8px;
+}
+
+/* Inspector */
+
+#neural-forms-app .nf-inspector {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px;
+	max-height: calc( 100vh - 120px );
+	overflow-y: auto;
+	/* Hard-stop horizontal overflow at the inspector boundary so a long
+	   option value, a quiz card with a wide input, or a bumpy CSS-grid
+	   row can never spawn a horizontal scrollbar. min-width:0 prevents
+	   the inspector's grid cell (320px in nf-builder-body) from being
+	   forced wider by intrinsic content sizing of nested inputs. */
+	overflow-x: hidden;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-inspector__title {
+	font-size: 13px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #374151;
+	margin: 0 0 12px;
+}
+
+#neural-forms-app .nf-inspector__empty {
+	margin: 0;
+	color: #6b7280;
+	font-size: 13px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-inspector__field {
+	display: block;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-inspector__field--inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-inspector__label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-inspector__field input[type="text"],
+#neural-forms-app .nf-inspector__field input[type="email"],
+#neural-forms-app .nf-inspector__field input[type="url"],
+#neural-forms-app .nf-inspector__field select,
+#neural-forms-app .nf-inspector__field textarea {
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 13px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-inspector__hint {
+	margin-top: 16px;
+	color: #6b7280;
+	font-size: 12px;
+}
+
+/* Per-form Settings tab inside builder */
+
+#neural-forms-app .nf-form-settings__section {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px 20px;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-form-settings__title {
+	font-size: 14px;
+	font-weight: 700;
+	color: #111827;
+	margin: 0 0 12px;
+}
+
+#neural-forms-app .nf-form-settings__field {
+	display: block;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-form-settings__field--inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-form-settings__label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-form-settings__field input[type="email"],
+#neural-forms-app .nf-form-settings__field input[type="url"],
+#neural-forms-app .nf-form-settings__field input[type="text"],
+#neural-forms-app .nf-form-settings__field select,
+#neural-forms-app .nf-form-settings__field textarea {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 13px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-form-settings__hint {
+	margin: 4px 0 0;
+	color: #6b7280;
+	font-size: 12px;
+}
+
+/* Preview modal */
+
+#neural-forms-app .nf-preview-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-preview-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba( 17, 24, 39, 0.5 );
+}
+
+#neural-forms-app .nf-preview-modal__panel {
+	position: relative;
+	background: #fff;
+	border-radius: 12px;
+	width: min( 720px, 92vw );
+	height: min( 80vh, 720px );
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 20px 50px rgba( 0, 0, 0, 0.25 );
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-preview-modal__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+#neural-forms-app .nf-preview-modal__title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-preview-modal__close {
+	background: transparent;
+	border: 0;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-preview-modal__body {
+	flex: 1;
+	min-height: 0;
+}
+
+#neural-forms-app .nf-preview-modal__frame {
+	width: 100%;
+	height: 100%;
+	border: 0;
+	background: #fff;
+}
+
+#neural-forms-app .nf-preview-modal__status {
+	padding: 16px;
+	color: #6b7280;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-preview-modal__status--error {
+	color: #b91c1c;
+}
+
+/* Trim side panels at common laptop widths so the canvas keeps
+ * enough room for a 3-/4-column row without a horizontal scrollbar.
+ * minmax(0, 1fr) on the center track is preserved — that's what
+ * actually fixes the overflow; this just gives it more space. */
+@media ( max-width: 1280px ) {
+	#neural-forms-app .nf-builder-body {
+		grid-template-columns: 240px minmax( 0, 1fr ) 300px;
+		gap: 12px;
+	}
+}
+
+@media ( max-width: 1100px ) {
+	#neural-forms-app .nf-builder-body {
+		grid-template-columns: 220px minmax( 0, 1fr ) 280px;
+	}
+}
+
+@media ( max-width: 900px ) {
+	#neural-forms-app .nf-builder-body {
+		grid-template-columns: minmax( 0, 1fr );
+	}
+	#neural-forms-app .nf-builder-sidebar,
+	#neural-forms-app .nf-inspector {
+		max-height: none;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+ * Builder redesign (1.1.0): polished palette, type chooser, AI placeholder,
+ * inline preview, device-width toggle. All scoped under #neural-forms-app.
+ * ------------------------------------------------------------------------- */
+
+#neural-forms-app .nf-builder-header__back {
+	background: transparent;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	width: 32px;
+	height: 32px;
+	cursor: pointer;
+	color: #4b5563;
+	font-size: 16px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 10px;
+}
+
+#neural-forms-app .nf-builder-header__back:hover {
+	border-color: #9ca3af;
+	color: #111827;
+}
+
+#neural-forms-app .nf-builder-header__left {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-builder-header__status-wrap {
+	display: inline-flex;
+	align-items: center;
+}
+
+/* Status select - styled to read as a pill but functions as a real
+ * <select> so the admin can flip Active/Draft/Archived inline. */
+#neural-forms-app .nf-builder-header__status {
+	appearance: none;
+	-webkit-appearance: none;
+	display: inline-block;
+	padding: 3px 22px 3px 10px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	cursor: pointer;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='currentColor' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+	background-repeat: no-repeat;
+	background-position: right 6px center;
+}
+
+#neural-forms-app .nf-builder-header__status:focus {
+	outline: 2px solid var( --nf-primary-ring );
+	outline-offset: 1px;
+}
+
+#neural-forms-app .nf-builder-header__status--draft    { background-color: #fef3c7; color: #92400e; }
+#neural-forms-app .nf-builder-header__status--active   { background-color: var( --nf-accent-soft ); color: var( --nf-primary ); }
+#neural-forms-app .nf-builder-header__status--archived { background-color: #f3f4f6; color: #4b5563; }
+
+/* Palette (sidebar) */
+
+#neural-forms-app .nf-palette__section + .nf-palette__section {
+	margin-top: 22px;
+	padding-top: 18px;
+	border-top: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-palette__title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+	margin: 0 0 10px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+#neural-forms-app .nf-palette__title-badge {
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+}
+
+/* Mint variant — used by the AI badge on the Generate-with-AI card
+ * when Pro is unlocked. Solid #15db95 fill + white text so the badge
+ * reads as a brand mark instead of a muted pill (the navy --primary-
+ * soft variant is too quiet for the active state). */
+#neural-forms-app .nf-palette__title-badge--accent {
+	background: var( --nf-accent );
+	color: #ffffff;
+	letter-spacing: 0.04em;
+}
+
+#neural-forms-app .nf-palette__grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-palette__chip {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 11px 8px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 500;
+	color: #374151;
+	transition: background-color 0.15s, border-color 0.15s, transform 0.05s;
+	text-align: center;
+}
+
+#neural-forms-app .nf-palette__chip:hover:not(:disabled) {
+	background: #fff;
+	border-color: var( --nf-primary );
+	color: #111827;
+}
+
+#neural-forms-app .nf-palette__chip:active:not(:disabled) {
+	transform: translateY( 1px );
+}
+
+#neural-forms-app .nf-palette__chip--layout {
+	background: var( --nf-primary-soft );
+	border-color: var( --nf-primary-ring );
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-palette__chip--layout:hover:not(:disabled) {
+	background: #fff;
+	border-color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-palette__chip--locked {
+	opacity: 0.7;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-palette__chip-badge {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	background: #f3f4f6;
+	color: #6b7280;
+	border-radius: 999px;
+	padding: 1px 6px;
+	font-size: 9px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+/* AI preview modal — dashboard-style review of generated schema */
+
+#neural-forms-app .nf-ai-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-ai-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba( 17, 24, 39, 0.45 );
+}
+
+#neural-forms-app .nf-ai-modal__panel {
+	position: relative;
+	z-index: 1;
+	background: #ffffff;
+	border-radius: 14px;
+	box-shadow: 0 12px 40px rgba( 0, 0, 0, 0.18 );
+	width: min( 640px, 92vw );
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+}
+
+#neural-forms-app .nf-ai-modal__head {
+	padding: 20px 24px 8px;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+#neural-forms-app .nf-ai-modal__title {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-ai-modal__subtitle {
+	margin: 2px 0 0;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-ai-modal__desc {
+	margin: 12px 24px 0;
+	font-size: 13px;
+	color: #4b5563;
+	line-height: 1.45;
+}
+
+#neural-forms-app .nf-ai-modal__body {
+	overflow-y: auto;
+	padding: 12px 24px 16px;
+	flex: 1 1 auto;
+}
+
+#neural-forms-app .nf-ai-modal__foot {
+	padding: 12px 24px;
+	border-top: 1px solid #e5e7eb;
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+#neural-forms-app .nf-ai-preview__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+#neural-forms-app .nf-ai-preview__list--nested {
+	margin-top: 6px;
+	margin-left: 14px;
+	padding-left: 10px;
+	border-left: 2px solid #e5e7eb;
+}
+
+#neural-forms-app .nf-ai-preview__row {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 8px;
+	font-size: 13px;
+	color: #1f2937;
+}
+
+#neural-forms-app .nf-ai-preview__row--step,
+#neural-forms-app .nf-ai-preview__row--row {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+#neural-forms-app .nf-ai-preview__type {
+	display: inline-block;
+	padding: 1px 7px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	background: rgba( 8, 15, 91, 0.08 );
+	color: #080f5b;
+}
+
+#neural-forms-app .nf-ai-preview__row--step .nf-ai-preview__type,
+#neural-forms-app .nf-ai-preview__row--row .nf-ai-preview__type {
+	align-self: flex-start;
+}
+
+#neural-forms-app .nf-ai-preview__label {
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-ai-preview__req {
+	font-size: 10px;
+	font-weight: 600;
+	color: #b45309;
+	background: rgba( 217, 119, 6, 0.10 );
+	padding: 1px 6px;
+	border-radius: 999px;
+}
+
+/* Form-type chooser (empty canvas) */
+
+/* Calm starter screen (1.1.0 cleanup).
+ *
+ * Replaces the previous chooser. Three tiers:
+ *   .nf-starter__row              primary cards
+ *   .nf-starter__row--secondary   smaller secondary cards
+ *   .nf-starter__footer           single muted "coming soon" line
+ *
+ * No outer dashed border, no large category badges, no repeated
+ * heading. Cards are compact, brand-coloured on hover, and read as
+ * a quiet menu rather than a dashboard. */
+
+#neural-forms-app .nf-starter {
+	width: 100%;
+	max-width: 760px;
+	margin: 0 auto;
+}
+
+#neural-forms-app .nf-starter__header {
+	margin-bottom: 18px;
+}
+
+#neural-forms-app .nf-starter__title {
+	margin: 0 0 4px;
+	font-size: 18px;
+	font-weight: 700;
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-starter__subtitle {
+	margin: 0;
+	color: #6b7280;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-starter__row {
+	display: grid;
+	grid-template-columns: repeat( auto-fill, minmax( 168px, 1fr ) );
+	gap: 10px;
+	margin-bottom: 16px;
+}
+
+#neural-forms-app .nf-starter__row-title {
+	margin: 8px 0 8px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-starter__row--secondary {
+	grid-template-columns: repeat( auto-fill, minmax( 168px, 1fr ) );
+}
+
+#neural-forms-app .nf-starter__card {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 12px 14px;
+	cursor: pointer;
+	font-family: inherit;
+	text-align: left;
+	transition: border-color 0.15s, background-color 0.15s, transform 0.05s;
+}
+
+#neural-forms-app .nf-starter__card:hover {
+	border-color: var( --nf-primary );
+	background: var( --nf-primary-soft );
+	transform: translateY( -1px );
+}
+
+#neural-forms-app .nf-starter__card-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-starter__card-desc {
+	font-size: 11px;
+	color: #6b7280;
+	line-height: 1.4;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
+}
+
+#neural-forms-app .nf-starter__card-meta {
+	margin-top: 2px;
+	font-size: 10px;
+	color: #9ca3af;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-starter__row--secondary .nf-starter__card {
+	padding: 10px 12px;
+}
+
+#neural-forms-app .nf-starter__row--secondary .nf-starter__card-title {
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-starter__footer {
+	margin: 18px 0 0;
+	color: #9ca3af;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-type-chooser__tile.is-pro .nf-type-chooser__tile-badge {
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+}
+
+/* Inspector tips + AI card */
+
+#neural-forms-app .nf-inspector__tips {
+	margin-top: 16px;
+	padding: 12px 14px;
+	background: #f8fafc;
+	border-radius: 10px;
+}
+
+#neural-forms-app .nf-inspector__tips-title {
+	margin: 0 0 6px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-inspector__tips-list {
+	margin: 0;
+	padding-left: 16px;
+	color: #4b5563;
+	font-size: 12px;
+	line-height: 1.55;
+}
+
+#neural-forms-app .nf-inspector__tips-list li {
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-inspector__tips-list li:last-child {
+	margin-bottom: 0;
+}
+
+/* ─── Inspector AI assistant card ─────────────────────────────
+ *
+ * Lives in BuilderInspector::EmptyInspector — the empty-state panel
+ * shown when no field/row/section/step is selected. Polished compact
+ * surface that hosts the Generate-with-AI flow (Pro) or the
+ * Upgrade-to-Pro upsell (Lite). The card carries its own title +
+ * subtitle + optional PRO badge inside the header row, so the
+ * inspector no longer needs a separate "GENERATE WITH AI" section
+ * label above it. */
+#neural-forms-app .nf-inspector-ai-card {
+	margin-top: 16px;
+	padding: 16px;
+	background: linear-gradient( 180deg, #ffffff 0%, #f7fffc 100% );
+	border: 1px solid rgba( 21, 219, 149, 0.28 );
+	border-radius: 14px;
+	box-shadow: 0 1px 2px rgba( 8, 15, 91, 0.04 );
+}
+
+#neural-forms-app .nf-inspector-ai-card--locked {
+	background: linear-gradient( 180deg, #ffffff 0%, #f5f7fc 100% );
+	border-color: rgba( 8, 15, 91, 0.14 );
+}
+
+#neural-forms-app .nf-inspector-ai-card__head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__icon {
+	flex: 0 0 auto;
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: var( --nf-accent );
+	color: var( --nf-primary );
+	border-radius: 8px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	line-height: 1;
+}
+
+#neural-forms-app .nf-inspector-ai-card__heading {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector-ai-card__title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nf-primary );
+	letter-spacing: -0.01em;
+	line-height: 1.3;
+}
+
+#neural-forms-app .nf-inspector-ai-card__sub {
+	margin: 2px 0 0;
+	font-size: 11px;
+	color: #6b7280;
+	line-height: 1.3;
+}
+
+#neural-forms-app .nf-inspector-ai-card__badge {
+	flex: 0 0 auto;
+	background: var( --nf-primary );
+	color: #fff;
+	border-radius: 999px;
+	padding: 2px 8px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+}
+
+#neural-forms-app .nf-inspector-ai-card__desc {
+	margin: 12px 0 0;
+	font-size: 12px;
+	line-height: 1.55;
+	color: #4b5563;
+}
+
+#neural-forms-app .nf-inspector-ai-card__input {
+	width: 100%;
+	min-height: 88px;
+	margin-top: 12px;
+	padding: 10px 12px;
+	font-size: 13px;
+	color: #1f2937;
+	background: #fff;
+	border: 1px solid #d8dee8;
+	border-radius: 10px;
+	box-sizing: border-box;
+	resize: vertical;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#neural-forms-app .nf-inspector-ai-card__input:focus {
+	outline: none;
+	border-color: var( --nf-accent );
+	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.18 );
+}
+
+#neural-forms-app .nf-inspector-ai-card__input:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-inspector-ai-card__meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__ideas-toggle {
+	background: transparent;
+	border: 0;
+	padding: 0;
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	color: var( --nf-primary );
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__ideas-toggle:hover,
+#neural-forms-app .nf-inspector-ai-card__ideas-toggle:focus-visible {
+	color: #050942;
+	outline: none;
+}
+
+#neural-forms-app .nf-inspector-ai-card__count {
+	font-size: 11px;
+	color: #6b7280;
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-app .nf-inspector-ai-card__ideas {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__idea-btn {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 8px 10px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: #374151;
+	cursor: pointer;
+	transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#neural-forms-app .nf-inspector-ai-card__idea-btn:hover,
+#neural-forms-app .nf-inspector-ai-card__idea-btn:focus-visible {
+	background: #fff;
+	border-color: var( --nf-accent );
+	outline: none;
+}
+
+#neural-forms-app .nf-inspector-ai-card__cta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 12px;
+	padding: 9px 14px;
+	font-size: 13px;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+#neural-forms-app .nf-inspector-ai-card__note {
+	margin: 8px 0 0;
+	font-size: 11px;
+	color: #6b7280;
+	text-align: center;
+}
+
+#neural-forms-app .nf-inspector-ai-card__error {
+	margin: 10px 0 0;
+	padding: 8px 10px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-inspector-ai-card__error-cta {
+	font-weight: 600;
+	color: #b91c1c;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+#neural-forms-app .nf-inspector-ai-card__warnings {
+	margin-top: 8px;
+	font-size: 12px;
+	color: #4b5563;
+}
+
+#neural-forms-app .nf-inspector-ai-card__warnings summary {
+	cursor: pointer;
+	color: var( --nf-primary );
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-inspector-ai-card__warnings ul {
+	margin: 6px 0 0;
+	padding-left: 16px;
+}
+
+/* Tips card sits below the AI card. Same gap on both sides keeps the
+ * empty-state column visually rhythmic. */
+#neural-forms-app .nf-inspector-ai-card + .nf-inspector__tips {
+	margin-top: 16px;
+}
+
+/* Preview modal additions: device toggle + stage */
+
+#neural-forms-app .nf-preview-modal__panel {
+	width: min( 1100px, 96vw );
+	height: min( 90vh, 880px );
+}
+
+#neural-forms-app .nf-preview-modal__header {
+	gap: 16px;
+}
+
+#neural-forms-app .nf-preview-modal__devices {
+	display: inline-flex;
+	gap: 4px;
+	padding: 4px;
+	background: #f3f4f6;
+	border-radius: 8px;
+}
+
+#neural-forms-app .nf-preview-modal__device {
+	background: transparent;
+	border: 0;
+	padding: 4px 12px;
+	font-size: 12px;
+	font-weight: 500;
+	color: #4b5563;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-preview-modal__device.is-active {
+	background: #fff;
+	color: #111827;
+	box-shadow: 0 1px 2px rgba( 17, 24, 39, 0.06 );
+}
+
+#neural-forms-app .nf-preview-modal__stage {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 20px;
+	background: #f3f4f6;
+	overflow: auto;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-preview-modal__frame {
+	height: 100%;
+	min-height: 480px;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	background: #fff;
+	box-shadow: 0 4px 12px rgba( 17, 24, 39, 0.06 );
+	transition: width 0.2s ease;
+}
+
+/* ---------------------------------------------------------------------------
+ * Field preview card (1.1.0 redesign).
+ *
+ * Replaces the inline-edit row. The canvas now reads as a live form
+ * preview; editing happens only in the right inspector.
+ * ------------------------------------------------------------------------- */
+
+#neural-forms-app .nf-card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 12px 14px;
+	margin-bottom: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	cursor: pointer;
+	transition: border-color 0.15s, box-shadow 0.15s;
+	/* The card sits inside a column track that is minmax(0, 1fr).
+	 * Without min-width:0 here the card's intrinsic content (a long
+	 * label, a wide preview) would still expand the column track. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+/* Card content that can be wide (preview inputs, help paragraphs)
+ * must stay inside the card. */
+#neural-forms-app .nf-card > * {
+	max-width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-card__preview {
+	max-width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-card__preview input,
+#neural-forms-app .nf-card__preview select,
+#neural-forms-app .nf-card__preview textarea {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-card:hover {
+	border-color: #cbd5e1;
+}
+
+#neural-forms-app .nf-card.is-selected {
+	border-color: var( --nf-primary );
+	box-shadow: 0 0 0 2px var( --nf-primary-ring );
+}
+
+#neural-forms-app .nf-card__header {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px 8px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* Badge cluster — wraps in place when the header runs out of room,
+ * keeps the duplicate/delete actions docked at the right via the
+ * actions block's margin-left:auto. Without this wrapper, four
+ * loose <span>s in the flex row pushed actions out of the card
+ * in 3-/4-column rows. */
+#neural-forms-app .nf-card__badges {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* Actions stay tucked at the right edge regardless of badge count.
+ * margin-left:auto handles the case where badges wrap to a new line
+ * inside the flex header — actions stay glued to the right of the
+ * top line, badges fill the second line. */
+#neural-forms-app .nf-card__actions {
+	margin-left: auto;
+	flex: 0 0 auto;
+}
+
+/* Badges shrink-safe — long type labels (e.g. "QUIZ QUESTION") wrap
+ * inside their own pill instead of pushing past the column width.
+ * line-height tightened so a 2-line wrap still fits the header band. */
+#neural-forms-app .nf-card__type-badge,
+#neural-forms-app .nf-card__poll-badge,
+#neural-forms-app .nf-card__quiz-badge,
+#neural-forms-app .nf-card__logic-badge {
+	max-width: 100%;
+	min-width: 0;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	line-height: 1.2;
+}
+
+/* Column-compact mode: when a card lives inside a row column (i.e.
+ * inside a multi-column row) the column track is often 200-300px,
+ * not enough for handle + title + 1-3 badges + 2 actions on one
+ * line. Switch to a 2-row grid: handle/title/actions on row 1,
+ * badges on row 2 (left-aligned, indented past the handle). The
+ * grid-areas pattern guarantees actions never get pushed out. */
+#neural-forms-app .nf-column .nf-card__header {
+	display: grid;
+	grid-template-columns: auto minmax( 0, 1fr ) auto;
+	grid-template-areas:
+		"handle title  actions"
+		".      badges badges";
+	column-gap: 8px;
+	row-gap: 6px;
+}
+
+#neural-forms-app .nf-column .nf-card__header > .nf-drag-zone {
+	grid-area: handle;
+}
+
+#neural-forms-app .nf-column .nf-card__label {
+	grid-area: title;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-column .nf-card__badges {
+	grid-area: badges;
+	justify-content: flex-start;
+}
+
+#neural-forms-app .nf-column .nf-card__actions {
+	grid-area: actions;
+	margin-left: 0; /* grid placement already handles the right docking */
+}
+
+#neural-forms-app .nf-card__handle {
+	background: transparent;
+	border: 0;
+	color: #9ca3af;
+	font-size: 14px;
+	padding: 2px 4px;
+	cursor: grab;
+}
+
+#neural-forms-app .nf-card__handle:hover {
+	color: #4b5563;
+}
+
+#neural-forms-app .nf-card__label {
+	flex: 1;
+	min-width: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-card__label-text {
+	font-size: 13px;
+	font-weight: 600;
+	color: #111827;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-card__required {
+	color: #b91c1c;
+	font-weight: 700;
+}
+
+#neural-forms-app .nf-card__type-badge {
+	background: #f3f4f6;
+	color: #4b5563;
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-card__actions {
+	display: inline-flex;
+	gap: 2px;
+}
+
+#neural-forms-app .nf-card__icon-btn {
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+}
+
+#neural-forms-app .nf-card__icon-btn:hover {
+	background: #f3f4f6;
+	color: #111827;
+}
+
+#neural-forms-app .nf-card__icon-btn--danger:hover {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-card__preview {
+	pointer-events: none; /* clicks pass through to the card for selection */
+}
+
+#neural-forms-app .nf-card__help {
+	margin: 0;
+	color: #6b7280;
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-card--hidden .nf-card__preview {
+	pointer-events: auto;
+}
+
+/* Preview controls (read-only) */
+
+#neural-forms-app .nf-preview__input,
+#neural-forms-app .nf-preview__select,
+#neural-forms-app .nf-preview__textarea {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #f9fafb;
+	color: #4b5563;
+	font-size: 13px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-preview__textarea {
+	resize: none;
+}
+
+#neural-forms-app .nf-preview__choices {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+#neural-forms-app .nf-preview__choice {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: #374151;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-preview__hint {
+	margin: 0;
+	color: #9ca3af;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-preview__range {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+#neural-forms-app .nf-preview__range input {
+	flex: 1;
+}
+
+#neural-forms-app .nf-preview__range-value {
+	font-size: 12px;
+	color: #4b5563;
+	min-width: 24px;
+	text-align: right;
+}
+
+#neural-forms-app .nf-preview__rating {
+	display: inline-flex;
+	gap: 2px;
+	font-size: 20px;
+	line-height: 1;
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-preview__rating-star {
+	display: inline-block;
+}
+
+#neural-forms-app .nf-preview__file {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 10px;
+	border: 1px dashed #d1d5db;
+	border-radius: 6px;
+	background: #f9fafb;
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-preview__file-cta {
+	font-weight: 600;
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-preview__file-meta {
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-preview__hidden {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 10px;
+	border-radius: 6px;
+	background: #f3f4f6;
+	color: #4b5563;
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-preview__hidden-key {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	color: #1f2937;
+}
+
+#neural-forms-app .nf-preview__hidden-value {
+	color: #6b7280;
+	font-style: italic;
+}
+
+/* Inspector additions: options editor + conditional-logic panel */
+
+#neural-forms-app .nf-inspector__options {
+	margin-bottom: 14px;
+}
+
+#neural-forms-app .nf-inspector__option-row {
+	display: grid;
+	grid-template-columns: 1fr 90px auto;
+	gap: 6px;
+	margin-bottom: 6px;
+	/* min-width:0 lets each grid cell shrink below the intrinsic
+	   content width of its <input>, preventing the row from
+	   pushing the inspector wider than its 320px column. */
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__option-row > * {
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__option-row input[type="text"] {
+	padding: 6px 8px;
+	font-size: 12px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	box-sizing: border-box;
+	/* Without these two, an input's default content-based min-width
+	   wins over the grid track size — which is exactly what created
+	   the horizontal-scrollbar regression on the quiz inspector. */
+	width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__option-remove {
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	font-size: 16px;
+	cursor: pointer;
+	padding: 0 6px;
+}
+
+#neural-forms-app .nf-inspector__option-remove:hover {
+	color: #b91c1c;
+}
+
+/* Matrix field — builder preview grid */
+
+#neural-forms-app .nf-preview__matrix-scroll {
+	max-width: 100%;
+	overflow-x: auto;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #fff;
+}
+
+#neural-forms-app .nf-preview__matrix {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 12px;
+	color: #1f2937;
+}
+
+#neural-forms-app .nf-preview__matrix th,
+#neural-forms-app .nf-preview__matrix td {
+	padding: 6px 10px;
+	border-bottom: 1px solid #f1f5f9;
+	text-align: center;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-preview__matrix tbody tr:last-child th,
+#neural-forms-app .nf-preview__matrix tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+#neural-forms-app .nf-preview__matrix-corner {
+	background: #f9fafb;
+}
+
+#neural-forms-app .nf-preview__matrix-col {
+	font-weight: 600;
+	color: #374151;
+	background: #f9fafb;
+}
+
+#neural-forms-app .nf-preview__matrix-row {
+	font-weight: 500;
+	text-align: left;
+	color: #374151;
+	background: #f9fafb;
+	position: sticky;
+	left: 0;
+	z-index: 1;
+}
+
+#neural-forms-app .nf-preview__matrix-cell input {
+	cursor: not-allowed;
+	accent-color: var( --nf-primary );
+}
+
+/* Matrix field — inspector controls */
+
+#neural-forms-app .nf-inspector__matrix {
+	margin-bottom: 14px;
+}
+
+#neural-forms-app .nf-inspector__matrix-group {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-inspector__matrix-row-row {
+	display: grid;
+	grid-template-columns: 1fr 100px auto;
+	gap: 6px;
+	margin-bottom: 6px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__matrix-col-row {
+	display: grid;
+	grid-template-columns: 1fr 100px 56px auto;
+	gap: 6px;
+	margin-bottom: 6px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__matrix-row-row > *,
+#neural-forms-app .nf-inspector__matrix-col-row > * {
+	min-width: 0;
+}
+
+#neural-forms-app .nf-inspector__matrix-row-row input[type="text"],
+#neural-forms-app .nf-inspector__matrix-col-row input[type="text"],
+#neural-forms-app .nf-inspector__matrix-score {
+	padding: 6px 8px;
+	font-size: 12px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+}
+
+/* Repeater field — canvas preview                                  */
+
+#neural-forms-app .nf-preview__repeater {
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	background: #fcfcfd;
+	padding: 12px;
+}
+
+#neural-forms-app .nf-preview__repeater-meta {
+	font-size: 11px;
+	color: #6b7280;
+	margin-bottom: 10px;
+}
+
+#neural-forms-app .nf-preview__repeater-item {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 12px;
+}
+
+#neural-forms-app .nf-preview__repeater-item-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 8px;
+	gap: 8px;
+}
+
+/* The "Item 1" label — mirrors the frontend .__item-num typography. */
+#neural-forms-app .nf-preview__repeater-item-head > span:first-child {
+	font-size: 14px;
+	font-weight: 600;
+	color: #374151;
+	line-height: 1;
+}
+
+/* The remove hint — read-only pill in the canvas, styled like the
+   real frontend remove button so the builder author sees what
+   visitors will actually see. */
+#neural-forms-app .nf-preview__repeater-remove-hint {
+	font-style: normal;
+	background: transparent;
+	color: #b91c1c;
+	border: 1px solid #fecaca;
+	border-radius: 6px;
+	padding: 4px 10px;
+	font-size: 12px;
+	line-height: 1;
+}
+
+#neural-forms-app .nf-preview__repeater-grid {
+	display: grid;
+	gap: 10px;
+}
+
+#neural-forms-app .nf-preview__repeater-grid--cols-1 { grid-template-columns: 1fr; }
+#neural-forms-app .nf-preview__repeater-grid--cols-2 { grid-template-columns: 1fr 1fr; }
+#neural-forms-app .nf-preview__repeater-grid--cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+#neural-forms-app .nf-preview__repeater-grid--cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+#neural-forms-app .nf-preview__repeater-child {
+	min-width: 0;
+}
+
+#neural-forms-app .nf-preview__repeater-child-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-preview__repeater-child-required {
+	color: var( --nf-primary, #080f5b );
+}
+
+/* "+ Add item" hint — styled like the real frontend add button. */
+#neural-forms-app .nf-preview__repeater-add-hint {
+	display: inline-block;
+	margin-top: 12px;
+	background: #fff;
+	color: #080f5b;
+	border: 1px solid #080f5b;
+	border-radius: 6px;
+	padding: 6px 12px;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1;
+}
+
+/* Repeater field — inspector controls                              */
+
+#neural-forms-app .nf-inspector__repeater {
+	margin-bottom: 14px;
+}
+
+#neural-forms-app .nf-inspector__repeater-children {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-inspector__repeater-child {
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 8px;
+	margin-top: 8px;
+	background: #fff;
+}
+
+#neural-forms-app .nf-inspector__repeater-child-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 6px;
+}
+
+#neural-forms-app .nf-inspector__repeater-child-type {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var( --nf-primary, #080f5b );
+}
+
+#neural-forms-app .nf-inspector__repeater-child-actions {
+	display: inline-flex;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-inspector__repeater-child-move {
+	background: transparent;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	padding: 0 6px;
+	font-size: 12px;
+	color: #374151;
+	cursor: pointer;
+	line-height: 18px;
+}
+
+#neural-forms-app .nf-inspector__repeater-child-move:hover {
+	background: #f3f4f6;
+}
+
+#neural-forms-app .nf-inspector__repeater-child-move:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-inspector__repeater-add {
+	display: flex;
+	gap: 6px;
+	margin-top: 10px;
+	align-items: center;
+}
+
+#neural-forms-app .nf-inspector__repeater-add select {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Conditional Logic editor (real, not a placeholder) */
+
+#neural-forms-app .nf-inspector__cl {
+	margin-top: 16px;
+	padding-top: 14px;
+	border-top: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-inspector__cl-title {
+	margin: 0 0 8px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #374151;
+}
+
+#neural-forms-app .nf-inspector__cl-rule {
+	margin-top: 4px;
+	padding: 10px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+}
+
+#neural-forms-app .nf-inspector__cl-prefix {
+	margin: 0 0 8px;
+	font-size: 11px;
+	color: #6b7280;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-weight: 600;
+}
+
+#neural-forms-app .nf-inspector__cl-hint {
+	margin: 4px 0 0;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+/* Logic badge on canvas card */
+
+#neural-forms-app .nf-card__logic-badge {
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+/* Poll results-visibility badge on canvas card */
+
+#neural-forms-app .nf-card__poll-badge {
+	background: rgba( 21, 219, 149, 0.12 );
+	color: #0a7d56;
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+
+/* Quiz badges on canvas card: points pill + Explanation hint */
+
+#neural-forms-app .nf-card__quiz-badge {
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-card__quiz-badge--explain {
+	background: rgba( 21, 219, 149, 0.12 );
+	color: #0a7d56;
+}
+
+/* Drag handles + drag-state cues. Pointer drag uses @dnd-kit; the
+ * activator is a generous .nf-drag-zone button on the left of each
+ * draggable card. The legacy .nf-card__handle / .nf-row__handle /
+ * .nf-step__handle / .nf-section__handle classes have been replaced
+ * by .nf-drag-zone (see below) — the rules further down in this file
+ * for those legacy classes remain because they share base typography
+ * and were carefully matched to the surrounding card chrome; the
+ * activator markup no longer carries those class names so they
+ * apply to nothing in 1.1.0+. */
+
+#neural-forms-app .nf-drag-zone {
+	width: 34px;
+	min-width: 34px;
+	height: 34px;
+	border: 0;
+	border-radius: 8px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: grab;
+	color: #6b7280;
+	background: transparent;
+	padding: 0;
+	margin-right: 4px;
+	transition: background-color 120ms ease, color 120ms ease;
+}
+
+#neural-forms-app .nf-drag-zone:hover {
+	background: rgba( 21, 219, 149, 0.12 );
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-drag-zone:active,
+#neural-forms-app .nf-drag-zone:focus-visible {
+	cursor: grabbing;
+	background: rgba( 21, 219, 149, 0.18 );
+	color: var( --nf-primary );
+	outline: none;
+	box-shadow: 0 0 0 2px rgba( 8, 15, 91, 0.18 );
+}
+
+#neural-forms-app .is-dragging .nf-drag-zone,
+#neural-forms-app .nf-drag-zone[aria-pressed="true"] {
+	cursor: grabbing;
+	background: rgba( 21, 219, 149, 0.18 );
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-drag-zone__icon {
+	font-size: 14px;
+	letter-spacing: 1px;
+	line-height: 1;
+	user-select: none;
+	pointer-events: none;
+}
+
+/* Palette chips: cursor cue + dragging state. Click adds, drag places. */
+#neural-forms-app .nf-palette__chip {
+	cursor: grab;
+}
+
+#neural-forms-app .nf-palette__chip:active {
+	cursor: grabbing;
+}
+
+#neural-forms-app .nf-palette__chip.is-dragging {
+	opacity: 0.45;
+}
+
+#neural-forms-app .nf-palette__hint {
+	margin: 0 0 8px;
+	font-size: 11px;
+	color: #6b7280;
+	font-style: italic;
+}
+
+/* Subtle tip above the canvas so new users discover the drag handle. */
+#neural-forms-app .nf-builder-canvas__tip {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 12px;
+	padding: 6px 10px;
+	font-size: 11px;
+	color: #6b7280;
+	background: rgba( 8, 15, 91, 0.04 );
+	border: 1px dashed #e5e7eb;
+	border-radius: 6px;
+}
+
+#neural-forms-app .nf-builder-canvas__tip-icon {
+	display: inline-flex;
+	width: 18px;
+	height: 18px;
+	border-radius: 4px;
+	align-items: center;
+	justify-content: center;
+	background: rgba( 21, 219, 149, 0.18 );
+	color: var( --nf-primary );
+	font-size: 11px;
+	line-height: 1;
+	letter-spacing: 1px;
+	font-weight: 700;
+}
+
+#neural-forms-app .nf-builder-field.is-dragging,
+#neural-forms-app .nf-row.is-dragging,
+#neural-forms-app .nf-step.is-dragging,
+#neural-forms-app .nf-section.is-dragging {
+	box-shadow: 0 0 0 2px rgba( 21, 219, 149, 0.4 );
+}
+
+/* Step body: mint-accent highlight when an acceptable item is over it. */
+#neural-forms-app .nf-step__body.is-over {
+	background: rgba( 21, 219, 149, 0.08 );
+	border-color: #15db95;
+	border-style: solid;
+}
+
+/* Column drop zone highlight. */
+#neural-forms-app .nf-column.is-over {
+	background: rgba( 21, 219, 149, 0.08 );
+	outline: 2px solid #15db95;
+	outline-offset: -2px;
+}
+
+/* Lifted card preview that follows the cursor (DragOverlay). */
+#neural-forms-app .nf-drag-overlay {
+	display: inline-flex;
+	align-items: center;
+	padding: 8px 14px;
+	background: var( --nf-primary );
+	color: #fff;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	box-shadow: 0 8px 24px rgba( 8, 15, 91, 0.25 );
+	pointer-events: none;
+}
+
+/* Quiz form-settings: result messages repeater */
+
+#neural-forms-app .nf-form-settings__result-row {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	margin-top: 8px;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #fafbff;
+	position: relative;
+}
+
+#neural-forms-app .nf-form-settings__result-range {
+	display: flex;
+	gap: 12px;
+}
+
+#neural-forms-app .nf-form-settings__result-range label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 11px;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-form-settings__result-range input {
+	width: 80px;
+}
+
+#neural-forms-app .nf-form-settings__result-title,
+#neural-forms-app .nf-form-settings__result-message {
+	width: 100%;
+}
+
+#neural-forms-app .nf-form-settings__result-remove {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 22px;
+	height: 22px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	border-radius: 4px;
+	cursor: pointer;
+	color: #6b7280;
+	font-size: 14px;
+	line-height: 1;
+}
+
+#neural-forms-app .nf-form-settings__result-remove:hover {
+	color: #b91c1c;
+	border-color: #fecaca;
+}
+
+/* Quiz options editor — stacked card per option.
+ *
+ * The previous 4-column row (radio | label | value | ×) overflowed
+ * the 320px inspector. Each option is now a small card whose label
+ * and value inputs stack vertically so they always fit. The Correct-
+ * answer radio + remove × live on a top row; the card border tints
+ * mint when this option is the selected correct answer.
+ */
+
+#neural-forms-app .nf-quiz-options__hint {
+	margin: 0 0 10px;
+	font-size: 11px;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-quiz-option-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	margin-bottom: 8px;
+	background: #ffffff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card--correct {
+	background: #f0fdf4;
+	border-color: #86efac;
+}
+
+#neural-forms-app .nf-quiz-option-card__top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card__correct {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: #1f2937;
+	cursor: pointer;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card__correct input[type="radio"] {
+	margin: 0;
+	accent-color: #15db95;
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+
+#neural-forms-app .nf-quiz-option-card__remove {
+	flex: 0 0 auto;
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	font-size: 18px;
+	line-height: 1;
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-quiz-option-card__remove:hover {
+	color: #b91c1c;
+	background: #fef2f2;
+}
+
+#neural-forms-app .nf-quiz-option-card__field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-quiz-option-card__field-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: #374151;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+#neural-forms-app .nf-quiz-option-card__field input[type="text"] {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	font-size: 12px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+}
+
+/* Kept: the `nf-inspector__option-correct` class is still used inside
+   the radio so existing accent-color styling persists if anyone reads
+   it from the card via that selector. */
+#neural-forms-app .nf-inspector__option-correct {
+	margin: 0;
+	cursor: pointer;
+	accent-color: #15db95;
+}
+
+#neural-forms-app .nf-inspector__warning {
+	margin: 6px 0 0;
+	font-size: 11px;
+	color: #b45309;
+}
+
+/* Poll results panel inside the inspector. */
+
+#neural-forms-app .nf-poll-results {
+	margin-top: 16px;
+	padding: 12px;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	background: #fafbff;
+}
+
+#neural-forms-app .nf-poll-results__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-poll-results__title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nf-primary );
+}
+
+#neural-forms-app .nf-poll-results__refresh {
+	background: transparent;
+	border: 1px solid #e5e7eb;
+	color: var( --nf-primary );
+	border-radius: 4px;
+	padding: 2px 8px;
+	font-size: 11px;
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-poll-results__refresh:hover:not([disabled]) {
+	background: var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-poll-results__refresh[disabled] {
+	cursor: default;
+	opacity: 0.6;
+}
+
+#neural-forms-app .nf-poll-results__total {
+	margin: 8px 0 4px;
+	font-size: 12px;
+	color: #4b5563;
+}
+
+#neural-forms-app .nf-poll-results__hint {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: #6b7280;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-poll-results__error {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-poll-results__list {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-poll-results__row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-poll-results__row-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 12px;
+}
+
+#neural-forms-app .nf-poll-results__row-label {
+	color: #1f2937;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-poll-results__row-count {
+	color: #6b7280;
+	font-variant-numeric: tabular-nums;
+}
+
+#neural-forms-app .nf-poll-results__bar {
+	height: 6px;
+	background: #e5e7eb;
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-poll-results__bar-fill {
+	height: 100%;
+	background: linear-gradient( 90deg, var( --nf-primary ) 0%, #15db95 100% );
+	border-radius: 999px;
+	transition: width 200ms ease;
+}
+
+#neural-forms-app .nf-poll-results__row--other .nf-poll-results__bar-fill {
+	background: #9ca3af;
+}
+
+/* ---------------------------------------------------------------------------
+ * Step block (1.1.0 multi-step).
+ *
+ * Top-level layout container. Reads as a tinted card so it visually
+ * separates from rows + flat fields. Inner body holds real fields and
+ * rows; rows nested inside steps render with their own toolbar exactly
+ * as they do at root.
+ * ------------------------------------------------------------------------- */
+
+#neural-forms-app .nf-step {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-left: 4px solid var( --nf-primary );
+	border-radius: 10px;
+	padding: 14px 16px 16px;
+	margin-bottom: 12px;
+	transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+#neural-forms-app .nf-step.is-dragging {
+	box-shadow: 0 8px 18px var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-step.is-selected {
+	box-shadow:
+		0 0 0 2px var( --nf-primary ),
+		0 8px 18px var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-step__header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 10px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-step__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-step__group--right {
+	margin-left: auto;
+}
+
+#neural-forms-app .nf-step__handle {
+	background: transparent;
+	border: 0;
+	cursor: grab;
+	color: #9ca3af;
+	padding: 0 4px;
+}
+
+#neural-forms-app .nf-step__pill {
+	background: var( --nf-primary );
+	color: #fff;
+	border-radius: 999px;
+	padding: 2px 10px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-step__title {
+	font-size: 14px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-step__description {
+	margin: 0 0 12px;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-step__actions {
+	display: inline-flex;
+	gap: 4px;
+}
+
+#neural-forms-app .nf-step__icon-btn {
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+}
+
+#neural-forms-app .nf-step__icon-btn:hover:not(:disabled) {
+	background: #f3f4f6;
+	color: #111827;
+}
+
+#neural-forms-app .nf-step__icon-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-step__icon-btn--danger:hover:not(:disabled) {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-step__body {
+	background: #f9fafb;
+	border: 1px dashed #e5e7eb;
+	border-radius: 8px;
+	padding: 10px;
+	min-height: 64px;
+	transition: background 120ms ease, border-color 120ms ease;
+	/* Step body holds rows / fields, so the same overflow guards as
+	 * the canvas-shell apply. Without these a 4-column row inside a
+	 * step pushed the step (and the canvas) past the inspector. */
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+/* Active drop target: any step body the user is dragging an
+ * acceptable item over. Mint accent matches the brand cue used
+ * elsewhere for "drop here" affordances. */
+#neural-forms-app .nf-step__body.is-over {
+	background: rgba( 21, 219, 149, 0.06 );
+	border-color: #15db95;
+	border-style: solid;
+}
+
+#neural-forms-app .nf-step__body--empty {
+	min-height: 80px;
+}
+
+#neural-forms-app .nf-step__empty {
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+	text-align: center;
+	padding: 16px 8px;
+}
+
+#neural-forms-app .nf-step__body.is-over .nf-step__empty {
+	color: #0a7d56;
+	font-style: normal;
+	font-weight: 600;
+}
+
+/* When a step is selected the inspector shows its position pill. */
+#neural-forms-app .nf-inspector__step-position {
+	margin: 0 0 12px;
+	display: inline-block;
+	background: var( --nf-primary-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 2px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* Step inspector: form-level progress indicator section. */
+
+#neural-forms-app .nf-inspector__form-progress {
+	margin-top: 16px;
+	padding-top: 14px;
+	border-top: 1px solid #f3f4f6;
+}
+
+#neural-forms-app .nf-inspector__form-progress-title {
+	margin: 0 0 4px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #374151;
+}
+
+#neural-forms-app .nf-inspector__form-progress-hint {
+	margin: 0 0 8px;
+	color: #6b7280;
+	font-size: 11px;
+}
+
+/* Canvas toolbar (1.1.0 template change/clear UX). */
+
+#neural-forms-app .nf-canvas-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 10px 14px;
+	margin-bottom: 12px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-canvas-toolbar__label {
+	font-size: 13px;
+	font-weight: 600;
+	color: var( --nf-primary );
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+/* Shortcode pill — shown on the right of the template label once the
+ * form has a saved id. Wraps to a new row on narrow toolbars. */
+#neural-forms-app .nf-canvas-toolbar__shortcode {
+	display: inline-flex;
+	align-items: stretch;
+	gap: 0;
+	flex: 1 1 280px;
+	min-width: 0;
+	max-width: 100%;
+	margin-left: auto; /* push to the right of the template label on wide rows */
+}
+
+#neural-forms-app .nf-canvas-toolbar__shortcode-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+	font-size: 12px;
+	color: #1f2937;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-right: 0;
+	border-radius: 6px 0 0 6px;
+	padding: 6px 10px;
+	box-sizing: border-box;
+}
+
+#neural-forms-app .nf-canvas-toolbar__shortcode-input:focus {
+	outline: none;
+	background: #fff;
+	border-color: var( --nf-primary-ring, #c7d2fe );
+}
+
+#neural-forms-app .nf-canvas-toolbar__shortcode-copy {
+	flex: 0 0 auto;
+	border-radius: 0 6px 6px 0;
+	min-width: 76px;
+}
+
+/* "Copied" feedback — mint tint, mirrors the success palette used for
+ * the saved-status Save button. Fades back to default after 1.5s. */
+#neural-forms-app .nf-canvas-toolbar__shortcode-copy.is-copied {
+	background: #ecfdf5;
+	color: #047857;
+	border-color: #a7f3d0;
+}
+
+/* Muted hint shown for unsaved forms (formId === 0). */
+#neural-forms-app .nf-canvas-toolbar__shortcode-hint {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 12px;
+	color: #6b7280;
+	font-style: italic;
+	margin-left: auto;
+	text-align: right;
+}
+
+#neural-forms-app .nf-canvas-toolbar__actions {
+	display: inline-flex;
+	gap: 8px;
+	flex: 0 0 auto;
+}
+
+#neural-forms-app .nf-canvas-toolbar__btn {
+	font-size: 12px;
+	padding: 6px 12px;
+}
+
+#neural-forms-app .nf-canvas-toolbar__btn--danger {
+	color: #b91c1c;
+	border-color: #fecaca;
+}
+
+#neural-forms-app .nf-canvas-toolbar__btn--danger:hover {
+	background: #fee2e2;
+	border-color: #fca5a5;
+	color: #991b1b;
+}
+
+/* Change-template modal. */
+
+#neural-forms-app .nf-template-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#neural-forms-app .nf-template-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba( 17, 24, 39, 0.5 );
+}
+
+#neural-forms-app .nf-template-modal__panel {
+	position: relative;
+	background: #fff;
+	border-radius: 12px;
+	width: min( 900px, 94vw );
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 20px 50px rgba( 0, 0, 0, 0.25 );
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-template-modal__header {
+	display: flex;
+	justify-content: flex-end;
+	padding: 8px 12px 0;
+}
+
+#neural-forms-app .nf-template-modal__close {
+	background: transparent;
+	border: 0;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+	color: #6b7280;
+}
+
+#neural-forms-app .nf-template-modal__body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 8px 28px 24px;
+}
+
+#neural-forms-app .nf-template-modal__body .nf-starter {
+	margin: 0 auto;
+}
+
+#neural-forms-app .nf-template-modal__footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 12px 20px;
+	border-top: 1px solid #f3f4f6;
+}
+
+/* Section card (1.1.0 layout/content node). Visual divider; never an
+ * input. Styled as a calm card so it sits between rows + fields
+ * without competing visually. */
+
+#neural-forms-app .nf-section {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-left: 4px solid var( --nf-accent );
+	border-radius: 10px;
+	padding: 12px 14px;
+	margin-bottom: 10px;
+	transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+#neural-forms-app .nf-section.is-dragging {
+	box-shadow: 0 8px 18px var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-section.is-selected {
+	box-shadow:
+		0 0 0 2px var( --nf-primary ),
+		0 8px 18px var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-section__header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+#neural-forms-app .nf-section__handle {
+	background: transparent;
+	border: 0;
+	cursor: grab;
+	color: #9ca3af;
+	padding: 0 4px;
+}
+
+#neural-forms-app .nf-section__pill {
+	background: var( --nf-accent-soft );
+	color: var( --nf-primary );
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-section__title {
+	font-size: 14px;
+	font-weight: 600;
+	color: #111827;
+	flex: 1;
+	min-width: 120px;
+}
+
+#neural-forms-app .nf-section__description {
+	margin: 8px 0 0;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-section__hint {
+	margin: 8px 0 0;
+	color: #9ca3af;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-section__actions {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: auto;
+}
+
+#neural-forms-app .nf-section__icon-btn {
+	background: transparent;
+	border: 0;
+	color: #6b7280;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+}
+
+#neural-forms-app .nf-section__icon-btn:hover:not(:disabled) {
+	background: #f3f4f6;
+	color: #111827;
+}
+
+#neural-forms-app .nf-section__icon-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-section__icon-btn--danger:hover:not(:disabled) {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+/* ── Unsaved-changes confirmation modal ─────────────────────────────
+ * Standalone class tree (NOT shared with .nf-ai-modal) so changes to
+ * the AI generator's modal can never accidentally restyle this one
+ * and vice-versa. Dim background + centred card. Overlay catches a
+ * background click to mean "Stay here". */
+
+#neural-forms-app .nf-unsaved-modal__overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100001; /* above PreviewModal / TemplateModal */
+	background: rgba( 17, 24, 39, 0.45 );
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+}
+
+#neural-forms-app .nf-unsaved-modal {
+	background: #ffffff;
+	border-radius: 14px;
+	box-shadow: 0 12px 40px rgba( 0, 0, 0, 0.18 );
+	width: min( 480px, 92vw );
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+#neural-forms-app .nf-unsaved-modal__head {
+	padding: 18px 22px 10px;
+	border-bottom: 1px solid #f1f5f9;
+}
+
+#neural-forms-app .nf-unsaved-modal__title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-unsaved-modal__body {
+	padding: 16px 22px 4px;
+}
+
+#neural-forms-app .nf-unsaved-modal__msg {
+	margin: 0 0 8px;
+	font-size: 14px;
+	color: #1f2937;
+	line-height: 1.5;
+}
+
+#neural-forms-app .nf-unsaved-modal__note {
+	margin: 0;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+/* Inline error block — only renders when save-as-draft fails. Mirrors
+   the success/error palette used by the header save error so users
+   recognise the same "this didn't work" colour signal. */
+#neural-forms-app .nf-unsaved-modal__error {
+	margin: 12px 0 0;
+	padding: 8px 10px;
+	border-radius: 6px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	font-size: 12px;
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-unsaved-modal__actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	padding: 16px 22px 18px;
+	border-top: 1px solid #f1f5f9;
+	margin-top: 16px;
+}
+
+#neural-forms-app .nf-unsaved-modal__btn {
+	min-width: 108px;
+	justify-content: center;
+}
+
+/* Stay = secondary muted */
+#neural-forms-app .nf-unsaved-modal__btn--stay {
+	background: #f3f4f6;
+	color: #1f2937;
+	border-color: #e5e7eb;
+}
+
+/* Discard = danger outline. Outline rather than filled red so it
+   looks intentional but doesn't compete with the primary action. */
+#neural-forms-app .nf-unsaved-modal__btn--discard {
+	background: #ffffff;
+	color: #b91c1c;
+	border: 1px solid #fecaca;
+}
+
+#neural-forms-app .nf-unsaved-modal__btn--discard:hover:not(:disabled) {
+	background: #fef2f2;
+}
+
+/* Save as Draft — primary navy via .neural-forms-btn--primary base. */
+
+/* ── Process with AI panel ──────────────────────────────────────────
+ * Per-form AI-processing mode picker. Lite stores the value but
+ * never runs entry analysis — the resolver gates real processing on
+ * Capabilities::AI_PROCESS_ENTRIES + cloud connection. UI shows
+ * upsell card when capability/connection isn't ready and disables
+ * the radio fieldset accordingly. */
+
+#neural-forms-app .nf-ai-processing__note {
+	margin: 0 0 16px;
+	color: #6b7280;
+	font-size: 12px;
+	font-style: italic;
+}
+
+#neural-forms-app .nf-ai-processing__upsell {
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	padding: 12px 14px;
+	margin-bottom: 16px;
+	color: #1e3a8a;
+}
+
+#neural-forms-app .nf-ai-processing__upsell strong {
+	display: block;
+	font-size: 13px;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-ai-processing__upsell p {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+#neural-forms-app .nf-ai-processing__modes {
+	border: 0;
+	margin: 0 0 16px;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-ai-processing__modes.is-disabled {
+	opacity: 0.7;
+}
+
+#neural-forms-app .nf-ai-processing__option {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	background: #fff;
+	cursor: pointer;
+	transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+#neural-forms-app .nf-ai-processing__option:hover:not(:has(input:disabled)) {
+	border-color: #cbd5e1;
+}
+
+#neural-forms-app .nf-ai-processing__option.is-selected {
+	border-color: var( --nf-primary );
+	background: var( --nf-primary-soft );
+}
+
+#neural-forms-app .nf-ai-processing__option input[type="radio"] {
+	margin-top: 2px;
+	flex: 0 0 auto;
+}
+
+#neural-forms-app .nf-ai-processing__option-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-ai-processing__option-label {
+	font-size: 13px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-ai-processing__option-desc {
+	font-size: 12px;
+	color: #6b7280;
+	line-height: 1.4;
+}
+
+#neural-forms-app .nf-ai-processing__recommendation {
+	background: #f0fdf4;
+	border: 1px solid #a7f3d0;
+	border-radius: 8px;
+	padding: 12px 14px;
+	color: #065f46;
+}
+
+#neural-forms-app .nf-ai-processing__recommendation strong {
+	display: block;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-ai-processing__recommendation p {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+/* ────────── Integrations section (HubSpot subtab) ──────────────────
+ *
+ * Lives inside the builder's Settings → Integrations left-nav entry.
+ * Reuses the surrounding `nf-form-settings__*` BEM tree for layout
+ * tokens (cards, dividers) and adds a tablist + HubSpot-specific
+ * mapping table on top.
+ */
+
+#neural-forms-app .nf-form-settings__integrations {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+#neural-forms-app .nf-form-settings__integrations-tablist {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+#neural-forms-app .nf-form-settings__integrations-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 14px;
+	margin-bottom: -1px;
+	background: transparent;
+	border: 1px solid transparent;
+	border-bottom: none;
+	border-radius: 6px 6px 0 0;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	color: #4b5563;
+	cursor: pointer;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+#neural-forms-app .nf-form-settings__integrations-tab:hover {
+	background: #f9fafb;
+	color: #111827;
+}
+
+#neural-forms-app .nf-form-settings__integrations-tab.is-active {
+	background: #fff;
+	border-color: #e5e7eb;
+	border-bottom-color: #fff;
+	color: #080f5b;
+}
+
+#neural-forms-app .nf-form-settings__integrations-mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border-radius: 6px;
+	background: #d1d5db;
+	color: #374151;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+#neural-forms-app .nf-form-settings__integrations-tab.is-active .nf-form-settings__integrations-mark {
+	background: #080f5b;
+	color: #fff;
+}
+
+/* ── HubSpot panel ──────────────────────────────────────────────── */
+
+#neural-forms-app .nf-form-settings__hs-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+#neural-forms-app .nf-form-settings__hs-loading,
+#neural-forms-app .nf-form-settings__hs-empty {
+	color: #6b7280;
+	font-size: 13px;
+	margin: 8px 0;
+}
+
+#neural-forms-app .nf-form-settings__hs-error {
+	background: #fef2f2;
+	border: 1px solid #fca5a5;
+	border-radius: 6px;
+	color: #991b1b;
+	font-size: 13px;
+	padding: 10px 14px;
+}
+
+#neural-forms-app .nf-form-settings__hs-status {
+	display: inline-flex;
+	padding: 4px 10px;
+	border-radius: 9999px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+#neural-forms-app .nf-form-settings__hs-status--ok {
+	background: #e6fbf3;
+	color: #045d3a;
+}
+
+/* Locked-pro state */
+#neural-forms-app .nf-form-settings__hs-locked,
+#neural-forms-app .nf-form-settings__hs-disconnected {
+	background: linear-gradient( 135deg, #080f5b 0%, #050942 100% );
+	color: #fff;
+	border-radius: 14px;
+	padding: 24px 28px;
+}
+
+#neural-forms-app .nf-form-settings__hs-locked-title,
+#neural-forms-app .nf-form-settings__hs-disconnected-title {
+	font-size: 18px;
+	font-weight: 600;
+	margin: 0 0 8px;
+	color: #fff;
+}
+
+#neural-forms-app .nf-form-settings__hs-locked-desc,
+#neural-forms-app .nf-form-settings__hs-disconnected-desc {
+	color: rgba( 255, 255, 255, 0.82 );
+	font-size: 13px;
+	line-height: 1.55;
+	margin: 0 0 16px;
+}
+
+#neural-forms-app .nf-form-settings__hs-cta {
+	display: inline-block;
+	background: #15db95;
+	color: #050942;
+	font-size: 13px;
+	font-weight: 600;
+	text-decoration: none;
+	padding: 9px 18px;
+	border-radius: 6px;
+}
+
+#neural-forms-app .nf-form-settings__hs-cta:hover {
+	background: #8feed1;
+	color: #050942;
+}
+
+/* Enable toggle row */
+#neural-forms-app .nf-form-settings__hs-toggle-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	color: #111827;
+}
+
+#neural-forms-app .nf-form-settings__hs-config.is-disabled {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+#neural-forms-app .nf-form-settings__hs-form-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: flex-end;
+}
+
+#neural-forms-app .nf-form-settings__hs-label {
+	display: block;
+	color: #1f2937;
+	font-size: 13px;
+	font-weight: 500;
+	margin-bottom: 4px;
+}
+
+#neural-forms-app .nf-form-settings__hs-select {
+	min-width: 240px;
+	padding: 7px 10px;
+	font-size: 13px;
+	color: #111827;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-family: inherit;
+}
+
+#neural-forms-app .nf-form-settings__hs-select:focus-visible {
+	outline: 2px solid #5566bb;
+	outline-offset: 2px;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn {
+	padding: 7px 14px;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #1f2937;
+	cursor: pointer;
+	font-family: inherit;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn:hover:not(:disabled) {
+	background: #f9fafb;
+	border-color: #9ca3af;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn--primary {
+	background: #080f5b;
+	border-color: #080f5b;
+	color: #fff;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn--primary:hover:not(:disabled) {
+	background: #1d2a8a;
+	border-color: #1d2a8a;
+}
+
+/* Mapping table */
+#neural-forms-app .nf-form-settings__hs-mapping {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 16px 18px;
+}
+
+#neural-forms-app .nf-form-settings__hs-mapping-header {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-form-settings__hs-mapping-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: #111827;
+}
+
+#neural-forms-app .nf-form-settings__hs-warning {
+	background: #fefce8;
+	border: 1px solid #fde68a;
+	color: #92400e;
+	border-radius: 6px;
+	padding: 10px 14px;
+	margin-bottom: 12px;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-form-settings__hs-warning ul {
+	margin: 6px 0 0 18px;
+	padding: 0;
+}
+
+#neural-forms-app .nf-form-settings__hs-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+#neural-forms-app .nf-form-settings__hs-table th {
+	background: #f9fafb;
+	color: #374151;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	text-align: left;
+	padding: 8px 10px;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+#neural-forms-app .nf-form-settings__hs-table td {
+	padding: 10px;
+	border-bottom: 1px solid #f3f4f6;
+	vertical-align: top;
+}
+
+#neural-forms-app .nf-form-settings__hs-cell-main {
+	color: #111827;
+	font-weight: 500;
+}
+
+#neural-forms-app .nf-form-settings__hs-cell-sub {
+	color: #6b7280;
+	font-size: 11px;
+	margin-top: 2px;
+}
+
+#neural-forms-app .nf-form-settings__hs-cell-sub code {
+	background: #f3f4f6;
+	padding: 1px 5px;
+	border-radius: 4px;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+#neural-forms-app .nf-form-settings__hs-required {
+	color: #b91c1c;
+	font-weight: 600;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	list-style: none;
+	margin: 6px 0 0 0;
+	padding: 0;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-item {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-item.is-inactive {
+	background: #f9fafb;
+	opacity: 0.65;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-row {
+	align-items: flex-start;
+	cursor: pointer;
+	display: flex;
+	gap: 10px;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-row input[type="checkbox"] {
+	margin-top: 3px;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+#neural-forms-app .nf-form-settings__zap-hook-meta code {
+	background: #f3f4f6;
+	border-radius: 4px;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+	padding: 1px 6px;
+}
+
+#neural-forms-app .nf-form-settings__hs-file-note {
+	background: #fefce8;
+	border: 1px solid #fde68a;
+	border-radius: 4px;
+	color: #92400e;
+	font-size: 11px;
+	line-height: 1.4;
+	margin: 6px 0 0;
+	padding: 6px 9px;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn--danger-light {
+	color: #b91c1c;
+}
+
+#neural-forms-app .nf-form-settings__hs-btn--danger-light:hover:not(:disabled) {
+	background: #fef2f2;
+	border-color: #fca5a5;
+}
+
+/* Google Forms linked-state grid (form-level Integrations subtab) */
+#neural-forms-app .nf-form-settings__gf-linked-grid {
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	display: grid;
+	gap: 12px 20px;
+	grid-template-columns: repeat( auto-fit, minmax( 200px, 1fr ) );
+	margin: 0;
+	padding: 12px 14px;
+}
+
+#neural-forms-app .nf-form-settings__gf-linked-grid > div {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+#neural-forms-app .nf-form-settings__gf-linked-grid dt {
+	color: #6b7280;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	margin: 0;
+	text-transform: uppercase;
+}
+
+#neural-forms-app .nf-form-settings__gf-linked-grid dd {
+	color: #111827;
+	font-size: 13px;
+	margin: 0;
+	word-break: break-all;
+}
+
+#neural-forms-app .nf-form-settings__gf-linked-grid dd code {
+	background: #f3f4f6;
+	border-radius: 4px;
+	color: #1f2937;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 11px;
+	padding: 1px 5px;
+}
+
+#neural-forms-app .nf-form-settings__gf-coming-soon {
+	color: #92400e;
+	font-style: italic;
+}
+
+/* Shared per-form Integrations form-field block (reused across
+ * HubSpot, Google Forms, WhatsApp subtabs). */
+#neural-forms-app .nf-form-settings__hs-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 14px;
+}
+
+#neural-forms-app .nf-form-settings__hs-input,
+#neural-forms-app .nf-form-settings__hs-textarea {
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	color: #111827;
+	font-family: inherit;
+	font-size: 13px;
+	padding: 8px 10px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#neural-forms-app .nf-form-settings__hs-textarea {
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	min-height: 88px;
+	resize: vertical;
+}
+
+#neural-forms-app .nf-form-settings__hs-input:focus-visible,
+#neural-forms-app .nf-form-settings__hs-textarea:focus-visible {
+	border-color: #5566bb;
+	box-shadow: 0 0 0 3px rgba(85, 102, 187, 0.15);
+	outline: none;
+}
+
+#neural-forms-app .nf-form-settings__hs-input:disabled,
+#neural-forms-app .nf-form-settings__hs-textarea:disabled {
+	background: #f9fafb;
+	color: #9ca3af;
+	cursor: not-allowed;
+}
+
+/* WhatsApp recommended-template preview card */
+#neural-forms-app .nf-form-settings__wa-preview {
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	margin-top: 6px;
+	padding: 12px 14px;
+}
+
+#neural-forms-app .nf-form-settings__wa-preview-body {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	color: #111827;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.55;
+	margin: 8px 0;
+	padding: 10px 12px;
+	white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+	#neural-forms-app .nf-form-settings__hs-form-row {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	#neural-forms-app .nf-form-settings__hs-table thead { display: none; }
+	#neural-forms-app .nf-form-settings__hs-table tr {
+		display: block;
+		border-bottom: 1px solid #e5e7eb;
+		padding: 10px 0;
+	}
+	#neural-forms-app .nf-form-settings__hs-table td {
+		display: block;
+		border: none;
+		padding: 4px 0;
+	}
+}
+
+/* ── Welcome Screen builder tile ─────────────────────────────
+ * The Welcome Screen is a top-level layout block that previews
+ * its rendered output inside the builder canvas. Selection wraps
+ * a brand-tinted border + light navy-mint wash so it reads as
+ * "this is the form intro" without competing with field rows.
+ */
+#neural-forms-app .nf-welcome-block {
+	position: relative;
+	display: block;
+	/* Match .nf-card: live inside a minmax(0, 1fr) grid track without
+	 * pushing the column wider than the sibling field cards do.
+	 * box-sizing folds the padding/border inside the computed width
+	 * so the tile aligns with the field rows below it. */
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	text-align: center;
+	background: linear-gradient( 135deg, rgba( 8, 15, 91, 0.03 ) 0%, rgba( 21, 219, 149, 0.05 ) 100% ), #ffffff;
+	border: 1px dashed rgba( 8, 15, 91, 0.25 );
+	border-radius: 12px;
+	padding: 24px 20px 28px;
+	margin: 0 0 16px;
+	cursor: pointer;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#neural-forms-app .nf-welcome-block:hover {
+	border-color: rgba( 8, 15, 91, 0.4 );
+}
+
+#neural-forms-app .nf-welcome-block.is-selected {
+	border: 2px solid #080f5b;
+	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.18 );
+}
+
+#neural-forms-app .nf-welcome-block__tag {
+	display: inline-block;
+	background: #080f5b;
+	color: #fff;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	padding: 3px 8px;
+	border-radius: 999px;
+	margin-bottom: 12px;
+}
+
+#neural-forms-app .nf-welcome-block__title {
+	margin: 0 0 8px;
+	font-size: 20px;
+	font-weight: 700;
+	color: #1f2937;
+}
+
+#neural-forms-app .nf-welcome-block__desc {
+	margin: 0 0 16px;
+	font-size: 13px;
+	color: #6b7280;
+	line-height: 1.55;
+}
+
+#neural-forms-app .nf-welcome-block__btn {
+	display: inline-block;
+	background: #080f5b;
+	color: #fff;
+	font-size: 13px;
+	font-weight: 600;
+	padding: 8px 20px;
+	border-radius: 6px;
+	pointer-events: none; /* preview-only */
+}
+
+#neural-forms-app .nf-welcome-block__actions {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+}
+
+#neural-forms-app .nf-welcome-block__action {
+	background: transparent;
+	border: 1px solid transparent;
+	color: #6b7280;
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+#neural-forms-app .nf-welcome-block__action:hover {
+	color: #b91c1c;
+	border-color: #fecaca;
+}
+
+/* Disabled palette chip (Welcome Screen when one already exists). */
+#neural-forms-app .nf-palette__chip.is-disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}

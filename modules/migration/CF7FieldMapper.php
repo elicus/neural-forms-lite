@@ -14,7 +14,7 @@ class CF7FieldMapper {
 	/**
 	 * CF7 basetype => Neural Forms field type.
 	 */
-	const TYPE_MAP = [
+	const TYPE_MAP = array(
 		'text'       => 'text',
 		'email'      => 'email',
 		'url'        => 'url',
@@ -29,13 +29,18 @@ class CF7FieldMapper {
 		'radio'      => 'radio',
 		'hidden'     => 'hidden',
 		'file'       => 'file',
-	];
+		// CF7 quiz → Neural Forms quiz_question. The mapping is one
+		// CF7 quiz pair ("Question | Answer") to one Neural Forms
+		// quiz_question field; multi-pair tags fan out to multiple
+		// fields. See map_quiz_tag() for the fan-out and the
+		// warning that asks the user to add distractor options.
+		'quiz'       => 'quiz_question',
+	);
 
 	/**
 	 * CF7 types that cannot be migrated - silently skipped with a warning.
 	 */
-	const UNSUPPORTED = [
-		'quiz',
+	const UNSUPPORTED = array(
 		'captchac',
 		'captchar',
 		'count',
@@ -46,7 +51,7 @@ class CF7FieldMapper {
 		'stripe',
 		'turnstile',
 		'submit',
-	];
+	);
 
 	/**
 	 * Map all tags from a CF7 form into Neural Forms field definitions.
@@ -59,21 +64,21 @@ class CF7FieldMapper {
 	 * }
 	 */
 	public static function map_form( array $tags ): array {
-		$fields   = [];
-		$skipped  = [];
-		$warnings = [];
-		$used_ids = [];
+		$fields   = array();
+		$skipped  = array();
+		$warnings = array();
+		$used_ids = array();
 
 		foreach ( $tags as $tag ) {
 			$cf7_type = $tag['basetype'];
 
 			// Skip explicitly unsupported types.
 			if ( in_array( $cf7_type, self::UNSUPPORTED, true ) ) {
-				$skipped[] = [
+				$skipped[]  = array(
 					'name'     => $tag['name'],
 					'cf7_type' => $cf7_type,
 					'reason'   => 'Unsupported field type.',
-				];
+				);
 				$warnings[] = sprintf(
 					'Skipped "%s" (%s): unsupported field type.',
 					$tag['name'],
@@ -84,11 +89,11 @@ class CF7FieldMapper {
 
 			// Skip unknown types not in our map.
 			if ( ! isset( self::TYPE_MAP[ $cf7_type ] ) ) {
-				$skipped[] = [
+				$skipped[]  = array(
 					'name'     => $tag['name'],
 					'cf7_type' => $cf7_type,
 					'reason'   => 'Unknown CF7 field type.',
-				];
+				);
 				$warnings[] = sprintf(
 					'Skipped "%s" (%s): unknown field type.',
 					$tag['name'],
@@ -97,28 +102,120 @@ class CF7FieldMapper {
 				continue;
 			}
 
+			// CF7 quiz tags are the only multi-output basetype: a single
+			// `[quiz quiz-576 "Q1|A1" "Q2|A2"]` fans out to N Neural
+			// Forms quiz_question fields. Everything else maps 1:1.
+			if ( $cf7_type === 'quiz' ) {
+				$quiz_fields = self::map_quiz_tag( $tag );
+				if ( empty( $quiz_fields ) ) {
+					$skipped[]  = array(
+						'name'     => $tag['name'],
+						'cf7_type' => $cf7_type,
+						'reason'   => 'Quiz tag had no question/answer pairs.',
+					);
+					$warnings[] = sprintf(
+						'Skipped "%s" (%s): no question/answer pairs found.',
+						$tag['name'],
+						$cf7_type
+					);
+					continue;
+				}
+				foreach ( $quiz_fields as $i => $quiz_field ) {
+					// Suffix the original tag name with the pair index so
+					// "quiz-576" with two Q/A pairs becomes "quiz_576_1"
+					// + "quiz_576_2" — predictable, unique, debuggable.
+					$suffix     = count( $quiz_fields ) === 1 ? '' : '_' . ( $i + 1 );
+					$field_id   = self::unique_id( $tag['name'] . $suffix, $used_ids );
+					$used_ids[] = $field_id;
+
+					$fields[ $field_id ] = $quiz_field;
+				}
+				$warnings[] = sprintf(
+					/* translators: %s: CF7 quiz tag name */
+					'Imported "%s" as %d quiz question(s). Add distractor options before publishing — CF7 quiz only stores the correct answer.',
+					$tag['name'],
+					count( $quiz_fields )
+				);
+				continue;
+			}
+
 			$field = self::map_tag( $tag );
-			if ( $field === null ) {
-				$skipped[] = [
+			if ( null === $field ) {
+				$skipped[] = array(
 					'name'     => $tag['name'],
 					'cf7_type' => $cf7_type,
 					'reason'   => 'Mapping produced no result.',
-				];
+				);
 				continue;
 			}
 
 			// Generate a unique field ID.
-			$field_id = self::unique_id( $tag['name'], $used_ids );
+			$field_id   = self::unique_id( $tag['name'], $used_ids );
 			$used_ids[] = $field_id;
 
 			$fields[ $field_id ] = $field;
 		}
 
-		return [
+		return array(
 			'fields'   => $fields,
 			'skipped'  => $skipped,
 			'warnings' => $warnings,
-		];
+		);
+	}
+
+	/**
+	 * CF7 quiz tag → one or more Neural Forms `quiz_question` fields.
+	 *
+	 * CF7's quiz tag stores each `"Question | Answer"` string as a
+	 * (labels[i], values[i]) pair where labels[] = questions and
+	 * values[] = answers. At runtime CF7 picks ONE pair at random
+	 * and shows the question; the user must type the answer that
+	 * matches values[i] (case/whitespace-trimmed).
+	 *
+	 * Neural Forms' `quiz_question` is multiple-choice, so the
+	 * mapping is asymmetric: we import every Q/A pair as a separate
+	 * quiz_question with the answer marked correct, and emit a
+	 * warning that asks the user to add distractor options before
+	 * publishing (otherwise the question only has one option and
+	 * isn't useful as a quiz).
+	 *
+	 * Returns an empty array when the tag has no labels OR no
+	 * values — the caller treats that as a skipped tag.
+	 *
+	 * @param array $tag CF7Detector descriptor.
+	 * @return array[]   Neural Forms quiz_question field definitions.
+	 */
+	private static function map_quiz_tag( array $tag ): array {
+		$labels = is_array( $tag['labels'] ?? null ) ? $tag['labels'] : array();
+		$values = is_array( $tag['values'] ?? null ) ? $tag['values'] : array();
+
+		if ( empty( $labels ) || empty( $values ) ) {
+			return array();
+		}
+
+		$out = array();
+		foreach ( $labels as $i => $question ) {
+			$question = trim( (string) $question );
+			$answer   = isset( $values[ $i ] ) ? trim( (string) $values[ $i ] ) : '';
+			if ( $question === '' || $answer === '' ) {
+				continue;
+			}
+
+			$out[] = array(
+				'type'     => 'quiz_question',
+				'label'    => $question,
+				'required' => (bool) $tag['required'],
+				'options'  => array(
+					array(
+						'value'      => 'option_1',
+						'label'      => $answer,
+						'is_correct' => true,
+					),
+				),
+			);
+		}
+
+		return $out;
 	}
 
 	/**
@@ -135,14 +232,14 @@ class CF7FieldMapper {
 			return null;
 		}
 
-		$field = [
+		$field = array(
 			'type'     => $nf_type,
 			'label'    => self::derive_label( $tag ),
 			'required' => (bool) $tag['required'],
-		];
+		);
 
 		// Placeholder - for text-like fields.
-		if ( in_array( $nf_type, [ 'text', 'email', 'url', 'tel', 'number', 'textarea' ], true ) ) {
+		if ( in_array( $nf_type, array( 'text', 'email', 'url', 'tel', 'number', 'textarea' ), true ) ) {
 			$field['placeholder'] = $tag['placeholder'] ?? '';
 		}
 
@@ -152,12 +249,12 @@ class CF7FieldMapper {
 		}
 
 		// Options - for select, radio, checkboxes.
-		if ( in_array( $nf_type, [ 'select', 'radio', 'checkboxes' ], true ) ) {
+		if ( in_array( $nf_type, array( 'select', 'radio', 'checkboxes' ), true ) ) {
 			$field['options'] = self::map_options( $tag );
 		}
 
 		// Numeric constraints - number, range, date.
-		if ( in_array( $nf_type, [ 'number', 'range', 'date' ], true ) ) {
+		if ( in_array( $nf_type, array( 'number', 'range', 'date' ), true ) ) {
 			if ( ( $tag['min'] ?? '' ) !== '' ) {
 				$field['min'] = $tag['min'];
 			}
@@ -167,7 +264,7 @@ class CF7FieldMapper {
 		}
 
 		// Step - number, range.
-		if ( in_array( $nf_type, [ 'number', 'range' ], true ) ) {
+		if ( in_array( $nf_type, array( 'number', 'range' ), true ) ) {
 			if ( ( $tag['step'] ?? '' ) !== '' ) {
 				$field['step'] = $tag['step'];
 			}
@@ -201,7 +298,7 @@ class CF7FieldMapper {
 		$name = $tag['name'];
 
 		// Replace hyphens and underscores with spaces, then title-case.
-		$label = str_replace( [ '-', '_' ], ' ', $name );
+		$label = str_replace( array( '-', '_' ), ' ', $name );
 		$label = ucwords( $label );
 
 		return $label;
@@ -216,15 +313,15 @@ class CF7FieldMapper {
 	 * @return array[] Each entry: { label, value }
 	 */
 	private static function map_options( array $tag ): array {
-		$values = $tag['values'] ?? [];
-		$labels = $tag['labels'] ?? [];
-		$options = [];
+		$values  = $tag['values'] ?? array();
+		$labels  = $tag['labels'] ?? array();
+		$options = array();
 
 		foreach ( $values as $i => $value ) {
-			$options[] = [
+			$options[] = array(
 				'label' => ! empty( $labels[ $i ] ) ? $labels[ $i ] : $value,
 				'value' => $value,
-			];
+			);
 		}
 
 		return $options;
@@ -254,7 +351,7 @@ class CF7FieldMapper {
 
 		while ( in_array( $candidate, $used_ids, true ) ) {
 			$candidate = $base . '_' . $suffix;
-			$suffix++;
+			++$suffix;
 		}
 
 		return $candidate;

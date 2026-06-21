@@ -45,7 +45,7 @@ class ShortcodeHandler {
 	 * add_shortcode() must fire on or before `init` - never in a later hook.
 	 */
 	public static function boot(): void {
-		add_shortcode( 'neural-forms', [ static::class, 'handle' ] );
+		add_shortcode( 'neural-forms', array( static::class, 'handle' ) );
 	}
 
 	// Shortcode callback
@@ -61,10 +61,10 @@ class ShortcodeHandler {
 	 */
 	public static function handle( $atts ): string {
 		$atts = shortcode_atts(
-			[
+			array(
 				'id'   => '',
 				'slug' => '',
-			],
+			),
 			$atts,
 			'neural-forms'
 		);
@@ -115,6 +115,38 @@ class ShortcodeHandler {
 	}
 
 	// Helpers
+
+	/**
+	 * Build the shortcode string for a form row.
+	 *
+	 * Single source of truth for admin-UI shortcode generation as of
+	 * 0.2.0. ID-based shortcode is preferred — slugs are mutable
+	 * (renames) and can collide across statuses, while ids are
+	 * immutable. ShortcodeHandler::handle() still accepts the
+	 * `slug=` attribute on the parsing side so existing pages that
+	 * embedded slug-based shortcodes keep rendering unchanged.
+	 *
+	 * Behaviour:
+	 *   - id present → `[neural-forms id="N"]` (absint sanitised)
+	 *   - id missing, slug present → `[neural-forms slug="..."]`
+	 *     (esc_attr sanitised). Saved forms always have an id, so
+	 *     this branch is effectively a defence-in-depth fallback.
+	 *   - neither → empty string
+	 *
+	 * @param array $form  Form row from FormRepository::list/find.
+	 * @return string
+	 */
+	public static function for_form( array $form ): string {
+		$id = isset( $form['id'] ) ? absint( $form['id'] ) : 0;
+		if ( $id > 0 ) {
+			return '[neural-forms id="' . $id . '"]';
+		}
+		$slug = isset( $form['slug'] ) ? (string) $form['slug'] : '';
+		if ( $slug !== '' ) {
+			return '[neural-forms slug="' . esc_attr( $slug ) . '"]';
+		}
+		return '';
+	}
 
 	/**
 	 * Render a dismissible admin-only diagnostic notice.

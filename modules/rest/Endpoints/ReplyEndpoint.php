@@ -37,12 +37,16 @@ class ReplyEndpoint {
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/reply', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'send_reply' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => $this->post_args(),
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/reply',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'send_reply' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => $this->post_args(),
+			)
+		);
 	}
 
 	// Handler
@@ -55,7 +59,7 @@ class ReplyEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -68,7 +72,7 @@ class ReplyEndpoint {
 			return new WP_Error(
 				'invalid_recipient',
 				__( 'The recipient email address is not valid.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -76,7 +80,7 @@ class ReplyEndpoint {
 			return new WP_Error(
 				'empty_body',
 				__( 'Reply body cannot be empty.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -91,29 +95,37 @@ class ReplyEndpoint {
 				'reply_send_failed',
 				'error',
 				'wp_mail() returned false - check WordPress email configuration.',
-				[ 'to' => $to, 'subject' => $subject ],
+				array(
+					'to'      => $to,
+					'subject' => $subject,
+				),
 				$entry_id
 			);
 
 			// Persist the failed attempt so it survives a page reload and can
 			// be retried. The saved ID is returned in the error data so the
 			// frontend can wire the optimistic bubble to the real DB row.
-			$failed_result = EntryMessageRepository::create( [
-				'entry_id'  => $entry_id,
-				'type'      => 'outgoing',
-				'sender'    => get_bloginfo( 'admin_email' ),
-				'recipient' => $to,
-				'subject'   => $subject,
-				'body'      => $body,
-				'meta'      => [ 'status' => 'failed' ],
-			] );
+			$failed_result = EntryMessageRepository::create(
+				array(
+					'entry_id'  => $entry_id,
+					'type'      => 'outgoing',
+					'sender'    => get_bloginfo( 'admin_email' ),
+					'recipient' => $to,
+					'subject'   => $subject,
+					'body'      => $body,
+					'meta'      => array( 'status' => 'failed' ),
+				)
+			);
 
 			$failed_message_id = is_wp_error( $failed_result ) ? null : $failed_result;
 
 			return new WP_Error(
 				'reply_send_failed',
 				__( 'Could not send the reply. Please check your WordPress email configuration.', 'neural-forms-lite' ),
-				[ 'status' => 500, 'message_id' => $failed_message_id ]
+				array(
+					'status'     => 500,
+					'message_id' => $failed_message_id,
+				)
 			);
 		}
 
@@ -122,30 +134,37 @@ class ReplyEndpoint {
 			'info',
 			/* translators: %s: recipient email address */
 			sprintf( __( 'Reply sent to %s.', 'neural-forms-lite' ), $to ),
-			[ 'to' => $to, 'subject' => $subject ],
+			array(
+				'to'      => $to,
+				'subject' => $subject,
+			),
 			$entry_id
 		);
 
 		// A reply was sent - the entry no longer needs a reply.
-		EntryRepository::update( $entry_id, [ 'needs_reply' => 0 ] );
+		EntryRepository::update( $entry_id, array( 'needs_reply' => 0 ) );
 
 		// Persist the outgoing message so it appears in the thread view.
-		$message_result = EntryMessageRepository::create( [
-			'entry_id'  => $entry_id,
-			'type'      => 'outgoing',
-			'sender'    => get_bloginfo( 'admin_email' ),
-			'recipient' => $to,
-			'subject'   => $subject,
-			'body'      => $body,
-		] );
+		$message_result = EntryMessageRepository::create(
+			array(
+				'entry_id'  => $entry_id,
+				'type'      => 'outgoing',
+				'sender'    => get_bloginfo( 'admin_email' ),
+				'recipient' => $to,
+				'subject'   => $subject,
+				'body'      => $body,
+			)
+		);
 
 		$message_id = is_wp_error( $message_result ) ? null : $message_result;
 
-		return rest_ensure_response( [
-			'sent'       => true,
-			'to'         => $to,
-			'message_id' => $message_id,
-		] );
+		return rest_ensure_response(
+			array(
+				'sent'       => true,
+				'to'         => $to,
+				'message_id' => $message_id,
+			)
+		);
 	}
 
 	// Permission
@@ -158,32 +177,32 @@ class ReplyEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to send replies.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 
 	// Arg definitions
 
 	private function post_args(): array {
-		return [
-			'to'      => [
+		return array(
+			'to'      => array(
 				'required'          => true,
 				'sanitize_callback' => 'sanitize_email',
 				'validate_callback' => static function ( $value ): bool {
 					return is_email( sanitize_email( (string) $value ) );
 				},
-			],
-			'subject' => [
+			),
+			'subject' => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'body'    => [
+			),
+			'body'    => array(
 				'required'          => true,
 				'sanitize_callback' => 'sanitize_textarea_field',
 				'validate_callback' => static function ( $value ): bool {
 					return trim( (string) $value ) !== '';
 				},
-			],
-		];
+			),
+		);
 	}
 }

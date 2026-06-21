@@ -39,11 +39,15 @@ class MessagesEndpoint {
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/messages', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_messages' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/messages',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_messages' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 	}
 
 	// Handler
@@ -56,7 +60,7 @@ class MessagesEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -75,7 +79,7 @@ class MessagesEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to view messages.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 }

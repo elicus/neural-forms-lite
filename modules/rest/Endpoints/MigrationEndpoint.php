@@ -19,46 +19,58 @@ class MigrationEndpoint {
 	public function register_routes(): void {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
-		register_rest_route( $ns, '/migration/cf7/forms', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_forms' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/migration/cf7/forms',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_forms' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 
-		register_rest_route( $ns, '/migration/cf7/preview/(?P<id>\d+)', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'preview' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'id' => [
-					'required'          => true,
-					'validate_callback' => function ( $val ) {
-						return is_numeric( $val ) && (int) $val > 0;
-					},
-					'sanitize_callback' => 'absint',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/migration/cf7/preview/(?P<id>\d+)',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'preview' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'id' => array(
+						'required'          => true,
+						'validate_callback' => function ( $val ) {
+							return is_numeric( $val ) && (int) $val > 0;
+						},
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
 
-		register_rest_route( $ns, '/migration/cf7/import/(?P<id>\d+)', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'import' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'id' => [
-					'required'          => true,
-					'validate_callback' => function ( $val ) {
-						return is_numeric( $val ) && (int) $val > 0;
-					},
-					'sanitize_callback' => 'absint',
-				],
-				'force_import' => [
-					'type'              => 'boolean',
-					'default'           => false,
-					'sanitize_callback' => 'rest_sanitize_boolean',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/migration/cf7/import/(?P<id>\d+)',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'id'           => array(
+						'required'          => true,
+						'validate_callback' => function ( $val ) {
+							return is_numeric( $val ) && (int) $val > 0;
+						},
+						'sanitize_callback' => 'absint',
+					),
+					'force_import' => array(
+						'type'              => 'boolean',
+						'default'           => false,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+					),
+				),
+			)
+		);
 	}
 
 	public function check_permission(): bool {
@@ -67,20 +79,28 @@ class MigrationEndpoint {
 
 	/**
 	 * GET /migration/cf7/forms
+	 *
+	 * $request is required by the REST callback signature even though
+	 * this endpoint takes no body / query parameters.
 	 */
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 	public function get_forms( WP_REST_Request $request ) {
 		if ( ! CF7Detector::is_cf7_active() ) {
-			return rest_ensure_response( [
-				'available' => false,
-				'forms'     => [],
-				'message'   => 'Contact Form 7 is not installed or not active.',
-			] );
+			return rest_ensure_response(
+				array(
+					'available' => false,
+					'forms'     => array(),
+					'message'   => 'Contact Form 7 is not installed or not active.',
+				)
+			);
 		}
 
-		return rest_ensure_response( [
-			'available' => true,
-			'forms'     => CF7Detector::get_forms(),
-		] );
+		return rest_ensure_response(
+			array(
+				'available' => true,
+				'forms'     => CF7Detector::get_forms(),
+			)
+		);
 	}
 
 	/**
@@ -91,11 +111,11 @@ class MigrationEndpoint {
 
 		$preview = CF7Migrator::preview( $cf7_id );
 
-		if ( $preview === null ) {
+		if ( null === $preview ) {
 			return new \WP_Error(
 				'cf7_form_not_found',
 				'Contact Form 7 form not found.',
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -111,11 +131,11 @@ class MigrationEndpoint {
 
 		$result = CF7Migrator::import( $cf7_id, $force );
 
-		if ( $result === null ) {
+		if ( null === $result ) {
 			return new \WP_Error(
 				'cf7_form_not_found',
 				'Contact Form 7 form not found.',
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -124,11 +144,11 @@ class MigrationEndpoint {
 			return new \WP_Error(
 				'duplicate_import',
 				'This Contact Form 7 form has already been imported.',
-				[
+				array(
 					'status'           => 409,
 					'existing_imports' => $result['existing_imports'],
 					'form_name'        => $result['form_name'],
-				]
+				)
 			);
 		}
 
@@ -136,7 +156,10 @@ class MigrationEndpoint {
 			return new \WP_Error(
 				'import_failed',
 				'Could not import the form. ' . implode( ' ', $result['warnings'] ),
-				[ 'status' => 422, 'data' => $result ]
+				array(
+					'status' => 422,
+					'data'   => $result,
+				)
 			);
 		}
 

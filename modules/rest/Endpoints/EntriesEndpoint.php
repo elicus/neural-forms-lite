@@ -8,6 +8,7 @@ namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Storage\EntryRepository;
 use NeuralForms\Storage\AIResponseRepository;
+use NeuralForms\Forms\FormRepository;
 use NeuralForms\AI\AIRepository;
 use NeuralForms\AI\AIQueueProcessor;
 use NeuralForms\AI\Exceptions\CloudPlanException;
@@ -45,102 +46,134 @@ class EntriesEndpoint {
 		$ns = \NeuralForms\Rest\RestAPI::NAMESPACE;
 
 		// List - optional form_id and/or view query param.
-		register_rest_route( $ns, '/entries', [
-			[
-				'methods'             => 'GET',
-				'callback'            => [ $this, 'get_entries' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => $this->list_args(),
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_entries' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => $this->list_args(),
+				),
+			)
+		);
 
 		// Counts - registered BEFORE /entries/(?P<id>...) so 'counts' is not
 		// interpreted as a numeric ID by WordPress's route resolver.
-		register_rest_route( $ns, '/entries/counts', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_counts' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'form_id' => [
-					'default'           => 0,
-					'sanitize_callback' => 'absint',
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/counts',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_counts' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'form_id' => array(
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
 
 		// Bulk actions.
-		register_rest_route( $ns, '/entries/bulk', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'bulk_action' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => $this->bulk_args(),
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/bulk',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'bulk_action' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => $this->bulk_args(),
+			)
+		);
 
 		// AI rerun actions - registered before /entries/{id} so the action
 		// suffixes are not swallowed by the generic numeric-ID pattern.
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/reanalyze', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'reanalyze_entry' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/reanalyze',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'reanalyze_entry' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/regenerate-reply', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'regenerate_reply' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/regenerate-reply',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'regenerate_reply' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/polish-reply', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'polish_reply' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'text' => [
-					'required'          => true,
-					'sanitize_callback' => 'sanitize_textarea_field',
-					'validate_callback' => static function ( $value ): bool {
-						return trim( (string) $value ) !== '';
-					},
-				],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/polish-reply',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'polish_reply' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'text' => array(
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_textarea_field',
+						'validate_callback' => static function ( $value ): bool {
+							return trim( (string) $value ) !== '';
+						},
+					),
+				),
+			)
+		);
 
 		// AI response draft carousel.
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)/ai-responses', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'list_ai_responses' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/ai-responses',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_ai_responses' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 
 		register_rest_route(
 			$ns,
 			'/entries/(?P<id>[\d]+)/ai-responses/(?P<draft_id>[\d]+)/finalize',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'finalize_ai_response' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			]
+				'callback'            => array( $this, 'finalize_ai_response' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
 		);
 
 		// Detail - returns full entry including the data field.
-		register_rest_route( $ns, '/entries/(?P<id>[\d]+)', [
-			[
-				'methods'             => 'GET',
-				'callback'            => [ $this, 'get_entry' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-			[
-				'methods'             => 'PATCH',
-				'callback'            => [ $this, 'update_entry' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => $this->patch_args(),
-			],
-			[
-				'methods'             => 'DELETE',
-				'callback'            => [ $this, 'delete_entry' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-		] );
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_entry' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+				array(
+					'methods'             => 'PATCH',
+					'callback'            => array( $this, 'update_entry' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => $this->patch_args(),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( $this, 'delete_entry' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	// Handlers
@@ -162,30 +195,69 @@ class EntriesEndpoint {
 	public function get_entries( WP_REST_Request $request ) {
 		$form_id = (int) $request->get_param( 'form_id' );
 		$view    = (string) $request->get_param( 'view' );
+		// 0.2.0 smart folders. `folder` is exclusive with `form_id`
+		// (a single-form view always wins). Allowed values:
+		// polls         → entries from forms detected as poll
+		// quizzes       → entries from forms detected as quiz OR mixed
+		// normal_inbox  → All Forms → Inbox view excluding poll/quiz/mixed
+		$folder = (string) $request->get_param( 'folder' );
 
 		// Require at least one scoping parameter so we never return the entire
 		// unfiltered entries table. A non-empty search term counts as a filter.
 		$search = trim( (string) $request->get_param( 'search' ) );
-		if ( $form_id < 1 && $view === '' && $search === '' ) {
+		if ( $form_id < 1 && $view === '' && $search === '' && $folder === '' ) {
 			return new WP_Error(
 				'missing_filter',
-				__( 'A valid form_id, view, or search term is required.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				__( 'A valid form_id, view, folder, or search term is required.', 'neural-forms-lite' ),
+				array( 'status' => 400 )
 			);
 		}
 
-		$result = EntryRepository::list( $form_id, [
+		$list_args = array(
 			'view'       => $view,
 			'page'       => (int) $request->get_param( 'page' ),
 			'per_page'   => (int) $request->get_param( 'per_page' ),
 			'status'     => $request->get_param( 'status' ),
 			'search'     => $search,
 			'sort_order' => (string) $request->get_param( 'sort_order' ),
-		] );
+		);
+
+		// Resolve folder → form_ids / exclude_form_ids using the
+		// shared FormTypeDetector via FormRepository::get_form_ids_by_detected_type.
+		// folder is ignored when form_id is set (single-form view wins).
+		//
+		// Auto-exclusion of poll/quiz/mixed at All Forms scope is
+		// EXPLICIT, not implicit. The rich admin bundle has no
+		// Polls/Quizzes top-level folders yet, so silently filtering
+		// those entries out of the default Inbox would hide them
+		// completely. Clients that want the filtered inbox must ask
+		// for it via folder=normal_inbox; the new per-screen entries
+		// bundle does this when enabled.
+		if ( $form_id < 1 && $folder !== '' ) {
+			switch ( $folder ) {
+				case 'polls':
+					// Polls folder: poll-only forms. Mixed routes to
+					// quizzes per the brief's mixed→quiz rule.
+					$list_args['form_ids'] = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( array( 'poll' ) );
+					break;
+				case 'quizzes':
+					// Quizzes folder: quiz + mixed forms.
+					$list_args['form_ids'] = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( array( 'quiz', 'mixed' ) );
+					break;
+				case 'normal_inbox':
+					// All Forms → Inbox (split-bundle UI): exclude
+					// poll/quiz/mixed so the normal contact/lead
+					// workflow stays uncluttered.
+					$list_args['exclude_form_ids'] = \NeuralForms\Forms\FormRepository::get_form_ids_by_detected_type( array( 'poll', 'quiz', 'mixed' ) );
+					break;
+			}
+		}
+
+		$result = EntryRepository::list( $form_id, $list_args );
 
 		$items = array_map(
 			static function ( array $entry ): array {
-				$entry['preview'] = array_slice( $entry['data'] ?? [], 0, 3, true );
+				$entry['preview'] = array_slice( $entry['data'] ?? array(), 0, 3, true );
 				unset( $entry['data'] );
 				// Suppress verbose spam reason in list payloads - available in single GET.
 				unset( $entry['ai_spam_reason'] );
@@ -210,7 +282,25 @@ class EntriesEndpoint {
 	 */
 	public function get_counts( WP_REST_Request $request ) {
 		$form_id = (int) $request->get_param( 'form_id' );
-		$counts  = EntryRepository::count_by_view( $form_id > 0 ? $form_id : null );
+
+		// Default per-view counts: NO auto-exclusion. The rich admin
+		// bundle's All Forms → Inbox shows every entry regardless of
+		// detected form type, so the badges next to Inbox / Unread /
+		// Starred / etc. must match. Clients that want the filtered
+		// counts (split-bundle UI) ask for them via folder=normal_inbox
+		// against /entries directly.
+		$counts = EntryRepository::count_by_view( $form_id > 0 ? $form_id : null );
+
+		// Surface Polls / Quizzes smart-folder totals at All Forms
+		// scope so the future split UI's sidebar can render its badges
+		// without a second roundtrip. Harmless for the rich UI which
+		// ignores these keys.
+		if ( $form_id < 1 ) {
+			$smart             = EntryRepository::count_smart_folders();
+			$counts['polls']   = (int) ( $smart['polls'] ?? 0 );
+			$counts['quizzes'] = (int) ( $smart['quizzes'] ?? 0 );
+		}
+
 		return rest_ensure_response( $counts );
 	}
 
@@ -230,30 +320,30 @@ class EntriesEndpoint {
 		// field update, so it bypasses the $field_map / bulk_update path.
 		if ( $action === 'delete' ) {
 			$deleted = EntryRepository::bulk_delete( $ids );
-			return rest_ensure_response( [ 'deleted' => $deleted ] );
+			return rest_ensure_response( array( 'deleted' => $deleted ) );
 		}
 
-		$field_map = [
-			'mark_read'   => [ 'status'      => 'read'  ],
-			'mark_unread' => [ 'status'      => 'new'   ],
-			'star'        => [ 'is_starred'  => 1       ],
-			'unstar'      => [ 'is_starred'  => 0       ],
-			'spam'        => [ 'status'      => 'spam'  ],
-			'trash'       => [ 'status'      => 'trash' ],
-			'restore'     => [ 'status'      => 'read'  ],
-		];
+		$field_map = array(
+			'mark_read'   => array( 'status' => 'read' ),
+			'mark_unread' => array( 'status' => 'new' ),
+			'star'        => array( 'is_starred' => 1 ),
+			'unstar'      => array( 'is_starred' => 0 ),
+			'spam'        => array( 'status' => 'spam' ),
+			'trash'       => array( 'status' => 'trash' ),
+			'restore'     => array( 'status' => 'read' ),
+		);
 
 		if ( ! isset( $field_map[ $action ] ) ) {
 			return new WP_Error(
 				'invalid_bulk_action',
 				__( 'Unknown bulk action.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
 		$updated = EntryRepository::bulk_update( $ids, $field_map[ $action ] );
 
-		return rest_ensure_response( [ 'updated' => $updated ] );
+		return rest_ensure_response( array( 'updated' => $updated ) );
 	}
 
 	/**
@@ -285,7 +375,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -293,8 +383,19 @@ class EntriesEndpoint {
 		// a follow-up request. For spam entries the carousel is hidden in
 		// the UI, but we still ship the data so admins can recover history
 		// if they flip an entry out of spam.
-		$drafts = AIResponseRepository::list_for_entry( $id );
-		$entry['ai_responses'] = array_map( [ $this, 'shape_ai_response' ], $drafts );
+		$drafts                = AIResponseRepository::list_for_entry( $id );
+		$entry['ai_responses'] = array_map( array( $this, 'shape_ai_response' ), $drafts );
+
+		// Detail UI renders the form name as the card title. EntryRepository::get()
+		// does not JOIN the forms table, so resolve the name here — one extra row
+		// fetch per detail open is cheap and removes the React-side dependency on
+		// the in-memory forms list (which may not be loaded on a deep-link visit).
+		if ( empty( $entry['form_name'] ) && ! empty( $entry['form_id'] ) ) {
+			$form = FormRepository::find( (int) $entry['form_id'] );
+			if ( $form && ! empty( $form['name'] ) ) {
+				$entry['form_name'] = (string) $form['name'];
+			}
+		}
 
 		return rest_ensure_response( $entry );
 	}
@@ -314,7 +415,9 @@ class EntriesEndpoint {
 	 */
 	public function reanalyze_entry( WP_REST_Request $request ) {
 		$guard = $this->check_ai_configured();
-		if ( is_wp_error( $guard ) ) return $guard;
+		if ( is_wp_error( $guard ) ) {
+			return $guard;
+		}
 
 		// Plugin-level gate: Pro unlocks reanalyze. Runs before the Cloud
 		// plan check so a Pro-less install gets a Pro-targeted upgrade cue
@@ -324,35 +427,58 @@ class EntriesEndpoint {
 		}
 
 		$plan_guard = $this->check_plan_feature( 'ai_reanalyze' );
-		if ( is_wp_error( $plan_guard ) ) return $plan_guard;
+		if ( is_wp_error( $plan_guard ) ) {
+			return $plan_guard;
+		}
+
+		// Pre-flight credits guard — blocks the cloud round-trip when the
+		// cached balance is exhausted. Cloud's QuotaGuard hard-enforces too.
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) {
+			return $credits_guard;
+		}
 
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
-			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
 		}
 
 		$busy = $this->check_ai_not_busy( $entry );
-		if ( is_wp_error( $busy ) ) return $busy;
+		if ( is_wp_error( $busy ) ) {
+			return $busy;
+		}
 
 		// Run inline - admin-initiated, so we block on the Cloud call and
 		// return the fresh analysis in the same response. Removes the 5s
 		// scheduled-event delay + WP-Cron pickup latency + UI poll cycle.
 		try {
 			$ai = AIQueueProcessor::run_inline_analyze( $id, (int) ( $entry['form_id'] ?? 0 ) );
-			return rest_ensure_response( [ 'entry_id' => $id, 'ai' => $ai ] );
+			return rest_ensure_response(
+				array(
+					'entry_id' => $id,
+					'ai'       => $ai,
+					// Cloud's user-facing usage block — frontend renders
+					// "Credits used: X · Remaining: Y" below the action.
+					'usage'    => AIQueueProcessor::last_inline_usage(),
+				)
+			);
 		} catch ( CloudPlanException $e ) {
 			return new WP_Error(
 				'feature_locked',
 				$e->getMessage(),
-				[ 'status' => 402, 'feature' => $e->get_feature(), 'quota' => $e->get_quota() ]
+				array(
+					'status'  => 402,
+					'feature' => $e->get_feature(),
+					'quota'   => $e->get_quota(),
+				)
 			);
 		} catch ( \Throwable $e ) {
 			return new WP_Error(
 				'ai_analyze_failed',
-				$e->getMessage() ?: __( 'AI analysis failed. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				$e->getMessage() ?: __( 'Neural AI analysis failed. Please try again.', 'neural-forms-lite' ),
+				array( 'status' => 500 )
 			);
 		}
 	}
@@ -373,7 +499,9 @@ class EntriesEndpoint {
 	 */
 	public function regenerate_reply( WP_REST_Request $request ) {
 		$guard = $this->check_ai_configured();
-		if ( is_wp_error( $guard ) ) return $guard;
+		if ( is_wp_error( $guard ) ) {
+			return $guard;
+		}
 
 		// Reply regeneration re-invokes the analysis pipeline against an
 		// existing entry, so it sits under the same plugin cap as reanalyze.
@@ -382,35 +510,51 @@ class EntriesEndpoint {
 		}
 
 		$plan_guard = $this->check_plan_feature( 'ai_reply_regenerate' );
-		if ( is_wp_error( $plan_guard ) ) return $plan_guard;
+		if ( is_wp_error( $plan_guard ) ) {
+			return $plan_guard;
+		}
+
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) {
+			return $credits_guard;
+		}
 
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
-			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
 		}
 
 		$busy = $this->check_ai_not_busy( $entry );
-		if ( is_wp_error( $busy ) ) return $busy;
+		if ( is_wp_error( $busy ) ) {
+			return $busy;
+		}
 
 		try {
 			$reply = AIQueueProcessor::run_inline_regenerate_reply( $id, (int) ( $entry['form_id'] ?? 0 ) );
-			return rest_ensure_response( [
-				'entry_id'    => $id,
-				'reply_draft' => $reply,
-			] );
+			return rest_ensure_response(
+				array(
+					'entry_id'    => $id,
+					'reply_draft' => $reply,
+					'usage'       => AIQueueProcessor::last_inline_usage(),
+				)
+			);
 		} catch ( CloudPlanException $e ) {
 			return new WP_Error(
 				'feature_locked',
 				$e->getMessage(),
-				[ 'status' => 402, 'feature' => $e->get_feature(), 'quota' => $e->get_quota() ]
+				array(
+					'status'  => 402,
+					'feature' => $e->get_feature(),
+					'quota'   => $e->get_quota(),
+				)
 			);
 		} catch ( \Throwable $e ) {
 			return new WP_Error(
 				'ai_regenerate_failed',
 				$e->getMessage() ?: __( 'Reply regeneration failed. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 	}
@@ -435,36 +579,48 @@ class EntriesEndpoint {
 	 */
 	public function polish_reply( WP_REST_Request $request ) {
 		$guard = $this->check_ai_configured();
-		if ( is_wp_error( $guard ) ) return $guard;
+		if ( is_wp_error( $guard ) ) {
+			return $guard;
+		}
 
 		if ( ! Capabilities::can( Capabilities::AI_REFINE_REPLY ) ) {
 			return Capabilities::locked_error( Capabilities::AI_REFINE_REPLY );
 		}
 
 		$plan_guard = $this->check_plan_feature( 'ai_reply_polish' );
-		if ( is_wp_error( $plan_guard ) ) return $plan_guard;
+		if ( is_wp_error( $plan_guard ) ) {
+			return $plan_guard;
+		}
+
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) {
+			return $credits_guard;
+		}
 
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
-			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), [ 'status' => 404 ] );
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
 		}
 
 		$text    = trim( (string) $request->get_param( 'text' ) );
 		$form_id = (int) ( $entry['form_id'] ?? 0 );
-		$form    = $form_id > 0 ? ( \NeuralForms\Forms\FormRepository::find( $form_id ) ?? [] ) : [];
+		$form    = $form_id > 0 ? ( \NeuralForms\Forms\FormRepository::find( $form_id ) ?? array() ) : array();
 
 		try {
 			$provider = \NeuralForms\AI\AiManager::resolve();
 			$result   = $provider->polish_reply( $text, $entry, $form );
+			// Mirror the cloud's authoritative `credits_remaining` into the
+			// local cache so the Settings credits widget refreshes immediately.
+			PlanManager::apply_usage( is_array( $result['usage'] ?? null ) ? $result['usage'] : array() );
 		} catch ( CloudPlanException $e ) {
 			return $this->plan_exception_to_error( $e, 'ai_reply_polish' );
 		} catch ( \Throwable $e ) {
 			return new WP_Error(
 				'ai_polish_failed',
-				__( 'AI could not refine the reply. Please try again.', 'neural-forms-lite' ),
-				[ 'status' => 502 ]
+				__( 'Neural AI could not refine the reply. Please try again.', 'neural-forms-lite' ),
+				array( 'status' => 502 )
 			);
 		}
 
@@ -472,14 +628,23 @@ class EntriesEndpoint {
 		// can flip back to it. Polish never auto-finalizes, never mutates
 		// entries.ai_reply_draft, and leaves summary/category alone - the
 		// draft is context-only until explicitly picked.
-		AIResponseRepository::insert( $id, AIResponseRepository::KIND_POLISH, [
-			'tier_used'      => $result['tier_used']   ?? 'fast',
-			'polished_reply' => $result['polished_reply'] ?? '',
-			'reply_draft'    => $text,
-			'ai_provider'    => $provider->provider_id(),
-		] );
+		AIResponseRepository::insert(
+			$id,
+			AIResponseRepository::KIND_POLISH,
+			array(
+				'tier_used'      => $result['tier_used'] ?? 'fast',
+				'polished_reply' => $result['polished_reply'] ?? '',
+				'reply_draft'    => $text,
+				'ai_provider'    => $provider->provider_id(),
+			)
+		);
 
-		return rest_ensure_response( [ 'polished_reply' => $result['polished_reply'] ] );
+		return rest_ensure_response(
+			array(
+				'polished_reply' => $result['polished_reply'],
+				'usage'          => is_array( $result['usage'] ?? null ) ? $result['usage'] : array(),
+			)
+		);
 	}
 
 	/**
@@ -498,18 +663,20 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
 		$drafts = AIResponseRepository::list_for_entry( $id );
 
-		return rest_ensure_response( [
-			'drafts'      => array_map( [ $this, 'shape_ai_response' ], $drafts ),
-			'selected_id' => isset( $entry['ai_selected_response_id'] )
-				? (int) $entry['ai_selected_response_id']
-				: null,
-		] );
+		return rest_ensure_response(
+			array(
+				'drafts'      => array_map( array( $this, 'shape_ai_response' ), $drafts ),
+				'selected_id' => isset( $entry['ai_selected_response_id'] )
+					? (int) $entry['ai_selected_response_id']
+					: null,
+			)
+		);
 	}
 
 	/**
@@ -532,7 +699,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -541,7 +708,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'draft_not_found',
 				__( 'Draft not found for this entry.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -550,7 +717,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'finalize_failed',
 				__( 'Could not finalize draft.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -559,7 +726,7 @@ class EntriesEndpoint {
 		$kind       = (string) $draft['kind'];
 		$reply_text = $kind === AIResponseRepository::KIND_POLISH
 			? (string) ( $draft['polished_reply'] ?? '' )
-			: (string) ( $draft['reply_draft']    ?? '' );
+			: (string) ( $draft['reply_draft'] ?? '' );
 
 		$tier = isset( $draft['tier_used'] ) ? (string) $draft['tier_used'] : null;
 		AIRepository::update_reply_draft( $id, $reply_text, $tier );
@@ -567,29 +734,34 @@ class EntriesEndpoint {
 		// For analyze/reanalyze drafts the classification fields are part of
 		// the draft - promote them back onto the entry so toggling between
 		// drafts swaps the whole analysis card, not just the reply text.
-		if ( in_array( $kind, [ AIResponseRepository::KIND_ANALYZE, AIResponseRepository::KIND_REANALYZE ], true ) ) {
-			AIRepository::save_analysis( $id, [
-				'summary'         => $draft['summary']         ?? '',
-				'category'        => $draft['category']        ?? 'general',
-				'priority'        => $draft['priority']        ?? 'medium',
-				'reply_draft'     => $reply_text,
-				'score'           => isset( $draft['score'] ) ? (int) $draft['score'] : 50,
-				'ai_provider'     => $draft['provider']        ?? '',
-				'ai_model'        => $draft['model']           ?? '',
-				'is_spam'         => (bool) ( $draft['is_spam'] ?? false ),
-				'spam_confidence' => (int) ( $draft['spam_confidence'] ?? 0 ),
-				'spam_reason'     => (string) ( $draft['spam_reason']  ?? '' ),
-				'tier_used'       => $tier,
-			] );
+		if ( in_array( $kind, array( AIResponseRepository::KIND_ANALYZE, AIResponseRepository::KIND_REANALYZE ), true ) ) {
+			AIRepository::save_analysis(
+				$id,
+				array(
+					'summary'         => $draft['summary'] ?? '',
+					'category'        => $draft['category'] ?? 'general',
+					'priority'        => $draft['priority'] ?? 'medium',
+					'reply_draft'     => $reply_text,
+					'score'           => isset( $draft['score'] ) ? (int) $draft['score'] : 50,
+					'ai_provider'     => $draft['provider'] ?? '',
+					'ai_model'        => $draft['model'] ?? '',
+					'is_spam'         => (bool) ( $draft['is_spam'] ?? false ),
+					'spam_confidence' => (int) ( $draft['spam_confidence'] ?? 0 ),
+					'spam_reason'     => (string) ( $draft['spam_reason'] ?? '' ),
+					'tier_used'       => $tier,
+				)
+			);
 		}
 
 		$drafts = AIResponseRepository::list_for_entry( $id );
 
-		return rest_ensure_response( [
-			'entry_id'    => $id,
-			'selected_id' => $draft_id,
-			'drafts'      => array_map( [ $this, 'shape_ai_response' ], $drafts ),
-		] );
+		return rest_ensure_response(
+			array(
+				'entry_id'    => $id,
+				'selected_id' => $draft_id,
+				'drafts'      => array_map( array( $this, 'shape_ai_response' ), $drafts ),
+			)
+		);
 	}
 
 	/**
@@ -598,21 +770,21 @@ class EntriesEndpoint {
 	 * carousel (up to 10 non-finalized + N finalized).
 	 */
 	private function shape_ai_response( array $row ): array {
-		return [
-			'id'              => (int) $row['id'],
-			'kind'            => (string) $row['kind'],
-			'tier_used'       => (string) ( $row['tier_used'] ?? 'fast' ),
-			'provider'        => (string) ( $row['provider']  ?? '' ),
-			'model'           => (string) ( $row['model']     ?? '' ),
-			'summary'         => (string) ( $row['summary']   ?? '' ),
-			'category'        => (string) ( $row['category']  ?? '' ),
-			'priority'        => (string) ( $row['priority']  ?? '' ),
-			'reply_draft'     => (string) ( $row['reply_draft']    ?? '' ),
-			'polished_reply'  => (string) ( $row['polished_reply'] ?? '' ),
-			'score'           => $row['score']  !== null ? (int) $row['score'] : null,
-			'finalized'       => (int) ( $row['finalized']    ?? 0 ) === 1,
-			'created_at'      => (string) ( $row['created_at'] ?? '' ),
-		];
+		return array(
+			'id'             => (int) $row['id'],
+			'kind'           => (string) $row['kind'],
+			'tier_used'      => (string) ( $row['tier_used'] ?? 'fast' ),
+			'provider'       => (string) ( $row['provider'] ?? '' ),
+			'model'          => (string) ( $row['model'] ?? '' ),
+			'summary'        => (string) ( $row['summary'] ?? '' ),
+			'category'       => (string) ( $row['category'] ?? '' ),
+			'priority'       => (string) ( $row['priority'] ?? '' ),
+			'reply_draft'    => (string) ( $row['reply_draft'] ?? '' ),
+			'polished_reply' => (string) ( $row['polished_reply'] ?? '' ),
+			'score'          => null !== $row['score'] ? (int) $row['score'] : null,
+			'finalized'      => (int) ( $row['finalized'] ?? 0 ) === 1,
+			'created_at'     => (string) ( $row['created_at'] ?? '' ),
+		);
 	}
 
 	/**
@@ -635,11 +807,11 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$fields = [];
+		$fields = array();
 
 		if ( null !== $request->get_param( 'status' ) ) {
 			$fields['status'] = $request->get_param( 'status' );
@@ -655,7 +827,7 @@ class EntriesEndpoint {
 		// so the "AI filtered" badge disappears and does not re-appear erroneously.
 		if (
 			isset( $fields['status'] ) &&
-			in_array( $fields['status'], [ 'read', 'new' ], true ) &&
+			in_array( $fields['status'], array( 'read', 'new' ), true ) &&
 			( $existing['status'] ?? '' ) === 'spam'
 		) {
 			$fields['ai_auto_spam_applied'] = 0;
@@ -665,7 +837,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'no_fields',
 				__( 'No updatable fields provided.', 'neural-forms-lite' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -675,19 +847,21 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_update_failed',
 				__( 'Could not update entry.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		// Return fresh row so the client applies confirmed values.
 		$entry = EntryRepository::get( $id );
 
-		return rest_ensure_response( [
-			'id'          => $entry['id'],
-			'status'      => $entry['status'],
-			'is_starred'  => $entry['is_starred'],
-			'needs_reply' => $entry['needs_reply'],
-		] );
+		return rest_ensure_response(
+			array(
+				'id'          => $entry['id'],
+				'status'      => $entry['status'],
+				'is_starred'  => $entry['is_starred'],
+				'needs_reply' => $entry['needs_reply'],
+			)
+		);
 	}
 
 	/**
@@ -715,7 +889,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_not_found',
 				__( 'Entry not found.', 'neural-forms-lite' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -725,11 +899,16 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'entry_delete_failed',
 				__( 'Could not delete the entry.', 'neural-forms-lite' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
-		return rest_ensure_response( [ 'deleted' => true, 'id' => $id ] );
+		return rest_ensure_response(
+			array(
+				'deleted' => true,
+				'id'      => $id,
+			)
+		);
 	}
 
 	// AI rerun helpers
@@ -750,12 +929,12 @@ class EntriesEndpoint {
 		return new WP_Error(
 			'feature_locked',
 			__( 'This feature is not available on your current plan.', 'neural-forms-lite' ),
-			[
+			array(
 				'status'      => 403,
 				'feature'     => $feature,
 				'quota'       => $plan['quota'],
 				'upgrade_url' => $plan['upgrade_url'],
-			]
+			)
 		);
 	}
 
@@ -774,10 +953,36 @@ class EntriesEndpoint {
 			PlanManager::mark_quota_exceeded( $e->get_quota() );
 		}
 
-		$data = $e->to_error_data();
+		$data            = $e->to_error_data();
 		$data['feature'] = $feature;
 
 		return new WP_Error( $e->get_error_code(), $e->getMessage(), $data );
+	}
+
+	/**
+	 * Return WP_Error 402 when the cached cloud credit balance is at or
+	 * below zero, true otherwise. Soft pre-flight — the cloud is still the
+	 * source of truth and will hard-enforce via QuotaGuard, but checking
+	 * locally first avoids burning a network round-trip on calls we
+	 * already know will be rejected.
+	 *
+	 * Fails open if the plan cache has never been synced (`fetched_at = 0`)
+	 * so a fresh install isn't false-positive blocked.
+	 */
+	private function check_ai_credits() {
+		if ( ! PlanManager::is_credits_exhausted() ) {
+			return true;
+		}
+		$plan = PlanManager::get_plan();
+		return new WP_Error(
+			'credits_exhausted',
+			__( 'You have used all your Neural AI credits. Buy more to continue.', 'neural-forms-lite' ),
+			array(
+				'status'      => 402,
+				'balance'     => $plan['balance'],
+				'upgrade_url' => $plan['upgrade_url'] !== '' ? $plan['upgrade_url'] : PlanManager::DEFAULT_UPGRADE_URL,
+			)
+		);
 	}
 
 	/**
@@ -787,14 +992,14 @@ class EntriesEndpoint {
 	 */
 	private function check_ai_configured() {
 		if (
-			! Config::get( 'ai_enabled'      ) ||
+			! Config::get( 'ai_enabled' ) ||
 			! Config::get( 'cloud_ai_enabled' ) ||
 			Config::get( 'cloud_api_key' ) === ''
 		) {
 			return new WP_Error(
 				'ai_not_configured',
-				__( 'AI is not configured. Enable AI and add an API key in Settings.', 'neural-forms-lite' ),
-				[ 'status' => 503 ]
+				__( 'Neural AI is not configured. Enable Neural AI and add an API key in Settings.', 'neural-forms-lite' ),
+				array( 'status' => 503 )
 			);
 		}
 
@@ -808,7 +1013,7 @@ class EntriesEndpoint {
 	 * the queue, the entry is orphaned - reset it so the user isn't locked out.
 	 */
 	private function check_ai_not_busy( array $entry ) {
-		$busy = [ 'queued', 'processing' ];
+		$busy = array( 'queued', 'processing' );
 		if ( ! in_array( $entry['ai_status'] ?? '', $busy, true ) ) {
 			return true;
 		}
@@ -832,8 +1037,8 @@ class EntriesEndpoint {
 		if ( (int) $active_job > 0 ) {
 			return new WP_Error(
 				'ai_already_processing',
-				__( 'An AI job for this entry is already running.', 'neural-forms-lite' ),
-				[ 'status' => 409 ]
+				__( 'An Neural AI job for this entry is already running.', 'neural-forms-lite' ),
+				array( 'status' => 409 )
 			);
 		}
 
@@ -860,7 +1065,7 @@ class EntriesEndpoint {
 		return new WP_Error(
 			'permission_denied',
 			__( 'You do not have permission to view entries.', 'neural-forms-lite' ),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 
@@ -882,95 +1087,95 @@ class EntriesEndpoint {
 	 * list to maintain.
 	 */
 	private function list_args(): array {
-		return [
-			'form_id'  => [
+		return array(
+			'form_id'    => array(
 				'default'           => 0,
 				'sanitize_callback' => 'absint',
-			],
-			'view'     => [
+			),
+			'view'       => array(
 				'default'           => '',
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ): bool {
 					return $value === ''
 						|| in_array( $value, EntryRepository::VALID_VIEWS, true );
 				},
-			],
-			'page'     => [
+			),
+			'page'       => array(
 				'default'           => 1,
 				'sanitize_callback' => 'absint',
-			],
-			'per_page' => [
+			),
+			'per_page'   => array(
 				'default'           => 20,
 				'sanitize_callback' => 'absint',
 				'validate_callback' => static function ( $value ): bool {
 					$v = (int) $value;
 					return $v >= 1 && $v <= 100;
 				},
-			],
-			'status'   => [
+			),
+			'status'     => array(
 				'default'           => 'any',
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ): bool {
 					return $value === 'any'
 						|| in_array( $value, EntryRepository::VALID_STATUSES, true );
 				},
-			],
-			'search'     => [
+			),
+			'search'     => array(
 				'default'           => '',
 				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'sort_order' => [
+			),
+			'sort_order' => array(
 				'default'           => 'desc',
 				'sanitize_callback' => static function ( $v ): string {
 					$v = strtolower( trim( (string) $v ) );
-					return in_array( $v, [ 'asc', 'desc' ], true ) ? $v : 'desc';
+					return in_array( $v, array( 'asc', 'desc' ), true ) ? $v : 'desc';
 				},
-			],
-		];
+			),
+		);
 	}
 
 	private function patch_args(): array {
-		return [
-			'status' => [
+		return array(
+			'status'      => array(
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ): bool {
 					return in_array( $value, EntryRepository::VALID_STATUSES, true );
 				},
-			],
-			'is_starred' => [
+			),
+			'is_starred'  => array(
 				'required'          => false,
 				'sanitize_callback' => 'absint',
 				'validate_callback' => static function ( $value ): bool {
-					return in_array( (int) $value, [ 0, 1 ], true );
+					return in_array( (int) $value, array( 0, 1 ), true );
 				},
-			],
-			'needs_reply' => [
+			),
+			'needs_reply' => array(
 				'required'          => false,
 				'sanitize_callback' => 'absint',
 				'validate_callback' => static function ( $value ): bool {
-					return in_array( (int) $value, [ 0, 1 ], true );
+					return in_array( (int) $value, array( 0, 1 ), true );
 				},
-			],
-		];
+			),
+		);
 	}
 
 	private function bulk_args(): array {
-		$valid_actions = [ 'mark_read', 'mark_unread', 'star', 'unstar', 'spam', 'trash', 'restore', 'delete' ];
-		return [
-			'ids' => [
+		$valid_actions = array( 'mark_read', 'mark_unread', 'star', 'unstar', 'spam', 'trash', 'restore', 'delete' );
+		return array(
+			'ids'    => array(
 				'required'          => true,
 				'validate_callback' => static function ( $value ): bool {
 					return is_array( $value ) && ! empty( $value );
 				},
-			],
-			'action' => [
+			),
+			'action' => array(
 				'required'          => true,
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ) use ( $valid_actions ): bool {
 					return in_array( $value, $valid_actions, true );
 				},
-			],
-		];
+			),
+		);
 	}
 }
