@@ -1,8 +1,8 @@
-=== Neural Forms Lite ===
+=== Neural Forms ===
 Contributors: elicus
 Tags: contact form, ai forms, lead inbox, gutenberg form, spam protection
 Requires at least: 6.8
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 1.0.0
 License: GPLv2 or later
@@ -59,7 +59,7 @@ Anyone tired of reading raw form submissions
 
 1. **Install and Activate** — Install Neural Forms Lite from your WordPress dashboard.
 2. **Create a Form** — Use the visual builder to add fields and configure settings.
-3. **Embed Anywhere** — Use the `[neural-forms id="42"]` shortcode or the Gutenberg block.
+3. **Embed Anywhere** — Use the Gutenberg block.
 4. **Connect AI (Optional)** — Enter your free Neural Forms Cloud API key in Settings.
 5. **Manage Leads** — View submissions in the inbox, review AI analysis, send replies.
 
@@ -71,7 +71,7 @@ Looking for more? [Neural Forms Pro](https://neuralforms.ai/pricing) adds Divi 5
 
 = Documentation =
 
-Full documentation is available at [wpmozo.com/documentation/neural-forms](https://wpmozo.com/documentation/neural-forms/).
+Full documentation is available at [neuralforms.ai/documentation](https://neuralforms.ai/documentation/).
 
 = External Services =
 
@@ -152,7 +152,7 @@ This regenerates the files in `modules/admin/build/` from `modules/admin/src/`.
 1. Navigate to **Neural Forms > Forms** in your admin menu.
 2. Click **Add New** to create your first form.
 3. Add fields, configure settings, and publish.
-4. Embed using the Gutenberg block or the `[neural-forms id="YOUR_FORM_ID"]` shortcode.
+4. Embed using the Gutenberg block.
 5. (Optional) Go to **Neural Forms > Settings** to connect Neural Forms Cloud for AI features.
 
 == Frequently Asked Questions ==
@@ -199,7 +199,7 @@ Yes. Neural Forms creates 6 custom tables for forms, entries, AI responses, mess
 
 = Where can I find documentation? =
 
-Full documentation is available at [wpmozo.com/documentation/neural-forms](https://wpmozo.com/documentation/neural-forms/).
+Full documentation is available at [neuralforms.ai/documentation](https://neuralforms.ai/documentation/).
 
 == Screenshots ==
 
@@ -207,7 +207,7 @@ Full documentation is available at [wpmozo.com/documentation/neural-forms](https
 
 == Changelog ==
 
-= 1.0.0 - 2026-04-29 =
+= 1.0.0 - 2026-06-21 =
 
 Initial public release.
 
