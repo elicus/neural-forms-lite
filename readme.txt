@@ -244,7 +244,15 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.0.0 - 2026-06-16 =
+= 1.1.0 - 2026-06-22 =
+* New: Multi-step forms for breaking long forms into manageable steps.
+* New: Poll block and multi-step form block for the block editor.
+* New: Ready-to-use form templates so you can start with a working form in one click.
+* Improved: Form dashboard layout for easier navigation.
+* Improved: Form builder with smoother drag and drop.
+* Improved: Inbox layout for faster scanning of submissions.
+
+= 1.0.0 - 2026-06-21 =
 
 Initial public release.
 
