@@ -1,8 +1,8 @@
 === Neural Forms Lite ===
 Contributors: elicus
-Tags: contact form, ai forms, lead inbox, gutenberg form, spam protection
+Tags: contact form, forms, ai forms, lead inbox, form builder, gutenberg form
 Requires at least: 6.8
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 1.0.0
 License: GPLv2 or later
