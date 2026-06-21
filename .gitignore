@@ -51,3 +51,19 @@ Thumbs.db
 # ========================
 coverage/
 .cache/
+
+# ========================
+# WP.org / SVN trunk exclusions
+# ========================
+# Files that must never be uploaded to the WordPress.org SVN trunk
+# (and, by extension, that we don't track in git either). The .git/
+# and .gitignore entries are listed for documentation completeness —
+# git never tracks its own internals, and adding .gitignore to
+# .gitignore doesn't untrack the existing file. CLAUDE.md is the
+# project's Claude-context dev note (memory-tagged "never deploy").
+# docs/ holds internal developer markdown (API.md, ROADMAP.md,
+# STATE.md, UI_GUIDELINES.md) that's not meant for plugin users.
+.git/
+.gitignore
+CLAUDE.md
+docs/
