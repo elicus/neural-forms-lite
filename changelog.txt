@@ -1,5 +1,10 @@
 # Changelog
 
+### 1.1.1 - 2026-06-23
+
+#### Fixed
+* Front-end form assets (form-submit.js, form.css) were missing from the WordPress.org package, so form submission did not work for installs from WordPress.org. The assets are now included.
+
 ### 1.1.0 - 2026-06-22
 
 #### Added
