@@ -37,8 +37,8 @@ phpstan.neon
 phpstan.neon.dist
 composer.json
 composer.lock
-package.json
-package-lock.json
+/package.json
+/package-lock.json
 yarn.lock
 # modules/admin/{package.json, package-lock.json, webpack.config.js,
 # webpack.split.config.js} are deliberately NOT excluded — the readme's
