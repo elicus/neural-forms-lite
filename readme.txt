@@ -1,6 +1,6 @@
 === Neural Forms ===
 Contributors: elicus
-Tags: contact form, forms, ai forms, lead inbox, form builder, gutenberg form
+Tags: contact form, forms, ai forms, lead inbox, form builder
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
