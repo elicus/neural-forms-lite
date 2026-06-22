@@ -40,10 +40,13 @@ composer.lock
 package.json
 package-lock.json
 yarn.lock
-modules/admin/package.json
-modules/admin/package-lock.json
-modules/admin/webpack.config.js
-modules/admin/webpack.split.config.js
+# modules/admin/{package.json, package-lock.json, webpack.config.js,
+# webpack.split.config.js} are deliberately NOT excluded — the readme's
+# "Source Code and Build Instructions" section tells WP.org reviewers
+# those files ship with the plugin so they can verify the compiled
+# admin bundles (modules/admin/build/*.js). Excluding them would make
+# the build instructions un-followable and trigger a review rejection
+# for "compiled JS lacks verifiable source".
 modules/admin/.eslintrc
 modules/admin/.eslintrc.json
 modules/admin/.babelrc
