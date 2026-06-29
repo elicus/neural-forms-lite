@@ -1180,9 +1180,12 @@
 	-webkit-appearance: none;
 	display: inline-block;
 	/* Right-padding sized for the longest label (ARCHIVED) plus
-	 * 12 px chevron + breathing room; previous 28 px caused the
-	 * text to bleed under the icon on the archived state. */
-	padding: 4px 34px 4px 14px;
+	 * 12 px chevron + breathing room. min-width keeps the pill
+	 * width stable across all three states so the native popup
+	 * (which inherits the select's width in most browsers) opens
+	 * wider and the options read comfortably instead of clipped. */
+	padding: 5px 38px 5px 18px;
+	min-width: 130px;
 	border: 1px solid transparent;
 	border-radius: 999px;
 	font-size: 11px;
@@ -1191,7 +1194,7 @@
 	letter-spacing: 0.06em;
 	cursor: pointer;
 	background-repeat: no-repeat;
-	background-position: right 12px center;
+	background-position: right 14px center;
 	background-size: 12px 12px;
 	transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
@@ -1230,8 +1233,8 @@
 }
 #neural-forms-app .nf-builder-header__status--active {
 	background-color: var( --nf-primary );
-	color: var( --nf-accent );
-	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 5l3 3 3-3' stroke='%2315db95' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+	color: #fff;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 5l3 3 3-3' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 #neural-forms-app .nf-builder-header__status--archived {
 	background-color: #f3f4f6;
