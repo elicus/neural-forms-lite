@@ -1166,33 +1166,78 @@
 	align-items: center;
 }
 
-/* Status select - styled to read as a pill but functions as a real
- * <select> so the admin can flip Active/Draft/Archived inline. */
+/* Status select — styled to read as a pill but functions as a real
+ * <select> so the admin can flip Active/Draft/Archived inline.
+ *
+ * Chevron: the SVG is baked per-status modifier with an explicit
+ * stroke colour. Using stroke='currentColor' in a data-URI here
+ * doesn't work — `currentColor` inside the data URI's own SVG
+ * document resolves to black, not to the CSS color of the
+ * containing <select> — so each modifier ships its own pre-coloured
+ * chevron. */
 #neural-forms-app .nf-builder-header__status {
 	appearance: none;
 	-webkit-appearance: none;
 	display: inline-block;
-	padding: 3px 22px 3px 10px;
+	/* Right-padding sized for the longest label (ARCHIVED) plus
+	 * 12 px chevron + breathing room; previous 28 px caused the
+	 * text to bleed under the icon on the archived state. */
+	padding: 4px 34px 4px 14px;
 	border: 1px solid transparent;
 	border-radius: 999px;
 	font-size: 11px;
-	font-weight: 600;
+	font-weight: 700;
 	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.06em;
 	cursor: pointer;
-	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='currentColor' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 	background-repeat: no-repeat;
-	background-position: right 6px center;
+	background-position: right 12px center;
+	background-size: 12px 12px;
+	transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+#neural-forms-app .nf-builder-header__status:hover {
+	filter: brightness( 1.05 );
+	box-shadow: 0 2px 6px rgba( 0, 0, 0, 0.10 );
+	transform: translateY( -1px );
 }
 
 #neural-forms-app .nf-builder-header__status:focus {
 	outline: 2px solid var( --nf-primary-ring );
-	outline-offset: 1px;
+	outline-offset: 2px;
 }
 
-#neural-forms-app .nf-builder-header__status--draft    { background-color: #fef3c7; color: #92400e; }
-#neural-forms-app .nf-builder-header__status--active   { background-color: var( --nf-primary ); color: var( --nf-accent ); }
-#neural-forms-app .nf-builder-header__status--archived { background-color: #f3f4f6; color: #4b5563; }
+/* Open-state dropdown (browser-rendered <option> list inherits some
+ * styling from the select). Keep the options legible by forcing a
+ * neutral foreground inside the popup — otherwise mint-on-blue from
+ * the active variant leaks into the option list and reads as
+ * "invisible on white" in some browsers. */
+#neural-forms-app .nf-builder-header__status option {
+	background: #fff;
+	color: #1f2937;
+	font-weight: 500;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+/* Per-status colours + matching chevron. The chevron's stroke colour
+ * is URL-encoded directly into the data URI so it always matches the
+ * pill's text. */
+#neural-forms-app .nf-builder-header__status--draft {
+	background-color: #fef3c7;
+	color: #92400e;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 5l3 3 3-3' stroke='%2392400e' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+#neural-forms-app .nf-builder-header__status--active {
+	background-color: var( --nf-primary );
+	color: var( --nf-accent );
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 5l3 3 3-3' stroke='%2315db95' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+#neural-forms-app .nf-builder-header__status--archived {
+	background-color: #f3f4f6;
+	color: #4b5563;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 5l3 3 3-3' stroke='%234b5563' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
 
 /* Palette (sidebar) */
 
