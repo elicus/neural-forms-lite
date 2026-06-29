@@ -245,7 +245,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 == Changelog ==
 
 = 1.1.2 - 2026-06-29 =
-* Fix: Multi-step forms on a page no longer make the browser auto-scroll down to the form when the page loads. Next/Previous buttons still scroll to the new step as before.
+* Fix: Multi-step forms no longer trigger an auto-scroll on page load.
 
 = 1.1.1 - 2026-06-23 =
 * Fix: Front-end form scripts and styles were missing from the WordPress.org download, which prevented forms from submitting. They are now bundled correctly.
