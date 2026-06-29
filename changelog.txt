@@ -1,5 +1,10 @@
 # Changelog
 
+### 1.1.2 - 2026-06-29
+
+#### Fixed
+* Multi-step forms no longer trigger an auto-scroll on page load. Every multi-step form's initial-render path called `scrollIntoView({behavior:'smooth'})` on the first step's heading, so a page with one or more multi-step forms would jerk the viewport down to (typically) the last multi-step form rendered on the page. Initial render now skips the scroll; Next / Prev navigation and the "Submit another response" reset still scroll to the new step as designed.
+
 ### 1.1.1 - 2026-06-23
 
 #### Fixed
