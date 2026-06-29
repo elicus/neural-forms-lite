@@ -5,6 +5,9 @@
 #### Fixed
 * Multi-step forms no longer trigger an auto-scroll on page load.
 
+#### Improved
+* Form builder's Active status pill restyled — blue background with mint text.
+
 ### 1.1.1 - 2026-06-23
 
 #### Fixed

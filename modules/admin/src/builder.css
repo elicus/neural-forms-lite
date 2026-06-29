@@ -1191,7 +1191,7 @@
 }
 
 #neural-forms-app .nf-builder-header__status--draft    { background-color: #fef3c7; color: #92400e; }
-#neural-forms-app .nf-builder-header__status--active   { background-color: var( --nf-accent-soft ); color: var( --nf-primary ); }
+#neural-forms-app .nf-builder-header__status--active   { background-color: var( --nf-primary ); color: var( --nf-accent ); }
 #neural-forms-app .nf-builder-header__status--archived { background-color: #f3f4f6; color: #4b5563; }
 
 /* Palette (sidebar) */
