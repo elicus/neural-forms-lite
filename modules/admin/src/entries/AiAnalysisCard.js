@@ -177,10 +177,46 @@ export default function AiAnalysisCard( {
 
 			<footer className="neural-forms-entry-detail__ai-rerun-buttons">
 				{ ( () => {
-					// State 1: no cloud API key on file — the entire card
-					// is inert. Show a single sign-up notice with a CTA to
-					// the pricing / signup flow.
+					// State 1: no cloud API key on file.
+					//   * Pro installed → assume the user already has an
+					//     account, they just haven't pasted their key yet:
+					//     send them to the in-admin Settings page.
+					//   * Lite only → send them to /pricing to sign up
+					//     for a free Cloud account first.
 					if ( ! cloudApiKeySet ) {
+						const proInstalled = !! (
+							typeof window !== 'undefined'
+							&& window.neuralFormsAdmin
+							&& window.neuralFormsAdmin.pro
+							&& window.neuralFormsAdmin.pro.version
+						);
+						const settingsUrl = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.settingsUrl )
+							? window.neuralFormsAdmin.settingsUrl
+							: 'admin.php?page=neural-forms-settings';
+
+						if ( proInstalled ) {
+							return (
+								<div className="neural-forms-entries-pro-notice" role="status">
+									<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
+										<LockIcon />
+									</span>
+									<div className="neural-forms-entries-pro-notice__body">
+										<p className="neural-forms-entries-pro-notice__title">
+											{ __( 'Enter your API key to activate Neural AI', 'neural-forms-lite' ) }
+										</p>
+										<p className="neural-forms-entries-pro-notice__desc">
+											{ __( 'Paste your Neural Forms Cloud API key on the Settings page to start analyzing entries and generating replies.', 'neural-forms-lite' ) }
+										</p>
+									</div>
+									<a
+										className="neural-forms-entries-pro-notice__cta"
+										href={ settingsUrl }
+									>
+										{ __( 'Open settings', 'neural-forms-lite' ) }
+									</a>
+								</div>
+							);
+						}
 						return (
 							<div className="neural-forms-entries-pro-notice" role="status">
 								<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
