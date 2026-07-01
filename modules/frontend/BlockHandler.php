@@ -163,22 +163,18 @@ class BlockHandler {
 	}
 
 	/**
-	 * Register the 3 extra blocks added in 0.2.0:
+	 * Register the 3 extra blocks: quiz / multi-step / poll.
 	 *
-	 *   - neural-forms/quiz
-	 *   - neural-forms/multi-step
-	 *   - neural-forms/poll
+	 * Each has its own minimal block.json (so WordPress.org's plugin
+	 * directory scanner detects all 4 blocks), but the attribute schema
+	 * is read from the form block's block.json at runtime and passed as
+	 * the override — the single source of truth stays in
+	 * modules/frontend/block/block.json.
 	 *
-	 * They share the form block's full attribute schema (so this same
-	 * render() method renders any of them) and a single editor-script
-	 * bundle (build/blocks-extra.js, compiled from
-	 * src/blocks-extra-entry.js via `npm run build:blocks-extra`).
-	 *
-	 * Why they're registered programmatically rather than each having
-	 * its own block.json: their attribute schema is an exact clone of
-	 * the form block's, and three near-duplicate 200-line block.json
-	 * files would drift the moment a new attribute is added. The
-	 * single source of truth stays in modules/frontend/block/block.json.
+	 * All 4 blocks share a single render_callback (this class's render()).
+	 * The extra 3 share a single editor bundle (build/blocks-extra.js,
+	 * compiled from src/blocks-extra-entry.js via
+	 * `npm run build:blocks-extra`).
 	 */
 	private static function register_extra_blocks(): void {
 		$asset_file = NEURAL_FORMS_PATH . 'modules/admin/build/blocks-extra.asset.php';
@@ -238,41 +234,12 @@ class BlockHandler {
 		$attributes = isset( $base['attributes'] ) && is_array( $base['attributes'] ) ? $base['attributes'] : [];
 		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
 
-		$blocks = [
-			[
-				'name'        => 'neural-forms/quiz',
-				'title'       => __( 'Neural Quiz', 'neural-forms-lite' ),
-				'description' => __( 'Embed a Neural Forms quiz on any post or page. Picks up forms with quiz_question fields.', 'neural-forms-lite' ),
-				'keywords'    => [ 'quiz', 'questions', 'score' ],
-			],
-			[
-				'name'        => 'neural-forms/multi-step',
-				'title'       => __( 'Neural Multi Step', 'neural-forms-lite' ),
-				'description' => __( 'Embed a multi-step Neural Forms form. Picks up forms with two or more Step layout blocks.', 'neural-forms-lite' ),
-				'keywords'    => [ 'multi-step', 'wizard', 'steps' ],
-			],
-			[
-				'name'        => 'neural-forms/poll',
-				'title'       => __( 'Neural Poll', 'neural-forms-lite' ),
-				'description' => __( 'Embed a Neural Forms poll. Picks up forms that contain a Poll field.', 'neural-forms-lite' ),
-				'keywords'    => [ 'poll', 'survey', 'vote' ],
-			],
-		];
-
-		foreach ( $blocks as $b ) {
+		foreach ( [ 'quiz', 'multi-step', 'poll' ] as $slug ) {
 			register_block_type(
-				$b['name'],
+				__DIR__ . '/blocks/' . $slug,
 				[
-					'api_version'     => 3,
-					'title'           => $b['title'],
-					'description'     => $b['description'],
-					'category'        => 'embed',
-					'keywords'        => $b['keywords'],
-					'textdomain'      => 'neural-forms-lite',
 					'attributes'      => $attributes,
 					'supports'        => $supports,
-					'editor_script'   => 'neural-forms-blocks-extra',
-					'editor_style'    => 'neural-forms-block-editor',
 					'render_callback' => [ static::class, 'render' ],
 				]
 			);

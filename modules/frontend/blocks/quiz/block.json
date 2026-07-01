@@ -1,0 +1,13 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "neural-forms/quiz",
+    "version": "0.1.0",
+    "title": "Neural Quiz",
+    "category": "embed",
+    "description": "Embed a Neural Forms quiz on any post or page. Picks up forms with quiz_question fields.",
+    "keywords": [ "quiz", "questions", "score" ],
+    "textdomain": "neural-forms-lite",
+    "editorScript": "neural-forms-blocks-extra",
+    "editorStyle": "neural-forms-block-editor"
+}

@@ -1,0 +1,13 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "neural-forms/poll",
+    "version": "0.1.0",
+    "title": "Neural Poll",
+    "category": "embed",
+    "description": "Embed a Neural Forms poll. Picks up forms that contain a Poll field.",
+    "keywords": [ "poll", "survey", "vote" ],
+    "textdomain": "neural-forms-lite",
+    "editorScript": "neural-forms-blocks-extra",
+    "editorStyle": "neural-forms-block-editor"
+}

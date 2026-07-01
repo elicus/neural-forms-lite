@@ -1,0 +1,13 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "neural-forms/multi-step",
+    "version": "0.1.0",
+    "title": "Neural Multi Step",
+    "category": "embed",
+    "description": "Embed a multi-step Neural Forms form. Picks up forms with two or more Step layout blocks.",
+    "keywords": [ "multi-step", "wizard", "steps" ],
+    "textdomain": "neural-forms-lite",
+    "editorScript": "neural-forms-blocks-extra",
+    "editorStyle": "neural-forms-block-editor"
+}
