@@ -226,26 +226,45 @@ export default function ReplyComposer( {
 				</button>
 
 				{ ( () => {
+					// Lite path first — Refine is a Pro-only feature so a
+					// Lite install always shows the upgrade CTA regardless
+					// of API-key or credits state. (Without this, a Lite
+					// user with a stale plan snapshot showing 0 credits
+					// would see "Buy more credits" — misleading, because
+					// buying credits won't unlock a Pro-only feature.)
+					if ( ! canPolish ) {
+						return (
+							<a
+								className="neural-forms-entry-detail__polish-trigger"
+								href={ pricingUrl }
+								target="_blank"
+								rel="noreferrer"
+								title={ __( 'Refine with Neural AI is a Pro feature', 'neural-forms-lite' ) }
+							>
+								<span className="neural-forms-entry-detail__polish-trigger-lock" aria-hidden="true">
+									<LockIcon />
+								</span>
+								{ __( 'Upgrade to Pro to use Refine with AI', 'neural-forms-lite' ) }
+							</a>
+						);
+					}
+
 					// Pro installed but no cloud API key on file — send
 					// the user straight to the Settings page to paste it.
-					// Checked BEFORE the credits gate so a stale cached
-					// plan snapshot (which would look like "0 credits on
-					// an active plan") doesn't hide the real blocker.
-					if ( canPolish && ! cloudApiKeySet ) {
+					if ( ! cloudApiKeySet ) {
 						return (
 							<a
 								className="neural-forms-entry-detail__polish-trigger"
 								href={ settingsUrl }
 								title={ __( 'Enter your Neural Forms Cloud API key to refine replies', 'neural-forms-lite' ) }
 							>
-								{ __( 'Enter API key to refine reply', 'neural-forms-lite' ) }
+								{ __( 'Enter API key to use Refine with AI', 'neural-forms-lite' ) }
 							</a>
 						);
 					}
 
-					// Credits exhausted on an active plan — same message
-					// in Pro and Lite installs (Lite users only reach
-					// this branch through the working-analysis path).
+					// Pro + key on file but credits exhausted on an active
+					// plan.
 					const exhausted = liveCreditsExhausted();
 					if ( exhausted ) {
 						return (
@@ -261,39 +280,18 @@ export default function ReplyComposer( {
 						);
 					}
 
-					// Pro installed + key on file → the Pro bundle owns
-					// the Refine action.
-					if ( canPolish ) {
-						return (
-							<ProSlot
-								name="EntryReplyActions"
-								fillProps={ {
-									body,
-									isPolishing: busy === 'polish',
-									sending:     busy === 'send',
-									handlePolish,
-								} }
-							/>
-						);
-					}
-
-					// Lite path (Refine is Pro-only regardless of key
-					// state) — render an inline "Upgrade to Pro" notice
-					// instead of just a locked button so the value
-					// proposition is visible at a glance.
+					// Pro + key + credits OK → the Pro bundle owns the
+					// Refine action.
 					return (
-						<a
-							className="neural-forms-entry-detail__polish-trigger"
-							href={ pricingUrl }
-							target="_blank"
-							rel="noreferrer"
-							title={ __( 'Refine with Neural AI is a Pro feature', 'neural-forms-lite' ) }
-						>
-							<span className="neural-forms-entry-detail__polish-trigger-lock" aria-hidden="true">
-								<LockIcon />
-							</span>
-							{ __( 'Upgrade to Pro to refine reply', 'neural-forms-lite' ) }
-						</a>
+						<ProSlot
+							name="EntryReplyActions"
+							fillProps={ {
+								body,
+								isPolishing: busy === 'polish',
+								sending:     busy === 'send',
+								handlePolish,
+							} }
+						/>
 					);
 				} )() }
 			</div>
