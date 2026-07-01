@@ -51,6 +51,9 @@ modules/admin/.eslintrc
 modules/admin/.eslintrc.json
 modules/admin/.babelrc
 
+# Empty-folder placeholder — git needs it, WP.org doesn't
+languages/.gitkeep
+
 # Docs (architecture / contributor-facing only — not for end users)
 CLAUDE.md
 docs
