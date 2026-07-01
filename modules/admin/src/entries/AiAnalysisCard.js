@@ -85,9 +85,17 @@ export default function AiAnalysisCard( {
 	const spamReason = entry.ai_spam_reason || '';
 	const status     = entry.ai_status || '';
 
-	const hasAnalysis = !! ( summary || category || priority || score != null );
+	const hasAnalysis   = !! ( summary || category || priority || score != null );
+	const hasReplyDraft = !! entry.ai_reply_draft;
 
-	const canReanalyze = !! capabilities?.ai_reanalyze;
+	const canReanalyze  = !! capabilities?.ai_reanalyze;
+	const cloudApiKeySet = !! (
+		typeof window !== 'undefined'
+		&& window.neuralFormsAdmin
+		&& window.neuralFormsAdmin.plugin
+		&& window.neuralFormsAdmin.plugin.cloudApiKeySet
+	);
+
 	const [ showUpsell, setShowUpsell ] = useState( false );
 
 	const cardClass = 'neural-forms-entry-detail__ai-card'
@@ -168,45 +176,74 @@ export default function AiAnalysisCard( {
 			{ !! error && <p className="neural-forms-entries-error">{ error }</p> }
 
 			<footer className="neural-forms-entry-detail__ai-rerun-buttons">
-				{ canReanalyze ? (
-					( () => {
-						// Proactive gate: when Pro is rendering these
-						// buttons but the live plan snapshot shows the
-						// subscription is active with zero credits,
-						// swap the buttons for a credit-exhausted
-						// notice. Avoids the doomed Cloud round-trip
-						// and tells the user how to recover.
-						const exhausted = liveCreditsExhausted();
-						if ( exhausted ) {
-							return (
-								<div className="neural-forms-entries-pro-notice neural-forms-entries-pro-notice--credits" role="status">
-									<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
-										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-											strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-											<circle cx="12" cy="12" r="9" />
-											<path d="M12 7v6" />
-											<path d="M12 16v.01" />
-										</svg>
-									</span>
-									<div className="neural-forms-entries-pro-notice__body">
-										<p className="neural-forms-entries-pro-notice__title">
-											{ __( 'Unable to process — Neural AI credits exhausted', 'neural-forms-lite' ) }
-										</p>
-										<p className="neural-forms-entries-pro-notice__desc">
-											{ __( 'Your Neural Forms Cloud balance has reached zero. Top up your credits to keep analyzing entries and generating replies.', 'neural-forms-lite' ) }
-										</p>
-									</div>
-									<a
-										className="neural-forms-entries-pro-notice__cta"
-										href={ exhausted.upgradeUrl || 'https://neuralforms.ai/pricing' }
-										target="_blank"
-										rel="noreferrer"
-									>
-										{ __( 'Buy more credits', 'neural-forms-lite' ) }
-									</a>
+				{ ( () => {
+					// State 1: no cloud API key on file — the entire card
+					// is inert. Show a single sign-up notice with a CTA to
+					// the pricing / signup flow.
+					if ( ! cloudApiKeySet ) {
+						return (
+							<div className="neural-forms-entries-pro-notice" role="status">
+								<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
+									<LockIcon />
+								</span>
+								<div className="neural-forms-entries-pro-notice__body">
+									<p className="neural-forms-entries-pro-notice__title">
+										{ __( 'Sign up free to use Neural AI', 'neural-forms-lite' ) }
+									</p>
+									<p className="neural-forms-entries-pro-notice__desc">
+										{ __( 'Create a free Neural Forms Cloud account to analyze entries and generate reply drafts.', 'neural-forms-lite' ) }
+									</p>
 								</div>
-							);
-						}
+								<a
+									className="neural-forms-entries-pro-notice__cta"
+									href={ PRO_UPGRADE_URL }
+									target="_blank"
+									rel="noreferrer"
+								>
+									{ __( 'Sign up free', 'neural-forms-lite' ) }
+								</a>
+							</div>
+						);
+					}
+
+					// State 2: credits exhausted on an active subscription.
+					// Same card in both Pro and Lite paths — avoids a doomed
+					// Cloud round-trip and points at the top-up flow.
+					const exhausted = liveCreditsExhausted();
+					if ( exhausted ) {
+						return (
+							<div className="neural-forms-entries-pro-notice neural-forms-entries-pro-notice--credits" role="status">
+								<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
+									<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+										strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+										<circle cx="12" cy="12" r="9" />
+										<path d="M12 7v6" />
+										<path d="M12 16v.01" />
+									</svg>
+								</span>
+								<div className="neural-forms-entries-pro-notice__body">
+									<p className="neural-forms-entries-pro-notice__title">
+										{ __( 'Unable to process — Neural AI credits exhausted', 'neural-forms-lite' ) }
+									</p>
+									<p className="neural-forms-entries-pro-notice__desc">
+										{ __( 'Your Neural Forms Cloud balance has reached zero. Top up your credits to keep analyzing entries and generating replies.', 'neural-forms-lite' ) }
+									</p>
+								</div>
+								<a
+									className="neural-forms-entries-pro-notice__cta"
+									href={ exhausted.upgradeUrl || PRO_UPGRADE_URL }
+									target="_blank"
+									rel="noreferrer"
+								>
+									{ __( 'Buy more credits', 'neural-forms-lite' ) }
+								</a>
+							</div>
+						);
+					}
+
+					// State 3: Pro installed — the Pro bundle owns both
+					// buttons via the SlotFill (Reanalyze + Regenerate).
+					if ( canReanalyze ) {
 						return (
 							<ProSlot
 								name="EntryAiActions"
@@ -219,37 +256,60 @@ export default function AiAnalysisCard( {
 								} }
 							/>
 						);
-					} )()
-				) : (
-					<>
-						<button
-							type="button"
-							className="neural-forms-entry-detail__ai-rerun-btn"
-							onClick={ () => setShowUpsell( true ) }
-							aria-label={ __( 'Re-analyze with Neural AI (Pro feature)', 'neural-forms-lite' ) }
-						>
-							<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
-								<LockIcon />
-							</span>
-							{ hasAnalysis
-								? __( 'Re-analyze with Neural AI', 'neural-forms-lite' )
-								: __( 'Analyze with Neural AI', 'neural-forms-lite' ) }
-						</button>
-						<button
-							type="button"
-							className="neural-forms-entry-detail__ai-rerun-btn"
-							onClick={ () => setShowUpsell( true ) }
-							aria-label={ __( 'Generate reply with Neural AI (Pro feature)', 'neural-forms-lite' ) }
-						>
-							<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
-								<LockIcon />
-							</span>
-							{ entry.ai_reply_draft
-								? __( 'Regenerate with Neural AI', 'neural-forms-lite' )
-								: __( 'Generate with Neural AI', 'neural-forms-lite' ) }
-						</button>
-					</>
-				) }
+					}
+
+					// State 4: Lite path with cloud key + credits. Split
+					// per-button:
+					//   - Analyze / Generate reply (first run) → Lite native,
+					//     unlocked, wires to the analyze / regenerate handlers.
+					//   - Re-analyze / Regenerate (second and later runs) →
+					//     Pro-gated; render a lock icon and open the upsell
+					//     panel on click.
+					return (
+						<>
+							<button
+								type="button"
+								className="neural-forms-entry-detail__ai-rerun-btn"
+								onClick={ hasAnalysis
+									? () => setShowUpsell( true )
+									: onReanalyze }
+								disabled={ ! hasAnalysis && !! reanalyzing }
+								aria-label={ hasAnalysis
+									? __( 'Re-analyze with Neural AI (Pro feature)', 'neural-forms-lite' )
+									: __( 'Analyze with Neural AI', 'neural-forms-lite' ) }
+							>
+								{ hasAnalysis && (
+									<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
+										<LockIcon />
+									</span>
+								) }
+								{ hasAnalysis
+									? __( 'Re-analyze with Neural AI', 'neural-forms-lite' )
+									: __( 'Analyze with Neural AI', 'neural-forms-lite' ) }
+							</button>
+							<button
+								type="button"
+								className="neural-forms-entry-detail__ai-rerun-btn"
+								onClick={ hasReplyDraft
+									? () => setShowUpsell( true )
+									: onRegenerate }
+								disabled={ ! hasReplyDraft && !! regenerating }
+								aria-label={ hasReplyDraft
+									? __( 'Regenerate reply with Neural AI (Pro feature)', 'neural-forms-lite' )
+									: __( 'Generate reply with Neural AI', 'neural-forms-lite' ) }
+							>
+								{ hasReplyDraft && (
+									<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
+										<LockIcon />
+									</span>
+								) }
+								{ hasReplyDraft
+									? __( 'Regenerate with Neural AI', 'neural-forms-lite' )
+									: __( 'Generate with Neural AI', 'neural-forms-lite' ) }
+							</button>
+						</>
+					);
+				} )() }
 			</footer>
 
 			{ ! canReanalyze && showUpsell && (

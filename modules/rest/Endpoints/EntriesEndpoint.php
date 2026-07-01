@@ -419,30 +419,36 @@ class EntriesEndpoint {
 			return $guard;
 		}
 
-		// Plugin-level gate: Pro unlocks reanalyze. Runs before the Cloud
-		// plan check so a Pro-less install gets a Pro-targeted upgrade cue
-		// instead of a misleading "plan" message.
-		if ( ! Capabilities::can( Capabilities::AI_REANALYZE ) ) {
-			return Capabilities::locked_error( Capabilities::AI_REANALYZE );
-		}
-
-		$plan_guard = $this->check_plan_feature( 'ai_reanalyze' );
-		if ( is_wp_error( $plan_guard ) ) {
-			return $plan_guard;
-		}
-
-		// Pre-flight credits guard — blocks the cloud round-trip when the
-		// cached balance is exhausted. Cloud's QuotaGuard hard-enforces too.
-		$credits_guard = $this->check_ai_credits();
-		if ( is_wp_error( $credits_guard ) ) {
-			return $credits_guard;
-		}
-
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
 			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+
+		// Plugin-level gate: Pro is required only when the entry already
+		// carries an analysis — the initial "Analyze with Neural AI" run
+		// is a Lite feature, so a Pro-less install can trigger it once.
+		// Cloud plan + credits guards below still apply either way.
+		$has_prev_analysis = ! empty( $entry['ai_summary'] )
+			|| ! empty( $entry['ai_category'] )
+			|| ! empty( $entry['ai_priority'] );
+		if ( $has_prev_analysis && ! Capabilities::can( Capabilities::AI_REANALYZE ) ) {
+			return Capabilities::locked_error( Capabilities::AI_REANALYZE );
+		}
+
+		// Cloud plan check only applies to re-runs — the first analyze is
+		// a Lite-plan feature and the cloud accepts it against a fresh key.
+		if ( $has_prev_analysis ) {
+			$plan_guard = $this->check_plan_feature( 'ai_reanalyze' );
+			if ( is_wp_error( $plan_guard ) ) {
+				return $plan_guard;
+			}
+		}
+
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) {
+			return $credits_guard;
 		}
 
 		$busy = $this->check_ai_not_busy( $entry );
@@ -503,27 +509,33 @@ class EntriesEndpoint {
 			return $guard;
 		}
 
-		// Reply regeneration re-invokes the analysis pipeline against an
-		// existing entry, so it sits under the same plugin cap as reanalyze.
-		if ( ! Capabilities::can( Capabilities::AI_REANALYZE ) ) {
-			return Capabilities::locked_error( Capabilities::AI_REANALYZE );
-		}
-
-		$plan_guard = $this->check_plan_feature( 'ai_reply_regenerate' );
-		if ( is_wp_error( $plan_guard ) ) {
-			return $plan_guard;
-		}
-
-		$credits_guard = $this->check_ai_credits();
-		if ( is_wp_error( $credits_guard ) ) {
-			return $credits_guard;
-		}
-
 		$id    = (int) $request['id'];
 		$entry = EntryRepository::get( $id );
 
 		if ( ! $entry ) {
 			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+
+		// Pro is required only when a reply draft already exists — the
+		// first "Generate with Neural AI" reply is a Lite feature. Cloud
+		// plan + credits guards below still apply either way.
+		$has_prev_reply = ! empty( $entry['ai_reply_draft'] );
+		if ( $has_prev_reply && ! Capabilities::can( Capabilities::AI_REANALYZE ) ) {
+			return Capabilities::locked_error( Capabilities::AI_REANALYZE );
+		}
+
+		// Cloud plan check only applies to reply re-runs — the first draft
+		// is a Lite-plan feature.
+		if ( $has_prev_reply ) {
+			$plan_guard = $this->check_plan_feature( 'ai_reply_regenerate' );
+			if ( is_wp_error( $plan_guard ) ) {
+				return $plan_guard;
+			}
+		}
+
+		$credits_guard = $this->check_ai_credits();
+		if ( is_wp_error( $credits_guard ) ) {
+			return $credits_guard;
 		}
 
 		$busy = $this->check_ai_not_busy( $entry );
