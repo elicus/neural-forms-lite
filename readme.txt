@@ -244,7 +244,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.1.2 - 2026-06-29 =
+= 1.1.2 - 2026-07-01 =
 * Fix: Multi-step forms no longer trigger an auto-scroll on page load.
 * Improved: Refreshed the form builder's Active status pill to a blue background with mint text for better contrast.
 
