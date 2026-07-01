@@ -95,6 +95,15 @@ export default function AiAnalysisCard( {
 		&& window.neuralFormsAdmin.plugin
 		&& window.neuralFormsAdmin.plugin.cloudApiKeySet
 	);
+	const cloudAiEnabled = !! (
+		typeof window !== 'undefined'
+		&& window.neuralFormsAdmin
+		&& window.neuralFormsAdmin.plugin
+		&& window.neuralFormsAdmin.plugin.cloudAiEnabled
+	);
+	const settingsUrl = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.settingsUrl )
+		? window.neuralFormsAdmin.settingsUrl
+		: 'admin.php?page=neural-forms-settings';
 
 	const [ showUpsell, setShowUpsell ] = useState( false );
 
@@ -190,9 +199,6 @@ export default function AiAnalysisCard( {
 							&& window.neuralFormsAdmin.pro
 							&& window.neuralFormsAdmin.pro.version
 						);
-						const settingsUrl = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.settingsUrl )
-							? window.neuralFormsAdmin.settingsUrl
-							: 'admin.php?page=neural-forms-settings';
 
 						if ( proInstalled ) {
 							return (
@@ -237,6 +243,35 @@ export default function AiAnalysisCard( {
 									rel="noreferrer"
 								>
 									{ __( 'Sign up free', 'neural-forms-lite' ) }
+								</a>
+							</div>
+						);
+					}
+
+					// State 1.5: key on file but the "Enable Neural AI"
+					// master toggle is off. Without this check the server
+					// rejects the request with a "not configured" error
+					// message that also mentions the API key, which is
+					// misleading when the real blocker is just the toggle.
+					if ( ! cloudAiEnabled ) {
+						return (
+							<div className="neural-forms-entries-pro-notice" role="status">
+								<span className="neural-forms-entries-pro-notice__icon" aria-hidden="true">
+									<LockIcon />
+								</span>
+								<div className="neural-forms-entries-pro-notice__body">
+									<p className="neural-forms-entries-pro-notice__title">
+										{ __( 'Enable Neural AI to activate this feature', 'neural-forms-lite' ) }
+									</p>
+									<p className="neural-forms-entries-pro-notice__desc">
+										{ __( 'Neural AI is currently switched off. Turn it on in Settings to analyze entries and generate reply drafts.', 'neural-forms-lite' ) }
+									</p>
+								</div>
+								<a
+									className="neural-forms-entries-pro-notice__cta"
+									href={ settingsUrl }
+								>
+									{ __( 'Open settings', 'neural-forms-lite' ) }
 								</a>
 							</div>
 						);
@@ -294,13 +329,15 @@ export default function AiAnalysisCard( {
 						);
 					}
 
-					// State 4: Lite path with cloud key + credits. Split
-					// per-button:
-					//   - Analyze / Generate reply (first run) → Lite native,
-					//     unlocked, wires to the analyze / regenerate handlers.
-					//   - Re-analyze / Regenerate (second and later runs) →
-					//     Pro-gated; render a lock icon and open the upsell
-					//     panel on click.
+					// State 4: Lite path with cloud key + credits + AI on.
+					//   - Analyze (first run only) → Lite-native, unlocked,
+					//     wires to the analyze handler.
+					//   - Re-analyze (second+ runs) → Pro-only, locked
+					//     upsell.
+					//   - Generate reply + Regenerate reply → Pro-only in
+					//     both states, always locked upsell. (Auto-draft
+					//     replies on submission still work in Lite; the
+					//     manual button is Pro.)
 					return (
 						<>
 							<button
@@ -326,19 +363,14 @@ export default function AiAnalysisCard( {
 							<button
 								type="button"
 								className="neural-forms-entry-detail__ai-rerun-btn"
-								onClick={ hasReplyDraft
-									? () => setShowUpsell( true )
-									: onRegenerate }
-								disabled={ ! hasReplyDraft && !! regenerating }
+								onClick={ () => setShowUpsell( true ) }
 								aria-label={ hasReplyDraft
 									? __( 'Regenerate reply with Neural AI (Pro feature)', 'neural-forms-lite' )
-									: __( 'Generate reply with Neural AI', 'neural-forms-lite' ) }
+									: __( 'Generate reply with Neural AI (Pro feature)', 'neural-forms-lite' ) }
 							>
-								{ hasReplyDraft && (
-									<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
-										<LockIcon />
-									</span>
-								) }
+								<span className="neural-forms-entry-detail__ai-rerun-btn-lock" aria-hidden="true">
+									<LockIcon />
+								</span>
 								{ hasReplyDraft
 									? __( 'Regenerate with Neural AI', 'neural-forms-lite' )
 									: __( 'Generate with Neural AI', 'neural-forms-lite' ) }
