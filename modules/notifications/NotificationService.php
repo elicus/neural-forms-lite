@@ -470,6 +470,11 @@ class NotificationService {
 	private static function build_fields_summary( array $schema_fields, array $data ): string {
 		$lines = array();
 
+		// Precompute humanized fallback labels for any field whose schema
+		// label is empty or looks like the AI generator's auto-slug
+		// (e.g. `text_mpv1gytfc`), so the email never ships raw slugs.
+		$fallbacks = self::build_field_label_fallbacks( $schema_fields );
+
 		foreach ( $schema_fields as $field ) {
 			$field    = (array) $field;
 			$field_id = $field['id'] ?? '';
@@ -478,8 +483,11 @@ class NotificationService {
 				continue;
 			}
 
-			$label = (string) ( $field['label'] ?? $field_id );
-			$raw   = $data[ $field_id ];
+			$raw_label = isset( $field['label'] ) ? trim( (string) $field['label'] ) : '';
+			$label     = self::field_label_is_meaningful( $raw_label, (string) $field_id )
+				? $raw_label
+				: ( $fallbacks[ (string) $field_id ] ?? (string) $field_id );
+			$raw       = $data[ $field_id ];
 
 			if ( $field['type'] === 'checkbox' ) {
 				// Multi-option checkboxes submit an array of selected values;
@@ -562,6 +570,102 @@ class NotificationService {
 		}
 
 		return $lines ? implode( "\n", $lines ) . "\n" : '';
+	}
+
+	/**
+	 * Human-readable fallback names per field type — mirrors the JS
+	 * FIELD_TYPE_LABELS in modules/admin/src/entries/helpers.js. Kept
+	 * in sync manually; the two lists must stay identical.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function field_type_labels(): array {
+		return array(
+			'text'          => __( 'Text field',    'neural-forms-lite' ),
+			'textarea'      => __( 'Message',       'neural-forms-lite' ),
+			'email'         => __( 'Email address', 'neural-forms-lite' ),
+			'phone'         => __( 'Phone number',  'neural-forms-lite' ),
+			'number'        => __( 'Number',        'neural-forms-lite' ),
+			'url'           => __( 'URL',           'neural-forms-lite' ),
+			'select'        => __( 'Selection',     'neural-forms-lite' ),
+			'radio'         => __( 'Choice',        'neural-forms-lite' ),
+			'checkbox'      => __( 'Checkbox',      'neural-forms-lite' ),
+			'checkboxes'    => __( 'Choices',       'neural-forms-lite' ),
+			'date'          => __( 'Date',          'neural-forms-lite' ),
+			'file'          => __( 'File upload',   'neural-forms-lite' ),
+			'rating'        => __( 'Rating',        'neural-forms-lite' ),
+			'acceptance'    => __( 'Consent',       'neural-forms-lite' ),
+			'poll'          => __( 'Poll',          'neural-forms-lite' ),
+			'quiz_question' => __( 'Quiz question', 'neural-forms-lite' ),
+			'matrix'        => __( 'Matrix',        'neural-forms-lite' ),
+			'repeater'      => __( 'Group',         'neural-forms-lite' ),
+			'hidden'        => __( 'Hidden field',  'neural-forms-lite' ),
+		);
+	}
+
+	/** Detect labels shaped like the AI generator's auto-slug (e.g. `text_mpv1gytfc`). */
+	private static function looks_like_auto_slug( string $s ): bool {
+		return (bool) preg_match( '/^[a-z]+(?:_[a-z0-9]+){1,}$/', $s );
+	}
+
+	/**
+	 * True when a schema `label` conveys something beyond the field id or
+	 * an auto-generated slug (i.e. worth showing verbatim in an email).
+	 */
+	private static function field_label_is_meaningful( string $label, string $field_id ): bool {
+		if ( $label === '' ) {
+			return false;
+		}
+		if ( $label === $field_id ) {
+			return false;
+		}
+		if ( self::looks_like_auto_slug( $label ) ) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Build a `{ field_id => human fallback label }` map for schemas whose
+	 * `label` is empty or slug-shaped. Fields with meaningful labels are
+	 * absent from the map. When a type has 2+ fallbacks a "1", "2", …
+	 * counter is appended so the reader can tell them apart.
+	 *
+	 * @param array $schema_fields
+	 * @return array<string,string>
+	 */
+	private static function build_field_label_fallbacks( array $schema_fields ): array {
+		$type_labels  = self::field_type_labels();
+		$type_totals  = array();
+		$needs        = array();
+
+		foreach ( $schema_fields as $field ) {
+			$field    = (array) $field;
+			$field_id = isset( $field['id'] ) ? (string) $field['id'] : '';
+			if ( $field_id === '' ) {
+				continue;
+			}
+			$raw_label = isset( $field['label'] ) ? trim( (string) $field['label'] ) : '';
+			if ( self::field_label_is_meaningful( $raw_label, $field_id ) ) {
+				continue;
+			}
+			$type              = isset( $field['type'] ) ? (string) $field['type'] : 'field';
+			$needs[]           = array( $field_id, $type );
+			$type_totals[ $type ] = ( $type_totals[ $type ] ?? 0 ) + 1;
+		}
+
+		$fallbacks     = array();
+		$type_counters = array();
+		foreach ( $needs as list( $field_id, $type ) ) {
+			$human = $type_labels[ $type ] ?? __( 'Field', 'neural-forms-lite' );
+			if ( ( $type_totals[ $type ] ?? 0 ) > 1 ) {
+				$type_counters[ $type ]   = ( $type_counters[ $type ] ?? 0 ) + 1;
+				$fallbacks[ $field_id ] = $human . ' ' . $type_counters[ $type ];
+			} else {
+				$fallbacks[ $field_id ] = $human;
+			}
+		}
+		return $fallbacks;
 	}
 
 	/**

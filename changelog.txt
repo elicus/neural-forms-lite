@@ -1,5 +1,18 @@
 # Changelog
 
+### 1.1.2 - 2026-07-01
+
+#### Fixed
+* Multi-step forms no longer trigger an auto-scroll on page load.
+* WordPress.org plugin directory now lists all four blocks (Form, Poll, Quiz, Multi-step).
+* Field labels in the entry inbox no longer show raw slugs when a form was built without labels.
+* "Analyze with Neural AI" now works on Lite installs without needing Pro.
+
+#### Improved
+* Form builder's Active status pill restyled — blue background with mint text.
+* Clearer setup notices in the entry inbox — guide users to Settings when the API key or Neural AI toggle needs attention.
+* Locked features in Lite now show a direct upgrade or setup link instead of a generic error.
+
 ### 1.1.1 - 2026-06-23
 
 #### Fixed

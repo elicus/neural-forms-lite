@@ -2633,7 +2633,13 @@
 		// isForward: true = Next, false = Prev. Undefined on initial render.
 		// fromIndex: the step we're leaving (must be passed explicitly because
 		//            `current` is already updated before show() is called).
-		function show( index, isForward, fromIndex ) {
+		// suppressScroll: true = skip the post-render scrollIntoView. Set
+		//                 only by the page-load initial render so a page
+		//                 with multi-step forms doesn't auto-scroll the
+		//                 viewport down to the first one. Next/Prev clicks
+		//                 and the "Submit another response" reset still
+		//                 scroll because that's the desired UX there.
+		function show( index, isForward, fromIndex, suppressScroll ) {
 			if ( useTransition && isForward !== undefined && fromIndex !== undefined && fromIndex >= 0 ) {
 				animateTransition( fromIndex, index, isForward );
 			} else {
@@ -2647,7 +2653,7 @@
 						steps[ i ].style.display = 'none';
 					}
 				}
-				afterShow( index );
+				afterShow( index, suppressScroll );
 			}
 		}
 
@@ -2751,7 +2757,7 @@
 			}, transitionDur + 100 );
 		}
 
-		function afterShow( index ) {
+		function afterShow( index, suppressScroll ) {
 			updateNavLabels( steps[ index ] );
 
 			if ( prevBtn ) prevBtn.style.display = ( index === 0 ) ? 'none' : '';
@@ -2763,6 +2769,16 @@
 			if ( typeof updateConditionalFields === 'function' ) {
 				updateConditionalFields( form );
 			}
+
+			// Skip the scrollIntoView when this is the page-load initial
+			// render. Without the guard, every multi-step form on a page
+			// runs scrollIntoView({behavior:'smooth'}) at load time and
+			// the last one's smooth scroll wins, jerking the viewport
+			// down to that form for no reason. Next/Prev navigation and
+			// the "Submit another response" reset still pass through
+			// here without suppressScroll, so user-initiated transitions
+			// keep their natural scroll-to-the-new-step behaviour.
+			if ( suppressScroll ) return;
 
 			var heading = steps[ index ].querySelector( '.neural-forms-form__step-title' );
 			var target  = heading || steps[ index ];
@@ -2856,7 +2872,11 @@
 		}
 
 		// Initial render: only step 0 visible, submit hidden, prev hidden.
-		show( 0 );
+		// 4th arg true = suppress the auto-scrollIntoView so a page with
+		// one or more multi-step forms doesn't yank the viewport down
+		// to the first form on page load. See show()/afterShow() for the
+		// scroll-suppression rationale.
+		show( 0, undefined, undefined, true );
 
 		// Expose a reset hook so resetFormState() can return this form
 		// to step 0 after "Submit another response". Closure-bound so

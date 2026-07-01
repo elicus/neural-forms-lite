@@ -4,7 +4,7 @@ Tags: contact form, forms, ai forms, lead inbox, form builder
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -243,6 +243,10 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 5. **Gutenberg Block in Action**: Native Neural Forms block in the WordPress block editor with full styling controls.
 
 == Changelog ==
+
+= 1.1.2 - 2026-06-29 =
+* Fix: Multi-step forms no longer trigger an auto-scroll on page load.
+* Improved: Refreshed the form builder's Active status pill to a blue background with mint text for better contrast.
 
 = 1.1.1 - 2026-06-23 =
 * Fix: Front-end form scripts and styles were missing from the WordPress.org download, which prevented forms from submitting. They are now bundled correctly.
