@@ -274,19 +274,22 @@ export default function ReplyComposer( {
 					}
 
 					// Lite path (Refine is Pro-only regardless of key
-					// state, so a locked Pro-upsell button is correct).
+					// state) — render an inline "Upgrade to Pro" notice
+					// instead of just a locked button so the value
+					// proposition is visible at a glance.
 					return (
-						<button
-							type="button"
+						<a
 							className="neural-forms-entry-detail__polish-trigger"
-							onClick={ () => setShowUpsell( true ) }
-							aria-label={ __( 'Refine with Neural AI (Pro feature)', 'neural-forms-lite' ) }
+							href={ pricingUrl }
+							target="_blank"
+							rel="noreferrer"
+							title={ __( 'Refine with Neural AI is a Pro feature', 'neural-forms-lite' ) }
 						>
 							<span className="neural-forms-entry-detail__polish-trigger-lock" aria-hidden="true">
 								<LockIcon />
 							</span>
-							{ __( 'Refine with Neural AI', 'neural-forms-lite' ) }
-						</button>
+							{ __( 'Upgrade to Pro to refine reply', 'neural-forms-lite' ) }
+						</a>
 					);
 				} )() }
 			</div>
