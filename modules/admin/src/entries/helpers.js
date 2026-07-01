@@ -46,9 +46,46 @@ function walkFields( fields, out ) {
 }
 
 /**
+ * Human-readable fallback names per field type, used when a schema
+ * field ships with no label (or with a label that's just its
+ * auto-generated slug).
+ */
+const FIELD_TYPE_LABELS = {
+	text:          'Text field',
+	textarea:      'Message',
+	email:         'Email address',
+	phone:         'Phone number',
+	number:        'Number',
+	url:           'URL',
+	select:        'Selection',
+	radio:         'Choice',
+	checkbox:      'Checkbox',
+	checkboxes:    'Choices',
+	date:          'Date',
+	file:          'File upload',
+	rating:        'Rating',
+	acceptance:    'Consent',
+	poll:          'Poll',
+	quiz_question: 'Quiz question',
+	matrix:        'Matrix',
+	repeater:      'Group',
+	hidden:        'Hidden field',
+};
+
+/** Detect labels shaped like the AI generator's auto-slug (e.g. `text_mpv1gytfc`). */
+function looksLikeAutoSlug( s ) {
+	return typeof s === 'string' && /^[a-z]+(?:_[a-z0-9]+){1,}$/.test( s );
+}
+
+function humanizeFieldType( type ) {
+	return FIELD_TYPE_LABELS[ type ] || 'Field';
+}
+
+/**
  * Build a `{ field_id: label }` map from a form row's `form_schema`.
- * Empty object when the schema is missing or contains no labelled
- * fields — callers should fall back to the raw key for display.
+ * When a field's `label` is empty OR looks like an auto-generated slug,
+ * fall back to a human-readable type name + counter (e.g. "Text field",
+ * "Selection 1", "Selection 2"). Empty object when the schema is missing.
  */
 export function buildFieldLabels( form ) {
 	if ( ! form || typeof form !== 'object' ) return {};
@@ -59,13 +96,46 @@ export function buildFieldLabels( form ) {
 	const fields = Array.isArray( schema.fields ) ? schema.fields : [];
 	const out    = [];
 	walkFields( fields, out );
-	const map = {};
+
+	// Pass 1: count how many fields of each type need a fallback label.
+	// The counter suffix is only appended when a type has 2+ fallbacks —
+	// a lone text field reads better as "Text field" than "Text field 1".
+	const typeTotals = {};
 	for ( const f of out ) {
 		if ( ! f.id ) continue;
-		const label = ( typeof f.label === 'string' && f.label.trim() !== '' )
-			? f.label
-			: String( f.id );
-		map[ String( f.id ) ] = label;
+		const rawLabel = typeof f.label === 'string' ? f.label.trim() : '';
+		const meaningful = rawLabel !== ''
+			&& rawLabel !== String( f.id )
+			&& ! looksLikeAutoSlug( rawLabel );
+		if ( ! meaningful ) {
+			const type = String( f.type || 'field' );
+			typeTotals[ type ] = ( typeTotals[ type ] || 0 ) + 1;
+		}
+	}
+
+	// Pass 2: build the map.
+	const map          = {};
+	const typeCounters = {};
+	for ( const f of out ) {
+		if ( ! f.id ) continue;
+		const id       = String( f.id );
+		const rawLabel = typeof f.label === 'string' ? f.label.trim() : '';
+		const meaningful = rawLabel !== ''
+			&& rawLabel !== id
+			&& ! looksLikeAutoSlug( rawLabel );
+
+		if ( meaningful ) {
+			map[ id ] = rawLabel;
+		} else {
+			const type      = String( f.type || 'field' );
+			const humanType = humanizeFieldType( type );
+			if ( ( typeTotals[ type ] || 0 ) > 1 ) {
+				typeCounters[ type ] = ( typeCounters[ type ] || 0 ) + 1;
+				map[ id ] = humanType + ' ' + typeCounters[ type ];
+			} else {
+				map[ id ] = humanType;
+			}
+		}
 	}
 	return map;
 }
