@@ -123,6 +123,23 @@ export default function ReplyComposer( {
 	}, [ replyFreshKey ] );
 
 	const canPolish = !! capabilities?.ai_refine_reply;
+	const cloudApiKeySet = !! (
+		typeof window !== 'undefined'
+		&& window.neuralFormsAdmin
+		&& window.neuralFormsAdmin.plugin
+		&& window.neuralFormsAdmin.plugin.cloudApiKeySet
+	);
+	const proInstalled = !! (
+		typeof window !== 'undefined'
+		&& window.neuralFormsAdmin
+		&& window.neuralFormsAdmin.pro
+		&& window.neuralFormsAdmin.pro.version
+	);
+	const settingsUrl = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.settingsUrl )
+		? window.neuralFormsAdmin.settingsUrl
+		: 'admin.php?page=neural-forms-settings';
+	const pricingUrl = 'https://neuralforms.ai/pricing';
+
 	const [ showUpsell, setShowUpsell ] = useState( false );
 
 	const send = ( ev ) => {
@@ -208,28 +225,41 @@ export default function ReplyComposer( {
 					{ busy === 'send' ? __( 'Sending...', 'neural-forms-lite' ) : __( 'Send', 'neural-forms-lite' ) }
 				</button>
 
-				{ canPolish ? (
-					( () => {
-						// Proactive credits gate — same logic as the AI
-						// analysis card. When Pro is active but the
-						// plan balance is zero, swap the Refine button
-						// for a compact credit-exhausted hint so the
-						// user sees the same message everywhere AI
-						// would otherwise fire.
-						const exhausted = liveCreditsExhausted();
-						if ( exhausted ) {
-							return (
-								<a
-									className="neural-forms-entry-detail__polish-trigger neural-forms-entry-detail__polish-trigger--exhausted"
-									href={ exhausted.upgradeUrl || 'https://neuralforms.ai/pricing' }
-									target="_blank"
-									rel="noreferrer"
-									title={ __( 'Neural AI credits exhausted — click to buy more', 'neural-forms-lite' ) }
-								>
-									{ __( 'Buy more credits', 'neural-forms-lite' ) }
-								</a>
-							);
-						}
+				{ ( () => {
+					// Credits exhausted trumps everything else — same
+					// message in Pro and Lite installs.
+					const exhausted = liveCreditsExhausted();
+					if ( exhausted ) {
+						return (
+							<a
+								className="neural-forms-entry-detail__polish-trigger neural-forms-entry-detail__polish-trigger--exhausted"
+								href={ exhausted.upgradeUrl || pricingUrl }
+								target="_blank"
+								rel="noreferrer"
+								title={ __( 'Neural AI credits exhausted — click to buy more', 'neural-forms-lite' ) }
+							>
+								{ __( 'Buy more credits', 'neural-forms-lite' ) }
+							</a>
+						);
+					}
+
+					// Pro installed but no cloud API key on file — send
+					// the user straight to the Settings page to paste it.
+					if ( canPolish && ! cloudApiKeySet ) {
+						return (
+							<a
+								className="neural-forms-entry-detail__polish-trigger"
+								href={ settingsUrl }
+								title={ __( 'Enter your Neural Forms Cloud API key to refine replies', 'neural-forms-lite' ) }
+							>
+								{ __( 'Enter API key to refine reply', 'neural-forms-lite' ) }
+							</a>
+						);
+					}
+
+					// Pro installed + key on file → the Pro bundle owns
+					// the Refine action.
+					if ( canPolish ) {
 						return (
 							<ProSlot
 								name="EntryReplyActions"
@@ -241,20 +271,24 @@ export default function ReplyComposer( {
 								} }
 							/>
 						);
-					} )()
-				) : (
-					<button
-						type="button"
-						className="neural-forms-entry-detail__polish-trigger"
-						onClick={ () => setShowUpsell( true ) }
-						aria-label={ __( 'Refine with Neural AI (Pro feature)', 'neural-forms-lite' ) }
-					>
-						<span className="neural-forms-entry-detail__polish-trigger-lock" aria-hidden="true">
-							<LockIcon />
-						</span>
-						{ __( 'Refine with Neural AI', 'neural-forms-lite' ) }
-					</button>
-				) }
+					}
+
+					// Lite path (Refine is Pro-only regardless of key
+					// state, so a locked Pro-upsell button is correct).
+					return (
+						<button
+							type="button"
+							className="neural-forms-entry-detail__polish-trigger"
+							onClick={ () => setShowUpsell( true ) }
+							aria-label={ __( 'Refine with Neural AI (Pro feature)', 'neural-forms-lite' ) }
+						>
+							<span className="neural-forms-entry-detail__polish-trigger-lock" aria-hidden="true">
+								<LockIcon />
+							</span>
+							{ __( 'Refine with Neural AI', 'neural-forms-lite' ) }
+						</button>
+					);
+				} )() }
 			</div>
 
 			{ /* Usage strip routed to the composer when the source action
