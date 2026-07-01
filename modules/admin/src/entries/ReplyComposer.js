@@ -226,8 +226,26 @@ export default function ReplyComposer( {
 				</button>
 
 				{ ( () => {
-					// Credits exhausted trumps everything else — same
-					// message in Pro and Lite installs.
+					// Pro installed but no cloud API key on file — send
+					// the user straight to the Settings page to paste it.
+					// Checked BEFORE the credits gate so a stale cached
+					// plan snapshot (which would look like "0 credits on
+					// an active plan") doesn't hide the real blocker.
+					if ( canPolish && ! cloudApiKeySet ) {
+						return (
+							<a
+								className="neural-forms-entry-detail__polish-trigger"
+								href={ settingsUrl }
+								title={ __( 'Enter your Neural Forms Cloud API key to refine replies', 'neural-forms-lite' ) }
+							>
+								{ __( 'Enter API key to refine reply', 'neural-forms-lite' ) }
+							</a>
+						);
+					}
+
+					// Credits exhausted on an active plan — same message
+					// in Pro and Lite installs (Lite users only reach
+					// this branch through the working-analysis path).
 					const exhausted = liveCreditsExhausted();
 					if ( exhausted ) {
 						return (
@@ -239,20 +257,6 @@ export default function ReplyComposer( {
 								title={ __( 'Neural AI credits exhausted — click to buy more', 'neural-forms-lite' ) }
 							>
 								{ __( 'Buy more credits', 'neural-forms-lite' ) }
-							</a>
-						);
-					}
-
-					// Pro installed but no cloud API key on file — send
-					// the user straight to the Settings page to paste it.
-					if ( canPolish && ! cloudApiKeySet ) {
-						return (
-							<a
-								className="neural-forms-entry-detail__polish-trigger"
-								href={ settingsUrl }
-								title={ __( 'Enter your Neural Forms Cloud API key to refine replies', 'neural-forms-lite' ) }
-							>
-								{ __( 'Enter API key to refine reply', 'neural-forms-lite' ) }
 							</a>
 						);
 					}
