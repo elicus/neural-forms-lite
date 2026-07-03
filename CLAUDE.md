@@ -70,7 +70,8 @@ Located in: `modules/`
 | `forms/` | Form logic | `FormRepository.php`, `FieldRegistry.php`, `FormValidator.php`, `SubmissionValidator.php` |
 | `frontend/` | Public-facing rendering | `FormRenderer.php`, `PublicForms.php`, `BlockHandler.php`, `ShortcodeHandler.php` |
 | `frontend/assets/` | Frontend CSS/JS | `form.css`, `form-submit.js` |
-| `frontend/block/` | Gutenberg block | `block.json` |
+| `frontend/block/` | Gutenberg form block (`neural-forms/form`) | `block.json` -- single source of truth for the 600-line attribute schema |
+| `frontend/blocks/` | Metadata-only `block.json` for the 3 extra blocks (added 2026-07-01) | `quiz/block.json`, `multi-step/block.json`, `poll/block.json` |
 | `notifications/` | Email system | `NotificationService.php` |
 | `captcha/` | CAPTCHA verification | `CaptchaManager.php`, `TurnstileVerifier.php`, `RecaptchaV2Verifier.php` |
 | `admin/` | Admin React app | `AdminPanel.php` enqueues; `src/` contains React source; `build/` contains compiled output |
@@ -634,6 +635,51 @@ rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
 
+### Rating field — hover-color selector bugs (fixed 2026-07-03)
+
+Two separate, easy-to-repeat mistakes surfaced while wiring the Rating
+field's hover color to mirror `ratingFilledColor` in
+`BlockHandler::build_scoped_css()`:
+
+1. **Don't set color on the parent `.rating-star` label when a sibling
+   rule already sets color directly on the child `.rating-glyph` span.**
+   `ratingEmptyColor` sets `color` directly on
+   `.neural-forms-form__rating-glyph` unconditionally. A hover/checked
+   rule that instead sets `color` on the parent `.rating-star` only
+   reaches the glyph via CSS inheritance — and a direct declaration on
+   an element always wins over an inherited value from its ancestor,
+   *regardless of the ancestor rule's selector specificity*. Any new
+   color rule for the Rating field must target `.rating-glyph` directly
+   (like the existing `ratingFilledColor` rule does), not rely on
+   inheriting from `.rating-star`.
+2. **Never repeat a compound selector variable (e.g. `$rating_star_sel`,
+   which already includes the `$wrap_sel` block-scope prefix) after a
+   `~` sibling combinator.** Writing
+   `$rating_star_sel . ':hover ~ ' . $rating_star_sel . ' .rating-glyph'`
+   duplicates `$wrap_sel` mid-selector, producing
+   `.wrap-X .rating-star:hover ~ .wrap-X .rating-star .rating-glyph` —
+   this asks for a `.wrap-X` element that is a *sibling* of the hovered
+   star, which can never match since the wrapper is an ancestor, not a
+   sibling. The rule then only matches the exact hovered star itself,
+   not the flood-fill of preceding-in-DOM/following-visually siblings
+   the `row-reverse` trick depends on (see `form.css:591-596` +
+   `624-638`). Use `$wrap_sel` (or the compound selector) as a
+   **single** prefix per alternative, then plain unscoped class names
+   for everything after the first combinator — exactly the pattern the
+   `ratingFilledColor` rule (`BlockHandler.php` ~line 2400-2403) already
+   uses correctly.
+
+**Why:** both bugs are silent — no PHP error, no console warning, the
+CSS just doesn't match what you'd expect from reading the selector
+string, and they only show up as a visual mismatch when manually
+testing hover behavior with a non-default color set.
+**How to apply:** when adding any new color/typography rule to the
+Rating field (or any other sibling-flood selector using the
+`row-reverse` + `~` pattern), (a) always target `.rating-glyph`
+directly rather than the parent `.rating-star`, and (b) never reuse a
+`$wrap_sel`-prefixed variable a second time within the same selector
+string — expand it once, then drop back to bare class names.
+
 ### Phone field — Input Fields panel styling (fixed 2026-06-15)
 
 The Phone field (`render_phone()` in `FormRenderer.php`) wraps the
@@ -759,7 +805,7 @@ you rebuild a single bundle in isolation without touching siblings
 | `build/integrations.js` | `src/integrations-entry.js` | `npm run build:integrations` | Integrations screen — `src/screens/Integrations.js` + `src/integrations.css` (Pro-ready provider config surfaces; also `src/forms/IntegrationsSection.js` in the builder). |
 | `build/templates.js` | `src/templates-entry.js` | `npm run build:templates` | Template library modal — `src/templates/TemplateLibrary.js` + `TemplateLibraryModal.js`. |
 | `build/block.js` | `src/block-index.js` | `npm run build:block` | Gutenberg form-rendering block (registered via `frontend/block/block.json`). |
-| `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks. |
+| `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks. Each of the 3 registers via its own `modules/frontend/blocks/{quiz,multi-step,poll}/block.json` (metadata only — name/title/description/keywords/category/textdomain/editorScript/editorStyle), added 2026-07-01 so WordPress.org's directory scanner detects all 4 blocks (it counts `block.json` files; the 3 extras were previously registered with inline PHP args and were invisible to the scanner). The attribute schema still comes from the form block's `frontend/block/block.json` at runtime and is passed as the `register_block_type()` args override in `BlockHandler::register_extra_blocks()` — one source of truth for the ~600-line attribute list, not duplicated across the 3 new files. |
 
 ### Node version
 

@@ -653,8 +653,8 @@ class BlockHandler {
 			'pollAccentColor', 'pollOptionColor', 'pollOptionFontSize', 'pollOptionFontWeight',
 			'pollBarColor', 'pollBarColor2', 'pollBarTrackColor',
 			'pollBarHeight', 'pollBarRadius',
-			'pollResultsLabelColor', 'pollResultsCountColor', 'pollResultsFontSize',
-			'pollTotalColor', 'pollTotalFontSize', 'pollResultsMarginTop',
+			'pollResultsLabelColor', 'pollResultsCountColor', 'pollResultsFontSize', 'pollResultsFontWeight', 'pollResultsFontFamily',
+			'pollTotalColor', 'pollTotalFontSize', 'pollTotalFontWeight', 'pollTotalFontFamily', 'pollResultsMarginTop',
 			// Quiz-specific
 			'quizOptionsGap',
 			'quizOptionPaddingTop', 'quizOptionPaddingRight', 'quizOptionPaddingBottom', 'quizOptionPaddingLeft',
@@ -688,8 +688,8 @@ class BlockHandler {
 			'stepPaddingTop', 'stepPaddingRight', 'stepPaddingBottom', 'stepPaddingLeft',
 			'stepMarginTop', 'stepMarginRight', 'stepMarginBottom', 'stepMarginLeft',
 			// Multi-step: step indicator
-			'stepTitleColor', 'stepTitleFontSize', 'stepTitleFontWeight',
-			'stepDescColor', 'stepDescFontSize', 'stepDescFontWeight',
+			'stepTitleColor', 'stepTitleFontFamily', 'stepTitleFontSize', 'stepTitleFontWeight',
+			'stepDescColor', 'stepDescFontFamily', 'stepDescFontSize', 'stepDescFontWeight',
 			'stepSepColor', 'stepSepWidth', 'stepSepStyle',
 			'stepBarFillColor', 'stepBarTrackColor', 'stepBarHeight', 'stepBarRadius',
 			'stepBarTextColor', 'stepBarTextFontSize', 'stepBarTextFontWeight',
@@ -2401,17 +2401,16 @@ class BlockHandler {
 					. $wrap_sel . ' .neural-forms-form__rating-star:has(.neural-forms-form__rating-input:checked) .neural-forms-form__rating-glyph,'
 					. $wrap_sel . ' .neural-forms-form__rating-star:has(.neural-forms-form__rating-input:checked) ~ .neural-forms-form__rating-star .neural-forms-form__rating-glyph'
 					. '{color:' . $hex . '}';
-			}
-		}
-
-		$rating_hover = (string) ( $attributes['ratingHoverColor'] ?? '' );
-		if ( $rating_hover !== '' ) {
-			$hex = self::sanitize_color( $rating_hover );
-			if ( $hex !== null && $hex !== '' ) {
-				$css .= $rating_star_sel . ':hover,'
-					. $rating_star_sel . ':hover ~ ' . $rating_star_sel . ','
-					. $rating_star_sel . ':focus-within,'
-					. $rating_star_sel . ':focus-within ~ ' . $rating_star_sel
+				// Hover previews the same color as the filled/checked state,
+				// rather than a separately configurable hover color. Targets
+				// the glyph directly (not the parent star) so it competes with
+				// ratingEmptyColor's glyph-level rule on specificity rather than
+				// losing to it via inheritance (a direct declaration on an
+				// element always beats an inherited value from its ancestor).
+				$css .= $rating_star_sel . ':hover .neural-forms-form__rating-glyph,'
+					. $rating_star_sel . ':hover ~ .neural-forms-form__rating-star .neural-forms-form__rating-glyph,'
+					. $rating_star_sel . ':focus-within .neural-forms-form__rating-glyph,'
+					. $rating_star_sel . ':focus-within ~ .neural-forms-form__rating-star .neural-forms-form__rating-glyph'
 					. '{color:' . $hex . '}';
 			}
 		}
@@ -2689,6 +2688,14 @@ class BlockHandler {
 		if ( $poll_res_fs !== '' ) {
 			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-size:' . $poll_res_fs . '}';
 		}
+		$poll_res_fw = (string) ( $attributes['pollResultsFontWeight'] ?? '' );
+		if ( $poll_res_fw !== '' ) {
+			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-weight:' . sanitize_text_field( $poll_res_fw ) . '}';
+		}
+		$poll_res_ff = (string) ( $attributes['pollResultsFontFamily'] ?? '' );
+		if ( $poll_res_ff !== '' ) {
+			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-family:' . sanitize_text_field( $poll_res_ff ) . '}';
+		}
 
 		$poll_res_label_color = (string) ( $attributes['pollResultsLabelColor'] ?? '' );
 		if ( $poll_res_label_color !== '' ) {
@@ -2712,6 +2719,14 @@ class BlockHandler {
 		$poll_total_fs = $len( $poll_total_fs_raw );
 		if ( $poll_total_fs !== '' ) {
 			$poll_total_rules[] = 'font-size:' . $poll_total_fs;
+		}
+		$poll_total_ff = (string) ( $attributes['pollTotalFontFamily'] ?? '' );
+		if ( $poll_total_ff !== '' ) {
+			$poll_total_rules[] = 'font-family:' . sanitize_text_field( $poll_total_ff );
+		}
+		$poll_total_fw = (string) ( $attributes['pollTotalFontWeight'] ?? '' );
+		if ( $poll_total_fw !== '' ) {
+			$poll_total_rules[] = 'font-weight:' . sanitize_text_field( $poll_total_fw );
 		}
 		if ( $poll_total_rules ) {
 			$css .= $poll_total_sel . '{' . implode( ';', $poll_total_rules ) . '}';
@@ -3040,6 +3055,10 @@ class BlockHandler {
 		if ( $step_title_color !== null && $step_title_color !== '' ) {
 			$step_title_rules[] = 'color:' . $step_title_color;
 		}
+		$step_title_ff = (string) ( $attributes['stepTitleFontFamily'] ?? '' );
+		if ( $step_title_ff !== '' ) {
+			$step_title_rules[] = 'font-family:' . sanitize_text_field( $step_title_ff );
+		}
 		if ( $step_title_fs !== '' ) {
 			$step_title_rules[] = 'font-size:' . $step_title_fs;
 		}
@@ -3059,6 +3078,10 @@ class BlockHandler {
 		$step_desc_rules = [];
 		if ( $step_desc_color !== null && $step_desc_color !== '' ) {
 			$step_desc_rules[] = 'color:' . $step_desc_color;
+		}
+		$step_desc_ff = (string) ( $attributes['stepDescFontFamily'] ?? '' );
+		if ( $step_desc_ff !== '' ) {
+			$step_desc_rules[] = 'font-family:' . sanitize_text_field( $step_desc_ff );
 		}
 		if ( $step_desc_fs !== '' ) {
 			$step_desc_rules[] = 'font-size:' . $step_desc_fs;
