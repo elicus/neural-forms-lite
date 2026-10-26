@@ -34,7 +34,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Version constants:**
   - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.1.3`.
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
-  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.1.0`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
+  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.1.3`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
 **Identifiers deliberately NOT renamed** (changing these would break installs):
 
@@ -73,6 +73,7 @@ Located in: `modules/`
 | `frontend/block/` | Gutenberg form block (`neural-forms/form`) | `block.json` -- single source of truth for the 600-line attribute schema |
 | `frontend/blocks/` | Metadata-only `block.json` for the 3 extra blocks (added 2026-07-01) | `quiz/block.json`, `multi-step/block.json`, `poll/block.json` |
 | `notifications/` | Email system | `NotificationService.php` |
+| `privacy/` | WordPress privacy tools (added 1.1.3) | `PrivacyTools.php` — registers the personal-data exporter + eraser (entries matched by submitted email via `EntryRepository::find_by_email()`) and suggested privacy-policy text |
 | `captcha/` | CAPTCHA verification | `CaptchaManager.php`, `TurnstileVerifier.php`, `RecaptchaV2Verifier.php` |
 | `admin/` | Admin React app | `AdminPanel.php` enqueues; `src/` contains React source; `build/` contains compiled output |
 | `core/Capabilities.php` | Premium-capability registry — filter-based unlock gates | see "Capability / Unlock Architecture" below |
@@ -727,6 +728,19 @@ corner-overflow — the country-picker dropdown is an absolutely-
 positioned child of `.neural-forms-form__phone` (`top: calc(100% + 4px)`)
 and would get clipped. The pseudo-element separator above already
 prevents overflow without needing `overflow: hidden` anywhere.
+
+### Privacy mode (fixed 2026-10-27, 1.1.3)
+
+`privacy_mode` was defined in `Config`, saved by `SettingsEndpoint` and
+toggled in Settings, but NOTHING read it at submit time — entries were
+stored with ip_address + user_agent regardless. `SubmitEndpoint::submit()`
+now reads it once (right after `resolve_ip()`) and blanks `ip` /
+`user_agent` in the Step 8 context and in the CAPTCHA-failure log. The IP
+is still used in memory for the rate limit and CAPTCHA verification.
+`Database::maybe_upgrade()` (DB version 1.1.3) runs
+`scrub_visitor_metadata()` once when the toggle is on. Toggling it on
+later does NOT scrub historic rows — call `Database::scrub_visitor_
+metadata()` explicitly if that's wanted. Tests: `tests/PrivacyModeTest.php`.
 
 ### Submission rate limit + client IP (fixed 2026-10-26, 1.1.3)
 

@@ -158,6 +158,12 @@ class SubmitEndpoint {
 		// filter lets extensions replace or tighten this logic.
 		$ip = $this->resolve_ip();
 
+		// Privacy mode (Settings > General & Privacy): the IP may be USED
+		// in memory for this request (rate limit, CAPTCHA verification)
+		// but must never be PERSISTED or logged. Checked once here and
+		// applied at the CAPTCHA log and at Step 8 (entry context).
+		$privacy_mode = (bool) Config::get( 'privacy_mode', false );
+
 		$rate_limited = apply_filters(
 			'neural_forms_rate_limit',
 			self::default_rate_limit( $ip, $form_id ),
@@ -218,7 +224,7 @@ class SubmitEndpoint {
 						'error_code' => $captcha_result->get_error_code(),
 						'error_data' => $captcha_result->get_error_data(),
 						'form_id'    => $form_id,
-						'ip'         => $ip,
+						'ip'         => $privacy_mode ? '' : $ip,
 					)
 				);
 
@@ -404,9 +410,13 @@ class SubmitEndpoint {
 		// These values are server-derived, never client-trusted.
 		// form_version is an MD5 of the schema at the moment of submission -
 		// useful later to detect entries captured against an older schema shape.
+		//
+		// Privacy mode: IP and user agent are blanked BEFORE persistence.
+		// Before 1.1.3 nothing read privacy_mode at submit time, so the
+		// toggle had no effect — see changelog.
 		$context = array(
-			'ip'           => $ip,
-			'user_agent'   => sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
+			'ip'           => $privacy_mode ? '' : $ip,
+			'user_agent'   => $privacy_mode ? '' : sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
 			'page_url'     => esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ?? '' ) ),
 			'submitted_at' => current_time( 'mysql', true ),   // UTC
 			'form_version' => md5( (string) wp_json_encode( $form['form_schema'] ) ),

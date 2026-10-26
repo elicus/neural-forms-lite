@@ -245,6 +245,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 == Changelog ==
 
 = 1.1.3 - 2026-10-27 =
+* Privacy: Privacy mode now works. Previously entries stored the visitor's IP address and user agent even with the toggle on. Sites with Privacy mode on have that data removed from existing entries on update.
+* New: Neural Forms entries are now included in WordPress's Export Personal Data and Erase Personal Data tools, matched by the submitted email address, and suggested privacy-policy text is provided under Settings > Privacy.
 * Security: The submission rate limit could be bypassed by sending a forged X-Forwarded-For header. The client IP now comes from the server connection unless the request arrives via a proxy listed in the new `neural_forms_trusted_proxies` filter.
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
 * Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
@@ -334,7 +336,7 @@ Initial public release.
 == Upgrade Notice ==
 
 = 1.1.3 =
-Security fix for the submission rate limit. Sites behind a reverse proxy or Cloudflare should add their proxy ranges via the `neural_forms_trusted_proxies` filter so the inbox shows real visitor IPs. Emails now go out from your site title and WordPress admin email when the Sender fields are blank; if your admin email is on another domain, set an on-domain Sender email in Settings > Email for best deliverability.
+Privacy mode now actually stops IP and user-agent storage; sites with it on have existing entries cleaned on update. Security fix for the submission rate limit. Sites behind a reverse proxy or Cloudflare should add their proxy ranges via the `neural_forms_trusted_proxies` filter so the inbox shows real visitor IPs. Emails now go out from your site title and WordPress admin email when the Sender fields are blank; if your admin email is on another domain, set an on-domain Sender email in Settings > Email for best deliverability.
 
 = 1.0.0 =
 Initial release.
