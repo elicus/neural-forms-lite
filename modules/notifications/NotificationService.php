@@ -700,27 +700,69 @@ class NotificationService {
 	}
 
 	/**
-	 * Build the From: header array from Email Settings.
+	 * Resolve the sender identity from Email Settings, applying the
+	 * defaults the Settings screen promises:
 	 *
-	 * Returns an empty array when neither sender_name nor sender_email is
-	 * configured - wp_mail() uses the WP default in that case.
+	 *   sender_name  blank → site title (get_bloginfo 'name')
+	 *   sender_email blank / invalid → WordPress admin email
+	 *
+	 * Used by every outbound mail (admin notification, autoresponder,
+	 * reply, test email) so they all carry the same From identity.
+	 *
+	 * Deliverability note: the admin email may live on another domain
+	 * (e.g. a Gmail address), which some receivers treat less kindly than
+	 * WordPress's wordpress@<site-domain> default. Site owners who hit
+	 * that should set an on-domain Sender email explicitly.
+	 *
+	 * @param array $settings  Plugin settings (sender_name / sender_email).
+	 * @return array{ name: string, email: string }  email is '' only when
+	 *         neither the setting nor admin_email is a valid address.
+	 */
+	public static function resolve_sender( array $settings ): array {
+		$name  = trim( (string) ( $settings['sender_name'] ?? '' ) );
+		$email = trim( (string) ( $settings['sender_email'] ?? '' ) );
+
+		if ( $name === '' ) {
+			$name = (string) get_bloginfo( 'name' );
+			if ( function_exists( 'wp_specialchars_decode' ) ) {
+				$name = wp_specialchars_decode( $name, ENT_QUOTES );
+			}
+		}
+		// Same header-injection guard as the Reply-To builders below: drop
+		// CR / LF / NULL and the structural characters wp_mail's header
+		// parser uses (`,`, `<`, `>`, `"`).
+		$name = trim( str_replace( array( "\r", "\n", "\0", ',', '<', '>', '"' ), '', $name ) );
+
+		if ( $email === '' || ! is_email( $email ) ) {
+			$email = (string) get_option( 'admin_email', '' );
+			if ( $email === '' || ! is_email( $email ) ) {
+				$email = '';
+			}
+		}
+
+		return array( 'name' => $name, 'email' => $email );
+	}
+
+	/**
+	 * Build the From: header array from Email Settings (with the defaults
+	 * described in resolve_sender()).
+	 *
+	 * Returns an empty array only when no valid address can be resolved
+	 * at all - wp_mail() then uses its own wordpress@<domain> default.
 	 *
 	 * @param array $settings
 	 * @return string[]
 	 */
-	private static function build_from_headers( array $settings ): array {
-		$sender_name  = (string) ( $settings['sender_name'] ?? '' );
-		$sender_email = (string) ( $settings['sender_email'] ?? '' );
+	public static function build_from_headers( array $settings ): array {
+		$sender = self::resolve_sender( $settings );
 
-		if ( $sender_email === '' || ! is_email( $sender_email ) ) {
-			// No custom sender configured - let wp_mail() use its default.
-			// If only a name is set, we still need an address to form a valid header.
+		if ( $sender['email'] === '' ) {
 			return array();
 		}
 
-		$from = $sender_name !== ''
-			? sprintf( '%s <%s>', $sender_name, $sender_email )
-			: $sender_email;
+		$from = $sender['name'] !== ''
+			? sprintf( '%s <%s>', $sender['name'], $sender['email'] )
+			: $sender['email'];
 
 		return array( 'From: ' . $from );
 	}

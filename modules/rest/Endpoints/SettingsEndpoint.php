@@ -649,17 +649,18 @@ class SettingsEndpoint {
 		$message = __( 'This is a test email from Neural Forms. If you received this, email is working.', 'neural-forms-lite' );
 		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
 
-		// Apply configured sender identity when available.
-		$sender_name  = (string) Config::get( 'sender_name', '' );
-		$sender_email = (string) Config::get( 'sender_email', '' );
-
-		if ( $sender_email !== '' && is_email( $sender_email ) ) {
-			$from      = $sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email;
-			$headers[] = 'From: ' . $from;
-		} elseif ( $sender_name !== '' ) {
-			// Name set but no email - use the WordPress admin email with the custom name.
-			$headers[] = 'From: ' . $sender_name . ' <' . get_option( 'admin_email' ) . '>';
-		}
+		// Same sender identity (and the same blank → site name / admin
+		// email defaults) as every real notification, so the test email
+		// is a faithful preview of what visitors and admins will receive.
+		$headers = array_merge(
+			$headers,
+			\NeuralForms\Notifications\NotificationService::build_from_headers(
+				array(
+					'sender_name'  => (string) Config::get( 'sender_name', '' ),
+					'sender_email' => (string) Config::get( 'sender_email', '' ),
+				)
+			)
+		);
 
 		$sent = wp_mail( $to, $subject, $message, $headers );
 
