@@ -789,9 +789,31 @@ class SubmissionValidator {
 	 */
 	private static function maybe_trim( $value, string $type ) {
 		if ( is_string( $value ) && in_array( $type, self::TRIMMABLE_TYPES, true ) ) {
-			return trim( $value );
+			$value = trim( $value );
+			if ( $type === 'phone' || $type === 'tel' ) {
+				$value = self::normalize_phone( $value );
+			}
+			return $value;
 		}
 		return $value;
+	}
+
+	/**
+	 * Treat a phone value that is ONLY a country dial code as empty.
+	 *
+	 * The frontend country picker pre-fills "+1 " (etc.) into every Phone
+	 * input, so a visitor who leaves the field alone submits "+1", not "".
+	 * Before 1.1.3 that failed the 7-digit type rule and blocked optional
+	 * fields (and gave required ones the wrong message). Shared by the
+	 * validator (required / type checks) and SubmitEndpoint's sanitizer
+	 * (so "" is stored, not "+1"); form-submit.js mirrors the same rule.
+	 *
+	 * @param string $value  Trimmed phone value.
+	 * @return string  '' when the value is just "+<1-4 digits>", else unchanged.
+	 */
+	public static function normalize_phone( string $value ): string {
+		$value = trim( $value );
+		return preg_match( '/^\+\d{1,4}$/', $value ) ? '' : $value;
 	}
 
 	/**

@@ -1659,6 +1659,14 @@
 			var value   = input.value != null ? String( input.value ) : '';
 			var trimmed = value.trim();
 
+			// Phone: the country picker pre-fills the dial code ("+1 "), so
+			// an untouched field is "+1", not "". Treat a dial-code-only
+			// value as empty — mirrors SubmissionValidator::normalize_phone()
+			// so optional phones pass and required ones say "is required".
+			if ( ( input.type || '' ).toLowerCase() === 'tel' && /^\+\d{1,4}$/.test( trimmed ) ) {
+				trimmed = '';
+			}
+
 			if ( required && trimmed === '' ) {
 				markFieldInvalid( w, label + ' is required.' );
 				if ( ! firstError ) firstError = w;

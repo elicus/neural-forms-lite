@@ -1039,7 +1039,14 @@ class SubmitEndpoint {
 				// or array_map(sanitize_text_field) as usual.
 				return $this->sanitize_repeater( $value, $field );
 
-			// text, phone, tel, select:
+			case 'phone':
+			case 'tel':
+				// A dial-code-only value ("+1") means the visitor left the
+				// picker-prefilled field alone — store '' so the entry,
+				// exports and AI analysis don't carry a phantom "+1".
+				return SubmissionValidator::normalize_phone( sanitize_text_field( (string) $value ) );
+
+			// text, select:
 			// sanitize_text_field() strips tags, encodes HTML entities, trims.
 			// Select values are already validated against the allowed options list
 			// in SubmissionValidator, so this is a belt-and-suspenders pass.
