@@ -741,6 +741,21 @@ runs AFTER the honeypot check, and never exempts an empty IP. Tests:
 regex (`private [static ]function name(...) ... \n\t}`) — the test
 harness lifts them out of the file rather than booting WordPress.
 
+### File upload size limit (fixed 2026-10-27, 1.1.3)
+
+`SchemaHelper::file_size_limit( $field )` → `{ bytes, label }` is the
+single source of truth: `min( max_file_size (default 5 MB),
+wp_max_upload_size() )`. Used by `FormRenderer::render_file()` (hint
+text, `data-max-size`, `data-max-size-label`), by both file paths in
+`SubmitEndpoint` (`process_file_fields()` flat, `process_repeater_file_
+fields()` nested) and by `upload_file_cell()`. `UPLOAD_ERR_INI_SIZE` /
+`UPLOAD_ERR_FORM_SIZE` map to the field-level `file_too_large` 422 via
+`file_too_large_error()`; a multipart body over `post_max_size` (PHP
+empties `$_POST` + `$_FILES`) is caught by a CONTENT_LENGTH guard in
+`submit()` and returns a 413. `form-submit.js` reads
+`data-max-size-label` for its messages. Don't reintroduce a bare `5`
+anywhere — tests: `tests/FileSizeLimitTest.php`.
+
 ### Entries (per-screen `build/entries.js` bundle)
 
 - **Paging (1.1.3):** `EntriesScreen.js` fetches 50 rows per page via

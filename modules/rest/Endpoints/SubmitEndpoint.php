@@ -246,6 +246,28 @@ class SubmitEndpoint {
 		// + rate limit gate above), so no nonce is sent. $_FILES is read here
 		// only to detect the multipart upload path; values pulled from it are
 		// validated and sanitized inside process_file_fields().
+		// When a multipart request exceeds post_max_size, PHP discards the
+		// entire body: $_POST and $_FILES both arrive empty, and without this
+		// guard the user would see "X is required" for every field instead
+		// of the real cause. CONTENT_LENGTH is still set, so compare it to
+		// the server cap and report a size error up front.
+		$content_type   = (string) ( $request->get_header( 'Content-Type' ) ?? '' );
+		$content_length = (int) ( $_SERVER['CONTENT_LENGTH'] ?? 0 );
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		if ( empty( $_FILES ) && empty( $raw_body ) && $content_length > 0
+			&& strpos( $content_type, 'multipart/form-data' ) !== false
+			&& function_exists( 'wp_max_upload_size' ) && $content_length > (int) wp_max_upload_size() ) {
+			return new WP_Error(
+				'file_too_large',
+				sprintf(
+					/* translators: %s: server upload limit, e.g. "2 MB" */
+					__( 'The upload is larger than this server allows (maximum %s). Please choose a smaller file.', 'neural-forms-lite' ),
+					SchemaHelper::format_file_size_label( (int) wp_max_upload_size() )
+				),
+				array( 'status' => 413 )
+			);
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		if ( ! empty( $_FILES ) ) {
 			$file_result = $this->process_file_fields( $schema_fields_pre, $raw_body );
@@ -1370,6 +1392,12 @@ class SubmitEndpoint {
 					if ( $file_info['error'] === UPLOAD_ERR_NO_FILE ) {
 						continue;
 					}
+
+					$path = $repeater_id . '[' . $idx . '][' . $child_id . ']';
+
+					if ( self::is_size_upload_error( $file_info['error'] ) ) {
+						return $this->file_too_large_error( $child, $path, SchemaHelper::file_size_limit( $child )['label'] );
+					}
 					if ( $file_info['error'] !== UPLOAD_ERR_OK ) {
 						return new WP_Error(
 							'file_upload_error',
@@ -1378,7 +1406,6 @@ class SubmitEndpoint {
 						);
 					}
 
-					$path   = $repeater_id . '[' . $idx . '][' . $child_id . ']';
 					$upload = $this->upload_file_cell( $file_info, $child, $path );
 					if ( is_wp_error( $upload ) ) {
 						return $upload;
@@ -1401,6 +1428,51 @@ class SubmitEndpoint {
 	}
 
 	/**
+	 * True for the two PHP upload error codes that mean "too big":
+	 * UPLOAD_ERR_INI_SIZE (upload_max_filesize) and UPLOAD_ERR_FORM_SIZE
+	 * (MAX_FILE_SIZE form field). Both deserve the size message, not the
+	 * generic "upload error" one.
+	 */
+	private static function is_size_upload_error( int $code ): bool {
+		return $code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE;
+	}
+
+	/**
+	 * Build the field-keyed 422 for a file that exceeds its limit.
+	 *
+	 * @param array  $field             File field schema (label / id).
+	 * @param string $error_field_path  Field id, or `rid[idx][cid]` for repeater cells.
+	 * @param string $limit_label       Human limit, e.g. "2 MB" (from SchemaHelper::file_size_limit()).
+	 * @return WP_Error
+	 */
+	private function file_too_large_error( array $field, string $error_field_path, string $limit_label ): WP_Error {
+		$label = trim( (string) ( $field['label'] ?? '' ) );
+		if ( $label === '' ) {
+			$label = (string) ( $field['id'] ?? 'file' );
+		}
+		return new WP_Error(
+			'invalid_submission',
+			__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+			array(
+				'status' => 422,
+				'fields' => array(
+					$error_field_path => array(
+						array(
+							'code'    => 'file_too_large',
+							'message' => sprintf(
+								/* translators: 1: field label  2: maximum size, e.g. "5 MB" */
+								__( '%1$s: file exceeds the maximum allowed size of %2$s.', 'neural-forms-lite' ),
+								$label,
+								$limit_label
+							),
+						),
+					),
+				),
+			)
+		);
+	}
+
+	/**
 	 * Validate + upload a single file cell. Extracted so both the flat
 	 * file path (process_file_fields) and the nested repeater path
 	 * (process_repeater_file_fields) share the same checks: size,
@@ -1419,33 +1491,10 @@ class SubmitEndpoint {
 	 */
 	private function upload_file_cell( array $file_info, array $field, string $error_field_path ) {
 		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
-		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
-			? (int) $field['max_file_size']
-			: 5;
-		$max_bytes     = $max_mb * 1024 * 1024;
+		$limit         = SchemaHelper::file_size_limit( $field );
 
-		if ( $file_info['size'] > $max_bytes ) {
-			$label = trim( $field['label'] ?? '' ) !== '' ? trim( $field['label'] ) : ( (string) ( $field['id'] ?? 'file' ) );
-			return new WP_Error(
-				'invalid_submission',
-				__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-				array(
-					'status' => 422,
-					'fields' => array(
-						$error_field_path => array(
-							array(
-								'code'    => 'file_too_large',
-								'message' => sprintf(
-									/* translators: 1: field label  2: max size in MB */
-									__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
-									$label,
-									$max_mb
-								),
-							),
-						),
-					),
-				)
-			);
+		if ( $file_info['size'] > $limit['bytes'] ) {
+			return $this->file_too_large_error( $field, $error_field_path, $limit['label'] );
 		}
 
 		$upload_mimes = $this->build_allowed_mimes( $allowed_types );
@@ -1584,10 +1633,7 @@ class SubmitEndpoint {
 
 			$required      = ! empty( $field['required'] );
 			$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
-			$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
-				? (int) $field['max_file_size']
-				: 5;
-			$max_bytes     = $max_mb * 1024 * 1024;
+			$limit         = SchemaHelper::file_size_limit( $field );
 
 			// Public endpoint - see the nonce-ignore on the $_FILES gate above.
 			// File contents are validated below with wp_check_filetype_and_ext()
@@ -1629,7 +1675,14 @@ class SubmitEndpoint {
 				continue;
 			}
 
-			// Upload error other than "no file".
+			// PHP rejected the file for size (upload_max_filesize / MAX_FILE_SIZE):
+			// surface the real reason as a field-level size error, not the
+			// generic "upload error" below.
+			if ( self::is_size_upload_error( $file_info['error'] ) ) {
+				return $this->file_too_large_error( $field, $field_id, $limit['label'] );
+			}
+
+			// Any other upload error.
 			if ( $file_info['error'] !== UPLOAD_ERR_OK ) {
 				return new WP_Error(
 					'file_upload_error',
@@ -1638,29 +1691,9 @@ class SubmitEndpoint {
 				);
 			}
 
-			// Server-side size check.
-			if ( $file_info['size'] > $max_bytes ) {
-				$label = trim( $field['label'] ?? '' ) ?: $field_id;
-				return new WP_Error(
-					'invalid_submission',
-					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-					array(
-						'status' => 422,
-						'fields' => array(
-							$field_id => array(
-								array(
-									'code'    => 'file_too_large',
-									'message' => sprintf(
-										/* translators: 1: field label  2: max size in MB */
-										__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
-										$label,
-										$max_mb
-									),
-								),
-							),
-						),
-					)
-				);
+			// Server-side size check (limit already capped by wp_max_upload_size()).
+			if ( $file_info['size'] > $limit['bytes'] ) {
+				return $this->file_too_large_error( $field, $field_id, $limit['label'] );
 			}
 
 			// Build the custom mimes list once - used for both the pre-check and

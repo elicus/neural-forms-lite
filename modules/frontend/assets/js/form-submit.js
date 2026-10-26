@@ -1270,6 +1270,25 @@
 	 * @param  {HTMLFormElement} form
 	 * @return {string|null}
 	 */
+	/**
+	 * Human size label for a file input's limit. Prefers the server-rendered
+	 * data-max-size-label (already capped by the host's upload limit and
+	 * formatted, e.g. "2 MB" / "1.5 MB" / "512 KB"); falls back to rounding
+	 * the byte count.
+	 *
+	 * @param  {HTMLInputElement} input
+	 * @param  {number}           maxSize  bytes
+	 * @return {string}
+	 */
+	function fileSizeLabel( input, maxSize ) {
+		var label = input.getAttribute( 'data-max-size-label' );
+		if ( label ) {
+			return label;
+		}
+		var mb = maxSize / ( 1024 * 1024 );
+		return ( mb >= 1 ? ( Math.round( mb * 10 ) / 10 ) + ' MB' : Math.round( maxSize / 1024 ) + ' KB' );
+	}
+
 	function checkFileSizes( form ) {
 		var inputs = form.querySelectorAll( 'input[type="file"]' );
 
@@ -1283,8 +1302,7 @@
 
 			var file = input.files[ 0 ];
 			if ( file.size > maxSize ) {
-				var maxMb = Math.round( maxSize / ( 1024 * 1024 ) );
-				return 'The selected file exceeds the maximum allowed size of ' + maxMb + ' MB.';
+				return 'The selected file exceeds the maximum allowed size of ' + fileSizeLabel( input, maxSize ) + '.';
 			}
 		}
 
@@ -1483,8 +1501,7 @@
 		// Size check
 		var maxSize = Number( input.getAttribute( 'data-max-size' ) || 0 );
 		if ( maxSize > 0 && file.size > maxSize ) {
-			var maxMb = Math.round( maxSize / 1024 / 1024 );
-			return label + ': file exceeds the maximum allowed size of ' + maxMb + ' MB.';
+			return label + ': file exceeds the maximum allowed size of ' + fileSizeLabel( input, maxSize ) + '.';
 		}
 
 		// Type check

@@ -2676,15 +2676,16 @@ class FormRenderer {
 	 */
 	private static function render_file( array $field, string $input_id, string $error_id ): string {
 		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : [];
-		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
-			? (int) $field['max_file_size']
-			: 5;
+		// Effective limit = min( field max_file_size, wp_max_upload_size() ),
+		// so the hint, the client pre-check and the server check all agree.
+		$limit = \NeuralForms\Forms\SchemaHelper::file_size_limit( $field );
 
 		$attrs = 'type="file"'
 			. ' id="' . esc_attr( $input_id ) . '"'
 			. ' name="' . esc_attr( $field['id'] ) . '"'
 			. ' class="neural-forms-form__file-input"'
-			. ' data-max-size="' . ( $max_mb * 1024 * 1024 ) . '"';   // bytes
+			. ' data-max-size="' . (int) $limit['bytes'] . '"'            // bytes
+			. ' data-max-size-label="' . esc_attr( $limit['label'] ) . '"';
 
 		$accept = static::build_accept_attr( $allowed_types );
 		if ( $accept !== '' ) {
@@ -2712,7 +2713,7 @@ class FormRenderer {
 				$hint_parts[] = 'Accepted: ' . implode( ', ', $labels );
 			}
 		}
-		$hint_parts[] = 'Max ' . $max_mb . ' MB';
+		$hint_parts[] = 'Max ' . $limit['label'];
 		$hint_text    = implode( ' · ', $hint_parts );
 
 		// Link both the error container and the hint text to the input via
