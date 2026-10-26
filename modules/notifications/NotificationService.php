@@ -278,13 +278,17 @@ class NotificationService {
 		if ( $subject === '' ) {
 			$subject = __( 'Thank you for your submission', 'neural-forms-lite' );
 		}
+		// Tokens apply to the subject too (they only reached the body
+		// before 1.1.3). A subject is a single header line — strip breaks.
+		$subject = self::apply_tokens( $subject, $form_name, $data, $schema_fields );
+		$subject = trim( (string) preg_replace( '/[\r\n]+/', ' ', $subject ) );
 
 		$raw_body = (string) ( $settings['autoresponder_body'] ?? '' );
 		if ( $raw_body === '' ) {
 			$raw_body = __( "Hi,\n\nThank you for reaching out. We'll be in touch shortly.\n\n{site_name}", 'neural-forms-lite' );
 		}
 
-		$body = self::apply_tokens( $raw_body, $form_name, $data );
+		$body = self::apply_tokens( $raw_body, $form_name, $data, $schema_fields );
 
 		$headers = self::build_from_headers( $settings );
 
@@ -584,6 +588,10 @@ class NotificationService {
 					$lines[] = $label . ":\n" . implode( "\n", $rendered );
 				}
 				continue;
+			} elseif ( in_array( $field['type'], array( 'select', 'radio', 'checkboxes' ), true ) ) {
+				// Choice fields store the option VALUE ("laptop"); show the
+				// option LABEL ("Laptop") like the builder does.
+				$value = self::display_choice( $raw, $field );
 			} elseif ( is_array( $raw ) ) {
 				// Generic fallback for any other multi-value field type
 				// (select-multi, etc.) - join scalar leaves with commas.
@@ -707,22 +715,66 @@ class NotificationService {
 	 *
 	 * @param string $template
 	 * @param string $form_name
-	 * @param array  $data       Sanitized submitted field values.
+	 * @param array  $data           Sanitized submitted field values.
+	 * @param array  $schema_fields  Flattened schema fields; lets choice
+	 *                               fields resolve to option LABELS and
+	 *                               checkbox groups join their labels.
 	 * @return string
 	 */
-	private static function apply_tokens( string $template, string $form_name, array $data ): string {
+	private static function apply_tokens( string $template, string $form_name, array $data, array $schema_fields = array() ): string {
 		$replacements = array(
 			'{site_name}' => get_bloginfo( 'name' ),
 			'{form_name}' => $form_name,
 		);
 
+		$by_id = array();
+		foreach ( $schema_fields as $f ) {
+			$f = (array) $f;
+			if ( isset( $f['id'] ) ) {
+				$by_id[ (string) $f['id'] ] = $f;
+			}
+		}
+
 		foreach ( $data as $field_id => $value ) {
-			if ( is_scalar( $value ) ) {
+			$field = $by_id[ (string) $field_id ] ?? null;
+			if ( $field && in_array( (string) ( $field['type'] ?? '' ), array( 'select', 'radio', 'checkboxes' ), true ) ) {
+				$replacements[ '{' . $field_id . '}' ] = self::display_choice( $value, $field );
+			} elseif ( is_scalar( $value ) ) {
 				$replacements[ '{' . $field_id . '}' ] = (string) $value;
+			} elseif ( is_array( $value ) && ! isset( $value['filename'] ) ) {
+				$replacements[ '{' . $field_id . '}' ] = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
 			}
 		}
 
 		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );
+	}
+
+	/**
+	 * Display text for a select / radio / checkboxes value: the option
+	 * label(s) for the stored value(s), falling back to the raw value when
+	 * no option matches (option removed after submission).
+	 *
+	 * @param mixed $raw    Stored value (string) or values (array).
+	 * @param array $field  Field schema with `options` [{label,value}].
+	 */
+	private static function display_choice( $raw, array $field ): string {
+		$labels = array();
+		foreach ( (array) ( $field['options'] ?? array() ) as $opt ) {
+			$opt = (array) $opt;
+			$val = (string) ( ( $opt['value'] ?? '' ) !== '' ? $opt['value'] : ( $opt['label'] ?? '' ) );
+			if ( $val !== '' ) {
+				$labels[ $val ] = trim( (string) ( $opt['label'] ?? '' ) ) !== '' ? (string) $opt['label'] : $val;
+			}
+		}
+		$values = is_array( $raw ) ? array_filter( $raw, 'is_scalar' ) : array( $raw );
+		$out    = array();
+		foreach ( $values as $v ) {
+			if ( $v === null || $v === '' ) {
+				continue;
+			}
+			$out[] = $labels[ (string) $v ] ?? (string) $v;
+		}
+		return implode( ', ', $out );
 	}
 
 	/**

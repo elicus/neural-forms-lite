@@ -605,7 +605,10 @@ function NotificationsSection( { form, set } ) {
 
 			{ form.enable_autoresponder && (
 				<>
-					<Field label={ __( 'Subject', 'neural-forms-lite' ) }>
+					<Field
+						label={ __( 'Subject', 'neural-forms-lite' ) }
+						hint={ __( 'Tokens work here too: {site_name}, {form_name}, or a field ID in {curly braces}.', 'neural-forms-lite' ) }
+					>
 						<TextInput
 							type="text"
 							value={ form.autoresponder_subject || '' }
@@ -614,7 +617,7 @@ function NotificationsSection( { form, set } ) {
 					</Field>
 					<Field
 						label={ __( 'Message body', 'neural-forms-lite' ) }
-						hint={ __( 'Available tokens: {site_name}, {form_name}, and any field ID wrapped in {curly braces}.', 'neural-forms-lite' ) }
+						hint={ __( 'Available tokens: {site_name}, {form_name}, and any field ID wrapped in {curly braces}. Find a field\'s ID in the form builder: select the field and look under Field settings > Field ID (there is a "Copy token" button). Choice fields insert the option label.', 'neural-forms-lite' ) }
 					>
 						<Textarea
 							rows={ 5 }

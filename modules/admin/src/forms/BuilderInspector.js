@@ -213,6 +213,35 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				/>
 			</label>
 
+			{ /* Field ID: read-only. This is the key used in entry data, CSV
+			     columns and email templates ({id}). Users could not find it
+			     anywhere before 1.1.3. */ }
+			{ !! f.id && (
+				<div className="nf-inspector__field nf-inspector__field--readonly">
+					<span className="nf-inspector__label">{ __( 'Field ID', 'neural-forms-lite' ) }</span>
+					<div className="nf-inspector__id-row">
+						<code className="nf-inspector__id" title={ f.id }>{ f.id }</code>
+						<button
+							type="button"
+							className="nf-inspector__id-copy"
+							onClick={ () => {
+								try { navigator.clipboard?.writeText( '{' + f.id + '}' ); } catch ( _e ) { /* clipboard unavailable */ }
+							} }
+							title={ __( 'Copy the email token for this field', 'neural-forms-lite' ) }
+						>
+							{ __( 'Copy token', 'neural-forms-lite' ) }
+						</button>
+					</div>
+					<span className="nf-inspector__hint">
+						{ sprintf(
+							/* translators: %s: the field's token, e.g. {your_name} */
+							__( 'Use %s in the notification and autoresponder emails to insert this field\'s value.', 'neural-forms-lite' ),
+							'{' + f.id + '}'
+						) }
+					</span>
+				</div>
+			) }
+
 			<label className="nf-inspector__field">
 				<span className="nf-inspector__label">{ __( 'Placeholder', 'neural-forms-lite' ) }</span>
 				<input

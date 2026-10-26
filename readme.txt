@@ -254,6 +254,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
 * Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
 * Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
+* Fix: Notification emails and the entry inbox now show the option labels you chose for select, radio and checkbox fields instead of their internal values.
+* Improved: Autoresponder tokens also work in the subject line, and the form builder now shows each field's ID with a "Copy token" button so you can use it in email templates.
 * Fix: Replies sent from the inbox now use your Sender name and email, and the "Default reply subject" setting is applied. The reply composer has a Subject field.
 * Fix: Contact Form 7 import now keeps placeholders as placeholders (they were imported as pre-filled values), imports acceptance checkboxes as required, converts file size limits and allowed file types correctly, and applies radio / select / checkbox defaults.
 * Fix: The upgrade link shown when a poll or quiz reaches the free submission limit pointed to a missing page.
