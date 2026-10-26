@@ -272,11 +272,21 @@ class CF7FieldMapper {
 
 		// File upload constraints.
 		if ( $nf_type === 'file' ) {
+			// CF7 `filetypes:pdf|docx|jpg` (or MIME globs like image/*)
+			// → Neural Forms type groups (image / pdf / document / text).
+			// The upload check expects an ARRAY of groups; the raw string
+			// used to be copied over and silently ignored.
 			if ( ( $tag['filetypes'] ?? '' ) !== '' ) {
-				$field['allowed_types'] = $tag['filetypes'];
+				$groups = self::map_filetypes( (string) $tag['filetypes'] );
+				if ( ! empty( $groups ) ) {
+					$field['allowed_types'] = $groups;
+				}
 			}
-			if ( ( $tag['limit'] ?? '' ) !== '' ) {
-				$field['max_file_size'] = (int) $tag['limit'];
+			// CF7 limit is BYTES (get_limit_option); Neural Forms
+			// max_file_size is whole MB. Round up so a 500kb limit
+			// becomes 1 MB rather than 0 (= plugin default).
+			if ( ( $tag['limit'] ?? '' ) !== '' && (int) $tag['limit'] > 0 ) {
+				$field['max_file_size'] = max( 1, (int) ceil( (int) $tag['limit'] / 1048576 ) );
 			}
 		}
 
@@ -302,6 +312,46 @@ class CF7FieldMapper {
 		$label = ucwords( $label );
 
 		return $label;
+	}
+
+	/**
+	 * CF7 `filetypes` option → Neural Forms allowed_types groups.
+	 *
+	 * CF7 accepts `|`-separated extensions (pdf|doc|docx), optionally
+	 * with a leading dot, and since 5.6 MIME-type globs (image/*).
+	 * Extensions outside Neural Forms' four groups are dropped; an
+	 * empty result means "no restriction" (caller leaves the key unset).
+	 *
+	 * @return string[]  Subset of image|pdf|document|text, in first-seen order.
+	 */
+	public static function map_filetypes( string $filetypes ): array {
+		$ext_to_group = array(
+			'jpg'  => 'image', 'jpeg' => 'image', 'png' => 'image', 'gif' => 'image', 'webp' => 'image',
+			'pdf'  => 'pdf',
+			'doc'  => 'document', 'docx' => 'document', 'odt' => 'document',
+			'txt'  => 'text', 'csv' => 'text',
+		);
+		$groups = array();
+		foreach ( preg_split( '/[|,\s]+/', strtolower( trim( $filetypes ) ) ) as $part ) {
+			$part = ltrim( trim( $part ), '.' );
+			if ( $part === '' ) {
+				continue;
+			}
+			$group = null;
+			if ( $part === 'image/*' || strpos( $part, 'image/' ) === 0 ) {
+				$group = 'image';
+			} elseif ( $part === 'application/pdf' ) {
+				$group = 'pdf';
+			} elseif ( $part === 'text/plain' || $part === 'text/csv' ) {
+				$group = 'text';
+			} elseif ( isset( $ext_to_group[ $part ] ) ) {
+				$group = $ext_to_group[ $part ];
+			}
+			if ( $group && ! in_array( $group, $groups, true ) ) {
+				$groups[] = $group;
+			}
+		}
+		return $groups;
 	}
 
 	/**

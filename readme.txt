@@ -223,7 +223,7 @@ Neural Forms supports Cloudflare Turnstile and Google reCAPTCHA v2 as CAPTCHA pr
 
 = Can I import my Contact Form 7 forms? =
 
-Yes. Go to **Neural Forms > Migration**, click **Scan for CF7 Forms**, and import any detected form with one click. Fields, labels, and validation rules are mapped automatically.
+Yes. Go to **Neural Forms > Import**. Your Contact Form 7 forms are listed automatically; preview one and import it with one click. Field types, required flags, placeholders, defaults, options and file limits are mapped. Labels are generated from the CF7 field names (for example "your-name" becomes "Your Name"), so rename them in the builder if your CF7 form used different label text.
 
 = Can I export my form submissions? =
 
@@ -254,6 +254,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
 * Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
 * Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
+* Fix: Contact Form 7 import now keeps placeholders as placeholders (they were imported as pre-filled values), imports acceptance checkboxes as required, converts file size limits and allowed file types correctly, and applies radio / select / checkbox defaults.
 * Fix: The upgrade link shown when a poll or quiz reaches the free submission limit pointed to a missing page.
 * Fix: Required fields hidden by conditional logic no longer block submission, and conditions based on an unticked checkbox now behave the same on the server as in the browser.
 * Fix: On the last step of a multi-step form, the Previous and Submit buttons now sit on one row instead of stacking.
