@@ -70,9 +70,24 @@ export default function ReplyComposer( {
 	// Recipient is displayed read-only — it's resolved from the entry's
 	// submitted email field (form data → preview), and editing it would
 	// confuse the conversation thread which is keyed by the original
-	// submitter. Subject is omitted entirely; the backend defaults to
-	// "Re: Your submission" when none is provided.
+	// submitter.
 	const to = initialTo;
+
+	// Subject: pre-filled from Email Settings > "Default reply subject"
+	// (reply_subject_pattern, localized as plugin.replySubjectPattern)
+	// with {site_name} / {form_name} resolved. Editable per reply; if the
+	// user clears it the server applies the same default.
+	const defaultSubject = useMemo( () => {
+		const nf      = ( typeof window !== 'undefined' && window.neuralFormsAdmin ) || {};
+		const pattern = ( nf.plugin && nf.plugin.replySubjectPattern ) || 'Re: Your submission';
+		return pattern
+			.replace( /\{site_name\}/g, ( nf.admin && nf.admin.siteName ) || '' )
+			.replace( /\{form_name\}/g, entry?.form_name || '' )
+			.trim();
+	}, [ entry?.form_name ] );
+	const [ subject, setSubject ] = useState( defaultSubject );
+	useEffect( () => { setSubject( defaultSubject ); }, [ entry?.id, defaultSubject ] );
+
 	const [ body,    setBody    ] = useState( entry?.ai_reply_draft || '' );
 	const [ lastSentTo, setLastSentTo ] = useState( '' );
 
@@ -146,7 +161,7 @@ export default function ReplyComposer( {
 		ev.preventDefault();
 		const recipient = ( to || '' ).trim();
 		if ( ! recipient || ! body.trim() ) return;
-		Promise.resolve( onSend( { to: recipient, body: body.trim() } ) )
+		Promise.resolve( onSend( { to: recipient, subject: subject.trim(), body: body.trim() } ) )
 			.then( ( res ) => {
 				if ( ! res ) return;
 				setLastSentTo( ( res && res.to ) || recipient );
@@ -200,6 +215,18 @@ export default function ReplyComposer( {
 					{ to || __( 'No email address on submission', 'neural-forms-lite' ) }
 				</span>
 			</div>
+
+			<label className="neural-forms-entry-detail__reply-subject">
+				<span className="neural-forms-entry-detail__reply-to-label">{ __( 'Subject', 'neural-forms-lite' ) }</span>
+				<input
+					type="text"
+					className="neural-forms-entry-detail__reply-subject-input"
+					value={ subject }
+					onChange={ ( e ) => setSubject( e.target.value ) }
+					placeholder={ defaultSubject }
+					maxLength={ 255 }
+				/>
+			</label>
 
 			<textarea
 				className={

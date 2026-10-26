@@ -3110,6 +3110,10 @@ CSS;
 				'features'       => \NeuralForms\Core\Config::features(),
 				'cloudAiEnabled' => (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' ),
 				'cloudApiKeySet' => \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '',
+				// Email Settings > "Default reply subject" — the reply
+				// composer pre-fills its Subject field from this (tokens
+				// {site_name} / {form_name} resolved client-side).
+				'replySubjectPattern' => (string) \NeuralForms\Core\Config::get( 'reply_subject_pattern', 'Re: Your submission' ),
 				'aiSpam'         => array(
 					'enabled'   => (bool) \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
 					'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),

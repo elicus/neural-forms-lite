@@ -1,7 +1,10 @@
 <?php
 namespace NeuralForms\Rest\Endpoints;
 
+use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
+use NeuralForms\Forms\FormRepository;
+use NeuralForms\Notifications\NotificationService;
 use NeuralForms\Storage\EntryRepository;
 use NeuralForms\Storage\EntryMessageRepository;
 use WP_REST_Request;
@@ -17,7 +20,9 @@ defined( 'ABSPATH' ) || exit;
  *
  * Request body:
  *   to      string  required  Recipient email address (validated with is_email()).
- *   subject string  optional  Defaults to "Re: Your submission" when absent.
+ *   subject string  optional  Defaults to the Email Settings "Default reply
+ *                             subject" (reply_subject_pattern; tokens
+ *                             {site_name} / {form_name}) when absent.
  *   body    string  required  Plain-text message body.
  *
  * Response:
@@ -84,11 +89,28 @@ class ReplyEndpoint {
 			);
 		}
 
+		$settings = Config::all();
+		$form     = FormRepository::find( (int) ( $entry['form_id'] ?? 0 ) );
+
 		if ( $subject === '' ) {
-			$subject = __( 'Re: Your submission', 'neural-forms-lite' );
+			$subject = self::default_subject( $settings, is_array( $form ) ? $form : null );
 		}
 
-		$sent = wp_mail( $to, $subject, $body );
+		// Same From identity as notifications / autoresponder / test email
+		// (Sender name + email with the site-title / admin-email defaults).
+		// Before 1.1.3 no headers were sent at all, so replies went out as
+		// "WordPress <wordpress@domain>". Reply-To is set to the same
+		// sender so that a mail plugin that forces a fixed From address
+		// still routes the customer's answer back to the business.
+		$sender  = NotificationService::resolve_sender( $settings );
+		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
+		$headers = array_merge( $headers, NotificationService::build_from_headers( $settings ) );
+		if ( $sender['email'] !== '' ) {
+			$headers[] = 'Reply-To: ' . ( $sender['name'] !== '' ? $sender['name'] . ' <' . $sender['email'] . '>' : $sender['email'] );
+		}
+		$sender_email = $sender['email'] !== '' ? $sender['email'] : (string) get_bloginfo( 'admin_email' );
+
+		$sent = wp_mail( $to, $subject, $body, $headers );
 
 		if ( ! $sent ) {
 			Logger::log(
@@ -109,7 +131,7 @@ class ReplyEndpoint {
 				array(
 					'entry_id'  => $entry_id,
 					'type'      => 'outgoing',
-					'sender'    => get_bloginfo( 'admin_email' ),
+					'sender'    => $sender_email,
 					'recipient' => $to,
 					'subject'   => $subject,
 					'body'      => $body,
@@ -149,7 +171,7 @@ class ReplyEndpoint {
 			array(
 				'entry_id'  => $entry_id,
 				'type'      => 'outgoing',
-				'sender'    => get_bloginfo( 'admin_email' ),
+				'sender'    => $sender_email,
 				'recipient' => $to,
 				'subject'   => $subject,
 				'body'      => $body,
@@ -165,6 +187,35 @@ class ReplyEndpoint {
 				'message_id' => $message_id,
 			)
 		);
+	}
+
+	/**
+	 * Default reply subject from Email Settings.
+	 *
+	 * `reply_subject_pattern` (Settings > Email > "Default reply subject")
+	 * with {site_name} / {form_name} tokens resolved. Falls back to
+	 * "Re: Your submission" when the setting is blank. Before 1.1.3 the
+	 * setting was saved but never read.
+	 *
+	 * @param array      $settings  Plugin settings (Config::all()).
+	 * @param array|null $form      Form row, for {form_name}.
+	 */
+	public static function default_subject( array $settings, ?array $form ): string {
+		$pattern = trim( (string) ( $settings['reply_subject_pattern'] ?? '' ) );
+		if ( $pattern === '' ) {
+			return __( 'Re: Your submission', 'neural-forms-lite' );
+		}
+		$site_name = (string) get_bloginfo( 'name' );
+		if ( function_exists( 'wp_specialchars_decode' ) ) {
+			$site_name = wp_specialchars_decode( $site_name, ENT_QUOTES );
+		}
+		$subject = str_replace(
+			array( '{site_name}', '{form_name}' ),
+			array( $site_name, (string) ( $form['name'] ?? '' ) ),
+			$pattern
+		);
+		// Header-safe: a subject must be a single line.
+		return trim( (string) preg_replace( '/[\r\n]+/', ' ', $subject ) );
 	}
 
 	// Permission
