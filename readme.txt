@@ -264,6 +264,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fix: The "Randomize options" setting on quiz questions and polls now actually shuffles the answer order for each visitor.
 * Fix: Entries keyboard shortcuts now act on the entry you opened or the highlighted row, which is now visibly marked. Previously they could silently change a different entry.
 * Fix: File upload fields now respect the host's PHP upload limit. The "Max" hint and the size check use the lower of the field setting and the server limit, and an oversized file shows a clear size message instead of a generic upload error.
+* Improved: Clearer wording about AI in the free plugin — any entry can be analyzed once from the inbox with a free API key; automatic analysis of every new submission is part of Neural Forms Pro.
 
 = 1.1.2 - 2026-07-01 =
 * Fix: Multi-step forms no longer trigger an auto-scroll on page load.
