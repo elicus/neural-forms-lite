@@ -709,6 +709,10 @@
 	background: var( --f-blue-50 );
 }
 
+.neural-forms-entries-row.is-focused td:first-child {
+	box-shadow: inset 3px 0 0 var( --f-blue-600 );
+}
+
 .neural-forms-entries-row td {
 	background: inherit;
 	border-top: 1px solid var( --f-gray-100 );

@@ -552,6 +552,10 @@ export default function EntriesScreen() {
 			window.history.pushState( { nfDetail: id }, '', url.toString() );
 		} catch ( _err ) { /* best-effort URL write */ }
 		setOpenEntryId( id );
+		// Keyboard shortcuts (r / u / s / # / !) act on the focused row —
+		// make that the entry the user just opened, not whatever j/k last
+		// landed on (which defaults to the first row).
+		setFocusedId( id );
 	}, [ selection ] );
 
 	// Close the detail. If we pushed the detail onto history (normal
@@ -801,23 +805,43 @@ export default function EntriesScreen() {
 
 	const ids = useMemo( () => entries.map( ( e ) => e.id ), [ entries ] );
 
+	// While a detail is open, every shortcut targets the entry on screen —
+	// never a list row the user can't see. On the list, they target the
+	// highlighted (.is-focused) row.
+	const keyboardTargetId = openEntryId !== 0 ? openEntryId : focusedId;
+
 	useInboxKeyboard( {
 		ids,
-		focusedId,
+		focusedId: keyboardTargetId,
 		actions: {
 			onMove:        setFocusedId,
 			onOpen:        ( id ) => openEntryDetail( id ),
-			onClose:       closeDetail,
+			// Escape: EntryDetailPanel owns it while a detail is open (its
+			// own keydown handler calls closeDetail — handling it here too
+			// would call history.back() twice). On the list, Escape clears
+			// the checkbox selection.
+			onClose:       () => { if ( openEntryId === 0 ) setSelectedIds( new Set() ); },
 			onMarkRead:    ( id ) => patchEntry( id, { status: 'read' } ).catch( () => {} ),
 			onMarkUnread:  ( id ) => patchEntry( id, { status: 'new'  } ).catch( () => {} ),
 			onToggleStar:  ( id ) => {
-				const e = entries.find( ( x ) => x.id === id );
+				const e = entries.find( ( x ) => x.id === id ) || ( openEntry && openEntry.id === id ? openEntry : null );
 				if ( e ) toggleStar( e );
 			},
-			onTrash: ( id ) => patchEntry( id, { status: 'trash' } ).catch( () => {} ),
-			onSpam:  ( id ) => patchEntry( id, { status: 'spam'  } ).catch( () => {} ),
+			// Trash / spam from the detail view leave it, matching the
+			// toolbar buttons' behaviour.
+			onTrash: ( id ) => patchEntry( id, { status: 'trash' } ).then( () => { if ( openEntryId === id ) closeDetail(); } ).catch( () => {} ),
+			onSpam:  ( id ) => patchEntry( id, { status: 'spam'  } ).then( () => { if ( openEntryId === id ) closeDetail(); } ).catch( () => {} ),
 		},
 	} );
+
+	// Keep the keyboard-focused row in view when j / k move it.
+	useEffect( () => {
+		if ( openEntryId !== 0 || focusedId == null ) return;
+		const row = document.querySelector( `.neural-forms-entries-row[data-entry-id="${ focusedId }"]` );
+		if ( row && typeof row.scrollIntoView === 'function' ) {
+			row.scrollIntoView( { block: 'nearest' } );
+		}
+	}, [ focusedId, openEntryId ] );
 
 	const toggleSelect = useCallback( ( id, checked ) => {
 		setSelectedIds( ( prev ) => {
@@ -1029,6 +1053,7 @@ export default function EntriesScreen() {
 									onOpen={ openEntryDetail }
 									onToggleStar={ toggleStar }
 									openId={ 0 }
+									focusedId={ focusedId }
 								/>
 							) }
 
