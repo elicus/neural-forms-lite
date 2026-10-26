@@ -1856,7 +1856,10 @@ class BlockHandler {
 
 		// ' Label typography / color / alignment '
 		// Targets visible <label> tags emitted when showLabels is true, plus
-		// the <legend> used by radio / checkboxes group fields.
+		// the <legend> used by radio / checkboxes / rating / matrix / repeater
+		// group fields (always visible since 1.1.3) and the file field label.
+		// The screen-reader-text <label> emitted for hidden text-like labels
+		// deliberately does NOT carry .neural-forms-form__label.
 		$label_rules = [];
 		$label_color = (string) ( $attributes['labelColor'] ?? '' );
 		if ( $label_color !== '' ) {

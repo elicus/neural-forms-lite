@@ -1383,16 +1383,17 @@
 	/**
 	 * Resolve the human-readable label for a field wrapper so client-side
 	 * validation messages can read like the server's ("Email is required.",
-	 * "Phone must be a valid phone number."). Falls back to the input's
-	 * aria-label / placeholder / name when no visible label is present
-	 * (e.g. show_labels === false).
+	 * "Phone must be a valid phone number."). FormRenderer always emits a
+	 * <label> or <legend> when the field has one — visible, or
+	 * .screen-reader-text when the block hides labels — so the placeholder
+	 * fallback below is only reached for fields with no label at all.
 	 *
 	 * @param {Element} wrapper  .neural-forms-form__field element.
 	 * @param {Element} input    The <input>/<select>/<textarea>.
 	 * @returns {string}         A label-like string, never empty.
 	 */
 	function fieldLabelText( wrapper, input ) {
-		var labelEl = wrapper.querySelector( '.neural-forms-form__label' );
+		var labelEl = wrapper.querySelector( '.neural-forms-form__label, label.screen-reader-text, legend' );
 		if ( labelEl ) {
 			// Strip the required asterisk (rendered as <span> with text '*')
 			// and trim whitespace.

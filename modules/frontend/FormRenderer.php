@@ -1091,10 +1091,19 @@ class FormRenderer {
 			$field['placeholder'] = '';
 		}
 
+		// Field types whose label can NOT be carried by a placeholder: a
+		// radio / checkbox / rating / matrix / repeater group has no input
+		// to put a placeholder in, and a file input ignores placeholders.
+		// Hiding their label hid the QUESTION ("Ticket type" above three
+		// radios), so these always render it visibly regardless of the
+		// block-level toggle — the same rule poll / quiz_question already
+		// follow. Text-like fields keep the label-as-placeholder behaviour.
+		$label_always_visible = in_array( $type, [ 'radio', 'checkboxes', 'rating', 'matrix', 'repeater', 'file' ], true );
+
 		// Persist the resolved show_label back onto the field so per-type
 		// renderers (radio / checkboxes) that don't receive $options pick up
 		// the same value.
-		$field['show_label'] = $show_label;
+		$field['show_label'] = $show_label || $label_always_visible;
 
 		// Hidden fields render as a bare <input type="hidden"> with no wrapper,
 		// label, or error slot - they are invisible to the user.
@@ -1137,19 +1146,27 @@ class FormRenderer {
 		//   for checkbox / acceptance (their inline label already serves as
 		//   the question) and for radio / checkboxes (their renderers expose
 		//   the label as a visible <legend> instead).
-		$label_html = '';
-		if (
-			$show_label
-			&& $lbl !== ''
-			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true )
-		) {
-			$required_mark = $required
-				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
-				: '';
-			$label_html = '<label class="neural-forms-form__label neural-forms-form__label--block" for="' . esc_attr( $input_id ) . '">'
-						. esc_html( $lbl )
-						. $required_mark
-						. '</label>';
+		// * show_label = false: emit a visually hidden <label> instead, so
+		//   (a) assistive tech gets the real accessible name — a placeholder
+		//   is not one — and (b) form-submit.js fieldLabelText() can build
+		//   "Full name is required." instead of naming the placeholder
+		//   ("Jane Cooper is required.").
+		$label_html   = '';
+		$owns_legend  = in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true );
+		if ( $lbl !== '' && ! $owns_legend ) {
+			if ( $show_label || $label_always_visible ) {
+				$required_mark = $required
+					? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+					: '';
+				$label_html = '<label class="neural-forms-form__label neural-forms-form__label--block" for="' . esc_attr( $input_id ) . '">'
+							. esc_html( $lbl )
+							. $required_mark
+							. '</label>';
+			} else {
+				$label_html = '<label class="screen-reader-text" for="' . esc_attr( $input_id ) . '">'
+							. esc_html( $lbl )
+							. '</label>';
+			}
 		}
 
 		// ' Input '
@@ -1480,9 +1497,10 @@ class FormRenderer {
 
 		$html = '<fieldset class="neural-forms-form__radio-group" aria-describedby="' . esc_attr( $error_id ) . '">';
 
-		// Legend doubles as the field's question. Hidden by default so radio
-		// groups stay flush with their options; promoted to a visible block
-		// label when the builder turned show_label on.
+		// Legend doubles as the field's question. render_field() forces
+		// show_label on for radio groups (a hidden legend hid the question
+		// entirely — there's no placeholder to carry it), so this is
+		// visible unless the field has no label at all.
 		$lbl        = (string) ( $field['label'] ?? '' );
 		$show_label = ! empty( $field['show_label'] );
 		if ( $lbl !== '' ) {
