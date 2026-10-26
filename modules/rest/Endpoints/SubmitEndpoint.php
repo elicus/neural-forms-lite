@@ -316,30 +316,33 @@ class SubmitEndpoint {
 		// or saved. The file will remain in the media library as an orphan;
 		// this is an accepted V1 limitation.
 		//
-		// Fallback: if the controlling field is absent from submitted data, treat
-		// the dependent field as visible (do NOT strip it). This avoids silently
-		// discarding data due to a schema/submission timing mismatch.
-		foreach ( $schema_fields as $_cl_field ) {
-			$_cl_field    = (array) $_cl_field;
-			$_cl_field_id = $_cl_field['id'] ?? '';
-
-			if ( $_cl_field_id === '' ) {
-				continue;
+		// Hidden fields are removed from BOTH $raw_data and the local
+		// $schema_fields copy (same pattern as the capability strip in
+		// Step 5b). Before 1.1.3 only $raw_data was stripped, so the
+		// validator still saw the hidden field and failed its `required`
+		// check — the visitor got an error attached to a field they
+		// could not see and no entry was saved.
+		//
+		// resolve_hidden_field_ids() also hides a field whose CONTROLLER
+		// is hidden, and evaluate_conditional() treats an absent /
+		// unticked checkbox or radio controller as empty (an unticked box
+		// is not posted on the multipart path and posted as 0 by the JS
+		// serializer; neither should count as "visible").
+		$_hidden_ids = $this->resolve_hidden_field_ids( $schema_fields, $raw_data );
+		if ( $_hidden_ids ) {
+			foreach ( $_hidden_ids as $_hid ) {
+				unset( $raw_data[ $_hid ] );
 			}
-
-			$_cl = is_array( $_cl_field['conditional_logic'] ?? null )
-				? $_cl_field['conditional_logic']
-				: null;
-
-			if ( null === $_cl || empty( $_cl['enabled'] ) || empty( (string) ( $_cl['field'] ?? '' ) ) ) {
-				continue;
-			}
-
-			$_visible = $this->evaluate_conditional( $_cl, $raw_data );
-
-			if ( ! $_visible ) {
-				unset( $raw_data[ $_cl_field_id ] );
-			}
+			$_hidden_lookup = array_flip( $_hidden_ids );
+			$schema_fields  = array_values(
+				array_filter(
+					$schema_fields,
+					static function ( $f ) use ( $_hidden_lookup ) {
+						$f = (array) $f;
+						return ! isset( $_hidden_lookup[ (string) ( $f['id'] ?? '' ) ] );
+					}
+				)
+			);
 		}
 
 		// ' Step 5b: Capability-locked field strip '
@@ -1945,14 +1948,25 @@ class SubmitEndpoint {
 	 *
 	 * Fallback rules:
 	 *   * Incomplete rule (missing field or operator) '->-> true (show).
-	 *   * Controlling field absent from submitted data '->-> true (show).
+	 *   * Controlling field absent from submitted data:
+	 *       - checkbox / acceptance / radio / checkboxes controller '->-> treated
+	 *         as EMPTY (an unticked box or unchecked radio is simply not
+	 *         posted on the multipart path, and the JS serializer sends 0
+	 *         for an unticked box) — mirrors getFieldValue() returning ''.
+	 *       - any other type '->-> true (show) — a text-like field is always
+	 *         posted, so absence means a schema / submission mismatch.
 	 *   * Unknown operator '->-> true (show).
 	 *
-	 * @param array $logic  The conditional_logic object from the field schema.
-	 * @param array $data   Submitted data keyed by field_id (may be modified by prior iterations).
+	 * Single-checkbox controllers are normalised to '1' (checked) or ''
+	 * (unchecked) regardless of wire shape (1, '1', true vs 0, '0', false,
+	 * ''), again mirroring the JS evaluator.
+	 *
+	 * @param array $logic        The conditional_logic object from the field schema.
+	 * @param array $data         Submitted data keyed by field_id.
+	 * @param array $field_types  Optional map field_id => type (from the schema).
 	 * @return bool
 	 */
-	private function evaluate_conditional( array $logic, array $data ): bool {
+	private function evaluate_conditional( array $logic, array $data, array $field_types = array() ): bool {
 		$control_id = (string) ( $logic['field'] ?? '' );
 		$operator   = (string) ( $logic['operator'] ?? '' );
 		$rule_value = (string) ( $logic['value'] ?? '' );
@@ -1961,12 +1975,24 @@ class SubmitEndpoint {
 			return true;
 		}
 
-		// Safe fallback: if the controlling field is absent, show the dependent field.
+		$control_type = (string) ( $field_types[ $control_id ] ?? '' );
+		$is_choice    = in_array( $control_type, array( 'checkbox', 'acceptance', 'radio', 'checkboxes' ), true );
+
 		if ( ! array_key_exists( $control_id, $data ) ) {
-			return true;
+			// Unticked / unchecked choice controls are not posted at all —
+			// that IS their empty state. Anything else: safe fallback, show.
+			if ( ! $is_choice ) {
+				return true;
+			}
+			$control_raw = '';
+		} else {
+			$control_raw = $data[ $control_id ];
 		}
 
-		$control_raw = $data[ $control_id ];
+		if ( $control_type === 'checkbox' || $control_type === 'acceptance' ) {
+			// Same set as SubmissionValidator::CHECKED_CHECKBOX_VALUES.
+			$control_raw = in_array( $control_raw, array( 1, '1', true ), true ) ? '1' : '';
+		}
 
 		if ( is_array( $control_raw ) ) {
 			// File fields store associative metadata (filename, url, ...) - there
@@ -2017,6 +2043,52 @@ class SubmitEndpoint {
 			default:
 				return true;
 		}
+	}
+
+	/**
+	 * Resolve which fields are hidden by conditional logic for this
+	 * submission, including fields whose controller is itself hidden
+	 * (chains). Evaluates every rule against the ORIGINAL submitted data
+	 * and the schema's field types, so order of fields in the schema does
+	 * not matter.
+	 *
+	 * @param array $schema_fields  Flattened leaf fields.
+	 * @param array $raw_data       Submitted data keyed by field id.
+	 * @return string[]  Field ids to strip from data + validation.
+	 */
+	private function resolve_hidden_field_ids( array $schema_fields, array $raw_data ): array {
+		$types = array();
+		$rules = array();
+		foreach ( $schema_fields as $f ) {
+			$f  = (array) $f;
+			$id = (string) ( $f['id'] ?? '' );
+			if ( $id === '' ) {
+				continue;
+			}
+			$types[ $id ] = (string) ( $f['type'] ?? 'text' );
+			$cl = is_array( $f['conditional_logic'] ?? null ) ? $f['conditional_logic'] : null;
+			if ( $cl && ! empty( $cl['enabled'] ) && (string) ( $cl['field'] ?? '' ) !== '' ) {
+				$rules[ $id ] = $cl;
+			}
+		}
+
+		$hidden = array();
+		$guard  = 0;
+		do {
+			$changed = false;
+			foreach ( $rules as $id => $cl ) {
+				if ( isset( $hidden[ $id ] ) ) {
+					continue;
+				}
+				$controller = (string) $cl['field'];
+				if ( isset( $hidden[ $controller ] ) || ! $this->evaluate_conditional( $cl, $raw_data, $types ) ) {
+					$hidden[ $id ] = true;
+					$changed       = true;
+				}
+			}
+		} while ( $changed && ++$guard < 50 );
+
+		return array_keys( $hidden );
 	}
 
 	// Utilities
