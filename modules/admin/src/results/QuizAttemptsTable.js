@@ -29,8 +29,9 @@ function formatDate( raw ) {
  * passing both form_id (filter) AND entry (auto-open) is enough —
  * no bundle rebuild required.
  *
- * URL contract:
- *   admin.php?page=neural-forms-entries&form_id={form_id}&entry={entry_id}
+ * URL contract (split entries bundle, EntriesScreen.js readEntryIdFromUrl):
+ *   admin.php?page=neural-forms-entries&form_id={form_id}&view=inbox&entry_id={entry_id}
+ * The key is `entry_id` — `entry` is NOT read and lands on the bare list.
  *
  * The form_id keeps the inbox filtered to the right form so the row
  * also exists in the visible list when the user closes the detail.
@@ -41,8 +42,8 @@ function entryLink( formId, entryId ) {
 	const f = Number( formId )  || 0;
 	const e = Number( entryId ) || 0;
 	const params = [];
-	if ( f > 0 ) params.push( 'form_id=' + f );
-	if ( e > 0 ) params.push( 'entry='   + e );
+	if ( f > 0 ) params.push( 'form_id=' + f, 'view=inbox' );
+	if ( e > 0 ) params.push( 'entry_id=' + e );
 	const query = params.length ? '&' + params.join( '&' ) : '';
 	return 'admin.php?page=neural-forms-entries' + query;
 }

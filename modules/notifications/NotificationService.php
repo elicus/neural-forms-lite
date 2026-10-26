@@ -132,7 +132,7 @@ class NotificationService {
 		$body .= sprintf(
 			/* translators: %s: link to the Neural Forms entries screen */
 			__( 'View entry: %s', 'neural-forms-lite' ),
-			self::get_entry_url( $entry_id )
+			self::get_entry_url( $entry_id, (int) ( $form['id'] ?? 0 ) )
 		) . "\n";
 
 		$headers = self::build_from_headers( $settings );
@@ -759,14 +759,23 @@ class NotificationService {
 	 * @param int $entry_id
 	 * @return string
 	 */
-	private static function get_entry_url( int $entry_id ): string {
-		return add_query_arg(
-			array(
-				'page'  => 'neural-forms-entries',
-				'entry' => $entry_id,
-			),
-			admin_url( 'admin.php' )
-		);
+	/**
+	 * Deep link to one entry in the inbox.
+	 *
+	 * URL contract of the split entries bundle (EntriesScreen.js):
+	 *   entry_id=N          → opens the detail pane
+	 *   form_id=N&view=inbox → scopes the list behind it to that form
+	 * The key is `entry_id`, NOT `entry` — the latter opened the bare list.
+	 */
+	private static function get_entry_url( int $entry_id, int $form_id = 0 ): string {
+		$args = array( 'page' => 'neural-forms-entries' );
+		if ( $form_id > 0 ) {
+			$args['form_id'] = $form_id;
+			$args['view']    = 'inbox';
+		}
+		$args['entry_id'] = $entry_id;
+
+		return add_query_arg( $args, admin_url( 'admin.php' ) );
 	}
 
 	/**
