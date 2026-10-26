@@ -249,6 +249,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
 * Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
 * Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
+* Fix: A form's own Notification email and "Send admin notification" setting now take effect. Previously every form notified the global address regardless.
 * Fix: Email Settings now behave as described — a blank Sender name uses your site title and a blank Sender email uses the WordPress admin email, for notifications, autoresponders, replies and the test email alike.
 * Fix: The "View entry" link in admin notification emails and in quiz attempt analytics now opens the submitted entry instead of the entries list.
 * Fix: The "Randomize options" setting on quiz questions and polls now actually shuffles the answer order for each visitor.

@@ -308,13 +308,20 @@ export default function FormSettings( {
 					{ section === 'notifications' && (
 						<div className="nf-form-settings__body">
 							<label className="nf-form-settings__field nf-form-settings__field--inline">
+								{ /* Unset = inherit the global Notifications toggle (on by
+								     default), so show it checked unless explicitly off.
+								     NotificationService::admin_notification_enabled()
+								     applies the same rule server-side. */ }
 								<input
 									type="checkbox"
-									checked={ !! s.enable_admin_notification }
+									checked={ s.enable_admin_notification !== false }
 									onChange={ ( e ) => set( { enable_admin_notification: e.target.checked } ) }
 								/>
 								<span>{ __( 'Send admin notification on submission', 'neural-forms-lite' ) }</span>
 							</label>
+							<p className="nf-form-settings__note">
+								{ __( 'Untick to silence this form even when global notifications are on. Global notifications are configured under plugin Settings.', 'neural-forms-lite' ) }
+							</p>
 							<label className="nf-form-settings__field">
 								<span className="nf-form-settings__label">{ __( 'Notification email', 'neural-forms-lite' ) }</span>
 								{ /* type="text" rather than type="email" so the browser

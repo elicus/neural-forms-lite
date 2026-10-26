@@ -58,7 +58,7 @@ class NotificationService {
 		);
 		$data          = $entry['data'] ?? array();
 
-		if ( ! empty( $settings['enable_admin_notification'] ) ) {
+		if ( self::admin_notification_enabled( $form, $settings ) ) {
 			self::send_admin_notification( $entry_id, $form, $schema_fields, $data, $settings );
 		}
 
@@ -68,6 +68,28 @@ class NotificationService {
 	}
 
 	// Admin notification
+
+	/**
+	 * Should this form send an admin notification?
+	 *
+	 * The builder's Settings > Notifications > "Send admin notification on
+	 * submission" box writes `settings.enable_admin_notification` on the
+	 * form ONLY once the user has toggled it. So:
+	 *   key present → the per-form choice wins (true or false)
+	 *   key absent  → inherit the global Settings > Notifications toggle
+	 * This keeps existing forms (saved before the box did anything)
+	 * behaving exactly as they did: following the global switch.
+	 *
+	 * @param array $form      Form row (settings already decoded to array).
+	 * @param array $settings  Global plugin settings.
+	 */
+	public static function admin_notification_enabled( array $form, array $settings ): bool {
+		$form_settings = is_array( $form['settings'] ?? null ) ? $form['settings'] : array();
+		if ( array_key_exists( 'enable_admin_notification', $form_settings ) ) {
+			return ! empty( $form_settings['enable_admin_notification'] );
+		}
+		return ! empty( $settings['enable_admin_notification'] );
+	}
 
 	/**
 	 * Sends the "new submission" notification to the configured admin address.
@@ -82,19 +104,23 @@ class NotificationService {
 		$form_name = (string) ( $form['name'] ?? 'Unknown form' );
 
 		// Recipient resolution order:
-		// 1. Per-form admin_notification_email in form_schema.settings
-		//    (the React Form Settings panel writes here)
-		// 2. Per-form notification_email in form.settings (legacy
-		//    shape — kept for back-compat with any old callers that
-		//    set the flat key directly)
-		// 3. Global admin_notification_email (plugin settings)
-		// 4. WordPress admin email
+		// 1. Per-form admin_notification_email in form.settings — this is
+		//    where the builder's Settings > Notifications panel actually
+		//    saves it (FormSettings.js → Builder setSettings → the form
+		//    row's `settings` column). Before 1.1.3 this key was never
+		//    read, so the per-form address had no effect.
+		// 2. Per-form admin_notification_email in form_schema.settings
+		//    (older schema-embedded shape)
+		// 3. Per-form notification_email in form.settings (legacy flat key)
+		// 4. Global admin_notification_email (plugin settings)
+		// 5. WordPress admin email
 		//
 		// Each value may be a single email OR a comma-separated list.
 		// parse_recipient_list() splits, sanitises, and drops invalid
 		// entries. We stop at the first source that yields at least
 		// one valid address.
 		$candidates = array(
+			(string) ( $form['settings']['admin_notification_email'] ?? '' ),
 			(string) ( $form['form_schema']['settings']['admin_notification_email'] ?? '' ),
 			(string) ( $form['settings']['notification_email'] ?? '' ),
 			(string) ( $settings['admin_notification_email'] ?? '' ),
