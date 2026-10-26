@@ -966,6 +966,28 @@
 	box-sizing: border-box;
 }
 
+#neural-forms-app .nf-inspector__checks {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+#neural-forms-app .nf-inspector__check {
+	align-items: center;
+	display: flex;
+	font-size: 13px;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-inspector__check input[type="checkbox"] {
+	margin: 0;
+}
+
+#neural-forms-app .nf-inspector__check small {
+	color: var( --f-gray-500, #6b7280 );
+	font-size: 11px;
+}
+
 #neural-forms-app .nf-inspector__id-row {
 	align-items: center;
 	display: flex;

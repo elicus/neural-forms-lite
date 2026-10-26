@@ -3114,6 +3114,9 @@ CSS;
 				// composer pre-fills its Subject field from this (tokens
 				// {site_name} / {form_name} resolved client-side).
 				'replySubjectPattern' => (string) \NeuralForms\Core\Config::get( 'reply_subject_pattern', 'Re: Your submission' ),
+				// Host upload cap in MB (wp_max_upload_size) — the builder's
+				// File Upload "Maximum file size" control shows + caps to it.
+				'maxUploadMb'         => function_exists( 'wp_max_upload_size' ) ? round( wp_max_upload_size() / 1048576, 1 ) : 0,
 				'aiSpam'         => array(
 					'enabled'   => (bool) \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
 					'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),

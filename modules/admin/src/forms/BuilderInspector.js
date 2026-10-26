@@ -351,6 +351,10 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				<PhoneCountrySettingsBlock field={ f } onChange={ set } />
 			) }
 
+			{ f.type === 'file' && (
+				<FileUploadControls field={ f } onChange={ set } />
+			) }
+
 			{ f.type === 'rating' && (
 				<label className="nf-inspector__field">
 					<span className="nf-inspector__label">{ __( 'Number of stars', 'neural-forms-lite' ) }</span>
@@ -371,6 +375,85 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 			) }
 
 			<ConditionalLogicPanel field={ f } onChange={ set } nodes={ nodes } />
+		</>
+	);
+}
+
+/**
+ * File Upload constraints: allowed type groups + max size (MB).
+ *
+ * Mirrors what the server enforces — SubmitEndpoint::build_allowed_mimes()
+ * reads `allowed_types` as an array of group ids, and
+ * SchemaHelper::file_size_limit() caps `max_file_size` (MB) by
+ * wp_max_upload_size(). Before 1.1.3 neither had a builder control, so
+ * every form got the defaults (all groups, 5 MB).
+ */
+export const FILE_TYPE_GROUPS = [
+	{ id: 'image',    label: 'Images',    ext: 'JPG, PNG, GIF, WebP' },
+	{ id: 'pdf',      label: 'PDF',       ext: 'PDF' },
+	{ id: 'document', label: 'Documents', ext: 'DOC, DOCX, ODT' },
+	{ id: 'text',     label: 'Text',      ext: 'TXT, CSV' },
+];
+
+function FileUploadControls( { field, onChange } ) {
+	const selected = Array.isArray( field.allowed_types ) ? field.allowed_types.filter( ( g ) => typeof g === 'string' ) : [];
+	const serverMb = Number( window.neuralFormsAdmin?.plugin?.maxUploadMb ) || 0;
+	const maxMb    = Number( field.max_file_size ) > 0 ? Number( field.max_file_size ) : '';
+
+	const toggle = ( id, checked ) => {
+		const next = checked
+			? [ ...selected.filter( ( g ) => g !== id ), id ]
+			: selected.filter( ( g ) => g !== id );
+		// Keep registry order so the saved array is stable.
+		const ordered = FILE_TYPE_GROUPS.map( ( g ) => g.id ).filter( ( id2 ) => next.includes( id2 ) );
+		onChange( { allowed_types: ordered } );
+	};
+
+	return (
+		<>
+			<div className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Allowed file types', 'neural-forms-lite' ) }</span>
+				<div className="nf-inspector__checks">
+					{ FILE_TYPE_GROUPS.map( ( g ) => (
+						<label key={ g.id } className="nf-inspector__check">
+							<input
+								type="checkbox"
+								checked={ selected.includes( g.id ) }
+								onChange={ ( e ) => toggle( g.id, e.target.checked ) }
+							/>
+							<span>{ __( g.label, 'neural-forms-lite' ) } <small>({ g.ext })</small></span>
+						</label>
+					) ) }
+				</div>
+				<span className="nf-inspector__hint">
+					{ __( 'Leave all unticked to accept every supported type.', 'neural-forms-lite' ) }
+				</span>
+			</div>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Maximum file size (MB)', 'neural-forms-lite' ) }</span>
+				<input
+					type="number"
+					min="1"
+					max={ serverMb > 0 ? Math.max( 1, Math.floor( serverMb ) ) : undefined }
+					step="1"
+					value={ maxMb }
+					placeholder="5"
+					onChange={ ( e ) => {
+						const n = parseInt( e.target.value, 10 );
+						onChange( { max_file_size: Number.isFinite( n ) && n > 0 ? n : 0 } );
+					} }
+				/>
+				<span className="nf-inspector__hint">
+					{ serverMb > 0
+						? sprintf(
+							/* translators: %s: server upload limit in MB */
+							__( 'Blank = 5 MB. Your server allows up to %s MB; larger values are capped automatically.', 'neural-forms-lite' ),
+							String( Math.round( serverMb * 10 ) / 10 )
+						)
+						: __( 'Blank = 5 MB. Values above your server\'s PHP upload limit are capped automatically.', 'neural-forms-lite' ) }
+				</span>
+			</label>
 		</>
 	);
 }

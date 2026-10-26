@@ -1269,6 +1269,27 @@ class FormRenderer {
 					. ' hidden'
 					. '></p>';
 
+		// ' Help text '
+		// The builder's "Help text" box (field.help_text) was saved and
+		// previewed but never rendered before 1.1.3. Emitted under the
+		// input and linked via aria-describedby (prepended to the error
+		// id every per-type renderer already sets) so assistive tech
+		// reads it on focus.
+		$help_html = '';
+		$help_text = trim( (string) ( $field['help_text'] ?? '' ) );
+		if ( $help_text !== '' ) {
+			$help_id    = $input_id . '-help';
+			$help_html  = '<p class="neural-forms-form__field-help" id="' . esc_attr( $help_id ) . '">'
+				. esc_html( $help_text )
+				. '</p>';
+			$input_html = (string) preg_replace(
+				'/(aria-describedby="[^"]*)' . preg_quote( $error_id, '/' ) . '"/',
+				'$1' . esc_attr( $help_id ) . ' ' . $error_id . '"',
+				$input_html,
+				1
+			);
+		}
+
 		// ' Wrapper '
 		return '<div'
 			. ' class="neural-forms-form__field neural-forms-form__field--' . esc_attr( $type ) . '"'
@@ -1277,6 +1298,7 @@ class FormRenderer {
 			. '>'
 			. $label_html
 			. $input_html
+			. $help_html
 			. $error_html
 			. '</div>';
 	}
