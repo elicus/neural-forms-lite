@@ -627,7 +627,7 @@
 .neural-forms-form__rating-star:hover ~ .neural-forms-form__rating-star,
 .neural-forms-form__rating-star:focus-within,
 .neural-forms-form__rating-star:focus-within ~ .neural-forms-form__rating-star {
-    color: #15db95;
+    color: var(--neural-forms-accent);
 }
 
 /* Checked + every star after it (DOM-after = visually-left in row-reverse). */

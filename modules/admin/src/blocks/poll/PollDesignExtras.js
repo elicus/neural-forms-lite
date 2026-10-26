@@ -21,7 +21,7 @@ import {
 	MessagesPanel,
 	AdvancedPanel,
 	Sep, Gap, Clr, Grad,
-	FW,
+	FW, FontFamilySelect,
 } from '../shared/DesignPanels';
 
 // ─── Poll-specific panels ─────────────────────────────────────────────────────
@@ -83,11 +83,15 @@ function ResultsBarPanel( { a, set } ) {
 			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Bar Labels', 'neural-forms-lite' ) }</p>
 			<Clr label={ __( 'Option Label Color', 'neural-forms-lite' ) } value={ a.pollResultsLabelColor } onChange={ v => set( { pollResultsLabelColor: v ?? '' } ) } />
 			<Clr label={ __( 'Vote Count Color', 'neural-forms-lite' ) } value={ a.pollResultsCountColor } onChange={ v => set( { pollResultsCountColor: v ?? '' } ) } />
+			<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.pollResultsFontFamily } onChange={ v => set( { pollResultsFontFamily: v } ) } />
 			<UnitControl label={ __( 'Results Font Size', 'neural-forms-lite' ) } value={ a.pollResultsFontSize } onChange={ v => set( { pollResultsFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.pollResultsFontWeight || '' } options={ FW } onChange={ v => set( { pollResultsFontWeight: v } ) } />
 			<Sep />
 			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Total Votes Text', 'neural-forms-lite' ) }</p>
 			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.pollTotalColor } onChange={ v => set( { pollTotalColor: v ?? '' } ) } />
+			<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.pollTotalFontFamily } onChange={ v => set( { pollTotalFontFamily: v } ) } />
 			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.pollTotalFontSize } onChange={ v => set( { pollTotalFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.pollTotalFontWeight || '' } options={ FW } onChange={ v => set( { pollTotalFontWeight: v } ) } />
 		</PanelBody>
 	);
 }

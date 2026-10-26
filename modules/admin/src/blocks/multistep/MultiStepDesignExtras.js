@@ -19,7 +19,7 @@ import {
 	WelcomeScreenPanel,
 	MessagesPanel,
 	AdvancedPanel,
-	Sep, Gap, Clr, FW, PaddingMarginDimensions,
+	Sep, Gap, Clr, FW, FontFamilySelect, PaddingMarginDimensions,
 } from '../shared/DesignPanels';
 
 // ─── Step Layout panel (MultiStep-only) ──────────────────────────────────────
@@ -121,6 +121,7 @@ function StepLayoutPanel( { a, set } ) {
 				<>
 					<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Title', 'neural-forms-lite' ) }</p>
 					<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepTitleColor } onChange={ v => set( { stepTitleColor: v ?? '' } ) } />
+					<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.stepTitleFontFamily } onChange={ v => set( { stepTitleFontFamily: v } ) } />
 					<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepTitleFontSize } onChange={ v => set( { stepTitleFontSize: v ?? '' } ) } />
 					<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepTitleFontWeight || '' } options={ FW } onChange={ v => set( { stepTitleFontWeight: v } ) } />
 					<Sep />
@@ -130,6 +131,7 @@ function StepLayoutPanel( { a, set } ) {
 				<>
 					<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Step Description', 'neural-forms-lite' ) }</p>
 					<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.stepDescColor } onChange={ v => set( { stepDescColor: v ?? '' } ) } />
+					<FontFamilySelect label={ __( 'Font Family', 'neural-forms-lite' ) } value={ a.stepDescFontFamily } onChange={ v => set( { stepDescFontFamily: v } ) } />
 					<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.stepDescFontSize } onChange={ v => set( { stepDescFontSize: v ?? '' } ) } />
 					<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.stepDescFontWeight || '' } options={ FW } onChange={ v => set( { stepDescFontWeight: v } ) } />
 					<Sep />
