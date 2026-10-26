@@ -629,7 +629,7 @@ class SubmitEndpoint {
 				'status'      => 403,
 				'limit'       => $limit,
 				'count'       => $count,
-				'upgrade_url' => 'https://neuralforms.ai/pro/',
+				'upgrade_url' => 'https://neuralforms.ai/pricing/',
 			)
 		);
 	}
