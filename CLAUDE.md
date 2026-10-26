@@ -32,7 +32,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Plugin header name:** `Neural Forms Lite`
 - **Main class:** `NeuralForms\NeuralForms` (namespace **not** renamed)
 - **Version constants:**
-  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.1.0`.
+  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.1.3`.
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
   - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.1.0`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
@@ -727,6 +727,19 @@ corner-overflow — the country-picker dropdown is an absolutely-
 positioned child of `.neural-forms-form__phone` (`top: calc(100% + 4px)`)
 and would get clipped. The pseudo-element separator above already
 prevents overflow without needing `overflow: hidden` anywhere.
+
+### Submission rate limit + client IP (fixed 2026-10-26, 1.1.3)
+
+`SubmitEndpoint::resolve_ip()` returns `REMOTE_ADDR` by default and only
+reads `CF-Connecting-IP` / `X-Forwarded-For` when `REMOTE_ADDR` matches
+the `neural_forms_trusted_proxies` filter (IPs or CIDR ranges; empty by
+default). Before 1.1.3 it trusted `X-Forwarded-For` unconditionally and
+a junk value blanked the IP, which skipped the limiter entirely. The
+limiter (`default_rate_limit()`) is keyed `md5( form_id . '|' . ip )`,
+runs AFTER the honeypot check, and never exempts an empty IP. Tests:
+`tests/SubmitRateLimitTest.php`. Keep the helper methods extractable by
+regex (`private [static ]function name(...) ... \n\t}`) — the test
+harness lifts them out of the file rather than booting WordPress.
 
 ### Entries (per-screen `build/entries.js` bundle)
 
