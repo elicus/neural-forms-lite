@@ -1815,7 +1815,17 @@ class FormRenderer {
 		$required = ! empty( $field['required'] );
 		$settings = SchemaHelper::normalize_poll_settings( $field['settings'] ?? null );
 
-		$html = '<fieldset class="neural-forms-form__poll" aria-describedby="' . esc_attr( $error_id ) . '">';
+		// Randomize: same contract as render_quiz_question — server-side
+		// shuffle for no-JS, data attribute for the per-visitor JS shuffle.
+		$randomize_attr = '';
+		if ( $settings['randomize_options'] ) {
+			shuffle( $options );
+			$randomize_attr = ' data-poll-randomize="1"';
+		}
+
+		$html = '<fieldset class="neural-forms-form__poll"'
+			. $randomize_attr
+			. ' aria-describedby="' . esc_attr( $error_id ) . '">';
 
 		// Poll question label is the field's content (the question
 		// itself). Same reasoning as render_quiz_question: always
@@ -2028,7 +2038,14 @@ class FormRenderer {
 		$required = ! empty( $field['required'] );
 		$settings = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
 
-		$randomize_attr = $settings['randomize_options'] ? ' data-quiz-randomize="1"' : '';
+		// Randomize: shuffle server-side so the setting works without JS,
+		// AND flag the fieldset so form-submit.js re-shuffles per visitor —
+		// a page cache would otherwise freeze one server-side order.
+		$randomize_attr = '';
+		if ( $settings['randomize_options'] ) {
+			shuffle( $options );
+			$randomize_attr = ' data-quiz-randomize="1"';
+		}
 
 		$html = '<fieldset class="neural-forms-form__quiz"'
 			. $randomize_attr

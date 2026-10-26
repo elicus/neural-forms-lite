@@ -252,6 +252,40 @@ $quiz_rand = array_merge( $quiz, [
 $html_rand = FormRenderer::render_preview_form( nf_make_form( [ $quiz_rand ] ) );
 check( '5m randomize attr emitted when enabled',
 	strpos( $html_rand, 'data-quiz-randomize="1"' ) !== false, true, $cases, $passed, $failed );
+// 5m-ii. Shuffling never drops or duplicates an option, and (over many
+// renders) actually changes the order — the setting used to be a no-op.
+$rand_vals = static function ( string $h ): array {
+	preg_match_all( '/class="neural-forms-form__quiz-input"|value="([^"]*)"\s+class="neural-forms-form__quiz-input"/', $h, $m );
+	return array_values( array_filter( $m[1], 'strlen' ) );
+};
+$expected_vals = array_map( static fn( $o ) => (string) ( ( $o['value'] ?? '' ) !== '' ? $o['value'] : $o['label'] ), $quiz_options );
+$seen_orders   = [];
+$all_same_set  = true;
+for ( $n = 0; $n < 30; $n++ ) {
+	$vals = $rand_vals( FormRenderer::render_preview_form( nf_make_form( [ $quiz_rand ] ) ) );
+	$sorted_a = $vals; sort( $sorted_a ); $sorted_b = $expected_vals; sort( $sorted_b );
+	if ( $sorted_a !== $sorted_b ) { $all_same_set = false; }
+	$seen_orders[ implode( '|', $vals ) ] = true;
+}
+check( '5m-ii randomize keeps the exact option set (no drop / dup)', $all_same_set, true, $cases, $passed, $failed );
+check( '5m-iii randomize produces more than one order across 30 renders', count( $seen_orders ) > 1, true, $cases, $passed, $failed );
+check( '5m-iv randomize off keeps schema order',
+	$rand_vals( $html ) === $expected_vals, true, $cases, $passed, $failed );
+// 5m-v. Poll honours the same setting (it was ignored entirely before).
+$poll_rand = [
+	'id'       => 'poll_rand',
+	'type'     => 'poll',
+	'label'    => 'Pick one',
+	'required' => false,
+	'options'  => [ [ 'label' => 'A', 'value' => 'a' ], [ 'label' => 'B', 'value' => 'b' ], [ 'label' => 'C', 'value' => 'c' ] ],
+	'settings' => array_merge( SchemaHelper::default_poll_settings(), [ 'randomize_options' => true ] ),
+];
+$html_poll = FormRenderer::render_preview_form( nf_make_form( [ $poll_rand ] ) );
+check( '5m-v poll randomize attr emitted when enabled',
+	strpos( $html_poll, 'data-poll-randomize="1"' ) !== false, true, $cases, $passed, $failed );
+$html_poll_off = FormRenderer::render_preview_form( nf_make_form( [ array_merge( $poll_rand, [ 'settings' => SchemaHelper::default_poll_settings() ] ) ] ) );
+check( '5m-vi poll randomize attr absent when disabled',
+	strpos( $html_poll_off, 'data-poll-randomize' ) === false, true, $cases, $passed, $failed );
 
 // 5n. Form WITHOUT quiz fields does NOT emit summary placeholder.
 $html_plain = FormRenderer::render_preview_form( nf_make_form( [ $f_text ] ) );

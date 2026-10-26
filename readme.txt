@@ -249,6 +249,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
 * Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
 * Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
+* Fix: The "Randomize options" setting on quiz questions and polls now actually shuffles the answer order for each visitor.
 * Fix: Entries keyboard shortcuts now act on the entry you opened or the highlighted row, which is now visibly marked. Previously they could silently change a different entry.
 * Fix: File upload fields now respect the host's PHP upload limit. The "Max" hint and the size check use the lower of the field setting and the server limit, and an oversized file shows a clear size message instead of a generic upload error.
 

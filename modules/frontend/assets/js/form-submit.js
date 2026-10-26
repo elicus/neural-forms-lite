@@ -55,6 +55,7 @@
 		initMultiStep( form );
 		initRepeaters( form );
 		initPhonePickers( form );
+		initRandomizeOptions( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
 		// step-driven mutations are captured. Must run before the first
 		// submit so the "always" restoration path has the original bars
@@ -64,6 +65,42 @@
 		// snapshot them anyway so the reset path is symmetric with
 		// poll's restore semantics.
 		snapshotQuizResults( form );
+	}
+
+	// Randomize options (quiz + poll)
+
+	/**
+	 * Shuffle the option rows of every quiz / poll fieldset flagged by
+	 * FormRenderer (`data-quiz-randomize` / `data-poll-randomize`).
+	 *
+	 * The server already shuffles once as a no-JS fallback; this runs
+	 * per page load so visitors behind a page cache still get their own
+	 * order. Rows are moved as whole <label> nodes, so the radio, its id
+	 * / for pairing, `checked` and `required` all travel with the row.
+	 * Quiz feedback and poll results are keyed by field id + value, never
+	 * by position, so reordering is safe.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function initRandomizeOptions( form ) {
+		var groups = form.querySelectorAll(
+			'[data-quiz-randomize="1"] .neural-forms-form__quiz-options,' +
+			'[data-poll-randomize="1"] .neural-forms-form__poll-options'
+		);
+		for ( var g = 0; g < groups.length; g++ ) {
+			var group = groups[ g ];
+			var rows  = Array.prototype.slice.call( group.children );
+			// Fisher–Yates.
+			for ( var i = rows.length - 1; i > 0; i-- ) {
+				var j   = Math.floor( Math.random() * ( i + 1 ) );
+				var tmp = rows[ i ];
+				rows[ i ] = rows[ j ];
+				rows[ j ] = tmp;
+			}
+			for ( var r = 0; r < rows.length; r++ ) {
+				group.appendChild( rows[ r ] );
+			}
+		}
 	}
 
 	// Repeater add / remove + reindex
