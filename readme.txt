@@ -37,15 +37,17 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * One-click Contact Form 7 migration
 * Developer hooks, capability filters, and React SlotFill registry
 
-= AI Analysis on Every Submission =
+= AI Analysis for Your Submissions =
 
-100 free AI credits included on signup. Connect your free Neural Forms API key to unlock:
+100 free AI credits included on signup. Connect your free Neural Forms API key, open any entry in the inbox and click "Analyze with Neural AI" to get:
 
-* Auto-summary on every submission
-* AI-assigned category (inquiry, support, sales, and more)
-* Priority score (0 to 100)
-* Auto-drafted reply ready to review and send
-* Multi-tier AI models (Fast tier in the free version)
+* A summary of the submission
+* An AI-assigned category (inquiry, support, sales, and more)
+* A priority score (0 to 100)
+* A drafted reply ready to review and send
+* Fast-tier AI model (premium tiers in Pro)
+
+In the free plugin each entry can be analyzed once, on demand. Automatic analysis of every new submission, re-analysis, and regenerated or polished drafts are part of Neural Forms Pro.
 
 The form builder, lead inbox, email notifications, CAPTCHA, and CSV export all work without any AI key. AI features are optional and pause when free credits are consumed.
 
@@ -72,6 +74,7 @@ No third-party accounts required for basic form functionality.
 Need more? [Neural Forms Pro](https://neuralforms.ai/pricing/) adds:
 
 * 7,500 to 25,000 AI credits per year (resets with renewal)
+* Automatic AI analysis of every new submission, with per-form processing modes
 * AI form generation: describe a form in plain English, AI builds it
 * Smart spam detection with adjustable threshold
 * Reanalyze, regenerate, and polish AI drafts
@@ -188,7 +191,7 @@ This regenerates the files in `modules/admin/build/` from `modules/admin/src/`.
 
 = Do I need an API key to use Neural Forms? =
 
-No. The form builder, lead inbox, template library, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (auto-summary, draft replies) require a free Neural Forms API key, which you can get at [neuralforms.ai](https://neuralforms.ai). 100 free AI credits are included on signup.
+No. The form builder, lead inbox, template library, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (on-demand summary, category, priority and a draft reply for any entry) require a free Neural Forms API key, which you can get at [neuralforms.ai](https://neuralforms.ai). 100 free AI credits are included on signup. Automatic analysis of every new submission is a Neural Forms Pro feature.
 
 = What data does the AI feature send to your servers? =
 

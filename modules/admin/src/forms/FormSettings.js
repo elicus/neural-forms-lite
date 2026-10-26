@@ -234,8 +234,8 @@ export default function FormSettings( {
 							    Cloud connected see the connect-CTA. */ }
 							{ ! aiAvailability.capable && (
 								<div className="nf-ai-processing__upsell" role="note">
-									<strong>{ __( 'Available with Neural Forms Pro', 'neural-forms-lite' ) }</strong>
-									<p>{ __( 'Neural AI processing requires Neural Forms Pro and a connected Neural Forms Cloud account. You can still configure the mode below — it will activate once Pro is installed.', 'neural-forms-lite' ) }</p>
+									<strong>{ __( 'Automatic processing is a Neural Forms Pro feature', 'neural-forms-lite' ) }</strong>
+									<p>{ __( 'In the free plugin you can analyze any entry once: open it in the inbox and click "Analyze with Neural AI" (needs a connected Neural Forms Cloud account). Neural Forms Pro adds automatic analysis of every new submission using the modes below, plus re-analysis and regenerated or polished replies. You can still choose a mode now — it activates once Pro is installed.', 'neural-forms-lite' ) }</p>
 								</div>
 							) }
 							{ aiAvailability.capable && ( ! aiAvailability.cloudConnected || ! aiAvailability.aiEnabled ) && (
