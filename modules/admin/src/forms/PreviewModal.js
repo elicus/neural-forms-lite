@@ -225,6 +225,9 @@ body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sa
   border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500;
 }
 .neural-forms-form__step-next { background: #080f5b; color: #fff; margin-left: auto; }
+.neural-forms-form__steps-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.neural-forms-form__steps-footer .neural-forms-form__steps-nav { flex: 1 1 auto; }
+.neural-forms-form__steps-footer .neural-forms-form__submit-wrap { flex: 0 0 auto; margin-left: auto; }
 .neural-forms-form__progress { margin: 0 0 16px; padding: 0; list-style: none; }
 .neural-forms-form__progress--numbers { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .neural-forms-form__progress-item {

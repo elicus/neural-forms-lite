@@ -534,6 +534,7 @@ class FormRenderer {
 		// above the submit doing nothing (type="button" so they
 		// cannot accidentally submit). form-submit.js wires their
 		// click handlers + per-step visibility.
+		$nav_html = '';
 		if ( $has_steps ) {
 			// Block-level overrides (set by BlockHandler when called
 			// from the Multi Step block) win over per-step settings.
@@ -617,7 +618,13 @@ class FormRenderer {
 				$next_content = esc_html( $first_next );
 			}
 
-			$html .= $nav_open
+			// Held back and emitted together with the submit wrapper inside
+			// .neural-forms-form__steps-footer (see below) so that on the
+			// last step Previous and Submit share one row, exactly like
+			// Previous / Next do on earlier steps. Before 1.1.3 the submit
+			// wrapper was a separate block under the nav row, so the last
+			// step stacked Previous above Submit.
+			$nav_html = $nav_open
 					. '<button type="button" class="' . esc_attr( $prev_class ) . '"'
 					. ' data-step-action="prev">'
 					. $prev_content
@@ -692,11 +699,23 @@ class FormRenderer {
 			$btn_content = esc_html( $submit_text );
 		}
 
-		$html .= '<div class="neural-forms-form__submit-wrap">'
+		$submit_wrap_html = '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
 				. $btn_content
 				. '</button>'
 				. '</div>';
+
+		if ( $has_steps ) {
+			// Nav row + submit wrapper in one flex footer. The nav keeps
+			// its own markup/classes (Divi's scoped CSS targets them), the
+			// footer only lays the two out side by side.
+			$html .= '<div class="neural-forms-form__steps-footer">'
+				. $nav_html
+				. $submit_wrap_html
+				. '</div>';
+		} else {
+			$html .= $submit_wrap_html;
+		}
 
 		$html .= '</form>';
 

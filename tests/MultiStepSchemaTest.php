@@ -441,6 +441,14 @@ check( '14d prev button label from first step',        strpos( $html_two_step, '
 check( '14e submit present with multistep modifier',   strpos( $html_two_step, 'neural-forms-form__submit--multistep' ) !== false, true, $cases, $passed, $failed );
 check( '14e submit type=submit present',               strpos( $html_two_step, 'type="submit"' ) !== false, true, $cases, $passed, $failed );
 
+// 14e-ii. (1.1.3) Nav + submit wrapper share a flex footer so the last
+//         step's Previous / Submit sit on one row. Single-step forms
+//         must NOT get the footer (submit wrapper stays a plain block).
+check( '14e-ii footer wraps nav then submit wrapper',
+	(bool) preg_match( '/<div class="neural-forms-form__steps-footer"><div class="neural-forms-form__steps-nav".*?<\/div><div class="neural-forms-form__submit-wrap">.*?<\/div><\/div>/s', $html_two_step ), true, $cases, $passed, $failed );
+check( '14e-iii submit wrapper not emitted outside the footer',
+	substr_count( $html_two_step, 'neural-forms-form__submit-wrap' ), 1, $cases, $passed, $failed );
+
 // 14f. Step IDs never emitted as input names.
 check( '14f no name="step_contact" input',             strpos( $html_two_step, 'name="step_contact"' ) === false, true, $cases, $passed, $failed );
 check( '14f no name="step_message" input',             strpos( $html_two_step, 'name="step_message"' ) === false, true, $cases, $passed, $failed );
@@ -458,6 +466,7 @@ $html_single = FormRenderer::render_preview_form( $single_step_form );
 check( '14h single-step has no nav block',             strpos( $html_single, 'class="neural-forms-form__steps-nav"' ) === false, true, $cases, $passed, $failed );
 check( '14h single-step has no multistep flag',        strpos( $html_single, 'data-neural-forms-multistep' ) === false, true, $cases, $passed, $failed );
 check( '14h single-step still emits step wrapper',     strpos( $html_single, 'class="neural-forms-form__step"' ) !== false, true, $cases, $passed, $failed );
+check( '14h single-step has no steps footer',          strpos( $html_single, 'neural-forms-form__steps-footer' ) === false, true, $cases, $passed, $failed );
 
 // 14i. Flat (no-step) schema is unchanged - no step markup at all.
 $flat_form = nf_make_form( [ $f_name, $f_email ] );

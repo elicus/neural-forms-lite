@@ -254,6 +254,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
 * Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
 * Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
+* Fix: On the last step of a multi-step form, the Previous and Submit buttons now sit on one row instead of stacking.
 * Fix: With labels hidden, validation messages now use the field's label instead of its placeholder, and choice fields (radio, checkbox, rating, matrix) always show their question.
 * Fix: An optional Phone field left empty no longer blocks the Next button or submission because of the pre-filled country code.
 * Fix: A form's own Notification email and "Send admin notification" setting now take effect. Previously every form notified the global address regardless.
