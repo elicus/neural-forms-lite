@@ -247,6 +247,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 = 1.1.3 - 2026-10-26 =
 * Security: The submission rate limit could be bypassed by sending a forged X-Forwarded-For header. The client IP now comes from the server connection unless the request arrives via a proxy listed in the new `neural_forms_trusted_proxies` filter.
 * Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
+* Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
+* Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
 
 = 1.1.2 - 2026-07-01 =
 * Fix: Multi-step forms no longer trigger an auto-scroll on page load.

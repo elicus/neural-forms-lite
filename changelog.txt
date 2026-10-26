@@ -6,6 +6,8 @@
 * Submission rate limit could be bypassed with a forged `X-Forwarded-For` header (any value, even a non-IP, either rotated the bucket or disabled the limit). The resolved client IP is now `REMOTE_ADDR` unless it belongs to a proxy declared via the new `neural_forms_trusted_proxies` filter (IPs or CIDR ranges, IPv4/IPv6). Behind a trusted proxy, `CF-Connecting-IP` is honoured first, then `X-Forwarded-For` walked from the right-most untrusted hop. The same resolved IP feeds CAPTCHA verification and the IP stored on each entry, so those can no longer be forged either.
 
 #### Fixed
+* Entries inbox: the list stopped at 50 rows with no way to reach older entries. A "Load more" control now appends the next 50 until every row matching the current view is shown, with a "Showing X of Y" count.
+* Entries search: terms containing non-ASCII characters (e.g. "José") or slashes (URLs) found nothing because entry data was stored with escaped JSON. New entries are stored unescaped (`JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`) and the search now matches both the raw and the escaped form, so existing entries are found too. Applies to CSV export with a search term as well.
 * Rate-limit bucket is now keyed per form + IP instead of per IP site-wide.
 * Honeypot check now runs before the rate-limit gate, so bot traffic no longer consumes attempts shared by real users on the same IP.
 * A request with no usable `REMOTE_ADDR` is no longer exempt from the limit; such requests share one bucket.

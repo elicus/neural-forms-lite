@@ -743,6 +743,15 @@ harness lifts them out of the file rather than booting WordPress.
 
 ### Entries (per-screen `build/entries.js` bundle)
 
+- **Paging (1.1.3):** `EntriesScreen.js` fetches 50 rows per page via
+  `fetchEntriesPage()` (`parse: false` so it can read the endpoint's
+  `X-Total-Count` header — note the Lite endpoints emit `X-Total-Count`,
+  not `X-WP-Total`) and renders a "Load more" row until the total is
+  reached. Header checkbox still selects loaded rows only.
+- **Search (1.1.3):** `EntryRepository::create()` stores data with
+  `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`; pre-1.1.3 rows are
+  still `\uXXXX` / `\/` escaped, so `build_filter_clauses()` LIKE-matches
+  both the raw term and its JSON-escaped form. No migration.
 - BEM root: `.neural-forms-entries-*` / `.neural-forms-entry-detail__*`;
   self-contained `src/entries.css`.
 - Default All-Forms selection uses bare `?view=inbox`.

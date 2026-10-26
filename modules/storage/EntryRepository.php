@@ -73,7 +73,13 @@ class EntryRepository {
 
 		// Encode the user-submitted field values to JSON.
 		// wp_json_encode falls back to false on failure (malformed UTF-8, etc.).
-		$json = wp_json_encode( $sanitized_data );
+		//
+		// UNESCAPED flags matter for search: the inbox search is a LIKE on
+		// this blob, so "José" must be stored as José, not "Jos\u00e9", and
+		// "https://x" as-is rather than "https:\/\/x". Rows written before
+		// 1.1.3 still carry the escaped form; build_filter_clauses() matches
+		// both, so no migration is needed.
+		$json = wp_json_encode( $sanitized_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 
 		if ( false === $json ) {
 			Logger::file( 'storage', 'error', sprintf( 'wp_json_encode() returned false for form %d', $form_id ) );
@@ -902,16 +908,35 @@ class EntryRepository {
 		// Search - LIKE on the JSON data blob and form name.
 		// Plain variant uses a subquery for form name (no JOIN in COUNT query).
 		// Aliased variant references the already-joined f.name column.
-		// Both add exactly 2 placeholders so the shared $values array stays aligned.
-		// $forms_table is `$wpdb->prefix . 'neural_forms_forms'`, never user-derived.
+		// Both variants add the same placeholders so the shared $values array
+		// stays aligned. $forms_table is `$wpdb->prefix . 'neural_forms_forms'`,
+		// never user-derived.
+		//
+		// Entries saved before 1.1.3 were encoded with default wp_json_encode
+		// flags, so non-ASCII is stored as \uXXXX and '/' as '\/'. Entries
+		// saved since are stored unescaped. When the term's JSON-escaped form
+		// differs from the raw term, match both so old and new rows are found.
 		$search_term = trim( $args['search'] ?? '' );
 		if ( $search_term !== '' ) {
-			$like = '%' . $wpdb->esc_like( $search_term ) . '%';
+			$like      = '%' . $wpdb->esc_like( $search_term ) . '%';
+			$data_like = array( $like );
+
+			$escaped = wp_json_encode( $search_term );
+			$escaped = is_string( $escaped ) ? substr( $escaped, 1, -1 ) : $search_term;
+			if ( $escaped !== $search_term ) {
+				$data_like[] = '%' . $wpdb->esc_like( $escaped ) . '%';
+			}
+
+			$data_sql = implode( ' OR ', array_fill( 0, count( $data_like ), 'data LIKE %s' ) );
+			$data_sql_aliased = implode( ' OR ', array_fill( 0, count( $data_like ), 'e.data LIKE %s' ) );
+
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$plain_parts[]   = "(data LIKE %s OR form_id IN (SELECT id FROM {$forms_table} WHERE name LIKE %s))";
-			$aliased_parts[] = '(e.data LIKE %s OR f.name LIKE %s)';
-			$values[]        = $like;
-			$values[]        = $like;
+			$plain_parts[]   = "({$data_sql} OR form_id IN (SELECT id FROM {$forms_table} WHERE name LIKE %s))";
+			$aliased_parts[] = "({$data_sql_aliased} OR f.name LIKE %s)";
+			foreach ( $data_like as $dl ) {
+				$values[] = $dl;
+			}
+			$values[] = $like;
 		}
 
 		// Date range - applied to submitted_at.
