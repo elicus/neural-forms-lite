@@ -24,8 +24,9 @@ defined( 'ABSPATH' ) || exit;
  *
  *  1. Load form from DB; 404 if not found.
  *  2. Verify form status is 'active'; 403 otherwise.
- *  3. Rate-limit check via filter (infrastructure gate, no body read yet).
- *  4. Extract full body; honeypot check (before key-stripping).
+ *  3. Extract full body; honeypot check (before key-stripping).
+ *  4. Rate-limit check via filter. Keyed per form + client IP; IP comes
+ *     from REMOTE_ADDR unless it is a trusted proxy (see resolve_ip()).
  *  4b. CAPTCHA verification - if form has captcha_enabled, verify token
  *      before the body is stripped. Fails closed: missing token '->-> 400,
  *      bad token '->-> 400, misconfigured provider '->-> 400. Entry is never saved.
@@ -41,7 +42,7 @@ defined( 'ABSPATH' ) || exit;
  *
  *  form_not_found          404  Form ID does not exist.
  *  form_not_active         403  Form is draft or archived.
- *  rate_limit_exceeded     429  Too many requests from this IP.
+ *  rate_limit_exceeded     429  Too many requests from this IP for this form.
  *  spam_detected           400  Submission flagged as spam (honeypot or filter).
  *  captcha_missing         400  CAPTCHA token absent (provider fully configured but no token sent).
  *  captcha_failed          400  Token rejected by provider; failure is logged.
@@ -129,16 +130,40 @@ class SubmitEndpoint {
 			return $limit_error;
 		}
 
-		// ' Step 3: Rate-limit gate '
-		// Built-in transient-based limiter: max 10 submissions per IP per 10
-		// minutes. The filter lets extensions replace or tighten this logic.
+		// ' Step 3: Extract submitted values '
+		// Read the full body once so we can check the honeypot before stripping.
+		// Detects multipart/form-data (file upload path) vs JSON automatically.
+		$raw_body = $this->get_submission_params( $request );
+
+		// ' Step 3a: Honeypot check '
+		// FormRenderer renders a hidden field named "neural_forms_website".
+		// Legitimate users never fill it; bots that auto-fill all inputs do.
+		// Must be read from $raw_body BEFORE key-stripping removes unknown keys.
+		// Runs BEFORE the rate-limit gate so obvious bot traffic never
+		// consumes rate slots shared by legitimate users on the same IP
+		// (office NAT, carrier-grade NAT, VPN exit).
+		$honeypot = trim( (string) ( $raw_body['neural_forms_website'] ?? '' ) );
+		if ( $honeypot !== '' ) {
+			return new WP_Error(
+				'spam_detected',
+				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		// ' Step 4: Rate-limit gate '
+		// Built-in transient-based limiter: max 10 submissions per form per
+		// IP per 10 minutes. CAPTCHA failures and validation errors below
+		// still count - that is what stops token/field brute-forcing. The
+		// filter lets extensions replace or tighten this logic.
 		$ip = $this->resolve_ip();
 
 		$rate_limited = apply_filters(
 			'neural_forms_rate_limit',
-			self::default_rate_limit( $ip ),
+			self::default_rate_limit( $ip, $form_id ),
 			$request,
-			$ip
+			$ip,
+			$form_id
 		);
 
 		if ( $rate_limited ) {
@@ -146,24 +171,6 @@ class SubmitEndpoint {
 				'rate_limit_exceeded',
 				__( 'Too many requests. Please wait before submitting again.', 'neural-forms-lite' ),
 				array( 'status' => 429 )
-			);
-		}
-
-		// ' Step 4: Extract and strip submitted values '
-		// Read the full body once so we can check the honeypot before stripping.
-		// Detects multipart/form-data (file upload path) vs JSON automatically.
-		$raw_body = $this->get_submission_params( $request );
-
-		// ' Step 4a: Honeypot check '
-		// FormRenderer renders a hidden field named "neural_forms_website".
-		// Legitimate users never fill it; bots that auto-fill all inputs do.
-		// Must be read from $raw_body BEFORE key-stripping removes unknown keys.
-		$honeypot = trim( (string) ( $raw_body['neural_forms_website'] ?? '' ) );
-		if ( $honeypot !== '' ) {
-			return new WP_Error(
-				'spam_detected',
-				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
-				array( 'status' => 400 )
 			);
 		}
 
@@ -1990,67 +1997,161 @@ class SubmitEndpoint {
 	/**
 	 * Resolve the client IP address.
 	 *
-	 * Prefers X-Forwarded-For when present (set by reverse proxies and load
-	 * balancers). Takes only the first (leftmost) entry - it represents the
-	 * original client; subsequent IPs are proxies appended along the chain.
+	 * Defaults to REMOTE_ADDR, which is set by the web server from the TCP
+	 * connection and cannot be forged by the client. Forwarding headers
+	 * (X-Forwarded-For, CF-Connecting-IP) are plain HTTP headers that any
+	 * client can send, so they are only honoured when REMOTE_ADDR itself is
+	 * a trusted proxy - i.e. the header was written by infrastructure we
+	 * control, not by the submitter.
 	 *
-	 * '��️  SPOOFING RISK: X-Forwarded-For is a plain HTTP header. Any client
-	 * can send an arbitrary value when no trusted proxy sits in front. This
-	 * means an attacker can trivially rotate the apparent IP and bypass any
-	 * rate-limit filter that relies solely on this method.
+	 * Trusted proxies are declared via the `neural_forms_trusted_proxies`
+	 * filter as a list of IPs and/or CIDR ranges (IPv4 or IPv6):
 	 *
-	 * For MVP this is an acceptable trade-off - most shared hosting and basic
-	 * server setups do not sit behind a load balancer, so REMOTE_ADDR is used
-	 * directly. When a reverse proxy (Nginx, Cloudflare, AWS ALB) is added:
+	 *     add_filter( 'neural_forms_trusted_proxies', fn() => [ '10.0.0.0/8', '2400:cb00::/32' ] );
 	 *
-	 *  1. Restrict which IPs are allowed to set X-Forwarded-For at the proxy
-	 *     layer (i.e. strip the header from untrusted sources before it hits PHP).
-	 *  2. Or replace this method with a whitelist of trusted proxy CIDR ranges
-	 *     and only trust X-Forwarded-For when REMOTE_ADDR is in that list.
+	 * The list is empty by default, so an untouched install never reads a
+	 * forwarding header. When REMOTE_ADDR is trusted:
+	 *
+	 *  1. CF-Connecting-IP wins if present and valid - Cloudflare sets it to
+	 *     exactly one address, the real client.
+	 *  2. Otherwise X-Forwarded-For is walked from the RIGHT (the hop
+	 *     appended by the nearest proxy) towards the left, skipping every
+	 *     trusted address; the first untrusted hop is the client. Walking
+	 *     from the left would let a client prepend any value it liked.
+	 *  3. A malformed hop aborts the walk and REMOTE_ADDR is used. That
+	 *     collapses traffic behind the proxy into one bucket, which is
+	 *     stricter, never looser.
 	 *
 	 * Use the resolved IP for analytics and rate-limit heuristics only.
 	 * Never use it for authentication, capability checks, or billing decisions.
 	 *
-	 * @return string  IPv4 or IPv6 address, or empty string if unavailable.
+	 * @return string  IPv4 or IPv6 address, or empty string if REMOTE_ADDR is unavailable.
 	 */
 	private function resolve_ip(): string {
-		$candidate = '';
+		$remote = isset( $_SERVER['REMOTE_ADDR'] )
+			? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )
+			: '';
+		$remote = filter_var( $remote, FILTER_VALIDATE_IP ) ? $remote : '';
+
+		/**
+		 * Filter the list of trusted reverse-proxy addresses.
+		 *
+		 * @param string[] $proxies  IPs or CIDR ranges allowed to set forwarding headers.
+		 */
+		$trusted = apply_filters( 'neural_forms_trusted_proxies', array() );
+		$trusted = is_array( $trusted ) ? array_filter( array_map( 'strval', $trusted ) ) : array();
+
+		if ( $remote === '' || empty( $trusted ) || ! self::ip_in_list( $remote, $trusted ) ) {
+			return $remote;
+		}
+
+		if ( ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+			$cf = trim( sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) );
+			if ( filter_var( $cf, FILTER_VALIDATE_IP ) ) {
+				return $cf;
+			}
+		}
 
 		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
-			$forwarded = explode(
-				',',
-				sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) )
+			$hops = array_map(
+				'trim',
+				explode( ',', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) )
 			);
-			$candidate = trim( (string) $forwarded[0] );
+
+			for ( $i = count( $hops ) - 1; $i >= 0; $i-- ) {
+				$hop = (string) $hops[ $i ];
+				if ( ! filter_var( $hop, FILTER_VALIDATE_IP ) ) {
+					break;
+				}
+				if ( ! self::ip_in_list( $hop, $trusted ) ) {
+					return $hop;
+				}
+			}
 		}
 
-		if ( $candidate === '' ) {
-			$candidate = isset( $_SERVER['REMOTE_ADDR'] )
-				? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )
-				: '';
-		}
-
-		// Reject anything that isn't a real IPv4/IPv6 - prevents header-injected
-		// garbage from landing in the entries table, captcha upstream calls, or
-		// the rate-limit transient key.
-		return filter_var( $candidate, FILTER_VALIDATE_IP ) ? $candidate : '';
+		return $remote;
 	}
 
 	/**
-	 * Built-in rate limiter: max 10 submissions per IP per 10-minute window.
+	 * Check whether an IP matches any entry in a list of IPs / CIDR ranges.
 	 *
-	 * Uses WordPress transients for storage - works without external
-	 * dependencies and self-cleans via TTL.
+	 * Supports IPv4 and IPv6. Entries without a prefix length are exact
+	 * matches. Invalid entries are ignored.
 	 *
-	 * @param string $ip  Resolved client IP address.
-	 * @return bool  True if the IP should be blocked.
+	 * @param string   $ip    Valid IPv4 or IPv6 address.
+	 * @param string[] $list  IPs or CIDR ranges.
+	 * @return bool
 	 */
-	private static function default_rate_limit( string $ip ): bool {
-		if ( $ip === '' ) {
+	private static function ip_in_list( string $ip, array $list ): bool {
+		$ip_bin = @inet_pton( $ip );
+		if ( $ip_bin === false ) {
 			return false;
 		}
 
-		$key   = self::RATE_LIMIT_TRANSIENT_PREFIX . md5( $ip );
+		foreach ( $list as $entry ) {
+			$entry = trim( (string) $entry );
+			if ( $entry === '' ) {
+				continue;
+			}
+
+			$prefix = null;
+			if ( strpos( $entry, '/' ) !== false ) {
+				list( $entry, $prefix ) = explode( '/', $entry, 2 );
+				$prefix = is_numeric( $prefix ) ? (int) $prefix : -1;
+			}
+
+			$entry_bin = @inet_pton( $entry );
+			if ( $entry_bin === false || strlen( $entry_bin ) !== strlen( $ip_bin ) ) {
+				continue; // Invalid, or IPv4 vs IPv6 mismatch.
+			}
+
+			$bits = strlen( $ip_bin ) * 8;
+			if ( $prefix === null ) {
+				$prefix = $bits;
+			}
+			if ( $prefix < 0 || $prefix > $bits ) {
+				continue;
+			}
+
+			$full_bytes = intdiv( $prefix, 8 );
+			$rem_bits   = $prefix % 8;
+
+			if ( $full_bytes > 0 && substr( $ip_bin, 0, $full_bytes ) !== substr( $entry_bin, 0, $full_bytes ) ) {
+				continue;
+			}
+			if ( $rem_bits > 0 ) {
+				$mask = ( 0xFF << ( 8 - $rem_bits ) ) & 0xFF;
+				if ( ( ord( $ip_bin[ $full_bytes ] ) & $mask ) !== ( ord( $entry_bin[ $full_bytes ] ) & $mask ) ) {
+					continue;
+				}
+			}
+
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Built-in rate limiter: max 10 submissions per form per IP per 10-minute window.
+	 *
+	 * Uses WordPress transients for storage - works without external
+	 * dependencies and self-cleans via TTL. The TTL is refreshed on every
+	 * counted attempt, so the window slides until the cap is hit; once
+	 * blocked, the block lasts 10 minutes from the last counted attempt.
+	 *
+	 * An empty IP (REMOTE_ADDR missing or malformed - only seen on broken
+	 * server configs) is never a free pass: such requests share one
+	 * "unknown" bucket so the gate still holds.
+	 *
+	 * @param string $ip       Resolved client IP address ('' if unavailable).
+	 * @param int    $form_id  Form being submitted; keys the bucket per form.
+	 * @return bool  True if the request should be blocked.
+	 */
+	private static function default_rate_limit( string $ip, int $form_id ): bool {
+		$bucket = $ip === '' ? 'unknown' : $ip;
+
+		$key   = self::RATE_LIMIT_TRANSIENT_PREFIX . md5( $form_id . '|' . $bucket );
 		$count = (int) get_transient( $key );
 
 		if ( $count >= 10 ) {

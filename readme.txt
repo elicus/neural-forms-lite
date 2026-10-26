@@ -4,7 +4,7 @@ Tags: contact form, forms, ai forms, lead inbox, form builder
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.2
+Stable tag: 1.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -244,7 +244,11 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.1.2 - 2026-06-29 =
+= 1.1.3 - 2026-10-26 =
+* Security: The submission rate limit could be bypassed by sending a forged X-Forwarded-For header. The client IP now comes from the server connection unless the request arrives via a proxy listed in the new `neural_forms_trusted_proxies` filter.
+* Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
+
+= 1.1.2 - 2026-07-01 =
 * Fix: Multi-step forms no longer trigger an auto-scroll on page load.
 * Improved: Refreshed the form builder's Active status pill to a blue background with mint text for better contrast.
 
@@ -320,6 +324,9 @@ Initial public release.
 * Full uninstall.php cleanup: drops all tables, deletes options, clears cron events, removes log files.
 
 == Upgrade Notice ==
+
+= 1.1.3 =
+Security fix for the submission rate limit. Sites behind a reverse proxy or Cloudflare should add their proxy ranges via the `neural_forms_trusted_proxies` filter so the inbox shows real visitor IPs.
 
 = 1.0.0 =
 Initial release.
