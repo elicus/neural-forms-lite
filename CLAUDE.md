@@ -32,7 +32,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Plugin header name:** `Neural Forms Lite`
 - **Main class:** `NeuralForms\NeuralForms` (namespace **not** renamed)
 - **Version constants:**
-  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.1.3`.
+  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.1.4` on dev (1.1.3 is on `release/1.1.3`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
   - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.1.3`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
