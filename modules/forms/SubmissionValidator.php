@@ -120,6 +120,16 @@ class SubmissionValidator {
 				? $submitted_data[ $field_id ]
 				: null;
 
+			// ' Shape / size guard '
+			// Rejects an array/object sent for a scalar field (an array to
+			// is_email() is a TypeError → 500 on PHP 8), oversized strings
+			// (storage bloat, AI-credit burn) and oversized arrays.
+			$shape_error = self::check_shape( $field, $value );
+			if ( null !== $shape_error ) {
+				$errors[ $field_id ] = array( $shape_error );
+				continue;
+			}
+
 			// For text-like types, trim whitespace before all validation checks.
 			// "   " is not a useful value for any of these types and would
 			// otherwise pass the required check or the is_absent() guard.
@@ -204,6 +214,10 @@ class SubmissionValidator {
 	 */
 	public static function validate_single_field( array $field, $value ): ?array {
 		$type        = $field['type'] ?? 'text';
+		$shape_error = self::check_shape( $field, $value );
+		if ( null !== $shape_error ) {
+			return $shape_error;
+		}
 		$check_value = self::maybe_trim( $value, $type );
 
 		$required_error = self::check_required( $field, $check_value );
@@ -787,6 +801,73 @@ class SubmissionValidator {
 	 * @param string $type
 	 * @return mixed
 	 */
+	/** Field types whose submitted value is legitimately an array. */
+	private const ARRAY_VALUE_TYPES = array( 'checkboxes', 'file', 'matrix', 'repeater' );
+
+	/** Max items accepted in an array-valued field (checkboxes / repeater iterations / matrix rows). */
+	public const MAX_ARRAY_ITEMS = 200;
+
+	/**
+	 * Maximum string length per field type (characters). Filterable via
+	 * `neural_forms_max_field_length` ( $max, $type, $field ). 0 = no cap.
+	 */
+	public static function max_length_for( string $type, array $field = array() ): int {
+		switch ( $type ) {
+			case 'textarea':
+				$max = 20000;
+				break;
+			case 'email':
+				$max = 254;
+				break;
+			case 'url':
+				$max = 2048;
+				break;
+			default:
+				$max = 1000;
+		}
+		return max( 0, (int) apply_filters( 'neural_forms_max_field_length', $max, $type, $field ) );
+	}
+
+	/**
+	 * Reject values of the wrong shape or an abusive size BEFORE any
+	 * type-specific check touches them.
+	 *
+	 * @return array|null  Error {code, message} or null when acceptable.
+	 */
+	public static function check_shape( array $field, $value ): ?array {
+		$type  = (string) ( $field['type'] ?? 'text' );
+		$label = self::field_label( $field );
+
+		if ( is_object( $value ) || ( is_array( $value ) && ! in_array( $type, self::ARRAY_VALUE_TYPES, true ) ) ) {
+			return array(
+				'code'    => 'invalid_value',
+				/* translators: %s: field label */
+				'message' => sprintf( __( '%s has an invalid value.', 'neural-forms-lite' ), $label ),
+			);
+		}
+
+		if ( is_array( $value ) && count( $value ) > self::MAX_ARRAY_ITEMS ) {
+			return array(
+				'code'    => 'too_many',
+				/* translators: 1: field label 2: maximum number of items */
+				'message' => sprintf( __( '%1$s accepts at most %2$d items.', 'neural-forms-lite' ), $label, self::MAX_ARRAY_ITEMS ),
+			);
+		}
+
+		if ( is_string( $value ) ) {
+			$max = self::max_length_for( $type, $field );
+			if ( $max > 0 && strlen( $value ) > $max ) {
+				return array(
+					'code'    => 'too_long',
+					/* translators: 1: field label 2: maximum number of characters */
+					'message' => sprintf( __( '%1$s must be %2$d characters or fewer.', 'neural-forms-lite' ), $label, $max ),
+				);
+			}
+		}
+
+		return null;
+	}
+
 	private static function maybe_trim( $value, string $type ) {
 		if ( is_string( $value ) && in_array( $type, self::TRIMMABLE_TYPES, true ) ) {
 			$value = trim( $value );

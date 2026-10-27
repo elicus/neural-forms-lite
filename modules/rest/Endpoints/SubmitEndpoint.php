@@ -1003,7 +1003,8 @@ class SubmitEndpoint {
 				if ( ! is_array( $value ) ) {
 					return array();
 				}
-				return array_map( 'sanitize_text_field', array_values( $value ) );
+				// array_unique: a huge duplicate array must not bloat storage / AI payloads.
+				return array_values( array_unique( array_map( 'sanitize_text_field', array_values( array_filter( $value, 'is_scalar' ) ) ) ) );
 
 			case 'checkbox':
 			case 'acceptance':
@@ -1604,7 +1605,13 @@ class SubmitEndpoint {
 				'post_mime_type' => $upload['type'],
 				'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
 				'post_content'   => '',
-				'post_status'    => 'inherit',
+				// 'private', not 'inherit': an unattached 'inherit' attachment is
+				// treated as published by core's REST media controller, so
+				// anonymous GET /wp-json/wp/v2/media listed every visitor
+				// upload (CVs, IDs…) with its source_url. Private attachments
+				// fail the anonymous read check; the file itself still serves
+				// from its randomised URL for the inbox download link.
+				'post_status'    => 'private',
 			),
 			$upload['file']
 		);
@@ -1826,7 +1833,13 @@ class SubmitEndpoint {
 					'post_mime_type' => $upload['type'],
 					'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
 					'post_content'   => '',
-					'post_status'    => 'inherit',
+					// 'private', not 'inherit': an unattached 'inherit' attachment is
+				// treated as published by core's REST media controller, so
+				// anonymous GET /wp-json/wp/v2/media listed every visitor
+				// upload (CVs, IDs…) with its source_url. Private attachments
+				// fail the anonymous read check; the file itself still serves
+				// from its randomised URL for the inbox download link.
+				'post_status'    => 'private',
 				),
 				$upload['file']
 			);

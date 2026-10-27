@@ -432,7 +432,7 @@ class AdminPanel {
 			wp_enqueue_script(
 				'neural-forms-builder',
 				$build_url . 'builder.js',
-				$asset['dependencies'],
+				is_array( $asset['dependencies'] ?? null ) ? $asset['dependencies'] : array(),
 				$version,
 				true
 			);

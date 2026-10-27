@@ -54,7 +54,8 @@ namespace {
 		public function __construct( array $p ) { $this->p = $p; }
 		public function get_param( $k ) { return $this->p[ $k ] ?? null; }
 		public function offsetExists( $k ): bool { return isset( $this->p[ $k ] ); }
-		public function offsetGet( $k ) { return $this->p[ $k ] ?? null; } // no return type: PHP 7.4 has no attributes
+		#[\ReturnTypeWillChange]
+		public function offsetGet( $k ) { return $this->p[ $k ] ?? null; } // attribute on its own line: a comment on 7.4, honoured on 8.1+
 		public function offsetSet( $k, $v ): void { $this->p[ $k ] = $v; }
 		public function offsetUnset( $k ): void { unset( $this->p[ $k ] ); }
 	}

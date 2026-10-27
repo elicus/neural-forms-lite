@@ -523,7 +523,7 @@ class NotificationService {
 				// Multi-option checkboxes submit an array of selected values;
 				// single-option checkboxes submit a 0/1 scalar.
 				if ( is_array( $raw ) ) {
-					$value = implode( ', ', array_map( 'strval', $raw ) );
+					$value = implode( ', ', array_map( 'strval', array_filter( $raw, 'is_scalar' ) ) );
 				} else {
 					$value = $raw ? __( 'Yes', 'neural-forms-lite' ) : __( 'No', 'neural-forms-lite' );
 				}
@@ -746,7 +746,10 @@ class NotificationService {
 			}
 		}
 
-		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );
+		// strtr(): single pass over the template. str_replace() applied
+		// replacements sequentially, so a submitted value containing
+		// "{other_field}" was itself expanded.
+		return strtr( $template, $replacements );
 	}
 
 	/**

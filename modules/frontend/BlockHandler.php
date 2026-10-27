@@ -269,7 +269,12 @@ class BlockHandler {
 		// editor preview entirely: the hybrid CSS routing below would
 		// have taken the wp_add_inline_style path, which never
 		// reaches the REST response body.)
-		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST;
+		// Editor preview (block-renderer / editor REST calls) is only for
+		// users who can edit posts. Without the capability check, any
+		// anonymous `GET /wp-json/wp/v2/posts/{id}` (content.rendered runs
+		// do_blocks) took this branch and render_preview() skipped the
+		// `status === active` gate — exposing draft / archived forms.
+		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
 
 		if ( $form_id < 1 ) {
 			if ( $is_editor ) {
@@ -488,7 +493,7 @@ class BlockHandler {
 	 * Returns one or more complete CSS rule strings (selector included),
 	 * or '' when nothing is set.
 	 */
-	private static function border_css( string $selector, mixed $border, string $fallback = '' ): string {
+	private static function border_css( string $selector, $border, string $fallback = '' ): string { // no `mixed` hint: PHP 7.4 (Requires PHP) parses it as a class name → TypeError on first render
 		if ( ! is_array( $border ) || empty( $border ) ) return '';
 		$sides = [ 'top', 'right', 'bottom', 'left' ];
 		$is_split = isset( $border['top'] ) || isset( $border['right'] )
@@ -532,6 +537,43 @@ class BlockHandler {
 			return $color;
 		}
 		return '';
+	}
+
+	/**
+	 * Sanitise a block attribute for use as a CSS VALUE inside the inline
+	 * <style> that render() emits for every visitor.
+	 *
+	 * sanitize_text_field() strips tags and line breaks but leaves `{ } ;`
+	 * (and `\`, `@`, `url(`, `expression(`) — enough for anyone who can save
+	 * a post with the block (Author+) to close the scoped rule and inject
+	 * site-wide CSS (overlay/clickjack, hide content, tracking images).
+	 * Values containing any of those are dropped entirely. Legit values
+	 * (lengths, colours, gradients, font stacks, cubic-bezier, var(--…))
+	 * never contain them.
+	 */
+	private static function css_text( $v ): string {
+		$v = sanitize_text_field( (string) $v );
+		if ( $v === '' ) {
+			return '';
+		}
+		if ( preg_match( '/[{};<>\\\\]|expression\s*\(|url\s*\(|@|\/\*/i', $v ) ) {
+			return '';
+		}
+		return $v;
+	}
+
+	/**
+	 * Sanitise a block attribute used inside `url(…)` in the inline CSS.
+	 * esc_url() already drops `{ } <`; this also refuses `; ( ) quotes and
+	 * whitespace so the value can't terminate the url() token or the
+	 * declaration.
+	 */
+	private static function css_url( $v ): string {
+		$u = esc_url( (string) $v );
+		if ( $u === '' || preg_match( '/[\s;()"\'{}<>\\\\]/', $u ) ) {
+			return '';
+		}
+		return $u;
 	}
 
 	private static function has_style_attrs( array $attributes ): bool {
@@ -780,27 +822,27 @@ class BlockHandler {
 
 		$form_width = (string) ( $attributes['formWidth'] ?? '' );
 		if ( $form_width !== '' ) {
-			$parts[] = 'width:' . sanitize_text_field( $form_width );
+			$parts[] = 'width:' . self::css_text( $form_width );
 		}
 
 		$max_width = (string) ( $attributes['maxWidth'] ?? '' );
 		if ( $max_width !== '' ) {
-			$parts[] = 'max-width:' . sanitize_text_field( $max_width );
+			$parts[] = 'max-width:' . self::css_text( $max_width );
 		}
 
 		$min_height = (string) ( $attributes['minHeight'] ?? '' );
 		if ( $min_height !== '' ) {
-			$parts[] = 'min-height:' . sanitize_text_field( $min_height );
+			$parts[] = 'min-height:' . self::css_text( $min_height );
 		}
 
 		$height = (string) ( $attributes['height'] ?? '' );
 		if ( $height !== '' ) {
-			$parts[] = 'height:' . sanitize_text_field( $height );
+			$parts[] = 'height:' . self::css_text( $height );
 		}
 
 		$max_height = (string) ( $attributes['maxHeight'] ?? '' );
 		if ( $max_height !== '' ) {
-			$parts[] = 'max-height:' . sanitize_text_field( $max_height );
+			$parts[] = 'max-height:' . self::css_text( $max_height );
 		}
 
 		// Stretch overrides width inline (safe; not affected by WP layout constraints).
@@ -813,7 +855,7 @@ class BlockHandler {
 
 		// Explicit user margins. Handles SpacingSizesControl preset vars and bare numbers.
 		$normalize = static function ( string $v ): string {
-			$v = sanitize_text_field( $v );
+			$v = self::css_text( $v );
 			if ( $v === '' ) return '';
 			if ( strpos( $v, 'var:preset|spacing|' ) === 0 ) {
 				$slug = str_replace( 'var:preset|spacing|', '', $v );
@@ -884,7 +926,7 @@ class BlockHandler {
 		// Normalize a length value: if a bare number is supplied (e.g. FontSizePicker
 		// returning 20 instead of '20px'), append 'px'. Sanitize otherwise.
 		$len = static function ( $v ): string {
-			$v = sanitize_text_field( (string) $v );
+			$v = self::css_text( (string) $v );
 			if ( $v === '' ) {
 				return '';
 			}
@@ -897,7 +939,7 @@ class BlockHandler {
 		// Like $len but also resolves WP spacing presets (SpacingSizesControl stores
 		// values as 'var:preset|spacing|50' which must become 'var(--wp--preset--spacing--50)').
 		$spacing = static function ( $v ) use ( $len ): string {
-			$v = sanitize_text_field( (string) $v );
+			$v = self::css_text( (string) $v );
 			if ( $v === '' ) return '';
 			if ( strpos( $v, 'var:preset|spacing|' ) === 0 ) {
 				$slug = str_replace( 'var:preset|spacing|', '', $v );
@@ -951,7 +993,7 @@ class BlockHandler {
 			$bg_pos    = (string) ( $attributes['bgImagePosition'] ?? '' );
 			$bg_repeat = (string) ( $attributes['bgImageRepeat']   ?? '' );
 			$bg_blend  = (string) ( $attributes['bgImageBlend']    ?? '' );
-			$form_wrap_pad_rules[] = 'background-image:url(' . esc_url( $bg_image ) . ')';
+			$form_wrap_pad_rules[] = ( self::css_url( $bg_image ) !== '' ? 'background-image:url(' . self::css_url( $bg_image ) . ')' : '' );
 			if ( in_array( $bg_size, [ 'cover', 'contain', 'initial' ], true ) ) {
 				$form_wrap_pad_rules[] = 'background-size:' . $bg_size;
 			} elseif ( $bg_size === 'stretch' ) {
@@ -974,7 +1016,7 @@ class BlockHandler {
 			}
 		} elseif ( $bg_gradient !== '' ) {
 			// Gradient is second priority — show gradient only.
-			$form_wrap_pad_rules[] = 'background-image:' . sanitize_text_field( $bg_gradient );
+			$form_wrap_pad_rules[] = 'background-image:' . self::css_text( $bg_gradient );
 		} elseif ( $bg_color !== '' ) {
 			// Color only — clear any default background-image that may exist.
 			$form_wrap_pad_rules[] = 'background-image:none';
@@ -1033,10 +1075,10 @@ class BlockHandler {
 		$has_custom_shadow = ( $shadow_h !== '' || $shadow_v !== '' || $shadow_blur !== '' || $shadow_spread !== '' || $shadow_color !== '' );
 
 		if ( $has_custom_shadow ) {
-			$h = $shadow_h !== '' ? sanitize_text_field( $shadow_h ) : '0';
-			$v = $shadow_v !== '' ? sanitize_text_field( $shadow_v ) : '0';
-			$b = $shadow_blur !== '' ? sanitize_text_field( $shadow_blur ) : '0';
-			$s = $shadow_spread !== '' ? sanitize_text_field( $shadow_spread ) : '0';
+			$h = $shadow_h !== '' ? self::css_text( $shadow_h ) : '0';
+			$v = $shadow_v !== '' ? self::css_text( $shadow_v ) : '0';
+			$b = $shadow_blur !== '' ? self::css_text( $shadow_blur ) : '0';
+			$s = $shadow_spread !== '' ? self::css_text( $shadow_spread ) : '0';
 			$c = $shadow_color !== '' ? self::sanitize_color( $shadow_color ) : 'rgba(0,0,0,0.3)';
 			$inset = $shadow_pos === 'inner' ? 'inset ' : '';
 			$wrap_rules[] = 'box-shadow:' . $inset . $h . ' ' . $v . ' ' . $b . ' ' . $s . ' ' . $c;
@@ -1093,7 +1135,7 @@ class BlockHandler {
 		$field_bg          = (string) ( $attributes['fieldBg']         ?? '' );
 		$field_bg_gradient = (string) ( $attributes['fieldBgGradient'] ?? '' );
 		if ( $field_bg_gradient !== '' ) {
-			$var_rules[] = '--neural-forms-field-bg-image:' . sanitize_text_field( $field_bg_gradient );
+			$var_rules[] = '--neural-forms-field-bg-image:' . self::css_text( $field_bg_gradient );
 		} elseif ( $field_bg !== '' ) {
 			$var_rules[] = '--neural-forms-field-bg:' . self::sanitize_color( $field_bg );
 		}
@@ -1110,7 +1152,7 @@ class BlockHandler {
 		// For linked borders, also push into CSS variables so form.css var()-based rules pick them up.
 		if ( ! empty( $field_border_obj ) && ! isset( $field_border_obj['top'] ) ) {
 			$fb_color = self::sanitize_color( (string) ( $field_border_obj['color'] ?? '' ) );
-			$fb_width = sanitize_text_field( (string) ( $field_border_obj['width'] ?? '' ) );
+			$fb_width = self::css_text( (string) ( $field_border_obj['width'] ?? '' ) );
 			$fb_style_raw = (string) ( $field_border_obj['style'] ?? 'solid' );
 			$fb_style = in_array( $fb_style_raw, [ 'solid', 'dashed', 'dotted' ], true ) ? $fb_style_raw : 'solid';
 			if ( $fb_color !== '' ) $var_rules[] = '--neural-forms-border:' . $fb_color;
@@ -1120,7 +1162,7 @@ class BlockHandler {
 
 		$field_border_radius = (string) ( $attributes['fieldBorderRadius'] ?? '' );
 		if ( $field_border_radius !== '' ) {
-			$var_rules[] = '--neural-forms-radius:' . sanitize_text_field( $field_border_radius );
+			$var_rules[] = '--neural-forms-radius:' . self::css_text( $field_border_radius );
 		}
 
 		$field_text_color = (string) ( $attributes['fieldTextColor'] ?? '' );
@@ -1156,11 +1198,11 @@ class BlockHandler {
 		}
 		$field_font_family = (string) ( $attributes['fieldFontFamily'] ?? '' );
 		if ( $field_font_family !== '' ) {
-			$field_typo_rules[] = 'font-family:' . sanitize_text_field( $field_font_family );
+			$field_typo_rules[] = 'font-family:' . self::css_text( $field_font_family );
 		}
 		$field_font_weight = (string) ( $attributes['fieldFontWeight'] ?? '' );
 		if ( $field_font_weight !== '' ) {
-			$field_typo_rules[] = 'font-weight:' . sanitize_text_field( $field_font_weight );
+			$field_typo_rules[] = 'font-weight:' . self::css_text( $field_font_weight );
 		}
 		$field_font_style = (string) ( $attributes['fieldFontStyle'] ?? '' );
 		if ( $field_font_style === 'italic' ) {
@@ -1172,7 +1214,7 @@ class BlockHandler {
 			if ( is_numeric( $ls ) ) {
 				$ls .= 'px';
 			}
-			$field_typo_rules[] = 'letter-spacing:' . sanitize_text_field( $ls );
+			$field_typo_rules[] = 'letter-spacing:' . self::css_text( $ls );
 		}
 		$field_text_decoration = (string) ( $attributes['fieldTextDecoration'] ?? '' );
 		if ( $field_text_decoration !== '' && in_array( $field_text_decoration, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1184,7 +1226,7 @@ class BlockHandler {
 		}
 		$field_line_height = (string) ( $attributes['fieldLineHeight'] ?? '' );
 		if ( $field_line_height !== '' ) {
-			$field_typo_rules[] = 'line-height:' . sanitize_text_field( $field_line_height );
+			$field_typo_rules[] = 'line-height:' . self::css_text( $field_line_height );
 		}
 		$field_text_align = (string) ( $attributes['fieldTextAlign'] ?? '' );
 		if ( $field_text_align !== '' && in_array( $field_text_align, [ 'left', 'center', 'right', 'justify' ], true ) ) {
@@ -1193,7 +1235,7 @@ class BlockHandler {
 
 		$field_gap = (string) ( $attributes['fieldGap'] ?? '' );
 		if ( $field_gap !== '' ) {
-			$var_rules[] = '--neural-forms-field-gap:' . sanitize_text_field( $field_gap );
+			$var_rules[] = '--neural-forms-field-gap:' . self::css_text( $field_gap );
 		}
 
 		// ' Submit button: normal + hover state rules '
@@ -1237,7 +1279,7 @@ class BlockHandler {
 
 		$btn_font_family = (string) ( $attributes['btnFontFamily'] ?? '' );
 		if ( $btn_font_family !== '' ) {
-			$btn_rules[] = 'font-family:' . sanitize_text_field( $btn_font_family );
+			$btn_rules[] = 'font-family:' . self::css_text( $btn_font_family );
 		}
 
 		$btn_font_size_raw = (string) ( $attributes['btnFontSize'] ?? '' );
@@ -1255,8 +1297,8 @@ class BlockHandler {
 		$btn_trans_dur = (string) ( $attributes['btnTransitionDuration'] ?? '' );
 		$btn_trans_ease = (string) ( $attributes['btnTransitionEasing'] ?? '' );
 		if ( $btn_trans_dur !== '' || $btn_trans_ease !== '' ) {
-			$dur  = $btn_trans_dur !== '' ? sanitize_text_field( $btn_trans_dur ) : '0.15s';
-			$ease = $btn_trans_ease !== '' ? sanitize_text_field( $btn_trans_ease ) : 'ease';
+			$dur  = $btn_trans_dur !== '' ? self::css_text( $btn_trans_dur ) : '0.15s';
+			$ease = $btn_trans_ease !== '' ? self::css_text( $btn_trans_ease ) : 'ease';
 			$btn_rules[] = 'transition:background-color ' . $dur . ' ' . $ease . ',color ' . $dur . ' ' . $ease . ',border-color ' . $dur . ' ' . $ease . ',filter ' . $dur . ' ' . $ease;
 		}
 
@@ -1268,7 +1310,7 @@ class BlockHandler {
 
 		$btn_font_weight = (string) ( $attributes['btnFontWeight'] ?? '' );
 		if ( $btn_font_weight !== '' ) {
-			$btn_rules[] = 'font-weight:' . sanitize_text_field( $btn_font_weight );
+			$btn_rules[] = 'font-weight:' . self::css_text( $btn_font_weight );
 		}
 		$btn_font_style = (string) ( $attributes['btnFontStyle'] ?? '' );
 		if ( $btn_font_style === 'italic' ) {
@@ -1280,7 +1322,7 @@ class BlockHandler {
 			if ( is_numeric( $ls ) ) {
 				$ls .= 'px';
 			}
-			$btn_rules[] = 'letter-spacing:' . sanitize_text_field( $ls );
+			$btn_rules[] = 'letter-spacing:' . self::css_text( $ls );
 		}
 		$btn_text_decoration = (string) ( $attributes['btnTextDecoration'] ?? '' );
 		if ( $btn_text_decoration !== '' && in_array( $btn_text_decoration, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1292,7 +1334,7 @@ class BlockHandler {
 		}
 		$btn_line_height = (string) ( $attributes['btnLineHeight'] ?? '' );
 		if ( $btn_line_height !== '' ) {
-			$btn_rules[] = 'line-height:' . sanitize_text_field( $btn_line_height );
+			$btn_rules[] = 'line-height:' . self::css_text( $btn_line_height );
 		}
 
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
@@ -1369,7 +1411,7 @@ class BlockHandler {
 		// phpcs:enable Squiz.PHP.CommentedOutCode.Found
 		$field_idle_rules = [];
 		if ( $field_bg_gradient !== '' ) {
-			$field_idle_rules[] = 'background-image:' . sanitize_text_field( $field_bg_gradient );
+			$field_idle_rules[] = 'background-image:' . self::css_text( $field_bg_gradient );
 		} elseif ( $field_bg !== '' ) {
 			$field_idle_rules[] = 'background-color:' . self::sanitize_color( $field_bg );
 		}
@@ -1427,7 +1469,7 @@ class BlockHandler {
 		// `:focus` overrides don't win.
 		$field_focus_rules = [];
 		if ( $field_focus_bg_gradient !== '' ) {
-			$field_focus_rules[] = 'background-image:' . sanitize_text_field( $field_focus_bg_gradient );
+			$field_focus_rules[] = 'background-image:' . self::css_text( $field_focus_bg_gradient );
 		} elseif ( $field_focus_bg !== '' ) {
 			$field_focus_rules[] = 'background-color:' . self::sanitize_color( $field_focus_bg );
 		}
@@ -1478,7 +1520,7 @@ class BlockHandler {
 		}
 		$title_ff = (string) ( $attributes['titleFontFamily'] ?? '' );
 		if ( $title_ff !== '' ) {
-			$title_rules[] = 'font-family:' . sanitize_text_field( $title_ff );
+			$title_rules[] = 'font-family:' . self::css_text( $title_ff );
 		}
 		$title_fs_raw = (string) ( $attributes['titleFontSize'] ?? '' );
 		$title_slug_to_px = [ 'small' => '13px', 'medium' => '18px', 'large' => '24px', 'x-large' => '32px' ];
@@ -1491,7 +1533,7 @@ class BlockHandler {
 		}
 		$title_fw = (string) ( $attributes['titleFontWeight'] ?? '' );
 		if ( $title_fw !== '' ) {
-			$title_rules[] = 'font-weight:' . sanitize_text_field( $title_fw );
+			$title_rules[] = 'font-weight:' . self::css_text( $title_fw );
 		}
 		$title_fstyle = (string) ( $attributes['titleFontStyle'] ?? '' );
 		if ( $title_fstyle === 'italic' ) {
@@ -1499,7 +1541,7 @@ class BlockHandler {
 		}
 		$title_ls = (string) ( $attributes['titleLetterSpacing'] ?? '' );
 		if ( $title_ls !== '' ) {
-			$title_rules[] = 'letter-spacing:' . sanitize_text_field( $title_ls );
+			$title_rules[] = 'letter-spacing:' . self::css_text( $title_ls );
 		}
 		$title_td = (string) ( $attributes['titleTextDecoration'] ?? '' );
 		if ( $title_td !== '' && in_array( $title_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1511,7 +1553,7 @@ class BlockHandler {
 		}
 		$title_lh = (string) ( $attributes['titleLineHeight'] ?? '' );
 		if ( $title_lh !== '' ) {
-			$title_rules[] = 'line-height:' . sanitize_text_field( $title_lh );
+			$title_rules[] = 'line-height:' . self::css_text( $title_lh );
 		}
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'titlePadding' . $key ] ?? '' );
@@ -1542,7 +1584,7 @@ class BlockHandler {
 			$wbg_pos    = (string) ( $attributes['welcomeBgImagePosition'] ?? '' );
 			$wbg_repeat = (string) ( $attributes['welcomeBgImageRepeat']   ?? '' );
 			$wbg_blend  = (string) ( $attributes['welcomeBgImageBlend']    ?? '' );
-			$welcome_rules[] = 'background-image:url(' . esc_url( $welcome_bg_image ) . ')';
+			$welcome_rules[] = ( self::css_url( $welcome_bg_image ) !== '' ? 'background-image:url(' . self::css_url( $welcome_bg_image ) . ')' : '' );
 			if ( in_array( $wbg_size, [ 'cover', 'contain', 'initial' ], true ) ) {
 				$welcome_rules[] = 'background-size:' . $wbg_size;
 			} elseif ( $wbg_size === 'stretch' ) {
@@ -1564,7 +1606,7 @@ class BlockHandler {
 				$welcome_rules[] = 'background-blend-mode:' . $wbg_blend;
 			}
 		} elseif ( $welcome_bg_gradient !== '' ) {
-			$welcome_rules[] = 'background-image:' . sanitize_text_field( $welcome_bg_gradient );
+			$welcome_rules[] = 'background-image:' . self::css_text( $welcome_bg_gradient );
 		} elseif ( $welcome_bg !== '' ) {
 			$hex = self::sanitize_color( $welcome_bg );
 			if ( $hex !== null && $hex !== '' ) {
@@ -1629,10 +1671,10 @@ class BlockHandler {
 		$wshadow_color  = (string) ( $attributes['welcomeShadowColor']    ?? '' );
 		$wshadow_pos    = (string) ( $attributes['welcomeShadowPosition'] ?? '' );
 		if ( $wshadow_h !== '' || $wshadow_v !== '' || $wshadow_blur !== '' || $wshadow_spread !== '' || $wshadow_color !== '' ) {
-			$h = $wshadow_h !== '' ? sanitize_text_field( $wshadow_h ) : '0';
-			$v = $wshadow_v !== '' ? sanitize_text_field( $wshadow_v ) : '0';
-			$b = $wshadow_blur !== '' ? sanitize_text_field( $wshadow_blur ) : '0';
-			$s = $wshadow_spread !== '' ? sanitize_text_field( $wshadow_spread ) : '0';
+			$h = $wshadow_h !== '' ? self::css_text( $wshadow_h ) : '0';
+			$v = $wshadow_v !== '' ? self::css_text( $wshadow_v ) : '0';
+			$b = $wshadow_blur !== '' ? self::css_text( $wshadow_blur ) : '0';
+			$s = $wshadow_spread !== '' ? self::css_text( $wshadow_spread ) : '0';
 			$c = $wshadow_color !== '' ? self::sanitize_color( $wshadow_color ) : 'rgba(0,0,0,0.3)';
 			$inset = $wshadow_pos === 'inner' ? 'inset ' : '';
 			$welcome_rules[] = 'box-shadow:' . $inset . $h . ' ' . $v . ' ' . $b . ' ' . $s . ' ' . $c;
@@ -1659,11 +1701,11 @@ class BlockHandler {
 		}
 		$welcome_title_fw = (string) ( $attributes['welcomeTitleFontWeight'] ?? '' );
 		if ( $welcome_title_fw !== '' ) {
-			$welcome_title_rules[] = 'font-weight:' . sanitize_text_field( $welcome_title_fw );
+			$welcome_title_rules[] = 'font-weight:' . self::css_text( $welcome_title_fw );
 		}
 		$welcome_title_ff = (string) ( $attributes['welcomeTitleFontFamily'] ?? '' );
 		if ( $welcome_title_ff !== '' ) {
-			$welcome_title_rules[] = 'font-family:' . sanitize_text_field( $welcome_title_ff );
+			$welcome_title_rules[] = 'font-family:' . self::css_text( $welcome_title_ff );
 		}
 		$welcome_title_fstyle = (string) ( $attributes['welcomeTitleFontStyle'] ?? '' );
 		if ( $welcome_title_fstyle === 'italic' ) {
@@ -1671,7 +1713,7 @@ class BlockHandler {
 		}
 		$welcome_title_ls = (string) ( $attributes['welcomeTitleLetterSpacing'] ?? '' );
 		if ( $welcome_title_ls !== '' ) {
-			$welcome_title_rules[] = 'letter-spacing:' . sanitize_text_field( $welcome_title_ls );
+			$welcome_title_rules[] = 'letter-spacing:' . self::css_text( $welcome_title_ls );
 		}
 		$welcome_title_td = (string) ( $attributes['welcomeTitleTextDecoration'] ?? '' );
 		if ( $welcome_title_td !== '' && in_array( $welcome_title_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1683,7 +1725,7 @@ class BlockHandler {
 		}
 		$welcome_title_lh = (string) ( $attributes['welcomeTitleLineHeight'] ?? '' );
 		if ( $welcome_title_lh !== '' ) {
-			$welcome_title_rules[] = 'line-height:' . sanitize_text_field( $welcome_title_lh );
+			$welcome_title_rules[] = 'line-height:' . self::css_text( $welcome_title_lh );
 		}
 		if ( $welcome_title_rules ) {
 			$css .= $wrap_sel . ' .neural-forms-form__welcome-title{' . implode( ';', $welcome_title_rules ) . '}';
@@ -1703,11 +1745,11 @@ class BlockHandler {
 		}
 		$welcome_desc_fw = (string) ( $attributes['welcomeDescFontWeight'] ?? '' );
 		if ( $welcome_desc_fw !== '' ) {
-			$welcome_desc_rules[] = 'font-weight:' . sanitize_text_field( $welcome_desc_fw );
+			$welcome_desc_rules[] = 'font-weight:' . self::css_text( $welcome_desc_fw );
 		}
 		$welcome_desc_ff = (string) ( $attributes['welcomeDescFontFamily'] ?? '' );
 		if ( $welcome_desc_ff !== '' ) {
-			$welcome_desc_rules[] = 'font-family:' . sanitize_text_field( $welcome_desc_ff );
+			$welcome_desc_rules[] = 'font-family:' . self::css_text( $welcome_desc_ff );
 		}
 		$welcome_desc_fstyle = (string) ( $attributes['welcomeDescFontStyle'] ?? '' );
 		if ( $welcome_desc_fstyle === 'italic' ) {
@@ -1715,7 +1757,7 @@ class BlockHandler {
 		}
 		$welcome_desc_ls = (string) ( $attributes['welcomeDescLetterSpacing'] ?? '' );
 		if ( $welcome_desc_ls !== '' ) {
-			$welcome_desc_rules[] = 'letter-spacing:' . sanitize_text_field( $welcome_desc_ls );
+			$welcome_desc_rules[] = 'letter-spacing:' . self::css_text( $welcome_desc_ls );
 		}
 		$welcome_desc_td = (string) ( $attributes['welcomeDescTextDecoration'] ?? '' );
 		if ( $welcome_desc_td !== '' && in_array( $welcome_desc_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1727,7 +1769,7 @@ class BlockHandler {
 		}
 		$welcome_desc_lh = (string) ( $attributes['welcomeDescLineHeight'] ?? '' );
 		if ( $welcome_desc_lh !== '' ) {
-			$welcome_desc_rules[] = 'line-height:' . sanitize_text_field( $welcome_desc_lh );
+			$welcome_desc_rules[] = 'line-height:' . self::css_text( $welcome_desc_lh );
 		}
 		$welcome_desc_mt = (string) ( $attributes['welcomeDescMarginTop'] ?? '' );
 		if ( $welcome_desc_mt !== '' ) {
@@ -1755,7 +1797,7 @@ class BlockHandler {
 
 		$wbtn_font_family = (string) ( $attributes['welcomeBtnFontFamily'] ?? '' );
 		if ( $wbtn_font_family !== '' ) {
-			$welcome_btn_rules[] = 'font-family:' . sanitize_text_field( $wbtn_font_family );
+			$welcome_btn_rules[] = 'font-family:' . self::css_text( $wbtn_font_family );
 		}
 
 		$wbtn_fs = $len( (string) ( $attributes['welcomeBtnFontSize'] ?? '' ) );
@@ -1769,13 +1811,13 @@ class BlockHandler {
 		// change — without this, those hover changes apply instantly.
 		$wbtn_trans_dur  = (string) ( $attributes['welcomeBtnTransitionDuration'] ?? '' );
 		$wbtn_trans_ease = (string) ( $attributes['welcomeBtnTransitionEasing'] ?? '' );
-		$wbtn_dur  = $wbtn_trans_dur !== '' ? sanitize_text_field( $wbtn_trans_dur ) : '0.15s';
-		$wbtn_ease = $wbtn_trans_ease !== '' ? sanitize_text_field( $wbtn_trans_ease ) : 'ease';
+		$wbtn_dur  = $wbtn_trans_dur !== '' ? self::css_text( $wbtn_trans_dur ) : '0.15s';
+		$wbtn_ease = $wbtn_trans_ease !== '' ? self::css_text( $wbtn_trans_ease ) : 'ease';
 		$welcome_btn_rules[] = 'transition:background-color ' . $wbtn_dur . ' ' . $wbtn_ease . ',color ' . $wbtn_dur . ' ' . $wbtn_ease . ',border-color ' . $wbtn_dur . ' ' . $wbtn_ease . ',filter ' . $wbtn_dur . ' ' . $wbtn_ease;
 
 		$wbtn_fw = (string) ( $attributes['welcomeBtnFontWeight'] ?? '' );
 		if ( $wbtn_fw !== '' ) {
-			$welcome_btn_rules[] = 'font-weight:' . sanitize_text_field( $wbtn_fw );
+			$welcome_btn_rules[] = 'font-weight:' . self::css_text( $wbtn_fw );
 		}
 		$wbtn_fstyle = (string) ( $attributes['welcomeBtnFontStyle'] ?? '' );
 		if ( $wbtn_fstyle === 'italic' ) {
@@ -1784,7 +1826,7 @@ class BlockHandler {
 		$wbtn_ls = (string) ( $attributes['welcomeBtnLetterSpacing'] ?? '' );
 		if ( $wbtn_ls !== '' ) {
 			if ( is_numeric( $wbtn_ls ) ) { $wbtn_ls .= 'px'; }
-			$welcome_btn_rules[] = 'letter-spacing:' . sanitize_text_field( $wbtn_ls );
+			$welcome_btn_rules[] = 'letter-spacing:' . self::css_text( $wbtn_ls );
 		}
 		$wbtn_td = (string) ( $attributes['welcomeBtnTextDecoration'] ?? '' );
 		if ( $wbtn_td !== '' && in_array( $wbtn_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1796,7 +1838,7 @@ class BlockHandler {
 		}
 		$wbtn_lh = (string) ( $attributes['welcomeBtnLineHeight'] ?? '' );
 		if ( $wbtn_lh !== '' ) {
-			$welcome_btn_rules[] = 'line-height:' . sanitize_text_field( $wbtn_lh );
+			$welcome_btn_rules[] = 'line-height:' . self::css_text( $wbtn_lh );
 		}
 
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
@@ -1814,7 +1856,7 @@ class BlockHandler {
 		$wbtn_bg          = (string) ( $attributes['welcomeBtnBgColor']    ?? '' );
 		$wbtn_bg_gradient = (string) ( $attributes['welcomeBtnBgGradient'] ?? '' );
 		if ( $wbtn_bg_gradient !== '' ) {
-			$welcome_btn_rules[] = 'background-image:' . sanitize_text_field( $wbtn_bg_gradient );
+			$welcome_btn_rules[] = 'background-image:' . self::css_text( $wbtn_bg_gradient );
 		} elseif ( $wbtn_bg !== '' ) {
 			$hex = self::sanitize_color( $wbtn_bg );
 			if ( $hex !== null && $hex !== '' ) { $welcome_btn_rules[] = 'background-color:' . $hex; }
@@ -1830,7 +1872,7 @@ class BlockHandler {
 		$wbtn_hover_color       = (string) ( $attributes['welcomeBtnHoverColor']       ?? '' );
 		$wbtn_hover_border      = (string) ( $attributes['welcomeBtnHoverBorderColor'] ?? '' );
 		if ( $wbtn_hover_bg_gradient !== '' ) {
-			$welcome_btn_hover_rules[] = 'background-image:' . sanitize_text_field( $wbtn_hover_bg_gradient );
+			$welcome_btn_hover_rules[] = 'background-image:' . self::css_text( $wbtn_hover_bg_gradient );
 		} elseif ( $wbtn_hover_bg !== '' ) {
 			$hex = self::sanitize_color( $wbtn_hover_bg );
 			if ( $hex !== null && $hex !== '' ) { $welcome_btn_hover_rules[] = 'background-color:' . $hex; }
@@ -1872,7 +1914,7 @@ class BlockHandler {
 		}
 		$label_ff = (string) ( $attributes['labelFontFamily'] ?? '' );
 		if ( $label_ff !== '' ) {
-			$label_rules[] = 'font-family:' . sanitize_text_field( $label_ff );
+			$label_rules[] = 'font-family:' . self::css_text( $label_ff );
 		}
 		$label_fs_raw = (string) ( $attributes['labelFontSize'] ?? '' );
 		$label_slug_to_px = [ 'small' => '12px', 'medium' => '14px', 'large' => '16px', 'x-large' => '20px' ];
@@ -1885,7 +1927,7 @@ class BlockHandler {
 		}
 		$label_fw = (string) ( $attributes['labelFontWeight'] ?? '' );
 		if ( $label_fw !== '' ) {
-			$label_rules[] = 'font-weight:' . sanitize_text_field( $label_fw );
+			$label_rules[] = 'font-weight:' . self::css_text( $label_fw );
 		}
 		$label_fstyle = (string) ( $attributes['labelFontStyle'] ?? '' );
 		if ( $label_fstyle === 'italic' ) {
@@ -1897,7 +1939,7 @@ class BlockHandler {
 			if ( is_numeric( $ls ) ) {
 				$ls .= 'px';
 			}
-			$label_rules[] = 'letter-spacing:' . sanitize_text_field( $ls );
+			$label_rules[] = 'letter-spacing:' . self::css_text( $ls );
 		}
 		$label_td = (string) ( $attributes['labelTextDecoration'] ?? '' );
 		if ( $label_td !== '' && in_array( $label_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -1909,7 +1951,7 @@ class BlockHandler {
 		}
 		$label_lh = (string) ( $attributes['labelLineHeight'] ?? '' );
 		if ( $label_lh !== '' ) {
-			$label_rules[] = 'line-height:' . sanitize_text_field( $label_lh );
+			$label_rules[] = 'line-height:' . self::css_text( $label_lh );
 		}
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'labelPadding' . $key ] ?? '' );
@@ -1951,7 +1993,7 @@ class BlockHandler {
 		$field_hover_bg          = (string) ( $attributes['fieldHoverBg']         ?? '' );
 		$field_hover_bg_gradient = (string) ( $attributes['fieldHoverBgGradient'] ?? '' );
 		if ( $field_hover_bg_gradient !== '' ) {
-			$field_hover_rules[] = 'background-image:' . sanitize_text_field( $field_hover_bg_gradient );
+			$field_hover_rules[] = 'background-image:' . self::css_text( $field_hover_bg_gradient );
 		} elseif ( $field_hover_bg !== '' ) {
 			$field_hover_rules[] = 'background-color:' . self::sanitize_color( $field_hover_bg );
 		}
@@ -1972,7 +2014,7 @@ class BlockHandler {
 		$ta_bg          = (string) ( $attributes['textareaBg']         ?? '' );
 		$ta_bg_gradient = (string) ( $attributes['textareaBgGradient'] ?? '' );
 		if ( $ta_bg_gradient !== '' ) {
-			$ta_rules[] = 'background-image:' . sanitize_text_field( $ta_bg_gradient );
+			$ta_rules[] = 'background-image:' . self::css_text( $ta_bg_gradient );
 		} elseif ( $ta_bg !== '' ) {
 			$ta_rules[] = 'background-color:' . self::sanitize_color( $ta_bg );
 		}
@@ -1988,15 +2030,15 @@ class BlockHandler {
 		$ta_fs = $len( $ta_fs_raw );
 		if ( $ta_fs !== '' ) $ta_rules[] = 'font-size:' . $ta_fs;
 		$ta_fw = (string) ( $attributes['textareaFontWeight'] ?? '' );
-		if ( $ta_fw !== '' ) $ta_rules[] = 'font-weight:' . sanitize_text_field( $ta_fw );
+		if ( $ta_fw !== '' ) $ta_rules[] = 'font-weight:' . self::css_text( $ta_fw );
 		$ta_fstyle = (string) ( $attributes['textareaFontStyle'] ?? '' );
 		if ( $ta_fstyle === 'italic' ) $ta_rules[] = 'font-style:italic';
 		$ta_ff = (string) ( $attributes['textareaFontFamily'] ?? '' );
-		if ( $ta_ff !== '' ) $ta_rules[] = 'font-family:' . sanitize_text_field( $ta_ff );
+		if ( $ta_ff !== '' ) $ta_rules[] = 'font-family:' . self::css_text( $ta_ff );
 		$ta_ls = (string) ( $attributes['textareaLetterSpacing'] ?? '' );
-		if ( $ta_ls !== '' ) { if ( is_numeric( $ta_ls ) ) $ta_ls .= 'px'; $ta_rules[] = 'letter-spacing:' . sanitize_text_field( $ta_ls ); }
+		if ( $ta_ls !== '' ) { if ( is_numeric( $ta_ls ) ) $ta_ls .= 'px'; $ta_rules[] = 'letter-spacing:' . self::css_text( $ta_ls ); }
 		$ta_lh = (string) ( $attributes['textareaLineHeight'] ?? '' );
-		if ( $ta_lh !== '' ) $ta_rules[] = 'line-height:' . sanitize_text_field( $ta_lh );
+		if ( $ta_lh !== '' ) $ta_rules[] = 'line-height:' . self::css_text( $ta_lh );
 		$ta_tt = (string) ( $attributes['textareaTextTransform'] ?? '' );
 		if ( $ta_tt !== '' && in_array( $ta_tt, [ 'none', 'uppercase', 'lowercase', 'capitalize' ], true ) ) $ta_rules[] = 'text-transform:' . $ta_tt;
 		$ta_td = (string) ( $attributes['textareaTextDecoration'] ?? '' );
@@ -2015,7 +2057,7 @@ class BlockHandler {
 		$ta_focus_bg             = (string) ( $attributes['textareaFocusBg']         ?? '' );
 		$ta_focus_bg_gradient    = (string) ( $attributes['textareaFocusBgGradient'] ?? '' );
 		if ( $ta_focus_bg_gradient !== '' ) {
-			$ta_focus_rules[] = 'background-image:' . sanitize_text_field( $ta_focus_bg_gradient );
+			$ta_focus_rules[] = 'background-image:' . self::css_text( $ta_focus_bg_gradient );
 		} elseif ( $ta_focus_bg !== '' ) {
 			$ta_focus_rules[] = 'background-color:' . self::sanitize_color( $ta_focus_bg );
 		}
@@ -2029,7 +2071,7 @@ class BlockHandler {
 		$ta_hover_bg             = (string) ( $attributes['textareaHoverBg']         ?? '' );
 		$ta_hover_bg_gradient    = (string) ( $attributes['textareaHoverBgGradient'] ?? '' );
 		if ( $ta_hover_bg_gradient !== '' ) {
-			$ta_hover_rules[] = 'background-image:' . sanitize_text_field( $ta_hover_bg_gradient );
+			$ta_hover_rules[] = 'background-image:' . self::css_text( $ta_hover_bg_gradient );
 		} elseif ( $ta_hover_bg !== '' ) {
 			$ta_hover_rules[] = 'background-color:' . self::sanitize_color( $ta_hover_bg );
 		}
@@ -2087,11 +2129,11 @@ class BlockHandler {
 		$acc_label_fs = $len( $acc_label_fs_raw );
 		if ( $acc_label_fs !== '' ) $acc_label_rules[] = 'font-size:' . $acc_label_fs;
 		$acc_label_fw = (string) ( $attributes['acceptanceLabelFontWeight'] ?? '' );
-		if ( $acc_label_fw !== '' ) $acc_label_rules[] = 'font-weight:' . sanitize_text_field( $acc_label_fw );
+		if ( $acc_label_fw !== '' ) $acc_label_rules[] = 'font-weight:' . self::css_text( $acc_label_fw );
 		if ( $acc_label_rules ) $css .= $acc_label_sel . '{' . implode( ';', $acc_label_rules ) . '}';
 
 		$acc_gap = (string) ( $attributes['acceptanceGap'] ?? '' );
-		if ( $acc_gap !== '' ) $css .= $acc_wrap_sel . '{gap:' . sanitize_text_field( $acc_gap ) . '}';
+		if ( $acc_gap !== '' ) $css .= $acc_wrap_sel . '{gap:' . self::css_text( $acc_gap ) . '}';
 
 		// ' Field error state (invalid input + per-field error message) '
 		$field_err_msg_rules = [];
@@ -2118,7 +2160,7 @@ class BlockHandler {
 			$success_bg             = (string) ( $attributes['successMsgBg']         ?? '' );
 			$success_bg_gradient    = (string) ( $attributes['successMsgBgGradient'] ?? '' );
 			if ( $success_bg_gradient !== '' ) {
-				$success_rules[] = 'background-image:' . sanitize_text_field( $success_bg_gradient );
+				$success_rules[] = 'background-image:' . self::css_text( $success_bg_gradient );
 			} elseif ( $success_bg !== '' ) {
 				$success_rules[] = 'background-color:' . self::sanitize_color( $success_bg );
 			}
@@ -2146,7 +2188,7 @@ class BlockHandler {
 			$err_bg             = (string) ( $attributes['errorMsgBg']         ?? '' );
 			$err_bg_gradient    = (string) ( $attributes['errorMsgBgGradient'] ?? '' );
 			if ( $err_bg_gradient !== '' ) {
-				$err_rules[] = 'background-image:' . sanitize_text_field( $err_bg_gradient );
+				$err_rules[] = 'background-image:' . self::css_text( $err_bg_gradient );
 			} elseif ( $err_bg !== '' ) {
 				$hex = self::sanitize_color( $err_bg );
 				if ( $hex !== null && $hex !== '' ) {
@@ -2187,7 +2229,7 @@ class BlockHandler {
 
 		$radio_gap = (string) ( $attributes['radioOptionsGap'] ?? '' );
 		if ( $radio_gap !== '' ) {
-			$css .= $radio_opts_sel . '{gap:' . sanitize_text_field( $radio_gap ) . '}';
+			$css .= $radio_opts_sel . '{gap:' . self::css_text( $radio_gap ) . '}';
 		}
 
 		$radio_size = (string) ( $attributes['radioOptionSize'] ?? '' );
@@ -2210,14 +2252,14 @@ class BlockHandler {
 		$radio_opt_border_width = (string) ( $attributes['radioOptionBorderWidth'] ?? '' );
 		$radio_opt_border_style = (string) ( $attributes['radioOptionBorderStyle'] ?? '' );
 		if ( $radio_opt_border_color !== '' || $radio_opt_border_width !== '' || $radio_opt_border_style !== '' ) {
-			$bw = $radio_opt_border_width !== '' ? sanitize_text_field( $radio_opt_border_width ) : '1px';
-			$bc = $radio_opt_border_color !== '' ? ( self::sanitize_color( $radio_opt_border_color ) ?? 'transparent' ) : 'transparent';
+			$bw = $radio_opt_border_width !== '' ? self::css_text( $radio_opt_border_width ) : '1px';
+			$bc = $radio_opt_border_color !== '' ? ( self::sanitize_color( $radio_opt_border_color ) ?: 'transparent' ) : 'transparent';
 			$bs = in_array( $radio_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $radio_opt_border_style : 'solid';
 			$radio_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
 		$radio_opt_radius = (string) ( $attributes['radioOptionBorderRadius'] ?? '' );
 		if ( $radio_opt_radius !== '' ) {
-			$radio_opt_rules[] = 'border-radius:' . sanitize_text_field( $radio_opt_radius );
+			$radio_opt_rules[] = 'border-radius:' . self::css_text( $radio_opt_radius );
 		}
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $side => $css_prop ) {
 			$val = (string) ( $attributes[ 'radioOptionPadding' . $side ] ?? '' );
@@ -2261,7 +2303,7 @@ class BlockHandler {
 		}
 		$radio_label_fw = (string) ( $attributes['radioOptionFontWeight'] ?? '' );
 		if ( $radio_label_fw !== '' ) {
-			$radio_label_rules[] = 'font-weight:' . sanitize_text_field( $radio_label_fw );
+			$radio_label_rules[] = 'font-weight:' . self::css_text( $radio_label_fw );
 		}
 		if ( $radio_label_rules ) {
 			$css .= $radio_label_sel . '{' . implode( ';', $radio_label_rules ) . '}';
@@ -2308,14 +2350,14 @@ class BlockHandler {
 			$cbg_cb_rules[] = 'cursor:pointer';
 			$cbg_cb_rules[] = 'box-sizing:border-box';
 			if ( $cbg_bg_gradient !== '' ) {
-				$cbg_cb_rules[] = 'background-image:' . sanitize_text_field( $cbg_bg_gradient );
+				$cbg_cb_rules[] = 'background-image:' . self::css_text( $cbg_bg_gradient );
 			} else {
 				$cbg_bg_hex = $cbg_bg !== '' ? ( self::sanitize_color( $cbg_bg ) ?? '#ffffff' ) : '#ffffff';
 				$cbg_cb_rules[] = 'background-color:' . $cbg_bg_hex;
 			}
 		}
 		if ( $cbg_bc !== '' || $cbg_bw !== '' ) {
-			$bw = $cbg_bw !== '' ? sanitize_text_field( $cbg_bw ) : '1px';
+			$bw = $cbg_bw !== '' ? self::css_text( $cbg_bw ) : '1px';
 			$bc = $cbg_bc !== '' ? ( self::sanitize_color( $cbg_bc ) ?? '#cccccc' ) : '#cccccc';
 			$cbg_cb_rules[] = 'border:' . $bw . ' solid ' . $bc;
 		}
@@ -2364,7 +2406,7 @@ class BlockHandler {
 		}
 		$cbg_lfw = (string) ( $attributes['cbGroupLabelFontWeight'] ?? '' );
 		if ( $cbg_lfw !== '' ) {
-			$cbg_label_rules[] = 'font-weight:' . sanitize_text_field( $cbg_lfw );
+			$cbg_label_rules[] = 'font-weight:' . self::css_text( $cbg_lfw );
 		}
 		if ( $cbg_label_rules ) {
 			$css .= $cbg_label_sel . '{' . implode( ';', $cbg_label_rules ) . '}';
@@ -2426,7 +2468,7 @@ class BlockHandler {
 		$fi_bg          = (string) ( $attributes['fileInputBg']         ?? '' );
 		$fi_bg_gradient = (string) ( $attributes['fileInputBgGradient'] ?? '' );
 		if ( $fi_bg_gradient !== '' ) {
-			$fi_rules[] = 'background-image:' . sanitize_text_field( $fi_bg_gradient );
+			$fi_rules[] = 'background-image:' . self::css_text( $fi_bg_gradient );
 		} elseif ( $fi_bg !== '' ) {
 			$hex = self::sanitize_color( $fi_bg );
 			if ( $hex !== null && $hex !== '' ) {
@@ -2474,7 +2516,7 @@ class BlockHandler {
 		$fbtn_bg          = (string) ( $attributes['fileBtnBg']         ?? '' );
 		$fbtn_bg_gradient = (string) ( $attributes['fileBtnBgGradient'] ?? '' );
 		if ( $fbtn_bg_gradient !== '' ) {
-			$fbtn_rules[] = 'background-image:' . sanitize_text_field( $fbtn_bg_gradient );
+			$fbtn_rules[] = 'background-image:' . self::css_text( $fbtn_bg_gradient );
 		} elseif ( $fbtn_bg !== '' ) {
 			$hex = self::sanitize_color( $fbtn_bg );
 			if ( $hex !== null && $hex !== '' ) {
@@ -2497,7 +2539,7 @@ class BlockHandler {
 
 		$fbtn_fw = (string) ( $attributes['fileBtnFontWeight'] ?? '' );
 		if ( $fbtn_fw !== '' ) {
-			$fbtn_rules[] = 'font-weight:' . sanitize_text_field( $fbtn_fw );
+			$fbtn_rules[] = 'font-weight:' . self::css_text( $fbtn_fw );
 		}
 
 		$css .= self::border_css( $fbtn_sel, $attributes['fileBtnBorder'] ?? [], 'transparent' );
@@ -2521,7 +2563,7 @@ class BlockHandler {
 		$fbtn_hover_bg          = (string) ( $attributes['fileBtnHoverBg']         ?? '' );
 		$fbtn_hover_bg_gradient = (string) ( $attributes['fileBtnHoverBgGradient'] ?? '' );
 		if ( $fbtn_hover_bg_gradient !== '' ) {
-			$css .= $fbtn_hover_sel . '{background-image:' . sanitize_text_field( $fbtn_hover_bg_gradient ) . '}';
+			$css .= $fbtn_hover_sel . '{background-image:' . self::css_text( $fbtn_hover_bg_gradient ) . '}';
 		} elseif ( $fbtn_hover_bg !== '' ) {
 			$hex = self::sanitize_color( $fbtn_hover_bg );
 			if ( $hex !== null && $hex !== '' ) {
@@ -2547,7 +2589,7 @@ class BlockHandler {
 		// Gap between option rows.
 		$poll_gap = (string) ( $attributes['pollOptionsGap'] ?? '' );
 		if ( $poll_gap !== '' ) {
-			$css .= $poll_opts_sel . '{gap:' . sanitize_text_field( $poll_gap ) . '}';
+			$css .= $poll_opts_sel . '{gap:' . self::css_text( $poll_gap ) . '}';
 		}
 
 		// Option item rules (bg, border, radius, padding).
@@ -2555,7 +2597,7 @@ class BlockHandler {
 		$poll_opt_bg             = (string) ( $attributes['pollOptionBg']         ?? '' );
 		$poll_opt_bg_gradient    = (string) ( $attributes['pollOptionBgGradient'] ?? '' );
 		if ( $poll_opt_bg_gradient !== '' ) {
-			$poll_opt_rules[] = 'background-image:' . sanitize_text_field( $poll_opt_bg_gradient );
+			$poll_opt_rules[] = 'background-image:' . self::css_text( $poll_opt_bg_gradient );
 		} elseif ( $poll_opt_bg !== '' ) {
 			$poll_opt_rules[] = 'background-color:' . self::sanitize_color( $poll_opt_bg );
 		}
@@ -2563,14 +2605,14 @@ class BlockHandler {
 		$poll_opt_border_width = (string) ( $attributes['pollOptionBorderWidth'] ?? '' );
 		$poll_opt_border_style = (string) ( $attributes['pollOptionBorderStyle'] ?? '' );
 		if ( $poll_opt_border_color !== '' || $poll_opt_border_width !== '' || $poll_opt_border_style !== '' ) {
-			$bw = $poll_opt_border_width !== '' ? sanitize_text_field( $poll_opt_border_width ) : '1px';
+			$bw = $poll_opt_border_width !== '' ? self::css_text( $poll_opt_border_width ) : '1px';
 			$bc = $poll_opt_border_color !== '' ? self::sanitize_color( $poll_opt_border_color ) : 'transparent';
 			$bs = in_array( $poll_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $poll_opt_border_style : 'solid';
 			$poll_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
 		$poll_opt_radius = (string) ( $attributes['pollOptionBorderRadius'] ?? '' );
 		if ( $poll_opt_radius !== '' ) {
-			$poll_opt_rules[] = 'border-radius:' . sanitize_text_field( $poll_opt_radius );
+			$poll_opt_rules[] = 'border-radius:' . self::css_text( $poll_opt_radius );
 		}
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'pollOptionPadding' . $key ] ?? '' );
@@ -2586,7 +2628,7 @@ class BlockHandler {
 		$poll_opt_hover_bg          = (string) ( $attributes['pollOptionHoverBg']         ?? '' );
 		$poll_opt_hover_bg_gradient = (string) ( $attributes['pollOptionHoverBgGradient'] ?? '' );
 		if ( $poll_opt_hover_bg_gradient !== '' ) {
-			$css .= $poll_opt_hover_sel . '{background-image:' . sanitize_text_field( $poll_opt_hover_bg_gradient ) . '}';
+			$css .= $poll_opt_hover_sel . '{background-image:' . self::css_text( $poll_opt_hover_bg_gradient ) . '}';
 		} elseif ( $poll_opt_hover_bg !== '' ) {
 			$css .= $poll_opt_hover_sel . '{background-color:' . self::sanitize_color( $poll_opt_hover_bg ) . '}';
 		}
@@ -2595,7 +2637,7 @@ class BlockHandler {
 		$poll_opt_checked_bg          = (string) ( $attributes['pollOptionCheckedBg']         ?? '' );
 		$poll_opt_checked_bg_gradient = (string) ( $attributes['pollOptionCheckedBgGradient'] ?? '' );
 		if ( $poll_opt_checked_bg_gradient !== '' ) {
-			$css .= $poll_opt_check_sel . '{background-image:' . sanitize_text_field( $poll_opt_checked_bg_gradient ) . '}';
+			$css .= $poll_opt_check_sel . '{background-image:' . self::css_text( $poll_opt_checked_bg_gradient ) . '}';
 		} elseif ( $poll_opt_checked_bg !== '' ) {
 			$css .= $poll_opt_check_sel . '{background-color:' . self::sanitize_color( $poll_opt_checked_bg ) . '}';
 		}
@@ -2623,7 +2665,7 @@ class BlockHandler {
 		}
 		$poll_opt_fw = (string) ( $attributes['pollOptionFontWeight'] ?? '' );
 		if ( $poll_opt_fw !== '' ) {
-			$poll_label_rules[] = 'font-weight:' . sanitize_text_field( $poll_opt_fw );
+			$poll_label_rules[] = 'font-weight:' . self::css_text( $poll_opt_fw );
 		}
 		if ( $poll_label_rules ) {
 			$css .= $poll_label_sel . '{' . implode( ';', $poll_label_rules ) . '}';
@@ -2693,11 +2735,11 @@ class BlockHandler {
 		}
 		$poll_res_fw = (string) ( $attributes['pollResultsFontWeight'] ?? '' );
 		if ( $poll_res_fw !== '' ) {
-			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-weight:' . sanitize_text_field( $poll_res_fw ) . '}';
+			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-weight:' . self::css_text( $poll_res_fw ) . '}';
 		}
 		$poll_res_ff = (string) ( $attributes['pollResultsFontFamily'] ?? '' );
 		if ( $poll_res_ff !== '' ) {
-			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-family:' . sanitize_text_field( $poll_res_ff ) . '}';
+			$css .= $poll_bar_label_sel . ',' . $poll_bar_count_sel . '{font-family:' . self::css_text( $poll_res_ff ) . '}';
 		}
 
 		$poll_res_label_color = (string) ( $attributes['pollResultsLabelColor'] ?? '' );
@@ -2725,11 +2767,11 @@ class BlockHandler {
 		}
 		$poll_total_ff = (string) ( $attributes['pollTotalFontFamily'] ?? '' );
 		if ( $poll_total_ff !== '' ) {
-			$poll_total_rules[] = 'font-family:' . sanitize_text_field( $poll_total_ff );
+			$poll_total_rules[] = 'font-family:' . self::css_text( $poll_total_ff );
 		}
 		$poll_total_fw = (string) ( $attributes['pollTotalFontWeight'] ?? '' );
 		if ( $poll_total_fw !== '' ) {
-			$poll_total_rules[] = 'font-weight:' . sanitize_text_field( $poll_total_fw );
+			$poll_total_rules[] = 'font-weight:' . self::css_text( $poll_total_fw );
 		}
 		if ( $poll_total_rules ) {
 			$css .= $poll_total_sel . '{' . implode( ';', $poll_total_rules ) . '}';
@@ -2751,7 +2793,7 @@ class BlockHandler {
 
 		$quiz_gap = (string) ( $attributes['quizOptionsGap'] ?? '' );
 		if ( $quiz_gap !== '' ) {
-			$css .= $quiz_opts_sel . '{gap:' . sanitize_text_field( $quiz_gap ) . '}';
+			$css .= $quiz_opts_sel . '{gap:' . self::css_text( $quiz_gap ) . '}';
 		}
 
 		$quiz_opt_rules        = [];
@@ -2762,19 +2804,19 @@ class BlockHandler {
 		$quiz_opt_border_style = (string) ( $attributes['quizOptionBorderStyle'] ?? '' );
 
 		if ( $quiz_opt_bg_gradient !== '' ) {
-			$quiz_opt_rules[] = 'background-image:' . sanitize_text_field( $quiz_opt_bg_gradient );
+			$quiz_opt_rules[] = 'background-image:' . self::css_text( $quiz_opt_bg_gradient );
 		} elseif ( $quiz_opt_bg !== '' ) {
 			$quiz_opt_rules[] = 'background-color:' . self::sanitize_color( $quiz_opt_bg );
 		}
 		if ( $quiz_opt_border_color !== '' || $quiz_opt_border_width !== '' || $quiz_opt_border_style !== '' ) {
-			$bw = $quiz_opt_border_width !== '' ? sanitize_text_field( $quiz_opt_border_width ) : '1px';
+			$bw = $quiz_opt_border_width !== '' ? self::css_text( $quiz_opt_border_width ) : '1px';
 			$bc = $quiz_opt_border_color !== '' ? self::sanitize_color( $quiz_opt_border_color ) : 'transparent';
 			$bs = in_array( $quiz_opt_border_style, [ 'solid', 'dashed', 'dotted' ], true ) ? $quiz_opt_border_style : 'solid';
 			$quiz_opt_rules[] = 'border:' . $bw . ' ' . $bs . ' ' . $bc;
 		}
 		$quiz_opt_radius = (string) ( $attributes['quizOptionBorderRadius'] ?? '' );
 		if ( $quiz_opt_radius !== '' ) {
-			$quiz_opt_rules[] = 'border-radius:' . sanitize_text_field( $quiz_opt_radius );
+			$quiz_opt_rules[] = 'border-radius:' . self::css_text( $quiz_opt_radius );
 		}
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
 			$val = (string) ( $attributes[ 'quizOptionPadding' . $key ] ?? '' );
@@ -2789,7 +2831,7 @@ class BlockHandler {
 		$quiz_opt_hover_bg          = (string) ( $attributes['quizOptionHoverBg']         ?? '' );
 		$quiz_opt_hover_bg_gradient = (string) ( $attributes['quizOptionHoverBgGradient'] ?? '' );
 		if ( $quiz_opt_hover_bg_gradient !== '' ) {
-			$css .= $quiz_opt_hover_sel . '{background-image:' . sanitize_text_field( $quiz_opt_hover_bg_gradient ) . '}';
+			$css .= $quiz_opt_hover_sel . '{background-image:' . self::css_text( $quiz_opt_hover_bg_gradient ) . '}';
 		} elseif ( $quiz_opt_hover_bg !== '' ) {
 			$css .= $quiz_opt_hover_sel . '{background-color:' . self::sanitize_color( $quiz_opt_hover_bg ) . '}';
 		}
@@ -2797,7 +2839,7 @@ class BlockHandler {
 		$quiz_opt_checked_bg          = (string) ( $attributes['quizOptionCheckedBg']         ?? '' );
 		$quiz_opt_checked_bg_gradient = (string) ( $attributes['quizOptionCheckedBgGradient'] ?? '' );
 		if ( $quiz_opt_checked_bg_gradient !== '' ) {
-			$css .= $quiz_opt_check_sel . '{background-image:' . sanitize_text_field( $quiz_opt_checked_bg_gradient ) . '}';
+			$css .= $quiz_opt_check_sel . '{background-image:' . self::css_text( $quiz_opt_checked_bg_gradient ) . '}';
 		} elseif ( $quiz_opt_checked_bg !== '' ) {
 			$css .= $quiz_opt_check_sel . '{background-color:' . self::sanitize_color( $quiz_opt_checked_bg ) . '}';
 		}
@@ -2823,7 +2865,7 @@ class BlockHandler {
 		}
 		$quiz_opt_fw = (string) ( $attributes['quizOptionFontWeight'] ?? '' );
 		if ( $quiz_opt_fw !== '' ) {
-			$quiz_label_rules[] = 'font-weight:' . sanitize_text_field( $quiz_opt_fw );
+			$quiz_label_rules[] = 'font-weight:' . self::css_text( $quiz_opt_fw );
 		}
 		if ( $quiz_label_rules ) {
 			$css .= $quiz_label_sel . '{' . implode( ';', $quiz_label_rules ) . '}';
@@ -2849,10 +2891,10 @@ class BlockHandler {
 
 		if ( $quiz_summary_bg_image !== '' ) {
 			// Image is highest priority — show image only, no gradient overlay.
-			$quiz_summary_rules[] = 'background-image:url(' . esc_url( $quiz_summary_bg_image ) . ')';
+			$quiz_summary_rules[] = ( self::css_url( $quiz_summary_bg_image ) !== '' ? 'background-image:url(' . self::css_url( $quiz_summary_bg_image ) . ')' : '' );
 		} elseif ( $quiz_summary_gradient !== '' ) {
 			// Gradient is second priority — show gradient only.
-			$quiz_summary_rules[] = 'background-image:' . sanitize_text_field( $quiz_summary_gradient );
+			$quiz_summary_rules[] = 'background-image:' . self::css_text( $quiz_summary_gradient );
 		} elseif ( $quiz_summary_bg !== '' ) {
 			// Color only — clear the default gradient from form.css.
 			$quiz_summary_rules[] = 'background-image:none';
@@ -2890,7 +2932,7 @@ class BlockHandler {
 		$quiz_summary_bc = (string) ( $attributes['quizSummaryBorderColor'] ?? '' );
 		$quiz_summary_bw = (string) ( $attributes['quizSummaryBorderWidth'] ?? '' );
 		if ( $quiz_summary_bc !== '' || $quiz_summary_bw !== '' ) {
-			$bw = $quiz_summary_bw !== '' ? sanitize_text_field( $quiz_summary_bw ) : '1px';
+			$bw = $quiz_summary_bw !== '' ? self::css_text( $quiz_summary_bw ) : '1px';
 			$bc = $quiz_summary_bc !== '' ? self::sanitize_color( $quiz_summary_bc ) : 'currentColor';
 			$quiz_summary_rules[] = 'border:' . $bw . ' solid ' . $bc;
 		}
@@ -2939,7 +2981,7 @@ class BlockHandler {
 
 		$nav_font_family = (string) ( $attributes['navBtnFontFamily'] ?? '' );
 		if ( $nav_font_family !== '' ) {
-			$nav_btn_rules[] = 'font-family:' . sanitize_text_field( $nav_font_family );
+			$nav_btn_rules[] = 'font-family:' . self::css_text( $nav_font_family );
 		}
 
 		$nav_fs = $len( (string) ( $attributes['navBtnFontSize'] ?? '' ) );
@@ -2950,8 +2992,8 @@ class BlockHandler {
 		$nav_trans_dur  = (string) ( $attributes['navBtnTransitionDuration'] ?? '' );
 		$nav_trans_ease = (string) ( $attributes['navBtnTransitionEasing'] ?? '' );
 		if ( $nav_trans_dur !== '' || $nav_trans_ease !== '' ) {
-			$dur  = $nav_trans_dur !== '' ? sanitize_text_field( $nav_trans_dur ) : '0.15s';
-			$ease = $nav_trans_ease !== '' ? sanitize_text_field( $nav_trans_ease ) : 'ease';
+			$dur  = $nav_trans_dur !== '' ? self::css_text( $nav_trans_dur ) : '0.15s';
+			$ease = $nav_trans_ease !== '' ? self::css_text( $nav_trans_ease ) : 'ease';
 			$nav_btn_rules[] = 'transition:background-color ' . $dur . ' ' . $ease . ',color ' . $dur . ' ' . $ease . ',border-color ' . $dur . ' ' . $ease . ',filter ' . $dur . ' ' . $ease;
 		}
 
@@ -2961,7 +3003,7 @@ class BlockHandler {
 
 		$nav_fw = (string) ( $attributes['navBtnFontWeight'] ?? '' );
 		if ( $nav_fw !== '' ) {
-			$nav_btn_rules[] = 'font-weight:' . sanitize_text_field( $nav_fw );
+			$nav_btn_rules[] = 'font-weight:' . self::css_text( $nav_fw );
 		}
 		$nav_fstyle = (string) ( $attributes['navBtnFontStyle'] ?? '' );
 		if ( $nav_fstyle === 'italic' ) {
@@ -2970,7 +3012,7 @@ class BlockHandler {
 		$nav_ls = (string) ( $attributes['navBtnLetterSpacing'] ?? '' );
 		if ( $nav_ls !== '' ) {
 			if ( is_numeric( $nav_ls ) ) { $nav_ls .= 'px'; }
-			$nav_btn_rules[] = 'letter-spacing:' . sanitize_text_field( $nav_ls );
+			$nav_btn_rules[] = 'letter-spacing:' . self::css_text( $nav_ls );
 		}
 		$nav_td = (string) ( $attributes['navBtnTextDecoration'] ?? '' );
 		if ( $nav_td !== '' && in_array( $nav_td, [ 'none', 'underline', 'overline', 'line-through' ], true ) ) {
@@ -2982,7 +3024,7 @@ class BlockHandler {
 		}
 		$nav_lh = (string) ( $attributes['navBtnLineHeight'] ?? '' );
 		if ( $nav_lh !== '' ) {
-			$nav_btn_rules[] = 'line-height:' . sanitize_text_field( $nav_lh );
+			$nav_btn_rules[] = 'line-height:' . self::css_text( $nav_lh );
 		}
 
 		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
@@ -3060,7 +3102,7 @@ class BlockHandler {
 		}
 		$step_title_ff = (string) ( $attributes['stepTitleFontFamily'] ?? '' );
 		if ( $step_title_ff !== '' ) {
-			$step_title_rules[] = 'font-family:' . sanitize_text_field( $step_title_ff );
+			$step_title_rules[] = 'font-family:' . self::css_text( $step_title_ff );
 		}
 		if ( $step_title_fs !== '' ) {
 			$step_title_rules[] = 'font-size:' . $step_title_fs;
@@ -3084,7 +3126,7 @@ class BlockHandler {
 		}
 		$step_desc_ff = (string) ( $attributes['stepDescFontFamily'] ?? '' );
 		if ( $step_desc_ff !== '' ) {
-			$step_desc_rules[] = 'font-family:' . sanitize_text_field( $step_desc_ff );
+			$step_desc_rules[] = 'font-family:' . self::css_text( $step_desc_ff );
 		}
 		if ( $step_desc_fs !== '' ) {
 			$step_desc_rules[] = 'font-size:' . $step_desc_fs;
@@ -3271,7 +3313,7 @@ class BlockHandler {
 		$rep_cont_pb     = (string) ( $attributes['repeaterContainerPaddingBottom'] ?? '' );
 		$rep_cont_pl     = (string) ( $attributes['repeaterContainerPaddingLeft']   ?? '' );
 		if ( $rep_cont_bg_grad !== '' ) {
-			$rep_cont_rules[] = 'background-image:' . sanitize_text_field( $rep_cont_bg_grad );
+			$rep_cont_rules[] = 'background-image:' . self::css_text( $rep_cont_bg_grad );
 		} elseif ( $rep_cont_bg ) {
 			$rep_cont_rules[] = 'background:' . $rep_cont_bg;
 		}
@@ -3299,7 +3341,7 @@ class BlockHandler {
 		$rep_row_pb        = (string) ( $attributes['repeaterRowPaddingBottom'] ?? '' );
 		$rep_row_pl        = (string) ( $attributes['repeaterRowPaddingLeft']   ?? '' );
 		if ( $rep_row_bg_grad !== '' ) {
-			$rep_row_rules[] = 'background-image:' . sanitize_text_field( $rep_row_bg_grad );
+			$rep_row_rules[] = 'background-image:' . self::css_text( $rep_row_bg_grad );
 		} elseif ( $rep_row_bg ) {
 			$rep_row_rules[] = 'background:' . $rep_row_bg;
 		}
@@ -3314,7 +3356,7 @@ class BlockHandler {
 		$rep_row_hover_bg_grad = (string) ( $attributes['repeaterRowHoverBgGradient'] ?? '' );
 		$rep_row_hover_bg      = self::sanitize_color( $rep_row_hover_bg_raw );
 		if ( $rep_row_hover_bg_grad !== '' ) {
-			$css .= $rep_row_sel . ':hover{background-image:' . sanitize_text_field( $rep_row_hover_bg_grad ) . '}';
+			$css .= $rep_row_sel . ':hover{background-image:' . self::css_text( $rep_row_hover_bg_grad ) . '}';
 		} elseif ( $rep_row_hover_bg ) {
 			$css .= $rep_row_sel . ':hover{background:' . $rep_row_hover_bg . '}';
 		}
@@ -3340,13 +3382,13 @@ class BlockHandler {
 		$rep_add_pb       = (string) ( $attributes['repeaterAddBtnPaddingBottom'] ?? '' );
 		$rep_add_pl       = (string) ( $attributes['repeaterAddBtnPaddingLeft']   ?? '' );
 		if ( $rep_add_bg_grad !== '' ) {
-			$rep_add_rules[] = 'background-image:' . sanitize_text_field( $rep_add_bg_grad );
+			$rep_add_rules[] = 'background-image:' . self::css_text( $rep_add_bg_grad );
 		} elseif ( $rep_add_bg ) {
 			$rep_add_rules[] = 'background:' . $rep_add_bg;
 		}
 		if ( $rep_add_color )  $rep_add_rules[] = 'color:' . $rep_add_color;
 		if ( $rep_add_fs )     $rep_add_rules[] = 'font-size:' . $len( $rep_add_fs );
-		if ( $rep_add_fw )     $rep_add_rules[] = 'font-weight:' . esc_attr( $rep_add_fw );
+		if ( $rep_add_fw )     $rep_add_rules[] = 'font-weight:' . self::css_text( $rep_add_fw );
 		$css .= self::border_css( $rep_add_sel, $rep_add_border );
 		if ( $rep_add_radius ) $rep_add_rules[] = 'border-radius:' . $len( $rep_add_radius );
 		if ( $rep_add_pt || $rep_add_pr || $rep_add_pb || $rep_add_pl ) {
@@ -3360,7 +3402,7 @@ class BlockHandler {
 		$rep_add_hover_color = self::sanitize_color( (string) ( $attributes['repeaterAddBtnHoverColor'] ?? '' ) );
 		$rep_add_hover_rules = [];
 		if ( $rep_add_hover_bg_grad !== '' ) {
-			$rep_add_hover_rules[] = 'background-image:' . sanitize_text_field( $rep_add_hover_bg_grad );
+			$rep_add_hover_rules[] = 'background-image:' . self::css_text( $rep_add_hover_bg_grad );
 		} elseif ( $rep_add_hover_bg ) {
 			$rep_add_hover_rules[] = 'background:' . $rep_add_hover_bg;
 		}
@@ -3413,13 +3455,13 @@ class BlockHandler {
 		$mat_col_pb    = (string) ( $attributes['matrixColHeaderPaddingBottom'] ?? '' );
 		$mat_col_pl    = (string) ( $attributes['matrixColHeaderPaddingLeft']   ?? '' );
 		if ( $mat_col_bg_grad !== '' ) {
-			$mat_col_rules[] = 'background-image:' . sanitize_text_field( $mat_col_bg_grad );
+			$mat_col_rules[] = 'background-image:' . self::css_text( $mat_col_bg_grad );
 		} elseif ( $mat_col_bg ) {
 			$mat_col_rules[] = 'background:' . $mat_col_bg;
 		}
 		if ( $mat_col_color ) $mat_col_rules[] = 'color:' . $mat_col_color;
 		if ( $mat_col_fs )    $mat_col_rules[] = 'font-size:' . $len( $mat_col_fs );
-		if ( $mat_col_fw )    $mat_col_rules[] = 'font-weight:' . esc_attr( $mat_col_fw );
+		if ( $mat_col_fw )    $mat_col_rules[] = 'font-weight:' . self::css_text( $mat_col_fw );
 		if ( $mat_col_pt || $mat_col_pr || $mat_col_pb || $mat_col_pl ) {
 			$mat_col_rules[] = 'padding:' . $spacing( $mat_col_pt ?: '0' ) . ' ' . $spacing( $mat_col_pr ?: '0' ) . ' ' . $spacing( $mat_col_pb ?: '0' ) . ' ' . $spacing( $mat_col_pl ?: '0' );
 		}
@@ -3435,13 +3477,13 @@ class BlockHandler {
 		$mat_rh_fs    = (string) ( $attributes['matrixRowHeaderFontSize']   ?? '' );
 		$mat_rh_fw    = (string) ( $attributes['matrixRowHeaderFontWeight'] ?? '' );
 		if ( $mat_rh_bg_grad !== '' ) {
-			$mat_rh_rules[] = 'background-image:' . sanitize_text_field( $mat_rh_bg_grad );
+			$mat_rh_rules[] = 'background-image:' . self::css_text( $mat_rh_bg_grad );
 		} elseif ( $mat_rh_bg ) {
 			$mat_rh_rules[] = 'background:' . $mat_rh_bg;
 		}
 		if ( $mat_rh_color ) $mat_rh_rules[] = 'color:' . $mat_rh_color;
 		if ( $mat_rh_fs )    $mat_rh_rules[] = 'font-size:' . $len( $mat_rh_fs );
-		if ( $mat_rh_fw )    $mat_rh_rules[] = 'font-weight:' . esc_attr( $mat_rh_fw );
+		if ( $mat_rh_fw )    $mat_rh_rules[] = 'font-weight:' . self::css_text( $mat_rh_fw );
 		if ( $mat_rh_rules ) $css .= $mat_rh_sel . '{' . implode( ';', $mat_rh_rules ) . '}';
 
 		// Body cells
@@ -3471,7 +3513,7 @@ class BlockHandler {
 		$mat_cell_checked_bg          = (string) ( $attributes['matrixCellCheckedBg']         ?? '' );
 		$mat_cell_checked_bg_gradient = (string) ( $attributes['matrixCellCheckedBgGradient'] ?? '' );
 		if ( $mat_cell_checked_bg_gradient !== '' ) {
-			$css .= $mat_cell_sel . ':has(input:checked){background-image:' . sanitize_text_field( $mat_cell_checked_bg_gradient ) . '}';
+			$css .= $mat_cell_sel . ':has(input:checked){background-image:' . self::css_text( $mat_cell_checked_bg_gradient ) . '}';
 		} elseif ( $mat_cell_checked_bg !== '' ) {
 			$hex = self::sanitize_color( $mat_cell_checked_bg );
 			if ( $hex ) {

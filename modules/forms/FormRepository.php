@@ -429,7 +429,7 @@ class FormRepository {
 		$row['form_schema'] = json_decode( $row['form_schema'] ?? '{}', true ) ?: array();
 		$row['settings']    = json_decode( $row['settings'] ?? '{}', true ) ?: array();
 		$row['id']          = (int) $row['id'];
-		$row['created_by']  = (int) $row['created_by'];
+		$row['created_by']  = (int) ( $row['created_by'] ?? 0 );
 
 		return $row;
 	}

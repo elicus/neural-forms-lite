@@ -66,7 +66,8 @@ class ProcessQueueEndpoint {
 	}
 
 	public function check_permission() {
-		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {
+		// manage_options: every queue run spends paid cloud credits.
+		if ( current_user_can( 'manage_options' ) ) {
 			return true;
 		}
 

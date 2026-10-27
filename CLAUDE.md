@@ -729,6 +729,27 @@ positioned child of `.neural-forms-form__phone` (`top: calc(100% + 4px)`)
 and would get clipped. The pseudo-element separator above already
 prevents overflow without needing `overflow: hidden` anywhere.
 
+### Security audit batch (2026-10-28, 1.1.3)
+
+- **Uploads are `private` attachments** (`SubmitEndpoint`): an unattached
+  `inherit` attachment is public via `/wp/v2/media`. Keep `private`.
+- **CSS values from block attributes** go through
+  `BlockHandler::css_text()` / `css_url()` inside `build_wrap_style()` and
+  `build_scoped_css()` — never plain `sanitize_text_field()` / `esc_attr()`
+  there (they leave `{ } ;`). Tests: `tests/BlockCssSanitizerTest.php`.
+- **Submission shape / size**: `SubmissionValidator::check_shape()` runs
+  before required/type checks (rejects arrays for scalar fields, caps
+  lengths via `max_length_for()` + `neural_forms_max_field_length`, caps
+  array fields at `MAX_ARRAY_ITEMS`). Tests: `tests/SubmissionShapeLimitsTest.php`.
+- **Editor preview branch** in `BlockHandler::render()` requires
+  `edit_posts` in addition to `REST_REQUEST`.
+- **Logs**: `neural-forms-<token>-YYYY-MM-DD.log` (token in option
+  `neural_forms_log_token`); `.htaccess` carries `Require all denied`.
+- **Caps**: settings writes + `/ai/process-queue` → `manage_options`.
+- **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
+  the test suite under both 7.4 and 8.2 (Local ships
+  `lightning-services/php-8.2.*`).
+
 ### Privacy mode (fixed 2026-10-27, 1.1.3)
 
 `privacy_mode` was defined in `Config`, saved by `SettingsEndpoint` and

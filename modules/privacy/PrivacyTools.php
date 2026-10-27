@@ -117,6 +117,10 @@ class PrivacyTools {
 
 		foreach ( $entries as $entry ) {
 			$id = (int) $entry['id'];
+			// Uploaded files are personal data too: delete the media-library
+			// attachments referenced by the entry (file fields, repeater
+			// children) before the row goes.
+			self::delete_attachments( is_array( $entry['data'] ?? null ) ? $entry['data'] : array() );
 			EntryMessageRepository::delete_by_entry( $id );
 			AIResponseRepository::delete_by_entry( $id );
 			if ( EntryRepository::delete( $id ) ) {
@@ -142,6 +146,26 @@ class PrivacyTools {
 	}
 
 	// ── helpers ──
+
+	/** Walk entry data and hard-delete every referenced attachment. */
+	private static function delete_attachments( array $data ): void {
+		if ( ! function_exists( 'wp_delete_attachment' ) ) {
+			return;
+		}
+		$stack = array( $data );
+		while ( $stack ) {
+			$node = array_pop( $stack );
+			if ( isset( $node['attachment_id'] ) && is_numeric( $node['attachment_id'] ) ) {
+				wp_delete_attachment( (int) $node['attachment_id'], true );
+				continue;
+			}
+			foreach ( $node as $v ) {
+				if ( is_array( $v ) ) {
+					$stack[] = $v;
+				}
+			}
+		}
+	}
 
 	/** @return array<string,string> field id → label */
 	private static function field_labels( array $fields ): array {

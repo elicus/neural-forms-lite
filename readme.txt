@@ -2,7 +2,7 @@
 Contributors: elicus
 Tags: contact form, forms, ai forms, lead inbox, form builder
 Requires at least: 6.8
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 7.4
 Stable tag: 1.1.3
 License: GPLv2 or later
@@ -247,7 +247,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.1.3 - 2026-10-27 =
+= 1.1.3 - 2026-10-28 =
+* Security: Uploaded files are no longer listed by the public WordPress media REST endpoint; block styling values can no longer inject site-wide CSS; oversized or malformed submissions are rejected; log files get a random name and stricter server protection; settings changes require an administrator. Also fixes a fatal error on PHP 7.4 hosts when a styled block renders.
 * Privacy: Privacy mode now works. Previously entries stored the visitor's IP address and user agent even with the toggle on. Sites with Privacy mode on have that data removed from existing entries on update.
 * New: Neural Forms entries are now included in WordPress's Export Personal Data and Erase Personal Data tools, matched by the submitted email address, and suggested privacy-policy text is provided under Settings > Privacy.
 * Security: The submission rate limit could be bypassed by sending a forged X-Forwarded-For header. The client IP now comes from the server connection unless the request arrives via a proxy listed in the new `neural_forms_trusted_proxies` filter.

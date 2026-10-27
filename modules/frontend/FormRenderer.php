@@ -185,7 +185,7 @@ class FormRenderer {
 	private static function render_form( array $form, array $options = [] ): string {
 		$form_id  = (int) $form['id'];
 		$schema   = is_array( $form['form_schema'] ) ? $form['form_schema'] : [];
-		$fields   = is_array( $schema['fields'] )    ? $schema['fields']    : [];
+		$fields   = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
 		$settings = is_array( $form['settings'] )    ? $form['settings']    : [];
 
 		// Mirrors the form_version hash written by SubmitEndpoint at submission
@@ -1488,7 +1488,7 @@ class FormRenderer {
 	 */
 	private static function render_select( array $field, string $input_id, string $error_id ): string {
 		$default = (string) ( $field['default_value'] ?? '' );
-		$options = is_array( $field['options'] ) ? $field['options'] : [];
+		$options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
 
 		$attrs = 'id="' . esc_attr( $input_id ) . '"'
 			. ' name="' . esc_attr( $field['id'] ) . '"'
@@ -1791,7 +1791,7 @@ class FormRenderer {
 			. ' aria-valuemin="' . esc_attr( $min ) . '"'
 			. ' aria-valuemax="' . esc_attr( $max ) . '"'
 			. ' aria-valuenow="' . esc_attr( $default ) . '"'
-			. ' oninput="this.setAttribute(\'aria-valuenow\',this.value);document.getElementById(\'' . esc_attr( $output_id ) . '\').textContent=this.value">'
+			. ' oninput="this.setAttribute(\'aria-valuenow\',this.value);document.getElementById(\'' . esc_js( $output_id ) . '\').textContent=this.value">'
 			. '<output id="' . esc_attr( $output_id ) . '" for="' . esc_attr( $input_id ) . '" class="neural-forms-form__range-output">' . esc_html( $default ) . '</output>'
 			. '</div>';
 	}

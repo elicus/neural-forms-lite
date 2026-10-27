@@ -61,7 +61,7 @@ class SettingsEndpoint {
 				array(
 					'methods'             => 'PATCH',
 					'callback'            => array( $this, 'update_settings' ),
-					'permission_callback' => array( $this, 'check_permission' ),
+					'permission_callback' => array( $this, 'check_admin_permission' ),
 					'args'                => $this->patch_args(),
 				),
 			)
@@ -73,7 +73,7 @@ class SettingsEndpoint {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'test_connection' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
 				'args'                => array(
 					'api_key' => array(
 						'required'          => false,
@@ -89,7 +89,7 @@ class SettingsEndpoint {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'revoke_connection' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
 
@@ -99,7 +99,7 @@ class SettingsEndpoint {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'send_test_email' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
 				'args'                => array(
 					'email' => array(
 						'required'          => true,
@@ -693,6 +693,24 @@ class SettingsEndpoint {
 	}
 
 	// Permission
+
+	/**
+	 * Writes (PATCH /settings, test / revoke connection, test email) require
+	 * manage_options: they can overwrite the cloud API key and CAPTCHA
+	 * secret, revoke the connection and send mail to arbitrary addresses.
+	 * The forms capability (which site owners may grant to editors) only
+	 * covers reading the settings screen.
+	 */
+	public function check_admin_permission() {
+		if ( current_user_can( 'manage_options' ) ) {
+			return true;
+		}
+		return new WP_Error(
+			'permission_denied',
+			__( 'Only administrators can change Neural Forms settings.', 'neural-forms-lite' ),
+			array( 'status' => 403 )
+		);
+	}
 
 	public function check_permission() {
 		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {

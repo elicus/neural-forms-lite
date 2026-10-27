@@ -20,7 +20,7 @@ defined( 'ABSPATH' ) || exit;
 class AIRepository {
 
 	/** Valid values for the ai_status column. */
-	const VALID_AI_STATUSES = array( 'none', 'queued', 'processing', 'complete', 'failed' );
+	const VALID_AI_STATUSES = array( 'none', 'queued', 'processing', 'complete', 'failed', 'blocked_by_safety' );
 
 	/** Valid values for ai_category - reflects Neural Forms's inbox workflow. */
 	const VALID_CATEGORIES = array( 'sales', 'support', 'partnership', 'hiring', 'spam', 'general', 'other' );

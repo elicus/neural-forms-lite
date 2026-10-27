@@ -80,6 +80,22 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		delete_option( 'neural_forms_settings' );
 		delete_option( 'neural_forms_db_version' );
 		delete_option( 'neural_forms_ai_revoke_snapshot' );
+		delete_option( 'neural_forms_template_imports' );
+		delete_option( 'neural_forms_log_token' );
+
+		// Template-catalog transients (prefix neural_forms_template_catalog_v2_<builder>).
+		global $wpdb;
+		if ( isset( $wpdb ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query(
+				$wpdb->prepare(
+					'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s',
+					$wpdb->options,
+					$wpdb->esc_like( '_transient_neural_forms_template_catalog_v2_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_neural_forms_template_catalog_v2_' ) . '%'
+				)
+			);
+		}
 
 		// Pro-owned options. Lite doesn't create these, but cleans them up on
 		// uninstall so a user removing both plugins doesn't leave orphan data.
