@@ -637,7 +637,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'ai_polish_failed',
 				__( 'Neural AI could not refine the reply. Please try again.', 'neural-forms-lite' ),
-				array( 'status' => 502 )
+				array( 'status' => 424 )
 			);
 		}
 

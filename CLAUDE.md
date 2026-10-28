@@ -757,6 +757,16 @@ prevents overflow without needing `overflow: hidden` anywhere.
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
 
+### Never answer a REST request with 502 or 504 (fixed 2026-10-29, 1.1.4)
+
+Cloudflare (and most CDNs) replace an origin's 502/504 body with their
+own error page, so a `WP_Error` carrying `'status' => 502` reaches the
+admin UI as Cloudflare's JSON blob and the real message is lost — that
+is exactly what a customer saw on the Pro "Refresh now" button. Use
+**424** for "an upstream call failed" (cloud API, template library,
+integrations). `tests/NoProxySwallowedStatusTest.php` fails the sweep if
+a 502/504 status creeps back into `modules/`. Same rule in Pro.
+
 ### Privacy mode (fixed 2026-10-27, 1.1.3)
 
 `privacy_mode` was defined in `Config`, saved by `SettingsEndpoint` and
