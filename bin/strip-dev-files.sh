@@ -4,7 +4,7 @@
 # cutting release/<version> from dev; commit the result. This script is
 # itself under bin/ and is removed by the strip.
 set -euo pipefail
-cd "$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+cd "$(git rev-parse --show-toplevel)"
 branch="$(git branch --show-current)"
 case "$branch" in release/*) ;; *) echo "refusing: current branch is '$branch', not release/*" >&2; exit 1 ;; esac
 paths=(CLAUDE.md .claude tests bin docs phpcs.xml.dist phpcs.xml phpunit.xml phpunit.xml.dist package.json package-lock.json composer.json composer.lock .phpunit.cache)
