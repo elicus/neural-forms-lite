@@ -247,7 +247,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.1.3 =
+= 1.1.3 - 2026-10-28 =
 
 * Security: Uploaded files are no longer visible through the public WordPress media API.
 * Security: Block style settings can no longer inject CSS into the page.
@@ -280,7 +280,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fixed: A fatal error on PHP 7.4 hosts when a styled block renders.
 * Changed: Clearer wording about which AI features are free and which need Pro.
 
-= 1.1.2 =
+= 1.1.2 - 2026-07-01 =
 
 * Fixed: Multi-step forms no longer auto-scroll on page load.
 * Fixed: All four blocks are listed in the WordPress.org plugin directory.
@@ -289,18 +289,18 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Changed: Restyled the form builder's Active status pill.
 * Changed: Clearer setup notices and upgrade links in the entry inbox.
 
-= 1.1.1 =
+= 1.1.1 - 2026-06-23 =
 
 * Fixed: Front-end form assets were missing from the WordPress.org package.
 
-= 1.1.0 =
+= 1.1.0 - 2026-06-22 =
 
 * Added: Multi-step forms.
 * Added: Poll block and multi-step form block for the block editor.
 * Added: Ready-to-use form templates.
 * Changed: Improved form dashboard, builder drag and drop, and inbox layout.
 
-= 1.0.0 =
+= 1.0.0 - 2026-06-21 =
 
 * Initial release.
 
