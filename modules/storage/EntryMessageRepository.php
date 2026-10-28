@@ -157,6 +157,17 @@ class EntryMessageRepository {
 	 * @param int $entry_id
 	 * @return array[]  Array of decoded message rows.
 	 */
+	/**
+	 * Hard-delete every message belonging to an entry (privacy eraser).
+	 *
+	 * @return int  Rows deleted.
+	 */
+	public static function delete_by_entry( int $entry_id ): int {
+		global $wpdb;
+		$deleted = $wpdb->delete( $wpdb->prefix . 'neural_forms_entry_messages', array( 'entry_id' => $entry_id ), array( '%d' ) );
+		return is_int( $deleted ) ? $deleted : 0;
+	}
+
 	public static function list_by_entry( int $entry_id ): array {
 		global $wpdb;
 

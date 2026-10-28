@@ -61,7 +61,7 @@ class SettingsEndpoint {
 				array(
 					'methods'             => 'PATCH',
 					'callback'            => array( $this, 'update_settings' ),
-					'permission_callback' => array( $this, 'check_permission' ),
+					'permission_callback' => array( $this, 'check_admin_permission' ),
 					'args'                => $this->patch_args(),
 				),
 			)
@@ -73,7 +73,7 @@ class SettingsEndpoint {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'test_connection' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
 				'args'                => array(
 					'api_key' => array(
 						'required'          => false,
@@ -89,7 +89,7 @@ class SettingsEndpoint {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'revoke_connection' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
 
@@ -99,7 +99,7 @@ class SettingsEndpoint {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'send_test_email' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
 				'args'                => array(
 					'email' => array(
 						'required'          => true,
@@ -649,17 +649,18 @@ class SettingsEndpoint {
 		$message = __( 'This is a test email from Neural Forms. If you received this, email is working.', 'neural-forms-lite' );
 		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
 
-		// Apply configured sender identity when available.
-		$sender_name  = (string) Config::get( 'sender_name', '' );
-		$sender_email = (string) Config::get( 'sender_email', '' );
-
-		if ( $sender_email !== '' && is_email( $sender_email ) ) {
-			$from      = $sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email;
-			$headers[] = 'From: ' . $from;
-		} elseif ( $sender_name !== '' ) {
-			// Name set but no email - use the WordPress admin email with the custom name.
-			$headers[] = 'From: ' . $sender_name . ' <' . get_option( 'admin_email' ) . '>';
-		}
+		// Same sender identity (and the same blank → site name / admin
+		// email defaults) as every real notification, so the test email
+		// is a faithful preview of what visitors and admins will receive.
+		$headers = array_merge(
+			$headers,
+			\NeuralForms\Notifications\NotificationService::build_from_headers(
+				array(
+					'sender_name'  => (string) Config::get( 'sender_name', '' ),
+					'sender_email' => (string) Config::get( 'sender_email', '' ),
+				)
+			)
+		);
 
 		$sent = wp_mail( $to, $subject, $message, $headers );
 
@@ -692,6 +693,24 @@ class SettingsEndpoint {
 	}
 
 	// Permission
+
+	/**
+	 * Writes (PATCH /settings, test / revoke connection, test email) require
+	 * manage_options: they can overwrite the cloud API key and CAPTCHA
+	 * secret, revoke the connection and send mail to arbitrary addresses.
+	 * The forms capability (which site owners may grant to editors) only
+	 * covers reading the settings screen.
+	 */
+	public function check_admin_permission() {
+		if ( current_user_can( 'manage_options' ) ) {
+			return true;
+		}
+		return new WP_Error(
+			'permission_denied',
+			__( 'Only administrators can change Neural Forms settings.', 'neural-forms-lite' ),
+			array( 'status' => 403 )
+		);
+	}
 
 	public function check_permission() {
 		if ( current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS ) ) {

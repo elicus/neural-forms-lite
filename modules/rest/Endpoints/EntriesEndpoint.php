@@ -313,8 +313,13 @@ class EntriesEndpoint {
 	 * @return \WP_REST_Response|WP_Error
 	 */
 	public function bulk_action( WP_REST_Request $request ) {
-		$ids    = array_map( 'intval', (array) $request->get_param( 'ids' ) );
+		// Scalars only: intval( array ) is 1, so a nested array would act on
+		// entry #1. Deduplicate and cap the batch.
+		$ids    = array_values( array_unique( array_filter( array_map( 'intval', array_filter( (array) $request->get_param( 'ids' ), 'is_scalar' ) ), static function ( $id ) { return $id > 0; } ) ) );
 		$action = (string) $request->get_param( 'action' );
+		if ( count( $ids ) > 500 ) {
+			return new WP_Error( 'too_many_ids', __( 'Select at most 500 entries per bulk action.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+		}
 
 		// Permanent delete is handled separately - it is a hard DELETE, not a
 		// field update, so it bypasses the $field_map / bulk_update path.
@@ -1037,11 +1042,13 @@ class EntriesEndpoint {
 		$active_job = $wpdb->get_var(
 			$wpdb->prepare(
 				'SELECT COUNT(*) FROM %i
-				 WHERE payload LIKE %s
+				 WHERE ( payload LIKE %s OR payload LIKE %s )
 				   AND status IN ( \'pending\', \'processing\' )
 				   AND attempts < %d',
 				$wpdb->prefix . 'neural_forms_queue',
-				'%"entry_id":' . (int) $entry['id'] . '%',
+				// Delimited match: entry 12 must not match a job for entry 123.
+				'%"entry_id":' . (int) $entry['id'] . ',%',
+				'%"entry_id":' . (int) $entry['id'] . '}%',
 				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
 			)
 		);

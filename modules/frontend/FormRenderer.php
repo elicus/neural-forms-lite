@@ -185,7 +185,7 @@ class FormRenderer {
 	private static function render_form( array $form, array $options = [] ): string {
 		$form_id  = (int) $form['id'];
 		$schema   = is_array( $form['form_schema'] ) ? $form['form_schema'] : [];
-		$fields   = is_array( $schema['fields'] )    ? $schema['fields']    : [];
+		$fields   = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
 		$settings = is_array( $form['settings'] )    ? $form['settings']    : [];
 
 		// Mirrors the form_version hash written by SubmitEndpoint at submission
@@ -534,6 +534,7 @@ class FormRenderer {
 		// above the submit doing nothing (type="button" so they
 		// cannot accidentally submit). form-submit.js wires their
 		// click handlers + per-step visibility.
+		$nav_html = '';
 		if ( $has_steps ) {
 			// Block-level overrides (set by BlockHandler when called
 			// from the Multi Step block) win over per-step settings.
@@ -617,7 +618,13 @@ class FormRenderer {
 				$next_content = esc_html( $first_next );
 			}
 
-			$html .= $nav_open
+			// Held back and emitted together with the submit wrapper inside
+			// .neural-forms-form__steps-footer (see below) so that on the
+			// last step Previous and Submit share one row, exactly like
+			// Previous / Next do on earlier steps. Before 1.1.3 the submit
+			// wrapper was a separate block under the nav row, so the last
+			// step stacked Previous above Submit.
+			$nav_html = $nav_open
 					. '<button type="button" class="' . esc_attr( $prev_class ) . '"'
 					. ' data-step-action="prev">'
 					. $prev_content
@@ -692,11 +699,23 @@ class FormRenderer {
 			$btn_content = esc_html( $submit_text );
 		}
 
-		$html .= '<div class="neural-forms-form__submit-wrap">'
+		$submit_wrap_html = '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
 				. $btn_content
 				. '</button>'
 				. '</div>';
+
+		if ( $has_steps ) {
+			// Nav row + submit wrapper in one flex footer. The nav keeps
+			// its own markup/classes (Divi's scoped CSS targets them), the
+			// footer only lays the two out side by side.
+			$html .= '<div class="neural-forms-form__steps-footer">'
+				. $nav_html
+				. $submit_wrap_html
+				. '</div>';
+		} else {
+			$html .= $submit_wrap_html;
+		}
 
 		$html .= '</form>';
 
@@ -1091,10 +1110,19 @@ class FormRenderer {
 			$field['placeholder'] = '';
 		}
 
+		// Field types whose label can NOT be carried by a placeholder: a
+		// radio / checkbox / rating / matrix / repeater group has no input
+		// to put a placeholder in, and a file input ignores placeholders.
+		// Hiding their label hid the QUESTION ("Ticket type" above three
+		// radios), so these always render it visibly regardless of the
+		// block-level toggle — the same rule poll / quiz_question already
+		// follow. Text-like fields keep the label-as-placeholder behaviour.
+		$label_always_visible = in_array( $type, [ 'radio', 'checkboxes', 'rating', 'matrix', 'repeater', 'file' ], true );
+
 		// Persist the resolved show_label back onto the field so per-type
 		// renderers (radio / checkboxes) that don't receive $options pick up
 		// the same value.
-		$field['show_label'] = $show_label;
+		$field['show_label'] = $show_label || $label_always_visible;
 
 		// Hidden fields render as a bare <input type="hidden"> with no wrapper,
 		// label, or error slot - they are invisible to the user.
@@ -1137,19 +1165,27 @@ class FormRenderer {
 		//   for checkbox / acceptance (their inline label already serves as
 		//   the question) and for radio / checkboxes (their renderers expose
 		//   the label as a visible <legend> instead).
-		$label_html = '';
-		if (
-			$show_label
-			&& $lbl !== ''
-			&& ! in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true )
-		) {
-			$required_mark = $required
-				? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
-				: '';
-			$label_html = '<label class="neural-forms-form__label neural-forms-form__label--block" for="' . esc_attr( $input_id ) . '">'
-						. esc_html( $lbl )
-						. $required_mark
-						. '</label>';
+		// * show_label = false: emit a visually hidden <label> instead, so
+		//   (a) assistive tech gets the real accessible name — a placeholder
+		//   is not one — and (b) form-submit.js fieldLabelText() can build
+		//   "Full name is required." instead of naming the placeholder
+		//   ("Jane Cooper is required.").
+		$label_html   = '';
+		$owns_legend  = in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true );
+		if ( $lbl !== '' && ! $owns_legend ) {
+			if ( $show_label || $label_always_visible ) {
+				$required_mark = $required
+					? ' <span class="neural-forms-form__required" aria-hidden="true">*</span>'
+					: '';
+				$label_html = '<label class="neural-forms-form__label neural-forms-form__label--block" for="' . esc_attr( $input_id ) . '">'
+							. esc_html( $lbl )
+							. $required_mark
+							. '</label>';
+			} else {
+				$label_html = '<label class="screen-reader-text" for="' . esc_attr( $input_id ) . '">'
+							. esc_html( $lbl )
+							. '</label>';
+			}
 		}
 
 		// ' Input '
@@ -1233,6 +1269,27 @@ class FormRenderer {
 					. ' hidden'
 					. '></p>';
 
+		// ' Help text '
+		// The builder's "Help text" box (field.help_text) was saved and
+		// previewed but never rendered before 1.1.3. Emitted under the
+		// input and linked via aria-describedby (prepended to the error
+		// id every per-type renderer already sets) so assistive tech
+		// reads it on focus.
+		$help_html = '';
+		$help_text = trim( (string) ( $field['help_text'] ?? '' ) );
+		if ( $help_text !== '' ) {
+			$help_id    = $input_id . '-help';
+			$help_html  = '<p class="neural-forms-form__field-help" id="' . esc_attr( $help_id ) . '">'
+				. esc_html( $help_text )
+				. '</p>';
+			$input_html = (string) preg_replace(
+				'/(aria-describedby="[^"]*)' . preg_quote( $error_id, '/' ) . '"/',
+				'$1' . esc_attr( $help_id ) . ' ' . $error_id . '"',
+				$input_html,
+				1
+			);
+		}
+
 		// ' Wrapper '
 		return '<div'
 			. ' class="neural-forms-form__field neural-forms-form__field--' . esc_attr( $type ) . '"'
@@ -1241,6 +1298,7 @@ class FormRenderer {
 			. '>'
 			. $label_html
 			. $input_html
+			. $help_html
 			. $error_html
 			. '</div>';
 	}
@@ -1430,7 +1488,7 @@ class FormRenderer {
 	 */
 	private static function render_select( array $field, string $input_id, string $error_id ): string {
 		$default = (string) ( $field['default_value'] ?? '' );
-		$options = is_array( $field['options'] ) ? $field['options'] : [];
+		$options = is_array( $field['options'] ?? null ) ? $field['options'] : [];
 
 		$attrs = 'id="' . esc_attr( $input_id ) . '"'
 			. ' name="' . esc_attr( $field['id'] ) . '"'
@@ -1480,9 +1538,10 @@ class FormRenderer {
 
 		$html = '<fieldset class="neural-forms-form__radio-group" aria-describedby="' . esc_attr( $error_id ) . '">';
 
-		// Legend doubles as the field's question. Hidden by default so radio
-		// groups stay flush with their options; promoted to a visible block
-		// label when the builder turned show_label on.
+		// Legend doubles as the field's question. render_field() forces
+		// show_label on for radio groups (a hidden legend hid the question
+		// entirely — there's no placeholder to carry it), so this is
+		// visible unless the field has no label at all.
 		$lbl        = (string) ( $field['label'] ?? '' );
 		$show_label = ! empty( $field['show_label'] );
 		if ( $lbl !== '' ) {
@@ -1732,7 +1791,7 @@ class FormRenderer {
 			. ' aria-valuemin="' . esc_attr( $min ) . '"'
 			. ' aria-valuemax="' . esc_attr( $max ) . '"'
 			. ' aria-valuenow="' . esc_attr( $default ) . '"'
-			. ' oninput="this.setAttribute(\'aria-valuenow\',this.value);document.getElementById(\'' . esc_attr( $output_id ) . '\').textContent=this.value">'
+			. ' oninput="this.setAttribute(\'aria-valuenow\',this.value);document.getElementById(\'' . esc_js( $output_id ) . '\').textContent=this.value">'
 			. '<output id="' . esc_attr( $output_id ) . '" for="' . esc_attr( $input_id ) . '" class="neural-forms-form__range-output">' . esc_html( $default ) . '</output>'
 			. '</div>';
 	}
@@ -1815,7 +1874,17 @@ class FormRenderer {
 		$required = ! empty( $field['required'] );
 		$settings = SchemaHelper::normalize_poll_settings( $field['settings'] ?? null );
 
-		$html = '<fieldset class="neural-forms-form__poll" aria-describedby="' . esc_attr( $error_id ) . '">';
+		// Randomize: same contract as render_quiz_question — server-side
+		// shuffle for no-JS, data attribute for the per-visitor JS shuffle.
+		$randomize_attr = '';
+		if ( $settings['randomize_options'] ) {
+			shuffle( $options );
+			$randomize_attr = ' data-poll-randomize="1"';
+		}
+
+		$html = '<fieldset class="neural-forms-form__poll"'
+			. $randomize_attr
+			. ' aria-describedby="' . esc_attr( $error_id ) . '">';
 
 		// Poll question label is the field's content (the question
 		// itself). Same reasoning as render_quiz_question: always
@@ -2028,7 +2097,14 @@ class FormRenderer {
 		$required = ! empty( $field['required'] );
 		$settings = SchemaHelper::normalize_quiz_settings( $field['settings'] ?? null );
 
-		$randomize_attr = $settings['randomize_options'] ? ' data-quiz-randomize="1"' : '';
+		// Randomize: shuffle server-side so the setting works without JS,
+		// AND flag the fieldset so form-submit.js re-shuffles per visitor —
+		// a page cache would otherwise freeze one server-side order.
+		$randomize_attr = '';
+		if ( $settings['randomize_options'] ) {
+			shuffle( $options );
+			$randomize_attr = ' data-quiz-randomize="1"';
+		}
 
 		$html = '<fieldset class="neural-forms-form__quiz"'
 			. $randomize_attr
@@ -2676,15 +2752,16 @@ class FormRenderer {
 	 */
 	private static function render_file( array $field, string $input_id, string $error_id ): string {
 		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : [];
-		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
-			? (int) $field['max_file_size']
-			: 5;
+		// Effective limit = min( field max_file_size, wp_max_upload_size() ),
+		// so the hint, the client pre-check and the server check all agree.
+		$limit = \NeuralForms\Forms\SchemaHelper::file_size_limit( $field );
 
 		$attrs = 'type="file"'
 			. ' id="' . esc_attr( $input_id ) . '"'
 			. ' name="' . esc_attr( $field['id'] ) . '"'
 			. ' class="neural-forms-form__file-input"'
-			. ' data-max-size="' . ( $max_mb * 1024 * 1024 ) . '"';   // bytes
+			. ' data-max-size="' . (int) $limit['bytes'] . '"'            // bytes
+			. ' data-max-size-label="' . esc_attr( $limit['label'] ) . '"';
 
 		$accept = static::build_accept_attr( $allowed_types );
 		if ( $accept !== '' ) {
@@ -2712,7 +2789,7 @@ class FormRenderer {
 				$hint_parts[] = 'Accepted: ' . implode( ', ', $labels );
 			}
 		}
-		$hint_parts[] = 'Max ' . $max_mb . ' MB';
+		$hint_parts[] = 'Max ' . $limit['label'];
 		$hint_text    = implode( ' · ', $hint_parts );
 
 		// Link both the error container and the hint text to the input via

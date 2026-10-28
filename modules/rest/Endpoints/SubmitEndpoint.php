@@ -24,8 +24,9 @@ defined( 'ABSPATH' ) || exit;
  *
  *  1. Load form from DB; 404 if not found.
  *  2. Verify form status is 'active'; 403 otherwise.
- *  3. Rate-limit check via filter (infrastructure gate, no body read yet).
- *  4. Extract full body; honeypot check (before key-stripping).
+ *  3. Extract full body; honeypot check (before key-stripping).
+ *  4. Rate-limit check via filter. Keyed per form + client IP; IP comes
+ *     from REMOTE_ADDR unless it is a trusted proxy (see resolve_ip()).
  *  4b. CAPTCHA verification - if form has captcha_enabled, verify token
  *      before the body is stripped. Fails closed: missing token '->-> 400,
  *      bad token '->-> 400, misconfigured provider '->-> 400. Entry is never saved.
@@ -41,7 +42,7 @@ defined( 'ABSPATH' ) || exit;
  *
  *  form_not_found          404  Form ID does not exist.
  *  form_not_active         403  Form is draft or archived.
- *  rate_limit_exceeded     429  Too many requests from this IP.
+ *  rate_limit_exceeded     429  Too many requests from this IP for this form.
  *  spam_detected           400  Submission flagged as spam (honeypot or filter).
  *  captcha_missing         400  CAPTCHA token absent (provider fully configured but no token sent).
  *  captcha_failed          400  Token rejected by provider; failure is logged.
@@ -129,16 +130,46 @@ class SubmitEndpoint {
 			return $limit_error;
 		}
 
-		// ' Step 3: Rate-limit gate '
-		// Built-in transient-based limiter: max 10 submissions per IP per 10
-		// minutes. The filter lets extensions replace or tighten this logic.
+		// ' Step 3: Extract submitted values '
+		// Read the full body once so we can check the honeypot before stripping.
+		// Detects multipart/form-data (file upload path) vs JSON automatically.
+		$raw_body = $this->get_submission_params( $request );
+
+		// ' Step 3a: Honeypot check '
+		// FormRenderer renders a hidden field named "neural_forms_website".
+		// Legitimate users never fill it; bots that auto-fill all inputs do.
+		// Must be read from $raw_body BEFORE key-stripping removes unknown keys.
+		// Runs BEFORE the rate-limit gate so obvious bot traffic never
+		// consumes rate slots shared by legitimate users on the same IP
+		// (office NAT, carrier-grade NAT, VPN exit).
+		$honeypot = trim( (string) ( $raw_body['neural_forms_website'] ?? '' ) );
+		if ( $honeypot !== '' ) {
+			return new WP_Error(
+				'spam_detected',
+				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		// ' Step 4: Rate-limit gate '
+		// Built-in transient-based limiter: max 10 submissions per form per
+		// IP per 10 minutes. CAPTCHA failures and validation errors below
+		// still count - that is what stops token/field brute-forcing. The
+		// filter lets extensions replace or tighten this logic.
 		$ip = $this->resolve_ip();
+
+		// Privacy mode (Settings > General & Privacy): the IP may be USED
+		// in memory for this request (rate limit, CAPTCHA verification)
+		// but must never be PERSISTED or logged. Checked once here and
+		// applied at the CAPTCHA log and at Step 8 (entry context).
+		$privacy_mode = (bool) Config::get( 'privacy_mode', false );
 
 		$rate_limited = apply_filters(
 			'neural_forms_rate_limit',
-			self::default_rate_limit( $ip ),
+			self::default_rate_limit( $ip, $form_id ),
 			$request,
-			$ip
+			$ip,
+			$form_id
 		);
 
 		if ( $rate_limited ) {
@@ -146,24 +177,6 @@ class SubmitEndpoint {
 				'rate_limit_exceeded',
 				__( 'Too many requests. Please wait before submitting again.', 'neural-forms-lite' ),
 				array( 'status' => 429 )
-			);
-		}
-
-		// ' Step 4: Extract and strip submitted values '
-		// Read the full body once so we can check the honeypot before stripping.
-		// Detects multipart/form-data (file upload path) vs JSON automatically.
-		$raw_body = $this->get_submission_params( $request );
-
-		// ' Step 4a: Honeypot check '
-		// FormRenderer renders a hidden field named "neural_forms_website".
-		// Legitimate users never fill it; bots that auto-fill all inputs do.
-		// Must be read from $raw_body BEFORE key-stripping removes unknown keys.
-		$honeypot = trim( (string) ( $raw_body['neural_forms_website'] ?? '' ) );
-		if ( $honeypot !== '' ) {
-			return new WP_Error(
-				'spam_detected',
-				__( 'Your submission could not be processed. Please try again.', 'neural-forms-lite' ),
-				array( 'status' => 400 )
 			);
 		}
 
@@ -211,7 +224,7 @@ class SubmitEndpoint {
 						'error_code' => $captcha_result->get_error_code(),
 						'error_data' => $captcha_result->get_error_data(),
 						'form_id'    => $form_id,
-						'ip'         => $ip,
+						'ip'         => $privacy_mode ? '' : $ip,
 					)
 				);
 
@@ -239,6 +252,28 @@ class SubmitEndpoint {
 		// + rate limit gate above), so no nonce is sent. $_FILES is read here
 		// only to detect the multipart upload path; values pulled from it are
 		// validated and sanitized inside process_file_fields().
+		// When a multipart request exceeds post_max_size, PHP discards the
+		// entire body: $_POST and $_FILES both arrive empty, and without this
+		// guard the user would see "X is required" for every field instead
+		// of the real cause. CONTENT_LENGTH is still set, so compare it to
+		// the server cap and report a size error up front.
+		$content_type   = (string) ( $request->get_header( 'Content-Type' ) ?? '' );
+		$content_length = (int) ( $_SERVER['CONTENT_LENGTH'] ?? 0 );
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		if ( empty( $_FILES ) && empty( $raw_body ) && $content_length > 0
+			&& strpos( $content_type, 'multipart/form-data' ) !== false
+			&& function_exists( 'wp_max_upload_size' ) && $content_length > (int) wp_max_upload_size() ) {
+			return new WP_Error(
+				'file_too_large',
+				sprintf(
+					/* translators: %s: server upload limit, e.g. "2 MB" */
+					__( 'The upload is larger than this server allows (maximum %s). Please choose a smaller file.', 'neural-forms-lite' ),
+					SchemaHelper::format_file_size_label( (int) wp_max_upload_size() )
+				),
+				array( 'status' => 413 )
+			);
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		if ( ! empty( $_FILES ) ) {
 			$file_result = $this->process_file_fields( $schema_fields_pre, $raw_body );
@@ -281,30 +316,33 @@ class SubmitEndpoint {
 		// or saved. The file will remain in the media library as an orphan;
 		// this is an accepted V1 limitation.
 		//
-		// Fallback: if the controlling field is absent from submitted data, treat
-		// the dependent field as visible (do NOT strip it). This avoids silently
-		// discarding data due to a schema/submission timing mismatch.
-		foreach ( $schema_fields as $_cl_field ) {
-			$_cl_field    = (array) $_cl_field;
-			$_cl_field_id = $_cl_field['id'] ?? '';
-
-			if ( $_cl_field_id === '' ) {
-				continue;
+		// Hidden fields are removed from BOTH $raw_data and the local
+		// $schema_fields copy (same pattern as the capability strip in
+		// Step 5b). Before 1.1.3 only $raw_data was stripped, so the
+		// validator still saw the hidden field and failed its `required`
+		// check — the visitor got an error attached to a field they
+		// could not see and no entry was saved.
+		//
+		// resolve_hidden_field_ids() also hides a field whose CONTROLLER
+		// is hidden, and evaluate_conditional() treats an absent /
+		// unticked checkbox or radio controller as empty (an unticked box
+		// is not posted on the multipart path and posted as 0 by the JS
+		// serializer; neither should count as "visible").
+		$_hidden_ids = $this->resolve_hidden_field_ids( $schema_fields, $raw_data );
+		if ( $_hidden_ids ) {
+			foreach ( $_hidden_ids as $_hid ) {
+				unset( $raw_data[ $_hid ] );
 			}
-
-			$_cl = is_array( $_cl_field['conditional_logic'] ?? null )
-				? $_cl_field['conditional_logic']
-				: null;
-
-			if ( null === $_cl || empty( $_cl['enabled'] ) || empty( (string) ( $_cl['field'] ?? '' ) ) ) {
-				continue;
-			}
-
-			$_visible = $this->evaluate_conditional( $_cl, $raw_data );
-
-			if ( ! $_visible ) {
-				unset( $raw_data[ $_cl_field_id ] );
-			}
+			$_hidden_lookup = array_flip( $_hidden_ids );
+			$schema_fields  = array_values(
+				array_filter(
+					$schema_fields,
+					static function ( $f ) use ( $_hidden_lookup ) {
+						$f = (array) $f;
+						return ! isset( $_hidden_lookup[ (string) ( $f['id'] ?? '' ) ] );
+					}
+				)
+			);
 		}
 
 		// ' Step 5b: Capability-locked field strip '
@@ -375,9 +413,13 @@ class SubmitEndpoint {
 		// These values are server-derived, never client-trusted.
 		// form_version is an MD5 of the schema at the moment of submission -
 		// useful later to detect entries captured against an older schema shape.
+		//
+		// Privacy mode: IP and user agent are blanked BEFORE persistence.
+		// Before 1.1.3 nothing read privacy_mode at submit time, so the
+		// toggle had no effect — see changelog.
 		$context = array(
-			'ip'           => $ip,
-			'user_agent'   => sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
+			'ip'           => $privacy_mode ? '' : $ip,
+			'user_agent'   => $privacy_mode ? '' : sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
 			'page_url'     => esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ?? '' ) ),
 			'submitted_at' => current_time( 'mysql', true ),   // UTC
 			'form_version' => md5( (string) wp_json_encode( $form['form_schema'] ) ),
@@ -587,7 +629,7 @@ class SubmitEndpoint {
 				'status'      => 403,
 				'limit'       => $limit,
 				'count'       => $count,
-				'upgrade_url' => 'https://neuralforms.ai/pro/',
+				'upgrade_url' => 'https://neuralforms.ai/pricing/',
 			)
 		);
 	}
@@ -961,7 +1003,8 @@ class SubmitEndpoint {
 				if ( ! is_array( $value ) ) {
 					return array();
 				}
-				return array_map( 'sanitize_text_field', array_values( $value ) );
+				// array_unique: a huge duplicate array must not bloat storage / AI payloads.
+				return array_values( array_unique( array_map( 'sanitize_text_field', array_values( array_filter( $value, 'is_scalar' ) ) ) ) );
 
 			case 'checkbox':
 			case 'acceptance':
@@ -1000,7 +1043,14 @@ class SubmitEndpoint {
 				// or array_map(sanitize_text_field) as usual.
 				return $this->sanitize_repeater( $value, $field );
 
-			// text, phone, tel, select:
+			case 'phone':
+			case 'tel':
+				// A dial-code-only value ("+1") means the visitor left the
+				// picker-prefilled field alone — store '' so the entry,
+				// exports and AI analysis don't carry a phantom "+1".
+				return SubmissionValidator::normalize_phone( sanitize_text_field( (string) $value ) );
+
+			// text, select:
 			// sanitize_text_field() strips tags, encodes HTML entities, trims.
 			// Select values are already validated against the allowed options list
 			// in SubmissionValidator, so this is a belt-and-suspenders pass.
@@ -1363,6 +1413,12 @@ class SubmitEndpoint {
 					if ( $file_info['error'] === UPLOAD_ERR_NO_FILE ) {
 						continue;
 					}
+
+					$path = $repeater_id . '[' . $idx . '][' . $child_id . ']';
+
+					if ( self::is_size_upload_error( $file_info['error'] ) ) {
+						return $this->file_too_large_error( $child, $path, SchemaHelper::file_size_limit( $child )['label'] );
+					}
 					if ( $file_info['error'] !== UPLOAD_ERR_OK ) {
 						return new WP_Error(
 							'file_upload_error',
@@ -1371,7 +1427,6 @@ class SubmitEndpoint {
 						);
 					}
 
-					$path   = $repeater_id . '[' . $idx . '][' . $child_id . ']';
 					$upload = $this->upload_file_cell( $file_info, $child, $path );
 					if ( is_wp_error( $upload ) ) {
 						return $upload;
@@ -1394,6 +1449,51 @@ class SubmitEndpoint {
 	}
 
 	/**
+	 * True for the two PHP upload error codes that mean "too big":
+	 * UPLOAD_ERR_INI_SIZE (upload_max_filesize) and UPLOAD_ERR_FORM_SIZE
+	 * (MAX_FILE_SIZE form field). Both deserve the size message, not the
+	 * generic "upload error" one.
+	 */
+	private static function is_size_upload_error( int $code ): bool {
+		return $code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE;
+	}
+
+	/**
+	 * Build the field-keyed 422 for a file that exceeds its limit.
+	 *
+	 * @param array  $field             File field schema (label / id).
+	 * @param string $error_field_path  Field id, or `rid[idx][cid]` for repeater cells.
+	 * @param string $limit_label       Human limit, e.g. "2 MB" (from SchemaHelper::file_size_limit()).
+	 * @return WP_Error
+	 */
+	private function file_too_large_error( array $field, string $error_field_path, string $limit_label ): WP_Error {
+		$label = trim( (string) ( $field['label'] ?? '' ) );
+		if ( $label === '' ) {
+			$label = (string) ( $field['id'] ?? 'file' );
+		}
+		return new WP_Error(
+			'invalid_submission',
+			__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+			array(
+				'status' => 422,
+				'fields' => array(
+					$error_field_path => array(
+						array(
+							'code'    => 'file_too_large',
+							'message' => sprintf(
+								/* translators: 1: field label  2: maximum size, e.g. "5 MB" */
+								__( '%1$s: file exceeds the maximum allowed size of %2$s.', 'neural-forms-lite' ),
+								$label,
+								$limit_label
+							),
+						),
+					),
+				),
+			)
+		);
+	}
+
+	/**
 	 * Validate + upload a single file cell. Extracted so both the flat
 	 * file path (process_file_fields) and the nested repeater path
 	 * (process_repeater_file_fields) share the same checks: size,
@@ -1412,33 +1512,10 @@ class SubmitEndpoint {
 	 */
 	private function upload_file_cell( array $file_info, array $field, string $error_field_path ) {
 		$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
-		$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
-			? (int) $field['max_file_size']
-			: 5;
-		$max_bytes     = $max_mb * 1024 * 1024;
+		$limit         = SchemaHelper::file_size_limit( $field );
 
-		if ( $file_info['size'] > $max_bytes ) {
-			$label = trim( $field['label'] ?? '' ) !== '' ? trim( $field['label'] ) : ( (string) ( $field['id'] ?? 'file' ) );
-			return new WP_Error(
-				'invalid_submission',
-				__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-				array(
-					'status' => 422,
-					'fields' => array(
-						$error_field_path => array(
-							array(
-								'code'    => 'file_too_large',
-								'message' => sprintf(
-									/* translators: 1: field label  2: max size in MB */
-									__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
-									$label,
-									$max_mb
-								),
-							),
-						),
-					),
-				)
-			);
+		if ( $file_info['size'] > $limit['bytes'] ) {
+			return $this->file_too_large_error( $field, $error_field_path, $limit['label'] );
 		}
 
 		$upload_mimes = $this->build_allowed_mimes( $allowed_types );
@@ -1528,7 +1605,13 @@ class SubmitEndpoint {
 				'post_mime_type' => $upload['type'],
 				'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
 				'post_content'   => '',
-				'post_status'    => 'inherit',
+				// 'private', not 'inherit': an unattached 'inherit' attachment is
+				// treated as published by core's REST media controller, so
+				// anonymous GET /wp-json/wp/v2/media listed every visitor
+				// upload (CVs, IDs…) with its source_url. Private attachments
+				// fail the anonymous read check; the file itself still serves
+				// from its randomised URL for the inbox download link.
+				'post_status'    => 'private',
 			),
 			$upload['file']
 		);
@@ -1577,10 +1660,7 @@ class SubmitEndpoint {
 
 			$required      = ! empty( $field['required'] );
 			$allowed_types = is_array( $field['allowed_types'] ?? null ) ? $field['allowed_types'] : array();
-			$max_mb        = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
-				? (int) $field['max_file_size']
-				: 5;
-			$max_bytes     = $max_mb * 1024 * 1024;
+			$limit         = SchemaHelper::file_size_limit( $field );
 
 			// Public endpoint - see the nonce-ignore on the $_FILES gate above.
 			// File contents are validated below with wp_check_filetype_and_ext()
@@ -1622,7 +1702,14 @@ class SubmitEndpoint {
 				continue;
 			}
 
-			// Upload error other than "no file".
+			// PHP rejected the file for size (upload_max_filesize / MAX_FILE_SIZE):
+			// surface the real reason as a field-level size error, not the
+			// generic "upload error" below.
+			if ( self::is_size_upload_error( $file_info['error'] ) ) {
+				return $this->file_too_large_error( $field, $field_id, $limit['label'] );
+			}
+
+			// Any other upload error.
 			if ( $file_info['error'] !== UPLOAD_ERR_OK ) {
 				return new WP_Error(
 					'file_upload_error',
@@ -1631,29 +1718,9 @@ class SubmitEndpoint {
 				);
 			}
 
-			// Server-side size check.
-			if ( $file_info['size'] > $max_bytes ) {
-				$label = trim( $field['label'] ?? '' ) ?: $field_id;
-				return new WP_Error(
-					'invalid_submission',
-					__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
-					array(
-						'status' => 422,
-						'fields' => array(
-							$field_id => array(
-								array(
-									'code'    => 'file_too_large',
-									'message' => sprintf(
-										/* translators: 1: field label  2: max size in MB */
-										__( '%1$s: file exceeds the maximum allowed size of %2$d MB.', 'neural-forms-lite' ),
-										$label,
-										$max_mb
-									),
-								),
-							),
-						),
-					)
-				);
+			// Server-side size check (limit already capped by wp_max_upload_size()).
+			if ( $file_info['size'] > $limit['bytes'] ) {
+				return $this->file_too_large_error( $field, $field_id, $limit['label'] );
 			}
 
 			// Build the custom mimes list once - used for both the pre-check and
@@ -1766,7 +1833,13 @@ class SubmitEndpoint {
 					'post_mime_type' => $upload['type'],
 					'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),
 					'post_content'   => '',
-					'post_status'    => 'inherit',
+					// 'private', not 'inherit': an unattached 'inherit' attachment is
+				// treated as published by core's REST media controller, so
+				// anonymous GET /wp-json/wp/v2/media listed every visitor
+				// upload (CVs, IDs…) with its source_url. Private attachments
+				// fail the anonymous read check; the file itself still serves
+				// from its randomised URL for the inbox download link.
+				'post_status'    => 'private',
 				),
 				$upload['file']
 			);
@@ -1888,14 +1961,25 @@ class SubmitEndpoint {
 	 *
 	 * Fallback rules:
 	 *   * Incomplete rule (missing field or operator) '->-> true (show).
-	 *   * Controlling field absent from submitted data '->-> true (show).
+	 *   * Controlling field absent from submitted data:
+	 *       - checkbox / acceptance / radio / checkboxes controller '->-> treated
+	 *         as EMPTY (an unticked box or unchecked radio is simply not
+	 *         posted on the multipart path, and the JS serializer sends 0
+	 *         for an unticked box) — mirrors getFieldValue() returning ''.
+	 *       - any other type '->-> true (show) — a text-like field is always
+	 *         posted, so absence means a schema / submission mismatch.
 	 *   * Unknown operator '->-> true (show).
 	 *
-	 * @param array $logic  The conditional_logic object from the field schema.
-	 * @param array $data   Submitted data keyed by field_id (may be modified by prior iterations).
+	 * Single-checkbox controllers are normalised to '1' (checked) or ''
+	 * (unchecked) regardless of wire shape (1, '1', true vs 0, '0', false,
+	 * ''), again mirroring the JS evaluator.
+	 *
+	 * @param array $logic        The conditional_logic object from the field schema.
+	 * @param array $data         Submitted data keyed by field_id.
+	 * @param array $field_types  Optional map field_id => type (from the schema).
 	 * @return bool
 	 */
-	private function evaluate_conditional( array $logic, array $data ): bool {
+	private function evaluate_conditional( array $logic, array $data, array $field_types = array() ): bool {
 		$control_id = (string) ( $logic['field'] ?? '' );
 		$operator   = (string) ( $logic['operator'] ?? '' );
 		$rule_value = (string) ( $logic['value'] ?? '' );
@@ -1904,12 +1988,24 @@ class SubmitEndpoint {
 			return true;
 		}
 
-		// Safe fallback: if the controlling field is absent, show the dependent field.
+		$control_type = (string) ( $field_types[ $control_id ] ?? '' );
+		$is_choice    = in_array( $control_type, array( 'checkbox', 'acceptance', 'radio', 'checkboxes' ), true );
+
 		if ( ! array_key_exists( $control_id, $data ) ) {
-			return true;
+			// Unticked / unchecked choice controls are not posted at all —
+			// that IS their empty state. Anything else: safe fallback, show.
+			if ( ! $is_choice ) {
+				return true;
+			}
+			$control_raw = '';
+		} else {
+			$control_raw = $data[ $control_id ];
 		}
 
-		$control_raw = $data[ $control_id ];
+		if ( $control_type === 'checkbox' || $control_type === 'acceptance' ) {
+			// Same set as SubmissionValidator::CHECKED_CHECKBOX_VALUES.
+			$control_raw = in_array( $control_raw, array( 1, '1', true ), true ) ? '1' : '';
+		}
 
 		if ( is_array( $control_raw ) ) {
 			// File fields store associative metadata (filename, url, ...) - there
@@ -1962,6 +2058,52 @@ class SubmitEndpoint {
 		}
 	}
 
+	/**
+	 * Resolve which fields are hidden by conditional logic for this
+	 * submission, including fields whose controller is itself hidden
+	 * (chains). Evaluates every rule against the ORIGINAL submitted data
+	 * and the schema's field types, so order of fields in the schema does
+	 * not matter.
+	 *
+	 * @param array $schema_fields  Flattened leaf fields.
+	 * @param array $raw_data       Submitted data keyed by field id.
+	 * @return string[]  Field ids to strip from data + validation.
+	 */
+	private function resolve_hidden_field_ids( array $schema_fields, array $raw_data ): array {
+		$types = array();
+		$rules = array();
+		foreach ( $schema_fields as $f ) {
+			$f  = (array) $f;
+			$id = (string) ( $f['id'] ?? '' );
+			if ( $id === '' ) {
+				continue;
+			}
+			$types[ $id ] = (string) ( $f['type'] ?? 'text' );
+			$cl = is_array( $f['conditional_logic'] ?? null ) ? $f['conditional_logic'] : null;
+			if ( $cl && ! empty( $cl['enabled'] ) && (string) ( $cl['field'] ?? '' ) !== '' ) {
+				$rules[ $id ] = $cl;
+			}
+		}
+
+		$hidden = array();
+		$guard  = 0;
+		do {
+			$changed = false;
+			foreach ( $rules as $id => $cl ) {
+				if ( isset( $hidden[ $id ] ) ) {
+					continue;
+				}
+				$controller = (string) $cl['field'];
+				if ( isset( $hidden[ $controller ] ) || ! $this->evaluate_conditional( $cl, $raw_data, $types ) ) {
+					$hidden[ $id ] = true;
+					$changed       = true;
+				}
+			}
+		} while ( $changed && ++$guard < 50 );
+
+		return array_keys( $hidden );
+	}
+
 	// Utilities
 
 	/**
@@ -1990,67 +2132,161 @@ class SubmitEndpoint {
 	/**
 	 * Resolve the client IP address.
 	 *
-	 * Prefers X-Forwarded-For when present (set by reverse proxies and load
-	 * balancers). Takes only the first (leftmost) entry - it represents the
-	 * original client; subsequent IPs are proxies appended along the chain.
+	 * Defaults to REMOTE_ADDR, which is set by the web server from the TCP
+	 * connection and cannot be forged by the client. Forwarding headers
+	 * (X-Forwarded-For, CF-Connecting-IP) are plain HTTP headers that any
+	 * client can send, so they are only honoured when REMOTE_ADDR itself is
+	 * a trusted proxy - i.e. the header was written by infrastructure we
+	 * control, not by the submitter.
 	 *
-	 * '��️  SPOOFING RISK: X-Forwarded-For is a plain HTTP header. Any client
-	 * can send an arbitrary value when no trusted proxy sits in front. This
-	 * means an attacker can trivially rotate the apparent IP and bypass any
-	 * rate-limit filter that relies solely on this method.
+	 * Trusted proxies are declared via the `neural_forms_trusted_proxies`
+	 * filter as a list of IPs and/or CIDR ranges (IPv4 or IPv6):
 	 *
-	 * For MVP this is an acceptable trade-off - most shared hosting and basic
-	 * server setups do not sit behind a load balancer, so REMOTE_ADDR is used
-	 * directly. When a reverse proxy (Nginx, Cloudflare, AWS ALB) is added:
+	 *     add_filter( 'neural_forms_trusted_proxies', fn() => [ '10.0.0.0/8', '2400:cb00::/32' ] );
 	 *
-	 *  1. Restrict which IPs are allowed to set X-Forwarded-For at the proxy
-	 *     layer (i.e. strip the header from untrusted sources before it hits PHP).
-	 *  2. Or replace this method with a whitelist of trusted proxy CIDR ranges
-	 *     and only trust X-Forwarded-For when REMOTE_ADDR is in that list.
+	 * The list is empty by default, so an untouched install never reads a
+	 * forwarding header. When REMOTE_ADDR is trusted:
+	 *
+	 *  1. CF-Connecting-IP wins if present and valid - Cloudflare sets it to
+	 *     exactly one address, the real client.
+	 *  2. Otherwise X-Forwarded-For is walked from the RIGHT (the hop
+	 *     appended by the nearest proxy) towards the left, skipping every
+	 *     trusted address; the first untrusted hop is the client. Walking
+	 *     from the left would let a client prepend any value it liked.
+	 *  3. A malformed hop aborts the walk and REMOTE_ADDR is used. That
+	 *     collapses traffic behind the proxy into one bucket, which is
+	 *     stricter, never looser.
 	 *
 	 * Use the resolved IP for analytics and rate-limit heuristics only.
 	 * Never use it for authentication, capability checks, or billing decisions.
 	 *
-	 * @return string  IPv4 or IPv6 address, or empty string if unavailable.
+	 * @return string  IPv4 or IPv6 address, or empty string if REMOTE_ADDR is unavailable.
 	 */
 	private function resolve_ip(): string {
-		$candidate = '';
+		$remote = isset( $_SERVER['REMOTE_ADDR'] )
+			? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )
+			: '';
+		$remote = filter_var( $remote, FILTER_VALIDATE_IP ) ? $remote : '';
+
+		/**
+		 * Filter the list of trusted reverse-proxy addresses.
+		 *
+		 * @param string[] $proxies  IPs or CIDR ranges allowed to set forwarding headers.
+		 */
+		$trusted = apply_filters( 'neural_forms_trusted_proxies', array() );
+		$trusted = is_array( $trusted ) ? array_filter( array_map( 'strval', $trusted ) ) : array();
+
+		if ( $remote === '' || empty( $trusted ) || ! self::ip_in_list( $remote, $trusted ) ) {
+			return $remote;
+		}
+
+		if ( ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+			$cf = trim( sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) );
+			if ( filter_var( $cf, FILTER_VALIDATE_IP ) ) {
+				return $cf;
+			}
+		}
 
 		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
-			$forwarded = explode(
-				',',
-				sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) )
+			$hops = array_map(
+				'trim',
+				explode( ',', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) )
 			);
-			$candidate = trim( (string) $forwarded[0] );
+
+			for ( $i = count( $hops ) - 1; $i >= 0; $i-- ) {
+				$hop = (string) $hops[ $i ];
+				if ( ! filter_var( $hop, FILTER_VALIDATE_IP ) ) {
+					break;
+				}
+				if ( ! self::ip_in_list( $hop, $trusted ) ) {
+					return $hop;
+				}
+			}
 		}
 
-		if ( $candidate === '' ) {
-			$candidate = isset( $_SERVER['REMOTE_ADDR'] )
-				? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )
-				: '';
-		}
-
-		// Reject anything that isn't a real IPv4/IPv6 - prevents header-injected
-		// garbage from landing in the entries table, captcha upstream calls, or
-		// the rate-limit transient key.
-		return filter_var( $candidate, FILTER_VALIDATE_IP ) ? $candidate : '';
+		return $remote;
 	}
 
 	/**
-	 * Built-in rate limiter: max 10 submissions per IP per 10-minute window.
+	 * Check whether an IP matches any entry in a list of IPs / CIDR ranges.
 	 *
-	 * Uses WordPress transients for storage - works without external
-	 * dependencies and self-cleans via TTL.
+	 * Supports IPv4 and IPv6. Entries without a prefix length are exact
+	 * matches. Invalid entries are ignored.
 	 *
-	 * @param string $ip  Resolved client IP address.
-	 * @return bool  True if the IP should be blocked.
+	 * @param string   $ip    Valid IPv4 or IPv6 address.
+	 * @param string[] $list  IPs or CIDR ranges.
+	 * @return bool
 	 */
-	private static function default_rate_limit( string $ip ): bool {
-		if ( $ip === '' ) {
+	private static function ip_in_list( string $ip, array $list ): bool {
+		$ip_bin = @inet_pton( $ip );
+		if ( $ip_bin === false ) {
 			return false;
 		}
 
-		$key   = self::RATE_LIMIT_TRANSIENT_PREFIX . md5( $ip );
+		foreach ( $list as $entry ) {
+			$entry = trim( (string) $entry );
+			if ( $entry === '' ) {
+				continue;
+			}
+
+			$prefix = null;
+			if ( strpos( $entry, '/' ) !== false ) {
+				list( $entry, $prefix ) = explode( '/', $entry, 2 );
+				$prefix = is_numeric( $prefix ) ? (int) $prefix : -1;
+			}
+
+			$entry_bin = @inet_pton( $entry );
+			if ( $entry_bin === false || strlen( $entry_bin ) !== strlen( $ip_bin ) ) {
+				continue; // Invalid, or IPv4 vs IPv6 mismatch.
+			}
+
+			$bits = strlen( $ip_bin ) * 8;
+			if ( $prefix === null ) {
+				$prefix = $bits;
+			}
+			if ( $prefix < 0 || $prefix > $bits ) {
+				continue;
+			}
+
+			$full_bytes = intdiv( $prefix, 8 );
+			$rem_bits   = $prefix % 8;
+
+			if ( $full_bytes > 0 && substr( $ip_bin, 0, $full_bytes ) !== substr( $entry_bin, 0, $full_bytes ) ) {
+				continue;
+			}
+			if ( $rem_bits > 0 ) {
+				$mask = ( 0xFF << ( 8 - $rem_bits ) ) & 0xFF;
+				if ( ( ord( $ip_bin[ $full_bytes ] ) & $mask ) !== ( ord( $entry_bin[ $full_bytes ] ) & $mask ) ) {
+					continue;
+				}
+			}
+
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Built-in rate limiter: max 10 submissions per form per IP per 10-minute window.
+	 *
+	 * Uses WordPress transients for storage - works without external
+	 * dependencies and self-cleans via TTL. The TTL is refreshed on every
+	 * counted attempt, so the window slides until the cap is hit; once
+	 * blocked, the block lasts 10 minutes from the last counted attempt.
+	 *
+	 * An empty IP (REMOTE_ADDR missing or malformed - only seen on broken
+	 * server configs) is never a free pass: such requests share one
+	 * "unknown" bucket so the gate still holds.
+	 *
+	 * @param string $ip       Resolved client IP address ('' if unavailable).
+	 * @param int    $form_id  Form being submitted; keys the bucket per form.
+	 * @return bool  True if the request should be blocked.
+	 */
+	private static function default_rate_limit( string $ip, int $form_id ): bool {
+		$bucket = $ip === '' ? 'unknown' : $ip;
+
+		$key   = self::RATE_LIMIT_TRANSIENT_PREFIX . md5( $form_id . '|' . $bucket );
 		$count = (int) get_transient( $key );
 
 		if ( $count >= 10 ) {

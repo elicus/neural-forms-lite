@@ -173,6 +173,28 @@ export function buildFieldSchemaMap( form ) {
  * out naturally. Returns an empty list when the value isn't an
  * array or when the schema has no children.
  */
+/**
+ * Display text for a select / radio / checkboxes value: the option
+ * LABEL(s) for the stored VALUE(s) ("laptop" → "Laptop"). Mirrors PHP
+ * NotificationService::display_choice(). Returns null when the field
+ * is not a choice field so callers fall through to their default.
+ */
+export function formatChoiceValue( value, field ) {
+	if ( ! field || ! [ 'select', 'radio', 'checkboxes' ].includes( field.type ) ) return null;
+	const labels = {};
+	for ( const opt of ( Array.isArray( field.options ) ? field.options : [] ) ) {
+		if ( ! opt || typeof opt !== 'object' ) continue;
+		const val = opt.value != null && String( opt.value ) !== '' ? String( opt.value ) : String( opt.label ?? '' );
+		if ( val === '' ) continue;
+		labels[ val ] = ( opt.label != null && String( opt.label ).trim() !== '' ) ? String( opt.label ) : val;
+	}
+	const values = Array.isArray( value ) ? value.filter( ( v ) => v != null && typeof v !== 'object' ) : [ value ];
+	return values
+		.filter( ( v ) => v != null && String( v ) !== '' )
+		.map( ( v ) => labels[ String( v ) ] ?? String( v ) )
+		.join( ', ' );
+}
+
 export function formatRepeaterValueLines( value, field ) {
 	const out = [];
 	if ( ! field || typeof field !== 'object' ) return out;

@@ -90,7 +90,12 @@ class Config {
 	 * @param array $new_values Associative array of key => value pairs.
 	 */
 	public static function update( array $new_values ): void {
-		$current = self::all();
+		// Re-read the option: another request may have written since this
+		// request cached it (e.g. a cron AI batch calling Config::set() for
+		// plan usage while an admin revoked the API key — the stale cache
+		// would otherwise resurrect the key).
+		self::$cache = null;
+		$current     = self::all();
 		$merged  = array_merge( $current, $new_values );
 
 		update_option( self::OPTION_KEY, $merged, false ); // autoload = false

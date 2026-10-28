@@ -13,6 +13,7 @@
  *   onOpen          (id: number) => void
  *   onToggleStar    (entry) => void
  *   openId          number — currently expanded entry
+ *   focusedId       number|null — row the keyboard shortcuts act on (j/k, r/u/s/#/!)
  */
 
 import { __ } from '@wordpress/i18n';
@@ -62,6 +63,7 @@ export default function EntriesList( {
 	onOpen,
 	onToggleStar,
 	openId,
+	focusedId = null,
 } ) {
 	if ( ! entries || entries.length === 0 ) return null;
 
@@ -97,12 +99,15 @@ export default function EntriesList( {
 					return (
 						<tr
 							key={ e.id }
+							data-entry-id={ e.id }
 							className={
 								'neural-forms-entries-row'
 								+ ( e.status === 'new' ? ' is-unread' : '' )
 								+ ( openId === e.id ? ' is-open' : '' )
 								+ ( selection.has( e.id ) ? ' is-selected' : '' )
+								+ ( focusedId === e.id ? ' is-focused' : '' )
 							}
+							aria-current={ focusedId === e.id ? 'true' : undefined }
 							onClick={ () => onOpen( e.id ) }
 						>
 							<td className="neural-forms-entries-col-check" onClick={ ( ev ) => ev.stopPropagation() }>

@@ -146,7 +146,11 @@ class Logger {
 				return;
 			}
 
-			$file = $dir . 'neural-forms-' . gmdate( 'Y-m-d' ) . '.log';
+			// Random per-site token in the filename: the logs dir lives under
+			// wp-content/uploads, and .htaccess means nothing on nginx /
+			// LiteSpeed-without-htaccess. Without the token the path was
+			// guessable (…/neural-forms/logs/neural-forms-YYYY-MM-DD.log).
+			$file = $dir . 'neural-forms-' . self::file_token() . '-' . gmdate( 'Y-m-d' ) . '.log';
 			$ts   = gmdate( 'Y-m-d H:i:s' );
 			$ctx  = ! empty( $context ) ? ' ' . wp_json_encode( $context, JSON_UNESCAPED_SLASHES ) : '';
 			$line = sprintf( "[%s] %s.%s: %s%s\n", $ts, $channel, strtoupper( $level ), $message, $ctx );
@@ -202,11 +206,15 @@ class Logger {
 			}
 		}
 
-		// Protect against direct web access.
+		// Protect against direct web access (Apache 2.4 `Require` + 2.2
+		// `Deny`). Rewritten when an older one-liner is found so upgrades
+		// pick up the 2.4 directive.
 		$htaccess = $dir . '.htaccess';
-		if ( ! file_exists( $htaccess ) ) {
+		$rules    = "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n";
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_get_contents
+		if ( ! file_exists( $htaccess ) || strpos( (string) file_get_contents( $htaccess ), 'Require all denied' ) === false ) {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-			file_put_contents( $htaccess, "Deny from all\n" );
+			file_put_contents( $htaccess, $rules );
 		}
 
 		$index = $dir . 'index.php';
@@ -225,6 +233,28 @@ class Logger {
 	/**
 	 * Delete DB log rows older than 60 days and log files older than 14 days.
 	 */
+	/**
+	 * Per-site random token embedded in log filenames (see write_file()).
+	 * Stored once in `neural_forms_log_token` (autoload off).
+	 */
+	private static function file_token(): string {
+		static $token = null;
+		if ( $token !== null ) {
+			return $token;
+		}
+		$stored = get_option( 'neural_forms_log_token', '' );
+		if ( ! is_string( $stored ) || ! preg_match( '/^[a-f0-9]{16}$/', $stored ) ) {
+			try {
+				$stored = bin2hex( random_bytes( 8 ) );
+			} catch ( \Throwable $e ) {
+				$stored = substr( md5( uniqid( (string) wp_rand(), true ) ), 0, 16 );
+			}
+			update_option( 'neural_forms_log_token', $stored, false );
+		}
+		$token = $stored;
+		return $token;
+	}
+
 	public static function cleanup(): void {
 		global $wpdb;
 
@@ -251,8 +281,8 @@ class Logger {
 		}
 
 		foreach ( $files as $file ) {
-			// Extract date from filename: neural-forms-YYYY-MM-DD.log
-			if ( preg_match( '/neural-forms-(\d{4}-\d{2}-\d{2})\.log$/', $file, $m ) ) {
+			// Extract date from filename: neural-forms-[token-]YYYY-MM-DD.log
+			if ( preg_match( '/neural-forms-(?:[a-f0-9]{16}-)?(\d{4}-\d{2}-\d{2})\.log$/', $file, $m ) ) {
 				$file_ts = strtotime( $m[1] . ' 00:00:00 UTC' );
 				if ( $file_ts && $file_ts < $cutoff ) {
 					// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink

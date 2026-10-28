@@ -92,7 +92,7 @@ function LockedCard() {
 			</p>
 			<a
 				className="nf-pp__upgrade"
-				href="https://neuralforms.ai/pro/"
+				href="https://neuralforms.ai/pricing/"
 				target="_blank"
 				rel="noreferrer"
 			>

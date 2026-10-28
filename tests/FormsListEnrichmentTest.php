@@ -20,7 +20,8 @@
 declare( strict_types = 1 );
 
 if ( ! defined( 'ABSPATH' ) ) define( 'ABSPATH', '/tmp/abspath' );
-defined( 'ABSPATH' ) || exit; // Direct-access guard (no-op once the line above defines ABSPATH).
+defined( 'ABSPATH' ) || exit;
+if ( ! defined( 'ARRAY_A' ) ) define( 'ARRAY_A', 'ARRAY_A' ); // wpdb output type; a fatal (not a warning) under PHP 8 if undefined // Direct-access guard (no-op once the line above defines ABSPATH).
 // phpcs:disable WordPress.Security.EscapeOutput,WordPress.Security.ValidatedSanitizedInput,WordPress.Security.NonceVerification -- CLI-only test runner.
 
 if ( ! class_exists( 'WP_Error' ) ) {
@@ -281,33 +282,42 @@ $expected_link = 'admin.php?page=neural-forms-results&form_id=42';
 check( '4a analytics link uses neural-forms-results route', strpos( $expected_link, 'page=neural-forms-results' ) !== false, true, $cases, $passed, $failed );
 check( '4b analytics link includes form_id',                strpos( $expected_link, 'form_id=42' ) !== false,                true, $cases, $passed, $failed );
 
-// 4c-4f: Analytics → Entries individual-entry deep-link contract.
-// The rich admin bundle reads `?entry=N` on mount and auto-opens the
-// matching entry detail (verified in build/index.js via
-// URLSearchParams + apiFetch('/entries/${id}')). The Analytics
-// "View entry" link MUST emit form_id + entry, OR a regression here
-// would silently downgrade the link to "open entries list" — exactly
-// the bug we are fixing.
-$build_entry_link = static function ( int $form_id, int $entry_id ): string {
-	$parts = [];
-	if ( $form_id  > 0 ) $parts[] = 'form_id=' . $form_id;
-	if ( $entry_id > 0 ) $parts[] = 'entry='   . $entry_id;
-	$qs = empty( $parts ) ? '' : '&' . implode( '&', $parts );
-	return 'admin.php?page=neural-forms-entries' . $qs;
-};
+// 4c-4h: Entries deep-link contract. The split entries bundle
+// (EntriesScreen.js readEntryIdFromUrl) opens the detail for `entry_id=N`
+// and IGNORES `entry=N` (which lands on the bare list — the 1.1.2 bug).
+// Check the real builders, not a local re-implementation:
+//   - NotificationService::get_entry_url() (email "View entry" link)
+//   - QuizAttemptsTable.js entryLink()      (Analytics "View entry" link)
+$notif_src = file_get_contents( $plugin_root . '/modules/notifications/NotificationService.php' );
+$quiz_src  = file_get_contents( $plugin_root . '/modules/admin/src/results/QuizAttemptsTable.js' );
+$screen_src = file_get_contents( $plugin_root . '/modules/admin/src/entries/EntriesScreen.js' );
 
-$entry_link = $build_entry_link( 42, 1337 );
-check( '4c view-entry link routes to neural-forms-entries', strpos( $entry_link, 'page=neural-forms-entries' ) !== false, true, $cases, $passed, $failed );
-check( '4d view-entry link carries form_id',                strpos( $entry_link, 'form_id=42' )                 !== false, true, $cases, $passed, $failed );
-check( '4e view-entry link carries entry id',               strpos( $entry_link, 'entry=1337' )                 !== false, true, $cases, $passed, $failed );
-check( '4f view-entry link not just a list (no trailing form_id only)',
-	$entry_link !== 'admin.php?page=neural-forms-entries&form_id=42',
-	true, $cases, $passed, $failed );
+check( '4c entries screen reads entry_id', strpos( $screen_src, "searchParams.get( 'entry_id' )" ) !== false, true, $cases, $passed, $failed );
+check( '4d entries screen does not read bare entry', (bool) preg_match( "/searchParams\\.get\\( 'entry' \\)/", $screen_src ), false, $cases, $passed, $failed );
 
-// 4g: When entry_id is 0 (defensive guard), only form_id is emitted.
-$fallback = $build_entry_link( 7, 0 );
-check( '4g zero entry id falls back to form-only link',
-	$fallback === 'admin.php?page=neural-forms-entries&form_id=7',
+if ( ! function_exists( 'add_query_arg' ) ) {
+	function add_query_arg( $args, $url ) { return $url . '?' . http_build_query( $args ); }
+}
+if ( ! function_exists( 'admin_url' ) ) {
+	function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . $path; }
+}
+if ( preg_match( '/private static function get_entry_url\(.+?\n\t\}/s', $notif_src, $m ) ) {
+	eval( 'namespace NeuralForms\\Tests { class NotifUrl { ' . preg_replace( '/^\s*private /', 'public ', $m[0] ) . ' } }' );
+	$entry_link = \NeuralForms\Tests\NotifUrl::get_entry_url( 1337, 42 );
+} else {
+	$entry_link = '';
+}
+check( '4e email link routes to neural-forms-entries', strpos( $entry_link, 'page=neural-forms-entries' ) !== false, true, $cases, $passed, $failed );
+check( '4f email link carries entry_id',               strpos( $entry_link, 'entry_id=1337' ) !== false,            true, $cases, $passed, $failed );
+check( '4g email link scopes the list to the form',    strpos( $entry_link, 'form_id=42' ) !== false && strpos( $entry_link, 'view=inbox' ) !== false, true, $cases, $passed, $failed );
+check( '4g-ii email link without form omits form_id',  strpos( \NeuralForms\Tests\NotifUrl::get_entry_url( 7 ), 'form_id' ) === false, true, $cases, $passed, $failed );
+check( '4h analytics attempts link uses entry_id',     strpos( $quiz_src, "'entry_id=' + e" ) !== false, true, $cases, $passed, $failed );
+check( '4h-ii analytics attempts link no longer emits bare entry=', strpos( $quiz_src, "'entry='" ) === false, true, $cases, $passed, $failed );
+
+// 4g-iii: Analytics entryLink() with entry 0 falls back to a form-scoped
+// list link (the JS guards `if ( e > 0 )`); assert the guard is still there.
+check( '4g-iii analytics entryLink guards entry id > 0',
+	(bool) preg_match( '/if \\( e > 0 \\) params\\.push\\( \'entry_id=\' \\+ e \\)/', $quiz_src ),
 	true, $cases, $passed, $failed );
 
 // 4h-4j: Analytics → Entries form-filter URL contract.

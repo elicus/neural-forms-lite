@@ -19,7 +19,7 @@ defined( 'ABSPATH' ) || exit;
  *     "capabilities": { "<feature>": bool, ... },
  *     "quota":        { "used": float, "limit": float, "reset_at": "ISO-8601" },
  *     "balance":      { "credits": float, "plan_credits": float, "topup_credits": float, "lifetime_topup_credits": float },
- *     "upgrade_url":  "https://neuralforms.ai/upgrade"
+ *     "upgrade_url":  "https://neuralforms.ai/pricing/"
  *   }
  *
  * All usage-denominated fields are expressed in **credits** (1 credit =

@@ -627,7 +627,7 @@
 .neural-forms-form__rating-star:hover ~ .neural-forms-form__rating-star,
 .neural-forms-form__rating-star:focus-within,
 .neural-forms-form__rating-star:focus-within ~ .neural-forms-form__rating-star {
-    color: #15db95;
+    color: var(--neural-forms-accent);
 }
 
 /* Checked + every star after it (DOM-after = visually-left in row-reverse). */
@@ -1060,6 +1060,14 @@
     line-height: 1.25;
 }
 
+/* Builder "Help text" — rendered under any field's input (1.1.3). */
+.neural-forms-form__field-help {
+    margin: 0.25rem 0 0;
+    color: var(--neural-forms-placeholder);
+    font-size: 0.8125rem;
+    line-height: 1.35;
+}
+
 
 /*
    CAPTCHA widget
@@ -1398,12 +1406,44 @@
  * change here. Without JS it stays visible because nothing sets
  * display:none on it. */
 
+/* Footer row (1.1.3): nav + submit wrapper side by side so that on the
+   last step — Next hidden, Submit shown — Previous sits left and Submit
+   right, matching the Previous / Next row on earlier steps. The nav
+   grows to fill the row; the submit wrapper hugs the right edge. */
+.neural-forms-form__steps-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.neural-forms-form__steps-footer .neural-forms-form__steps-nav {
+    flex: 1 1 auto;
+    margin-top: 12px;
+    margin-bottom: 8px;
+}
+
+.neural-forms-form__steps-footer .neural-forms-form__submit-wrap {
+    flex: 0 0 auto;
+    margin-left: auto;
+    margin-top: 12px;
+    margin-bottom: 8px;
+}
+
 @media ( max-width: 600px ) {
     .neural-forms-form__steps-nav {
         flex-direction: column;
     }
     .neural-forms-form__step-next {
         margin-left: 0;
+    }
+    .neural-forms-form__steps-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .neural-forms-form__steps-footer .neural-forms-form__submit-wrap {
+        margin-left: 0;
+        margin-top: 0;
     }
 }
 

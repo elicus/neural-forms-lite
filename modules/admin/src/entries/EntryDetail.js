@@ -41,7 +41,7 @@ import api from '../api';
 import AiAnalysisCard from './AiAnalysisCard';
 import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
-import { formatDate, formatMatrixValueLines, formatRepeaterValueLines } from './helpers';
+import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines } from './helpers';
 
 function StatusPill( { entry } ) {
 	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
@@ -234,6 +234,12 @@ function formatEntryFieldForConversation( fieldId, value, fieldLabels, fieldSche
 		if ( visible.length === 0 ) return `${ label }: —`;
 		const lines = visible.map( ( ml ) => `  - ${ ml.rowLabel }: ${ ml.display }` );
 		return `${ label }:\n${ lines.join( '\n' ) }`;
+	}
+
+	// Select / radio / checkboxes: show option labels, not stored values.
+	const choice = formatChoiceValue( value, field );
+	if ( choice !== null ) {
+		return `${ label }: ${ choice }`;
 	}
 
 	if ( typeof value === 'string' ) {
@@ -672,6 +678,23 @@ export default function EntryDetail( {
 														</li>
 													) ) }
 												</ul>
+											) }
+										</dd>
+									</div>
+								);
+							}
+
+							// Select / radio / checkboxes: option LABELS ("Laptop"),
+							// not stored values ("laptop"); checkbox groups join
+							// their labels instead of rendering a JSON array.
+							const choiceText = formatChoiceValue( v, field );
+							if ( choiceText !== null ) {
+								return (
+									<div className="neural-forms-entry-detail__field-row" key={ k }>
+										<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+										<dd className="neural-forms-entry-detail__field-value">
+											{ choiceText !== '' ? choiceText : (
+												<span className="neural-forms-entry-detail__field-empty">{ __( 'No answer', 'neural-forms-lite' ) }</span>
 											) }
 										</dd>
 									</div>

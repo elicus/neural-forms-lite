@@ -97,7 +97,13 @@ class CF7Detector {
 			$descriptor = array(
 				'basetype'      => $basetype,
 				'name'          => $tag->name,
-				'required'      => $tag->is_required(),
+				// CF7 acceptance boxes are required UNLESS they carry the
+				// `optional` option — the `*` suffix convention does not
+				// apply to them, so is_required() alone imported every
+				// [acceptance] as optional.
+				'required'      => $basetype === 'acceptance'
+					? ! $tag->has_option( 'optional' )
+					: $tag->is_required(),
 				'options'       => $tag->options,
 				'values'        => $tag->values,
 				'labels'        => $tag->labels,
@@ -109,7 +115,11 @@ class CF7Detector {
 				'max'           => $tag->get_option( 'max', 'signed_num', true ),
 				'step'          => $tag->get_option( 'step', 'num', true ),
 				'filetypes'     => $tag->get_option( 'filetypes', '', true ),
-				'limit'         => $tag->get_option( 'limit', 'int', true ),
+				// Bytes, or '' when the tag has no limit option. CF7's
+				// `limit:2mb` / `limit:500kb` / `limit:1048576` all parse
+				// through get_limit_option(); the old get_option('limit',
+				// 'int') only matched bare digits and dropped "2mb".
+				'limit'         => self::extract_limit_bytes( $tag ),
 			);
 
 			$result[] = $descriptor;
@@ -128,16 +138,51 @@ class CF7Detector {
 	 *   2. The `watermark` option (legacy alias for placeholder).
 	 */
 	private static function extract_placeholder( \WPCF7_FormTag $tag ): string {
+		// Standard CF7 syntax: `placeholder` (or legacy `watermark`) is a
+		// BARE flag and the placeholder text is the tag's first value:
+		//   [text* your-name placeholder "Jane Cooper"]
+		// get_option() only returns `name:value` forms, so the bare flag
+		// read as '' and the text was imported as a default value instead
+		// (pre-filling the live form).
+		if ( $tag->has_option( 'placeholder' ) || $tag->has_option( 'watermark' ) ) {
+			return (string) ( $tag->values[0] ?? '' );
+		}
+
+		// Tolerate the non-standard `placeholder:Text` form as well.
 		$ph = $tag->get_option( 'placeholder', '', true );
 		if ( false !== $ph && $ph !== '' ) {
 			return (string) $ph;
 		}
-
 		$wm = $tag->get_option( 'watermark', '', true );
 		if ( false !== $wm && $wm !== '' ) {
 			return (string) $wm;
 		}
 
+		return '';
+	}
+
+	/**
+	 * File size limit in bytes, or '' when the tag has no `limit:` option.
+	 */
+	private static function extract_limit_bytes( \WPCF7_FormTag $tag ) {
+		if ( ! $tag->has_option( 'limit' ) ) {
+			return '';
+		}
+		if ( method_exists( $tag, 'get_limit_option' ) ) {
+			return (int) $tag->get_limit_option();
+		}
+		// Older CF7: parse `limit:<n>[kb|mb]` ourselves.
+		$raw = (string) $tag->get_option( 'limit', '', true );
+		if ( preg_match( '/^([1-9][0-9]*)([kKmM]?[bB])?$/', $raw, $m ) ) {
+			$size = (int) $m[1];
+			$unit = strtolower( $m[2] ?? '' );
+			if ( $unit === 'kb' ) {
+				$size *= 1024;
+			} elseif ( $unit === 'mb' ) {
+				$size *= 1048576;
+			}
+			return $size;
+		}
 		return '';
 	}
 
@@ -148,13 +193,47 @@ class CF7Detector {
 	 * value in the values array as the default for some types.
 	 */
 	private static function extract_default( \WPCF7_FormTag $tag ): string {
+		$basetype  = $tag->basetype;
+		$is_choice = in_array( $basetype, array( 'select', 'radio', 'checkbox' ), true );
+
 		$default = $tag->get_option( 'default', '', true );
 		if ( false !== $default && $default !== '' ) {
-			return (string) $default;
+			$default = (string) $default;
+
+			// Choice tags use 1-based value indexes: `default:1`, or
+			// `default:1_3` for multiple checkboxes. Resolve them to the
+			// actual option values (what Neural Forms stores) — the raw
+			// "1" never matched an option, so the default was lost.
+			if ( $is_choice && preg_match( '/^[0-9_]+$/', $default ) ) {
+				$picked = array();
+				foreach ( explode( '_', $default ) as $num ) {
+					$idx = (int) $num - 1;
+					if ( $idx >= 0 && isset( $tag->values[ $idx ] ) ) {
+						$picked[] = (string) $tag->values[ $idx ];
+					}
+				}
+				if ( empty( $picked ) ) {
+					return '';
+				}
+				return $basetype === 'checkbox' ? implode( ',', $picked ) : $picked[0];
+			}
+
+			// Dynamic defaults (user_email, get, post, shortcode_attr, …)
+			// have no equivalent here; leave the field empty.
+			if ( preg_match( '/^(user_|post_meta$|get$|post$|shortcode_attr$)/', $default ) ) {
+				return '';
+			}
+
+			return $default;
 		}
 
-		// For text-like fields, the first value is the default.
-		if ( in_array( $tag->basetype, array( 'text', 'email', 'url', 'tel', 'number', 'range', 'date', 'hidden' ), true ) ) {
+		// Text-like tags: the first value is the default — UNLESS the tag
+		// carries the `placeholder` / `watermark` flag, in which case that
+		// value is the placeholder (see extract_placeholder()).
+		if ( in_array( $basetype, array( 'text', 'email', 'url', 'tel', 'number', 'range', 'date', 'hidden', 'textarea' ), true ) ) {
+			if ( $tag->has_option( 'placeholder' ) || $tag->has_option( 'watermark' ) ) {
+				return '';
+			}
 			return (string) ( $tag->values[0] ?? '' );
 		}
 

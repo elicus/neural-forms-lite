@@ -369,7 +369,7 @@ function PreviewView( { preview, loading, importing, onImport, onForce, onBack }
 			{ warnings.length > 0 && (
 				<div className="neural-forms-import__notice neural-forms-import__notice--warning">
 					<p style={ { margin: 0 } }>
-						{ __( 'The imported form may differ from the original CF7 form. Review the field list before publishing.', 'neural-forms-lite' ) }
+						{ __( 'The imported form may differ from the original CF7 form. Labels are generated from the CF7 tag names (e.g. "your-name" becomes "Your Name"), not from the form\'s own label text — rename them in the builder. Review the field list before publishing.', 'neural-forms-lite' ) }
 					</p>
 					<ul style={ { margin: '8px 0 0', paddingLeft: '20px' } }>
 						{ warnings.map( ( w, i ) => <li key={ i }>{ w }</li> ) }

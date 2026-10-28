@@ -1,14 +1,14 @@
-=== Neural Forms ===
+=== Neural Forms – AI Form Builder with Multi-Step Forms, Lead Inbox & AI Replies ===
 Contributors: elicus
-Tags: contact form, forms, ai forms, lead inbox, form builder
+Tags: ai form builder, multi-step form, contact form, form builder, lead inbox
 Requires at least: 6.8
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.2
+Stable tag: 1.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-WordPress form plugin with a built-in lead inbox. Build forms, manage submissions, and let AI analyze every entry and draft your replies.
+AI form builder with free multi-step forms. Describe a form, AI builds it. Entries land in a lead inbox where AI can summarize them and draft replies.
 
 == Description ==
 
@@ -37,15 +37,17 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * One-click Contact Form 7 migration
 * Developer hooks, capability filters, and React SlotFill registry
 
-= AI Analysis on Every Submission =
+= AI Analysis for Your Submissions =
 
-100 free AI credits included on signup. Connect your free Neural Forms API key to unlock:
+100 free AI credits included on signup. Connect your free Neural Forms API key, open any entry in the inbox and click "Analyze with Neural AI" to get:
 
-* Auto-summary on every submission
-* AI-assigned category (inquiry, support, sales, and more)
-* Priority score (0 to 100)
-* Auto-drafted reply ready to review and send
-* Multi-tier AI models (Fast tier in the free version)
+* A summary of the submission
+* An AI-assigned category (inquiry, support, sales, and more)
+* A priority score (0 to 100)
+* A drafted reply ready to review and send
+* Fast-tier AI model (premium tiers in Pro)
+
+In the free plugin each entry can be analyzed once, on demand. Automatic analysis of every new submission, re-analysis, and regenerated or polished drafts are part of Neural Forms Pro.
 
 The form builder, lead inbox, email notifications, CAPTCHA, and CSV export all work without any AI key. AI features are optional and pause when free credits are consumed.
 
@@ -72,6 +74,7 @@ No third-party accounts required for basic form functionality.
 Need more? [Neural Forms Pro](https://neuralforms.ai/pricing/) adds:
 
 * 7,500 to 25,000 AI credits per year (resets with renewal)
+* Automatic AI analysis of every new submission, with per-form processing modes
 * AI form generation: describe a form in plain English, AI builds it
 * Smart spam detection with adjustable threshold
 * Reanalyze, regenerate, and polish AI drafts
@@ -188,7 +191,7 @@ This regenerates the files in `modules/admin/build/` from `modules/admin/src/`.
 
 = Do I need an API key to use Neural Forms? =
 
-No. The form builder, lead inbox, template library, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (auto-summary, draft replies) require a free Neural Forms API key, which you can get at [neuralforms.ai](https://neuralforms.ai). 100 free AI credits are included on signup.
+No. The form builder, lead inbox, template library, email notifications, CAPTCHA, and CSV export all work without any API key. The AI features (on-demand summary, category, priority and a draft reply for any entry) require a free Neural Forms API key, which you can get at [neuralforms.ai](https://neuralforms.ai). 100 free AI credits are included on signup. Automatic analysis of every new submission is a Neural Forms Pro feature.
 
 = What data does the AI feature send to your servers? =
 
@@ -220,7 +223,7 @@ Neural Forms supports Cloudflare Turnstile and Google reCAPTCHA v2 as CAPTCHA pr
 
 = Can I import my Contact Form 7 forms? =
 
-Yes. Go to **Neural Forms > Migration**, click **Scan for CF7 Forms**, and import any detected form with one click. Fields, labels, and validation rules are mapped automatically.
+Yes. Go to **Neural Forms > Import**. Your Contact Form 7 forms are listed automatically; preview one and import it with one click. Field types, required flags, placeholders, defaults, options and file limits are mapped. Labels are generated from the CF7 field names (for example "your-name" becomes "Your Name"), so rename them in the builder if your CF7 form used different label text.
 
 = Can I export my form submissions? =
 
@@ -243,6 +246,33 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 5. **Gutenberg Block in Action**: Native Neural Forms block in the WordPress block editor with full styling controls.
 
 == Changelog ==
+
+= 1.1.3 - 2026-10-28 =
+* Security: Uploaded files are no longer listed by the public WordPress media REST endpoint; block styling values can no longer inject site-wide CSS; oversized or malformed submissions are rejected; log files get a random name and stricter server protection; settings changes require an administrator. Also fixes a fatal error on PHP 7.4 hosts when a styled block renders.
+* Privacy: Privacy mode now works. Previously entries stored the visitor's IP address and user agent even with the toggle on. Sites with Privacy mode on have that data removed from existing entries on update.
+* New: Neural Forms entries are now included in WordPress's Export Personal Data and Erase Personal Data tools, matched by the submitted email address, and suggested privacy-policy text is provided under Settings > Privacy.
+* Security: The submission rate limit could be bypassed by sending a forged X-Forwarded-For header. The client IP now comes from the server connection unless the request arrives via a proxy listed in the new `neural_forms_trusted_proxies` filter.
+* Fix: The rate limit is now counted per form rather than shared across every form on the site, and bot submissions caught by the honeypot no longer use up attempts.
+* Fix: The entries inbox now has a "Load more" button, so lists longer than 50 entries are fully reachable.
+* Fix: Searching entries for accented names or web addresses now finds matching submissions, including in CSV exports.
+* Fix: Field help text written in the builder is now shown under the field on the live form.
+* New: File Upload fields can restrict allowed file types and set a maximum size from the builder.
+* Fix: Notification emails and the entry inbox now show the option labels you chose for select, radio and checkbox fields instead of their internal values.
+* Improved: Autoresponder tokens also work in the subject line, and the form builder now shows each field's ID with a "Copy token" button so you can use it in email templates.
+* Fix: Replies sent from the inbox now use your Sender name and email, and the "Default reply subject" setting is applied. The reply composer has a Subject field.
+* Fix: Contact Form 7 import now keeps placeholders as placeholders (they were imported as pre-filled values), imports acceptance checkboxes as required, converts file size limits and allowed file types correctly, and applies radio / select / checkbox defaults.
+* Fix: The upgrade link shown when a poll or quiz reaches the free submission limit pointed to a missing page.
+* Fix: Required fields hidden by conditional logic no longer block submission, and conditions based on an unticked checkbox now behave the same on the server as in the browser.
+* Fix: On the last step of a multi-step form, the Previous and Submit buttons now sit on one row instead of stacking.
+* Fix: With labels hidden, validation messages now use the field's label instead of its placeholder, and choice fields (radio, checkbox, rating, matrix) always show their question.
+* Fix: An optional Phone field left empty no longer blocks the Next button or submission because of the pre-filled country code.
+* Fix: A form's own Notification email and "Send admin notification" setting now take effect. Previously every form notified the global address regardless.
+* Fix: Email Settings now behave as described — a blank Sender name uses your site title and a blank Sender email uses the WordPress admin email, for notifications, autoresponders, replies and the test email alike.
+* Fix: The "View entry" link in admin notification emails and in quiz attempt analytics now opens the submitted entry instead of the entries list.
+* Fix: The "Randomize options" setting on quiz questions and polls now actually shuffles the answer order for each visitor.
+* Fix: Entries keyboard shortcuts now act on the entry you opened or the highlighted row, which is now visibly marked. Previously they could silently change a different entry.
+* Fix: File upload fields now respect the host's PHP upload limit. The "Max" hint and the size check use the lower of the field setting and the server limit, and an oversized file shows a clear size message instead of a generic upload error.
+* Improved: Clearer wording about AI in the free plugin — any entry can be analyzed once from the inbox with a free API key; automatic analysis of every new submission is part of Neural Forms Pro.
 
 = 1.1.2 - 2026-07-01 =
 * Fix: Multi-step forms no longer trigger an auto-scroll on page load.
@@ -320,6 +350,9 @@ Initial public release.
 * Full uninstall.php cleanup: drops all tables, deletes options, clears cron events, removes log files.
 
 == Upgrade Notice ==
+
+= 1.1.3 =
+Privacy mode now actually stops IP and user-agent storage; sites with it on have existing entries cleaned on update. Security fix for the submission rate limit. Sites behind a reverse proxy or Cloudflare should add their proxy ranges via the `neural_forms_trusted_proxies` filter so the inbox shows real visitor IPs. Emails now go out from your site title and WordPress admin email when the Sender fields are blank; if your admin email is on another domain, set an on-domain Sender email in Settings > Email for best deliverability.
 
 = 1.0.0 =
 Initial release.

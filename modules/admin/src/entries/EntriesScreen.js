@@ -41,7 +41,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import api from '../api';
 
 import EntriesSidebar  from './EntriesSidebar';
@@ -118,6 +118,24 @@ function EmptyState() {
 // Convert a sidebar selection into the URLSearchParams shape the
 // /entries endpoint expects. Bare `view` for the All-Forms default —
 // no folder= alias.
+const PER_PAGE = 50;
+
+/**
+ * Fetch one page of the entries list and return { list, total }.
+ * Uses parse:false so the X-Total-Count header is readable.
+ */
+function fetchEntriesPage( params, page ) {
+	params.set( 'per_page', String( PER_PAGE ) );
+	params.set( 'page',     String( page ) );
+	return api( '/entries?' + params.toString(), { parse: false } ).then( ( res ) => {
+		const total = parseInt( res.headers?.get?.( 'X-Total-Count' ) ?? '0', 10 );
+		return res.json().then( ( list ) => ( {
+			list:  Array.isArray( list ) ? list : [],
+			total: Number.isFinite( total ) ? total : 0,
+		} ) );
+	} );
+}
+
 function selectionToQuery( sel ) {
 	const p = new URLSearchParams();
 	if ( ! sel ) {
@@ -249,6 +267,11 @@ export default function EntriesScreen() {
 	const [ entries,        setEntries        ] = useState( [] );
 	const [ entriesLoading, setEntriesLoading ] = useState( false );
 	const [ entriesError,   setEntriesError   ] = useState( '' );
+	// Paging: the list is fetched PER_PAGE rows at a time; "Load more"
+	// appends the next page until entriesTotal (X-Total-Count) is reached.
+	const [ entriesTotal,   setEntriesTotal   ] = useState( 0 );
+	const [ entriesPage,    setEntriesPage    ] = useState( 1 );
+	const [ loadingMore,    setLoadingMore    ] = useState( false );
 
 	const [ counts, setCounts ] = useState( {} );
 
@@ -409,13 +432,13 @@ export default function EntriesScreen() {
 
 		const params = selectionToQuery( selection );
 		params.set( 'sort_order', sortOrder );
-		params.set( 'per_page',   '50' );
 		if ( debouncedSearch ) params.set( 'search', debouncedSearch );
 
-		api( '/entries?' + params.toString() ).then( ( res ) => {
+		fetchEntriesPage( params, 1 ).then( ( { list, total } ) => {
 			if ( cancelled ) return;
-			const list = Array.isArray( res ) ? res : [];
 			setEntries( list );
+			setEntriesTotal( total );
+			setEntriesPage( 1 );
 			setEntriesLoading( false );
 			if ( list.length > 0 && ( focusedId == null || ! list.find( ( e ) => e.id === focusedId ) ) ) {
 				setFocusedId( list[ 0 ].id );
@@ -529,6 +552,10 @@ export default function EntriesScreen() {
 			window.history.pushState( { nfDetail: id }, '', url.toString() );
 		} catch ( _err ) { /* best-effort URL write */ }
 		setOpenEntryId( id );
+		// Keyboard shortcuts (r / u / s / # / !) act on the focused row —
+		// make that the entry the user just opened, not whatever j/k last
+		// landed on (which defaults to the first row).
+		setFocusedId( id );
 	}, [ selection ] );
 
 	// Close the detail. If we pushed the detail onto history (normal
@@ -596,16 +623,41 @@ export default function EntriesScreen() {
 			refetchCounts();
 			const params = selectionToQuery( selection );
 			params.set( 'sort_order', sortOrder );
-			params.set( 'per_page',   '50' );
 			if ( debouncedSearch ) params.set( 'search', debouncedSearch );
-			return api( '/entries?' + params.toString() ).then( ( res ) => {
-				setEntries( Array.isArray( res ) ? res : [] );
+			return fetchEntriesPage( params, 1 ).then( ( { list, total } ) => {
+				setEntries( list );
+				setEntriesTotal( total );
+				setEntriesPage( 1 );
 			} );
 		} ).catch( ( err ) => {
 			setBulkBusy( false );
 			setBulkError( errorMessage( err, __( 'Bulk action failed.', 'neural-forms-lite' ) ) );
 		} );
 	}, [ selectedIds, selection, debouncedSearch, sortOrder, refetchCounts ] );
+
+	// Append the next page of the current list. Rows already present
+	// (e.g. shifted by a status change between fetches) are de-duplicated.
+	const loadMore = useCallback( () => {
+		if ( loadingMore || entriesLoading ) return Promise.resolve();
+		setLoadingMore( true );
+		setEntriesError( '' );
+		const params = selectionToQuery( selection );
+		params.set( 'sort_order', sortOrder );
+		if ( debouncedSearch ) params.set( 'search', debouncedSearch );
+		const nextPage = entriesPage + 1;
+		return fetchEntriesPage( params, nextPage ).then( ( { list, total } ) => {
+			setEntries( ( prev ) => {
+				const seen = new Set( prev.map( ( e ) => e.id ) );
+				return prev.concat( list.filter( ( e ) => ! seen.has( e.id ) ) );
+			} );
+			setEntriesTotal( total );
+			setEntriesPage( nextPage );
+			setLoadingMore( false );
+		} ).catch( ( err ) => {
+			setLoadingMore( false );
+			setEntriesError( errorMessage( err, __( 'Could not load more entries.', 'neural-forms-lite' ) ) );
+		} );
+	}, [ loadingMore, entriesLoading, selection, sortOrder, debouncedSearch, entriesPage ] );
 
 	const reanalyze = useCallback( () => {
 		if ( ! openEntry ) return Promise.resolve();
@@ -753,23 +805,43 @@ export default function EntriesScreen() {
 
 	const ids = useMemo( () => entries.map( ( e ) => e.id ), [ entries ] );
 
+	// While a detail is open, every shortcut targets the entry on screen —
+	// never a list row the user can't see. On the list, they target the
+	// highlighted (.is-focused) row.
+	const keyboardTargetId = openEntryId !== 0 ? openEntryId : focusedId;
+
 	useInboxKeyboard( {
 		ids,
-		focusedId,
+		focusedId: keyboardTargetId,
 		actions: {
 			onMove:        setFocusedId,
 			onOpen:        ( id ) => openEntryDetail( id ),
-			onClose:       closeDetail,
+			// Escape: EntryDetailPanel owns it while a detail is open (its
+			// own keydown handler calls closeDetail — handling it here too
+			// would call history.back() twice). On the list, Escape clears
+			// the checkbox selection.
+			onClose:       () => { if ( openEntryId === 0 ) setSelectedIds( new Set() ); },
 			onMarkRead:    ( id ) => patchEntry( id, { status: 'read' } ).catch( () => {} ),
 			onMarkUnread:  ( id ) => patchEntry( id, { status: 'new'  } ).catch( () => {} ),
 			onToggleStar:  ( id ) => {
-				const e = entries.find( ( x ) => x.id === id );
+				const e = entries.find( ( x ) => x.id === id ) || ( openEntry && openEntry.id === id ? openEntry : null );
 				if ( e ) toggleStar( e );
 			},
-			onTrash: ( id ) => patchEntry( id, { status: 'trash' } ).catch( () => {} ),
-			onSpam:  ( id ) => patchEntry( id, { status: 'spam'  } ).catch( () => {} ),
+			// Trash / spam from the detail view leave it, matching the
+			// toolbar buttons' behaviour.
+			onTrash: ( id ) => patchEntry( id, { status: 'trash' } ).then( () => { if ( openEntryId === id ) closeDetail(); } ).catch( () => {} ),
+			onSpam:  ( id ) => patchEntry( id, { status: 'spam'  } ).then( () => { if ( openEntryId === id ) closeDetail(); } ).catch( () => {} ),
 		},
 	} );
+
+	// Keep the keyboard-focused row in view when j / k move it.
+	useEffect( () => {
+		if ( openEntryId !== 0 || focusedId == null ) return;
+		const row = document.querySelector( `.neural-forms-entries-row[data-entry-id="${ focusedId }"]` );
+		if ( row && typeof row.scrollIntoView === 'function' ) {
+			row.scrollIntoView( { block: 'nearest' } );
+		}
+	}, [ focusedId, openEntryId ] );
 
 	const toggleSelect = useCallback( ( id, checked ) => {
 		setSelectedIds( ( prev ) => {
@@ -981,7 +1053,35 @@ export default function EntriesScreen() {
 									onOpen={ openEntryDetail }
 									onToggleStar={ toggleStar }
 									openId={ 0 }
+									focusedId={ focusedId }
 								/>
+							) }
+
+							{ entries.length > 0 && entriesTotal > entries.length && (
+								<div className="neural-forms-entries-loadmore">
+									<span className="neural-forms-entries-loadmore__count">
+										{ sprintf(
+											/* translators: 1: rows shown, 2: total rows matching the current view */
+											__( 'Showing %1$d of %2$d', 'neural-forms-lite' ),
+											entries.length,
+											entriesTotal
+										) }
+									</span>
+									<button
+										type="button"
+										className="neural-forms-entries-btn"
+										onClick={ loadMore }
+										disabled={ loadingMore }
+									>
+										{ loadingMore
+											? __( 'Loading…', 'neural-forms-lite' )
+											: sprintf(
+												/* translators: %d: number of rows the next page will add */
+												__( 'Load %d more', 'neural-forms-lite' ),
+												Math.min( PER_PAGE, entriesTotal - entries.length )
+											) }
+									</button>
+								</div>
 							) }
 						</>
 					) }

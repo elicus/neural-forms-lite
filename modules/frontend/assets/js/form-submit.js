@@ -55,6 +55,7 @@
 		initMultiStep( form );
 		initRepeaters( form );
 		initPhonePickers( form );
+		initRandomizeOptions( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
 		// step-driven mutations are captured. Must run before the first
 		// submit so the "always" restoration path has the original bars
@@ -64,6 +65,42 @@
 		// snapshot them anyway so the reset path is symmetric with
 		// poll's restore semantics.
 		snapshotQuizResults( form );
+	}
+
+	// Randomize options (quiz + poll)
+
+	/**
+	 * Shuffle the option rows of every quiz / poll fieldset flagged by
+	 * FormRenderer (`data-quiz-randomize` / `data-poll-randomize`).
+	 *
+	 * The server already shuffles once as a no-JS fallback; this runs
+	 * per page load so visitors behind a page cache still get their own
+	 * order. Rows are moved as whole <label> nodes, so the radio, its id
+	 * / for pairing, `checked` and `required` all travel with the row.
+	 * Quiz feedback and poll results are keyed by field id + value, never
+	 * by position, so reordering is safe.
+	 *
+	 * @param {HTMLFormElement} form
+	 */
+	function initRandomizeOptions( form ) {
+		var groups = form.querySelectorAll(
+			'[data-quiz-randomize="1"] .neural-forms-form__quiz-options,' +
+			'[data-poll-randomize="1"] .neural-forms-form__poll-options'
+		);
+		for ( var g = 0; g < groups.length; g++ ) {
+			var group = groups[ g ];
+			var rows  = Array.prototype.slice.call( group.children );
+			// Fisher–Yates.
+			for ( var i = rows.length - 1; i > 0; i-- ) {
+				var j   = Math.floor( Math.random() * ( i + 1 ) );
+				var tmp = rows[ i ];
+				rows[ i ] = rows[ j ];
+				rows[ j ] = tmp;
+			}
+			for ( var r = 0; r < rows.length; r++ ) {
+				group.appendChild( rows[ r ] );
+			}
+		}
 	}
 
 	// Repeater add / remove + reindex
@@ -1270,6 +1307,25 @@
 	 * @param  {HTMLFormElement} form
 	 * @return {string|null}
 	 */
+	/**
+	 * Human size label for a file input's limit. Prefers the server-rendered
+	 * data-max-size-label (already capped by the host's upload limit and
+	 * formatted, e.g. "2 MB" / "1.5 MB" / "512 KB"); falls back to rounding
+	 * the byte count.
+	 *
+	 * @param  {HTMLInputElement} input
+	 * @param  {number}           maxSize  bytes
+	 * @return {string}
+	 */
+	function fileSizeLabel( input, maxSize ) {
+		var label = input.getAttribute( 'data-max-size-label' );
+		if ( label ) {
+			return label;
+		}
+		var mb = maxSize / ( 1024 * 1024 );
+		return ( mb >= 1 ? ( Math.round( mb * 10 ) / 10 ) + ' MB' : Math.round( maxSize / 1024 ) + ' KB' );
+	}
+
 	function checkFileSizes( form ) {
 		var inputs = form.querySelectorAll( 'input[type="file"]' );
 
@@ -1283,8 +1339,7 @@
 
 			var file = input.files[ 0 ];
 			if ( file.size > maxSize ) {
-				var maxMb = Math.round( maxSize / ( 1024 * 1024 ) );
-				return 'The selected file exceeds the maximum allowed size of ' + maxMb + ' MB.';
+				return 'The selected file exceeds the maximum allowed size of ' + fileSizeLabel( input, maxSize ) + '.';
 			}
 		}
 
@@ -1328,16 +1383,17 @@
 	/**
 	 * Resolve the human-readable label for a field wrapper so client-side
 	 * validation messages can read like the server's ("Email is required.",
-	 * "Phone must be a valid phone number."). Falls back to the input's
-	 * aria-label / placeholder / name when no visible label is present
-	 * (e.g. show_labels === false).
+	 * "Phone must be a valid phone number."). FormRenderer always emits a
+	 * <label> or <legend> when the field has one — visible, or
+	 * .screen-reader-text when the block hides labels — so the placeholder
+	 * fallback below is only reached for fields with no label at all.
 	 *
 	 * @param {Element} wrapper  .neural-forms-form__field element.
 	 * @param {Element} input    The <input>/<select>/<textarea>.
 	 * @returns {string}         A label-like string, never empty.
 	 */
 	function fieldLabelText( wrapper, input ) {
-		var labelEl = wrapper.querySelector( '.neural-forms-form__label' );
+		var labelEl = wrapper.querySelector( '.neural-forms-form__label, label.screen-reader-text, legend' );
 		if ( labelEl ) {
 			// Strip the required asterisk (rendered as <span> with text '*')
 			// and trim whitespace.
@@ -1483,8 +1539,7 @@
 		// Size check
 		var maxSize = Number( input.getAttribute( 'data-max-size' ) || 0 );
 		if ( maxSize > 0 && file.size > maxSize ) {
-			var maxMb = Math.round( maxSize / 1024 / 1024 );
-			return label + ': file exceeds the maximum allowed size of ' + maxMb + ' MB.';
+			return label + ': file exceeds the maximum allowed size of ' + fileSizeLabel( input, maxSize ) + '.';
 		}
 
 		// Type check
@@ -1604,6 +1659,14 @@
 
 			var value   = input.value != null ? String( input.value ) : '';
 			var trimmed = value.trim();
+
+			// Phone: the country picker pre-fills the dial code ("+1 "), so
+			// an untouched field is "+1", not "". Treat a dial-code-only
+			// value as empty — mirrors SubmissionValidator::normalize_phone()
+			// so optional phones pass and required ones say "is required".
+			if ( ( input.type || '' ).toLowerCase() === 'tel' && /^\+\d{1,4}$/.test( trimmed ) ) {
+				trimmed = '';
+			}
 
 			if ( required && trimmed === '' ) {
 				markFieldInvalid( w, label + ' is required.' );

@@ -8,7 +8,8 @@
  *   j / ↓     next row
  *   k / ↑     previous row
  *   Enter     open / collapse the highlighted row
- *   Esc       close the open detail and clear selection
+ *   Esc       → onClose (the screen decides: clear selection on the list;
+ *             the detail panel handles its own Escape to close)
  *   r         mark read     (POST /entries/{id} status=read)
  *   u         mark unread   (POST /entries/{id} status=new)
  *   s / *     toggle star
@@ -21,7 +22,8 @@
  *
  * Args:
  *   ids        ordered array of entry ids on the current page
- *   focusedId  currently highlighted id (or null)
+ *   focusedId  id the shortcuts act on: the highlighted list row, or the
+ *              open entry while a detail is showing (or null)
  *   actions    object of { onMove, onOpen, onClose, onMarkRead, onMarkUnread,
  *                          onToggleStar, onTrash, onSpam }
  */

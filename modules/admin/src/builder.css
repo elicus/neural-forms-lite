@@ -966,6 +966,64 @@
 	box-sizing: border-box;
 }
 
+#neural-forms-app .nf-inspector__checks {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+#neural-forms-app .nf-inspector__check {
+	align-items: center;
+	display: flex;
+	font-size: 13px;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-inspector__check input[type="checkbox"] {
+	margin: 0;
+}
+
+#neural-forms-app .nf-inspector__check small {
+	color: var( --f-gray-500, #6b7280 );
+	font-size: 11px;
+}
+
+#neural-forms-app .nf-inspector__id-row {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+#neural-forms-app .nf-inspector__id {
+	background: var( --f-gray-50, #f6f7f9 );
+	border: 1px solid var( --f-gray-200, #e3e6ea );
+	border-radius: 6px;
+	color: var( --f-gray-800, #1f2937 );
+	flex: 1 1 auto;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12px;
+	min-width: 0;
+	overflow: hidden;
+	padding: 6px 8px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#neural-forms-app .nf-inspector__id-copy {
+	background: #fff;
+	border: 1px solid var( --f-gray-200, #e3e6ea );
+	border-radius: 6px;
+	color: var( --f-gray-800, #1f2937 );
+	cursor: pointer;
+	flex: 0 0 auto;
+	font-size: 12px;
+	padding: 6px 10px;
+}
+
+#neural-forms-app .nf-inspector__id-copy:hover {
+	background: var( --f-gray-50, #f6f7f9 );
+}
+
 #neural-forms-app .nf-inspector__hint {
 	margin-top: 16px;
 	color: #6b7280;

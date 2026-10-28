@@ -117,8 +117,9 @@ function readOnlyRange( { field } ) {
 
 function readOnlyFile( { field } ) {
 	const max = Number( field.max_file_size ) > 0 ? Number( field.max_file_size ) : 5;
+	const GROUP_EXT = { image: 'JPG, PNG, GIF, WebP', pdf: 'PDF', document: 'DOC, DOCX, ODT', text: 'TXT, CSV' };
 	const accept = Array.isArray( field.allowed_types ) && field.allowed_types.length > 0
-		? field.allowed_types.join( ', ' )
+		? field.allowed_types.map( ( g ) => GROUP_EXT[ g ] || g ).join( ', ' )
 		: '';
 	return (
 		<div className="nf-preview__file">

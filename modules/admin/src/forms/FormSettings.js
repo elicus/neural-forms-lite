@@ -234,8 +234,8 @@ export default function FormSettings( {
 							    Cloud connected see the connect-CTA. */ }
 							{ ! aiAvailability.capable && (
 								<div className="nf-ai-processing__upsell" role="note">
-									<strong>{ __( 'Available with Neural Forms Pro', 'neural-forms-lite' ) }</strong>
-									<p>{ __( 'Neural AI processing requires Neural Forms Pro and a connected Neural Forms Cloud account. You can still configure the mode below — it will activate once Pro is installed.', 'neural-forms-lite' ) }</p>
+									<strong>{ __( 'Automatic processing is a Neural Forms Pro feature', 'neural-forms-lite' ) }</strong>
+									<p>{ __( 'In the free plugin you can analyze any entry once: open it in the inbox and click "Analyze with Neural AI" (needs a connected Neural Forms Cloud account). Neural Forms Pro adds automatic analysis of every new submission using the modes below, plus re-analysis and regenerated or polished replies. You can still choose a mode now — it activates once Pro is installed.', 'neural-forms-lite' ) }</p>
 								</div>
 							) }
 							{ aiAvailability.capable && ( ! aiAvailability.cloudConnected || ! aiAvailability.aiEnabled ) && (
@@ -308,13 +308,20 @@ export default function FormSettings( {
 					{ section === 'notifications' && (
 						<div className="nf-form-settings__body">
 							<label className="nf-form-settings__field nf-form-settings__field--inline">
+								{ /* Unset = inherit the global Notifications toggle (on by
+								     default), so show it checked unless explicitly off.
+								     NotificationService::admin_notification_enabled()
+								     applies the same rule server-side. */ }
 								<input
 									type="checkbox"
-									checked={ !! s.enable_admin_notification }
+									checked={ s.enable_admin_notification !== false }
 									onChange={ ( e ) => set( { enable_admin_notification: e.target.checked } ) }
 								/>
 								<span>{ __( 'Send admin notification on submission', 'neural-forms-lite' ) }</span>
 							</label>
+							<p className="nf-form-settings__note">
+								{ __( 'Untick to silence this form even when global notifications are on. Global notifications are configured under plugin Settings.', 'neural-forms-lite' ) }
+							</p>
 							<label className="nf-form-settings__field">
 								<span className="nf-form-settings__label">{ __( 'Notification email', 'neural-forms-lite' ) }</span>
 								{ /* type="text" rather than type="email" so the browser

@@ -371,7 +371,13 @@ function CloudAiSection( {
 
 			<ToggleField
 				label={ __( 'Auto-process entries', 'neural-forms-lite' ) }
-				hint={ __( 'Automatically analyse new submissions when they arrive.', 'neural-forms-lite' ) }
+				hint={
+					// Without the ai_process_entries capability (Lite) the queue
+					// never auto-runs — say so instead of promising it.
+					window.neuralFormsAdmin?.plugin?.capabilities?.ai_process_entries
+						? __( 'Automatically analyse new submissions when they arrive.', 'neural-forms-lite' )
+						: __( 'Automatic analysis of new submissions requires Neural Forms Pro. In the free plugin, open an entry in the inbox and click "Analyze with Neural AI" to analyze it once.', 'neural-forms-lite' )
+				}
 				checked={ form.ai_auto_process }
 				onChange={ ( v ) => set( { ai_auto_process: v } ) }
 			/>
@@ -599,7 +605,10 @@ function NotificationsSection( { form, set } ) {
 
 			{ form.enable_autoresponder && (
 				<>
-					<Field label={ __( 'Subject', 'neural-forms-lite' ) }>
+					<Field
+						label={ __( 'Subject', 'neural-forms-lite' ) }
+						hint={ __( 'Tokens work here too: {site_name}, {form_name}, or a field ID in {curly braces}.', 'neural-forms-lite' ) }
+					>
 						<TextInput
 							type="text"
 							value={ form.autoresponder_subject || '' }
@@ -608,7 +617,7 @@ function NotificationsSection( { form, set } ) {
 					</Field>
 					<Field
 						label={ __( 'Message body', 'neural-forms-lite' ) }
-						hint={ __( 'Available tokens: {site_name}, {form_name}, and any field ID wrapped in {curly braces}.', 'neural-forms-lite' ) }
+						hint={ __( 'Available tokens: {site_name}, {form_name}, and any field ID wrapped in {curly braces}. Find a field\'s ID in the form builder: select the field and look under Field settings > Field ID (there is a "Copy token" button). Choice fields insert the option label.', 'neural-forms-lite' ) }
 					>
 						<Textarea
 							rows={ 5 }

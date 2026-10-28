@@ -213,6 +213,17 @@ class AIResponseRepository {
 	 * Oldest-first list - the carousel renders chronologically so "next"
 	 * moves forward in time. Caller can reverse if they want newest-first.
 	 */
+	/**
+	 * Hard-delete every AI response draft belonging to an entry (privacy eraser).
+	 *
+	 * @return int  Rows deleted.
+	 */
+	public static function delete_by_entry( int $entry_id ): int {
+		global $wpdb;
+		$deleted = $wpdb->delete( $wpdb->prefix . 'neural_forms_entry_ai_responses', array( 'entry_id' => $entry_id ), array( '%d' ) );
+		return is_int( $deleted ) ? $deleted : 0;
+	}
+
 	public static function list_for_entry( int $entry_id ): array {
 		global $wpdb;
 

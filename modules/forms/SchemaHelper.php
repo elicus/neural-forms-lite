@@ -932,4 +932,60 @@ class SchemaHelper {
 
 		return self::normalize_row( $next, $desired );
 	}
+
+	/**
+	 * Default per-field upload cap in MB when the builder leaves
+	 * max_file_size unset.
+	 */
+	const DEFAULT_FILE_MAX_MB = 5;
+
+	/**
+	 * Effective upload size limit for a file field.
+	 *
+	 * The builder value (max_file_size, MB; default 5) is capped by the
+	 * server's own limit — wp_max_upload_size() = min( upload_max_filesize,
+	 * post_max_size ), filterable via `upload_size_limit`. PHP's default is
+	 * 2 MB, so without this cap a 3 MB file passes the "Max 5 MB" hint and
+	 * the client check, then dies in PHP with UPLOAD_ERR_INI_SIZE.
+	 *
+	 * The renderer (hint + data-max-size), the client pre-check, and the
+	 * server-side size check all read this one value so they agree.
+	 *
+	 * @param array $field  File field schema (reads max_file_size).
+	 * @return array{ bytes: int, label: string }  Limit in bytes + human label ("2 MB", "1.5 MB", "512 KB").
+	 */
+	public static function file_size_limit( array $field ): array {
+		$mb    = isset( $field['max_file_size'] ) && (int) $field['max_file_size'] > 0
+			? (int) $field['max_file_size']
+			: self::DEFAULT_FILE_MAX_MB;
+		$bytes = $mb * 1024 * 1024;
+
+		if ( function_exists( 'wp_max_upload_size' ) ) {
+			$server = (int) wp_max_upload_size();
+			if ( $server > 0 && $server < $bytes ) {
+				$bytes = $server;
+			}
+		}
+
+		return array(
+			'bytes' => $bytes,
+			'label' => self::format_file_size_label( $bytes ),
+		);
+	}
+
+	/**
+	 * Human label for a byte count: whole or one-decimal MB, or KB below 1 MB.
+	 *
+	 * @param int $bytes
+	 * @return string
+	 */
+	public static function format_file_size_label( int $bytes ): string {
+		$mb = $bytes / ( 1024 * 1024 );
+		if ( $mb >= 1 ) {
+			$str = number_format( $mb, 1, '.', '' );
+			$str = rtrim( rtrim( $str, '0' ), '.' );
+			return $str . ' MB';
+		}
+		return (string) max( 1, (int) round( $bytes / 1024 ) ) . ' KB';
+	}
 }

@@ -316,6 +316,20 @@
 	margin: 16px 0;
 }
 
+.neural-forms-entries-loadmore {
+	align-items: center;
+	border-top: 1px solid var( --f-gray-200 );
+	display: flex;
+	gap: 12px;
+	justify-content: center;
+	padding: 14px 16px;
+}
+
+.neural-forms-entries-loadmore__count {
+	color: var( --f-gray-600 );
+	font-size: 12px;
+}
+
 .neural-forms-entries-status--error {
 	color: var( --f-red-600 );
 }
@@ -693,6 +707,10 @@
 .neural-forms-entries-row.is-unread.is-open,
 .neural-forms-entries-row.is-unread.is-selected {
 	background: var( --f-blue-50 );
+}
+
+.neural-forms-entries-row.is-focused td:first-child {
+	box-shadow: inset 3px 0 0 var( --f-blue-600 );
 }
 
 .neural-forms-entries-row td {
@@ -1447,6 +1465,36 @@
 	font-weight: 600;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
+}
+
+.neural-forms-entry-detail__reply-subject {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+	margin-top: 8px;
+}
+
+.neural-forms-entry-detail__reply-subject .neural-forms-entry-detail__reply-to-label {
+	flex: 0 0 60px;
+}
+
+.neural-forms-entry-detail__reply-subject-input {
+	background: #fff;
+	border: 1px solid var( --f-gray-200 );
+	border-radius: var( --f-radius-md );
+	color: var( --f-gray-900 );
+	flex: 1 1 auto;
+	font-family: inherit;
+	font-size: 13px;
+	line-height: 1.4;
+	min-width: 0;
+	padding: 8px 12px;
+}
+
+.neural-forms-entry-detail__reply-subject-input:focus {
+	border-color: var( --f-blue-600 );
+	box-shadow: 0 0 0 3px rgba( 8, 15, 91, 0.12 );
+	outline: none;
 }
 
 .neural-forms-entry-detail__reply-to-value {

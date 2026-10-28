@@ -58,7 +58,7 @@ class NotificationService {
 		);
 		$data          = $entry['data'] ?? array();
 
-		if ( ! empty( $settings['enable_admin_notification'] ) ) {
+		if ( self::admin_notification_enabled( $form, $settings ) ) {
 			self::send_admin_notification( $entry_id, $form, $schema_fields, $data, $settings );
 		}
 
@@ -68,6 +68,28 @@ class NotificationService {
 	}
 
 	// Admin notification
+
+	/**
+	 * Should this form send an admin notification?
+	 *
+	 * The builder's Settings > Notifications > "Send admin notification on
+	 * submission" box writes `settings.enable_admin_notification` on the
+	 * form ONLY once the user has toggled it. So:
+	 *   key present → the per-form choice wins (true or false)
+	 *   key absent  → inherit the global Settings > Notifications toggle
+	 * This keeps existing forms (saved before the box did anything)
+	 * behaving exactly as they did: following the global switch.
+	 *
+	 * @param array $form      Form row (settings already decoded to array).
+	 * @param array $settings  Global plugin settings.
+	 */
+	public static function admin_notification_enabled( array $form, array $settings ): bool {
+		$form_settings = is_array( $form['settings'] ?? null ) ? $form['settings'] : array();
+		if ( array_key_exists( 'enable_admin_notification', $form_settings ) ) {
+			return ! empty( $form_settings['enable_admin_notification'] );
+		}
+		return ! empty( $settings['enable_admin_notification'] );
+	}
 
 	/**
 	 * Sends the "new submission" notification to the configured admin address.
@@ -82,19 +104,23 @@ class NotificationService {
 		$form_name = (string) ( $form['name'] ?? 'Unknown form' );
 
 		// Recipient resolution order:
-		// 1. Per-form admin_notification_email in form_schema.settings
-		//    (the React Form Settings panel writes here)
-		// 2. Per-form notification_email in form.settings (legacy
-		//    shape — kept for back-compat with any old callers that
-		//    set the flat key directly)
-		// 3. Global admin_notification_email (plugin settings)
-		// 4. WordPress admin email
+		// 1. Per-form admin_notification_email in form.settings — this is
+		//    where the builder's Settings > Notifications panel actually
+		//    saves it (FormSettings.js → Builder setSettings → the form
+		//    row's `settings` column). Before 1.1.3 this key was never
+		//    read, so the per-form address had no effect.
+		// 2. Per-form admin_notification_email in form_schema.settings
+		//    (older schema-embedded shape)
+		// 3. Per-form notification_email in form.settings (legacy flat key)
+		// 4. Global admin_notification_email (plugin settings)
+		// 5. WordPress admin email
 		//
 		// Each value may be a single email OR a comma-separated list.
 		// parse_recipient_list() splits, sanitises, and drops invalid
 		// entries. We stop at the first source that yields at least
 		// one valid address.
 		$candidates = array(
+			(string) ( $form['settings']['admin_notification_email'] ?? '' ),
 			(string) ( $form['form_schema']['settings']['admin_notification_email'] ?? '' ),
 			(string) ( $form['settings']['notification_email'] ?? '' ),
 			(string) ( $settings['admin_notification_email'] ?? '' ),
@@ -132,7 +158,7 @@ class NotificationService {
 		$body .= sprintf(
 			/* translators: %s: link to the Neural Forms entries screen */
 			__( 'View entry: %s', 'neural-forms-lite' ),
-			self::get_entry_url( $entry_id )
+			self::get_entry_url( $entry_id, (int) ( $form['id'] ?? 0 ) )
 		) . "\n";
 
 		$headers = self::build_from_headers( $settings );
@@ -252,13 +278,17 @@ class NotificationService {
 		if ( $subject === '' ) {
 			$subject = __( 'Thank you for your submission', 'neural-forms-lite' );
 		}
+		// Tokens apply to the subject too (they only reached the body
+		// before 1.1.3). A subject is a single header line — strip breaks.
+		$subject = self::apply_tokens( $subject, $form_name, $data, $schema_fields );
+		$subject = trim( (string) preg_replace( '/[\r\n]+/', ' ', $subject ) );
 
 		$raw_body = (string) ( $settings['autoresponder_body'] ?? '' );
 		if ( $raw_body === '' ) {
 			$raw_body = __( "Hi,\n\nThank you for reaching out. We'll be in touch shortly.\n\n{site_name}", 'neural-forms-lite' );
 		}
 
-		$body = self::apply_tokens( $raw_body, $form_name, $data );
+		$body = self::apply_tokens( $raw_body, $form_name, $data, $schema_fields );
 
 		$headers = self::build_from_headers( $settings );
 
@@ -493,7 +523,7 @@ class NotificationService {
 				// Multi-option checkboxes submit an array of selected values;
 				// single-option checkboxes submit a 0/1 scalar.
 				if ( is_array( $raw ) ) {
-					$value = implode( ', ', array_map( 'strval', $raw ) );
+					$value = implode( ', ', array_map( 'strval', array_filter( $raw, 'is_scalar' ) ) );
 				} else {
 					$value = $raw ? __( 'Yes', 'neural-forms-lite' ) : __( 'No', 'neural-forms-lite' );
 				}
@@ -558,6 +588,10 @@ class NotificationService {
 					$lines[] = $label . ":\n" . implode( "\n", $rendered );
 				}
 				continue;
+			} elseif ( in_array( $field['type'], array( 'select', 'radio', 'checkboxes' ), true ) ) {
+				// Choice fields store the option VALUE ("laptop"); show the
+				// option LABEL ("Laptop") like the builder does.
+				$value = self::display_choice( $raw, $field );
 			} elseif ( is_array( $raw ) ) {
 				// Generic fallback for any other multi-value field type
 				// (select-multi, etc.) - join scalar leaves with commas.
@@ -681,46 +715,135 @@ class NotificationService {
 	 *
 	 * @param string $template
 	 * @param string $form_name
-	 * @param array  $data       Sanitized submitted field values.
+	 * @param array  $data           Sanitized submitted field values.
+	 * @param array  $schema_fields  Flattened schema fields; lets choice
+	 *                               fields resolve to option LABELS and
+	 *                               checkbox groups join their labels.
 	 * @return string
 	 */
-	private static function apply_tokens( string $template, string $form_name, array $data ): string {
+	private static function apply_tokens( string $template, string $form_name, array $data, array $schema_fields = array() ): string {
 		$replacements = array(
 			'{site_name}' => get_bloginfo( 'name' ),
 			'{form_name}' => $form_name,
 		);
 
-		foreach ( $data as $field_id => $value ) {
-			if ( is_scalar( $value ) ) {
-				$replacements[ '{' . $field_id . '}' ] = (string) $value;
+		$by_id = array();
+		foreach ( $schema_fields as $f ) {
+			$f = (array) $f;
+			if ( isset( $f['id'] ) ) {
+				$by_id[ (string) $f['id'] ] = $f;
 			}
 		}
 
-		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );
+		foreach ( $data as $field_id => $value ) {
+			$field = $by_id[ (string) $field_id ] ?? null;
+			if ( $field && in_array( (string) ( $field['type'] ?? '' ), array( 'select', 'radio', 'checkboxes' ), true ) ) {
+				$replacements[ '{' . $field_id . '}' ] = self::display_choice( $value, $field );
+			} elseif ( is_scalar( $value ) ) {
+				$replacements[ '{' . $field_id . '}' ] = (string) $value;
+			} elseif ( is_array( $value ) && ! isset( $value['filename'] ) ) {
+				$replacements[ '{' . $field_id . '}' ] = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
+			}
+		}
+
+		// strtr(): single pass over the template. str_replace() applied
+		// replacements sequentially, so a submitted value containing
+		// "{other_field}" was itself expanded.
+		return strtr( $template, $replacements );
 	}
 
 	/**
-	 * Build the From: header array from Email Settings.
+	 * Display text for a select / radio / checkboxes value: the option
+	 * label(s) for the stored value(s), falling back to the raw value when
+	 * no option matches (option removed after submission).
 	 *
-	 * Returns an empty array when neither sender_name nor sender_email is
-	 * configured - wp_mail() uses the WP default in that case.
+	 * @param mixed $raw    Stored value (string) or values (array).
+	 * @param array $field  Field schema with `options` [{label,value}].
+	 */
+	private static function display_choice( $raw, array $field ): string {
+		$labels = array();
+		foreach ( (array) ( $field['options'] ?? array() ) as $opt ) {
+			$opt = (array) $opt;
+			$val = (string) ( ( $opt['value'] ?? '' ) !== '' ? $opt['value'] : ( $opt['label'] ?? '' ) );
+			if ( $val !== '' ) {
+				$labels[ $val ] = trim( (string) ( $opt['label'] ?? '' ) ) !== '' ? (string) $opt['label'] : $val;
+			}
+		}
+		$values = is_array( $raw ) ? array_filter( $raw, 'is_scalar' ) : array( $raw );
+		$out    = array();
+		foreach ( $values as $v ) {
+			if ( $v === null || $v === '' ) {
+				continue;
+			}
+			$out[] = $labels[ (string) $v ] ?? (string) $v;
+		}
+		return implode( ', ', $out );
+	}
+
+	/**
+	 * Resolve the sender identity from Email Settings, applying the
+	 * defaults the Settings screen promises:
+	 *
+	 *   sender_name  blank → site title (get_bloginfo 'name')
+	 *   sender_email blank / invalid → WordPress admin email
+	 *
+	 * Used by every outbound mail (admin notification, autoresponder,
+	 * reply, test email) so they all carry the same From identity.
+	 *
+	 * Deliverability note: the admin email may live on another domain
+	 * (e.g. a Gmail address), which some receivers treat less kindly than
+	 * WordPress's wordpress@<site-domain> default. Site owners who hit
+	 * that should set an on-domain Sender email explicitly.
+	 *
+	 * @param array $settings  Plugin settings (sender_name / sender_email).
+	 * @return array{ name: string, email: string }  email is '' only when
+	 *         neither the setting nor admin_email is a valid address.
+	 */
+	public static function resolve_sender( array $settings ): array {
+		$name  = trim( (string) ( $settings['sender_name'] ?? '' ) );
+		$email = trim( (string) ( $settings['sender_email'] ?? '' ) );
+
+		if ( $name === '' ) {
+			$name = (string) get_bloginfo( 'name' );
+			if ( function_exists( 'wp_specialchars_decode' ) ) {
+				$name = wp_specialchars_decode( $name, ENT_QUOTES );
+			}
+		}
+		// Same header-injection guard as the Reply-To builders below: drop
+		// CR / LF / NULL and the structural characters wp_mail's header
+		// parser uses (`,`, `<`, `>`, `"`).
+		$name = trim( str_replace( array( "\r", "\n", "\0", ',', '<', '>', '"' ), '', $name ) );
+
+		if ( $email === '' || ! is_email( $email ) ) {
+			$email = (string) get_option( 'admin_email', '' );
+			if ( $email === '' || ! is_email( $email ) ) {
+				$email = '';
+			}
+		}
+
+		return array( 'name' => $name, 'email' => $email );
+	}
+
+	/**
+	 * Build the From: header array from Email Settings (with the defaults
+	 * described in resolve_sender()).
+	 *
+	 * Returns an empty array only when no valid address can be resolved
+	 * at all - wp_mail() then uses its own wordpress@<domain> default.
 	 *
 	 * @param array $settings
 	 * @return string[]
 	 */
-	private static function build_from_headers( array $settings ): array {
-		$sender_name  = (string) ( $settings['sender_name'] ?? '' );
-		$sender_email = (string) ( $settings['sender_email'] ?? '' );
+	public static function build_from_headers( array $settings ): array {
+		$sender = self::resolve_sender( $settings );
 
-		if ( $sender_email === '' || ! is_email( $sender_email ) ) {
-			// No custom sender configured - let wp_mail() use its default.
-			// If only a name is set, we still need an address to form a valid header.
+		if ( $sender['email'] === '' ) {
 			return array();
 		}
 
-		$from = $sender_name !== ''
-			? sprintf( '%s <%s>', $sender_name, $sender_email )
-			: $sender_email;
+		$from = $sender['name'] !== ''
+			? sprintf( '%s <%s>', $sender['name'], $sender['email'] )
+			: $sender['email'];
 
 		return array( 'From: ' . $from );
 	}
@@ -759,14 +882,23 @@ class NotificationService {
 	 * @param int $entry_id
 	 * @return string
 	 */
-	private static function get_entry_url( int $entry_id ): string {
-		return add_query_arg(
-			array(
-				'page'  => 'neural-forms-entries',
-				'entry' => $entry_id,
-			),
-			admin_url( 'admin.php' )
-		);
+	/**
+	 * Deep link to one entry in the inbox.
+	 *
+	 * URL contract of the split entries bundle (EntriesScreen.js):
+	 *   entry_id=N          → opens the detail pane
+	 *   form_id=N&view=inbox → scopes the list behind it to that form
+	 * The key is `entry_id`, NOT `entry` — the latter opened the bare list.
+	 */
+	private static function get_entry_url( int $entry_id, int $form_id = 0 ): string {
+		$args = array( 'page' => 'neural-forms-entries' );
+		if ( $form_id > 0 ) {
+			$args['form_id'] = $form_id;
+			$args['view']    = 'inbox';
+		}
+		$args['entry_id'] = $entry_id;
+
+		return add_query_arg( $args, admin_url( 'admin.php' ) );
 	}
 
 	/**

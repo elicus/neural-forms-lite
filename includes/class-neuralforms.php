@@ -48,6 +48,7 @@ final class NeuralForms {
 		$this->boot_frontend();
 		$this->boot_ai();
 		$this->boot_notifications();
+		\NeuralForms\Privacy\PrivacyTools::register();
 
 		/**
 		 * Fires once Lite has finished booting all built-in modules.

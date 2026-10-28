@@ -432,7 +432,7 @@ class AdminPanel {
 			wp_enqueue_script(
 				'neural-forms-builder',
 				$build_url . 'builder.js',
-				$asset['dependencies'],
+				is_array( $asset['dependencies'] ?? null ) ? $asset['dependencies'] : array(),
 				$version,
 				true
 			);
@@ -3110,6 +3110,13 @@ CSS;
 				'features'       => \NeuralForms\Core\Config::features(),
 				'cloudAiEnabled' => (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' ),
 				'cloudApiKeySet' => \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '',
+				// Email Settings > "Default reply subject" — the reply
+				// composer pre-fills its Subject field from this (tokens
+				// {site_name} / {form_name} resolved client-side).
+				'replySubjectPattern' => (string) \NeuralForms\Core\Config::get( 'reply_subject_pattern', 'Re: Your submission' ),
+				// Host upload cap in MB (wp_max_upload_size) — the builder's
+				// File Upload "Maximum file size" control shows + caps to it.
+				'maxUploadMb'         => function_exists( 'wp_max_upload_size' ) ? round( wp_max_upload_size() / 1048576, 1 ) : 0,
 				'aiSpam'         => array(
 					'enabled'   => (bool) \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
 					'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),

@@ -251,6 +251,10 @@ namespace {
 		$res->get_error_data()['limit'], 200, $passed, $failed );
 	check( '4e error data count = 200',
 		$res->get_error_data()['count'], 200, $passed, $failed );
+	// 1.1.3: upgrade_url must be a live page — /pro/ 404s, /pricing/ is
+	// the URL every other upgrade link in the plugin uses.
+	check( '4f error data upgrade_url points at /pricing/',
+		$res->get_error_data()['upgrade_url'], 'https://neuralforms.ai/pricing/', $passed, $failed );
 
 	// 5. Quiz form at 200 → block.
 	reset_world();

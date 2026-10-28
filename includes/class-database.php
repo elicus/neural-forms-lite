@@ -82,7 +82,43 @@ class Database {
 					unset( $e );
 				}
 			}
+
+			// 1.1.3: Privacy mode was a no-op before this version —
+			// entries were stored WITH ip_address + user_agent even when
+			// the toggle was on. If the site has it on now, that data
+			// was stored against what the site told its visitors, so
+			// blank it once. Sites with the toggle off are untouched.
+			// Reads the option directly so this never depends on the
+			// Config class being loaded mid-upgrade.
+			try {
+				$opts = get_option( 'neural_forms_settings', array() );
+				if ( is_array( $opts ) && ! empty( $opts['privacy_mode'] ) ) {
+					self::scrub_visitor_metadata();
+				}
+			} catch ( \Throwable $e ) {
+				unset( $e );
+			}
 		}
+	}
+
+	/**
+	 * Blank ip_address + user_agent on every stored entry.
+	 *
+	 * Used by the 1.1.3 upgrade when Privacy mode is on. Idempotent.
+	 *
+	 * @return int  Rows updated (0 when nothing had metadata).
+	 */
+	public static function scrub_visitor_metadata(): int {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_entries';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i SET ip_address = NULL, user_agent = NULL WHERE ip_address IS NOT NULL OR user_agent IS NOT NULL',
+				$table
+			)
+		);
+		return is_int( $updated ) ? $updated : 0;
 	}
 
 	// Table definitions
