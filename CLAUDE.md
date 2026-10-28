@@ -127,12 +127,19 @@ The cloud API selects a model tier per request using the caller's plan cap.
 The plugin does NOT pick the tier — it just forwards `entry_id` and the
 cloud echoes back `ai_tier` on every response for display + diagnostics.
 
-| Tier | Model (as of 1.1.0) | Used for |
+| Tier | Model (as of 2026-10-28) | Used for |
 |---|---|---|
-| `fast` | OpenAI `gpt-4.1-nano` | Lite / free; universal speed floor |
-| `balanced` | Google `gemini-2.5-flash-lite` | Pro (default); also the universal fallback if the smart/premium tier errors |
-| `smart` | Anthropic `claude-haiku-4.5` | Pro Starter / Pro Agency |
-| `premium` | Anthropic `claude-opus-4-1` | Pro Enterprise — **unverified**: cloud commit `elicus/neural-forms-api@d249933` lists `ALLOWED_MODELS` as only gpt-4.1-nano / gemini-2.5-flash-lite / claude-haiku-4.5, which doesn't include an Opus entry. Confirm with cloud team whether `premium` still routes to Opus or has been collapsed/retired. |
+| `fast` | Google `gemini-3.5-flash-lite` | Lite / free; universal fallback and final retry of every task chain |
+| `balanced` | OpenAI `gpt-6-luna` | Second link in every chain (no plan maps to it directly) |
+| `smart` | Anthropic `claude-haiku-4-5` | Pro Starter / Pro Agency / Pro Enterprise |
+
+The previous ladder (`gpt-4.1-nano` fast, `gemini-2.5-flash-lite`
+balanced/fallback) died on 2026-10-23 when OpenAI shut `gpt-4.1-nano`
+down and Google closed `gemini-2.5-flash-lite` to new projects: every
+chain link 503'd and the inbox showed "Neural Forms Cloud API error:
+HTTP 503". There is no `premium` tier (Opus was retired cloud-side).
+Keep this table in sync with `neural-forms-api/src/providers/ai/
+model-registry.ts`.
 
 Tier values are persisted on `neural_forms_entries.ai_tier` (string, nullable)
 and surfaced in the entry detail UI so users can see which tier wrote a

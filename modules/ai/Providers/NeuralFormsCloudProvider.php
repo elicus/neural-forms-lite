@@ -232,6 +232,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		if ( $code < 200 || $code >= 300 ) {
 			// Plan-related errors carry structured data so the plugin can react
 			// without parsing messages. Surface them as a typed exception.
+			$data      = self::flatten_error_body( $data );
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
 
 			// SafetyGate decisions: distinct exception so AIQueueProcessor
@@ -329,6 +330,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		$data = json_decode( $raw, true );
 
 		if ( $code < 200 || $code >= 300 ) {
+			$data      = self::flatten_error_body( $data );
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
 			if ( in_array( $body_code, array( 'feature_locked', 'quota_exceeded' ), true ) ) {
 				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : array();
@@ -547,6 +549,23 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	}
 
 	// Response normalization
+
+	/**
+	 * The cloud's exception filter nests generic errors as
+	 * `{ "error": { "code", "message", "status" } }` while plan / safety
+	 * errors stay flat (`{ "code", "message", ... }`). Lift the nested
+	 * shape to the flat one so callers always see the code and message
+	 * instead of a bare "HTTP 503".
+	 *
+	 * @param mixed $data Decoded JSON body.
+	 * @return mixed
+	 */
+	private static function flatten_error_body( $data ) {
+		if ( is_array( $data ) && ! isset( $data['code'] ) && is_array( $data['error'] ?? null ) ) {
+			return array_merge( $data, $data['error'] );
+		}
+		return $data;
+	}
 
 	/**
 	 * Recursively run esc_html() on the scalar values of a quota array so
