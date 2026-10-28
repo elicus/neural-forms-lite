@@ -10,7 +10,7 @@ case "$branch" in release/*) ;; *) echo "refusing: current branch is '$branch', 
 paths=(CLAUDE.md .claude tests bin docs phpcs.xml.dist phpcs.xml phpunit.xml phpunit.xml.dist package.json package-lock.json composer.json composer.lock .phpunit.cache)
 removed=()
 for p in "${paths[@]}"; do
-  if git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then git rm -rq -- "$p"; removed+=("$p"); fi
+  if git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then git rm -rqf -- "$p"; removed+=("$p"); fi
 done
 echo "removed: ${removed[*]:-nothing}"
 echo "now: git commit -m 'Strip dev-only files for release'"

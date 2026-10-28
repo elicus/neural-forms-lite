@@ -588,7 +588,8 @@ fixes (changelog wording, typos) go on the `release/*` branch and are
 merged forward to `main` and `dev` the same way.
 
 **Release branches ship only plugin code.** Right after cutting
-`release/<version>`, run `bin/strip-dev-files.sh` and commit — it removes
+`release/<version>`, run `bash <(git show dev:bin/strip-dev-files.sh)` (from a
+copy, so nothing in the tree is staged) and commit — it removes
 `CLAUDE.md`, `.claude/`, `tests/`, `bin/`, `docs/`, phpcs / phpunit
 configs and the root `package.json` from the branch (the
 `modules/admin` build tooling stays). No Claude co-author trailer on
