@@ -572,6 +572,23 @@ React SlotFill names exposed by Lite (via `@wordpress/components createSlotFill`
 
 ------------------------------------------------------------------------
 
+## Branch flow (keep main, release/* and dev from diverging)
+
+`dev` is where work lands. A release is cut as `release/<version>` from
+`dev`, then `dev` is bumped to the next version. After the release ships:
+
+1. merge `release/<version>` into `main` (`--no-ff`), and
+2. merge `main` back into `dev`,
+
+so every branch contains the others' history and the next merge is
+clean. **Never commit directly on `main`** — a one-line readme edit made
+there on 2026-07-01 (a date fix the release branch also had) was the
+only reason the 1.1.3 → main merge conflicted on 2026-10-29. Release
+fixes (changelog wording, typos) go on the `release/*` branch and are
+merged forward to `main` and `dev` the same way.
+
+------------------------------------------------------------------------
+
 ## Important Rules
 
 DO NOT:
