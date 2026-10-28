@@ -1024,10 +1024,26 @@ class EntriesEndpoint {
 	}
 
 	/**
-	 * Return WP_Error 409 when the entry already has a queued or processing job.
+	 * Seconds a queue row may sit in 'processing' before it is treated as
+	 * orphaned (PHP timeout / fatal mid-run). Mirrors the 2-minute window
+	 * AIQueueProcessor::run() uses to re-claim stuck rows.
+	 */
+	const AI_JOB_ACTIVE_WINDOW = 120;
+
+	/**
+	 * Return WP_Error 409 only when a queue worker is genuinely mid-run on
+	 * this entry (status 'processing', claimed within AI_JOB_ACTIVE_WINDOW).
 	 *
-	 * Safety valve: if the entry claims to be busy but no active job exists in
-	 * the queue, the entry is orphaned - reset it so the user isn't locked out.
+	 * A job that is merely 'pending' means WP-Cron has not picked it up yet
+	 * (low-traffic site, DISABLE_WP_CRON without a system cron, object-cache
+	 * staleness…). The admin clicking "Analyze with AI" is the explicit
+	 * request to run it now, so those rows — and 'processing' rows older
+	 * than the window — are marked 'superseded' and the inline analysis
+	 * proceeds. Before 1.1.4 this returned 409 "already running" and the
+	 * entry stayed "Queued" forever on sites whose cron never fired.
+	 *
+	 * Safety valve: if the entry claims to be busy but no job row exists at
+	 * all, the entry is orphaned — reset it so the user isn't locked out.
 	 */
 	private function check_ai_not_busy( array $entry ) {
 		$busy = array( 'queued', 'processing' );
@@ -1035,36 +1051,81 @@ class EntriesEndpoint {
 			return true;
 		}
 
-		// Check if an active job actually exists for this entry.
 		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_queue';
 		// LIKE pattern interpolates (int) $entry['id'] - integer cast first, then
 		// passed via the %s placeholder which adds quoting. Safe from injection.
-		$active_job = $wpdb->get_var(
+		$jobs = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT COUNT(*) FROM %i
-				 WHERE ( payload LIKE %s OR payload LIKE %s )
+				'SELECT id, status, scheduled_at FROM %i
+				 WHERE payload LIKE %s
 				   AND status IN ( \'pending\', \'processing\' )
 				   AND attempts < %d',
-				$wpdb->prefix . 'neural_forms_queue',
-				// Delimited match: entry 12 must not match a job for entry 123.
-				'%"entry_id":' . (int) $entry['id'] . ',%',
-				'%"entry_id":' . (int) $entry['id'] . '}%',
+				$table,
+				'%"entry_id":' . (int) $entry['id'] . '%',
 				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
-			)
+			),
+			ARRAY_A
 		);
+		$jobs = is_array( $jobs ) ? $jobs : array();
 
-		if ( (int) $active_job > 0 ) {
+		$decision = self::classify_active_jobs( $jobs, time() );
+
+		if ( $decision['running'] ) {
 			return new WP_Error(
 				'ai_already_processing',
-				__( 'An Neural AI job for this entry is already running.', 'neural-forms-lite' ),
+				__( 'Neural AI is processing this entry right now. Please wait a moment and refresh.', 'neural-forms-lite' ),
 				array( 'status' => 409 )
 			);
 		}
 
-		// No active job - entry is orphaned. Reset so the user can retry.
-		\NeuralForms\AI\AIRepository::update_status( (int) $entry['id'], 'failed' );
+		foreach ( $decision['supersede'] as $job_id ) {
+			$wpdb->update(
+				$table,
+				array(
+					'status'       => 'superseded',
+					'processed_at' => current_time( 'mysql', true ),
+					'error'        => 'Superseded by a manual "Analyze with AI" run.',
+				),
+				array( 'id' => (int) $job_id ),
+				array( '%s', '%s', '%s' ),
+				array( '%d' )
+			);
+		}
+
+		if ( empty( $jobs ) ) {
+			// No job row at all - entry is orphaned. Reset so the user can retry.
+			\NeuralForms\AI\AIRepository::update_status( (int) $entry['id'], 'failed' );
+		}
 
 		return true;
+	}
+
+	/**
+	 * Decide what to do with the queue rows found for an entry.
+	 *
+	 * @param array<int, array{id:int|string,status:string,scheduled_at:string}> $jobs
+	 * @param int $now Unix timestamp.
+	 * @return array{running: bool, supersede: int[]}
+	 */
+	private static function classify_active_jobs( array $jobs, int $now ): array {
+		$running   = false;
+		$supersede = array();
+		foreach ( $jobs as $job ) {
+			$status = (string) ( $job['status'] ?? '' );
+			if ( 'processing' === $status ) {
+				$claimed = strtotime( (string) ( $job['scheduled_at'] ?? '' ) . ' UTC' );
+				if ( false !== $claimed && ( $now - $claimed ) < self::AI_JOB_ACTIVE_WINDOW ) {
+					$running = true;
+					continue;
+				}
+			}
+			$supersede[] = (int) $job['id'];
+		}
+		return array(
+			'running'   => $running,
+			'supersede' => $running ? array() : $supersede,
+		);
 	}
 
 	// Permission

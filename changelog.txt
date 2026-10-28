@@ -3,6 +3,8 @@
 ### 1.1.4 - Unreleased
 
 #### Fixed
+* "Analyze with AI" refused with "An Neural AI job for this entry is already running" (409) whenever a queue row for the entry was still `pending` — i.e. WP-Cron had simply not run it yet (low-traffic sites, `DISABLE_WP_CRON` without a system cron, stale object cache). The entry then sat on "Queued" indefinitely with no way out. The guard now only refuses while a worker is genuinely mid-run (`processing`, claimed within the last 2 minutes); pending and stale rows are marked `superseded` and the manual analysis runs immediately. Test: `tests/ReanalyzeBusyGuardTest.php`.
+* Stats "last cron run" read the wrong hook name (`neural_forms_process_queue` instead of `AIQueueProcessor::CRON_HOOK`), so it was always empty.
 * Inbox showed a bare "Neural Forms Cloud API error: HTTP 503" when the cloud returned a generic error. The cloud's exception filter nests those as `{ "error": { "code", "message" } }` while plan / safety errors are flat; `NeuralFormsCloudProvider` now lifts the nested shape so the entry shows the real code and message (e.g. `[provider_unavailable] No AI provider is currently reachable`). Test: `tests/CloudErrorBodyTest.php`.
 
 ### 1.1.3 - 2026-10-28
