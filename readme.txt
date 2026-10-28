@@ -1,6 +1,6 @@
-=== Neural Forms ===
+=== Neural Forms – AI Form Builder with Multi-Step Forms, Lead Inbox & AI Replies ===
 Contributors: elicus
-Tags: contact form, forms, ai forms, lead inbox, form builder
+Tags: ai form builder, multi-step form, contact form, form builder, lead inbox
 Requires at least: 6.8
 Tested up to: 7.1
 Requires PHP: 7.4
@@ -8,7 +8,7 @@ Stable tag: 1.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-WordPress form plugin with a built-in lead inbox. Build forms, manage submissions, and let AI analyze every entry and draft your replies.
+AI form builder with free multi-step forms. Describe a form, AI builds it. Entries land in a lead inbox where AI can summarize them and draft replies.
 
 == Description ==
 
