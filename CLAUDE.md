@@ -587,6 +587,16 @@ only reason the 1.1.3 → main merge conflicted on 2026-10-29. Release
 fixes (changelog wording, typos) go on the `release/*` branch and are
 merged forward to `main` and `dev` the same way.
 
+**Release branches ship only plugin code.** Right after cutting
+`release/<version>`, run `bin/strip-dev-files.sh` and commit — it removes
+`CLAUDE.md`, `.claude/`, `tests/`, `bin/`, `docs/`, phpcs / phpunit
+configs and the root `package.json` from the branch (the
+`modules/admin` build tooling stays). No Claude co-author trailer on
+release-branch commits. When merging `main` back into `dev`, use
+`git merge --no-commit main` and then `git checkout dev -- CLAUDE.md
+tests bin docs phpcs.xml.dist package.json` before committing, so `dev`
+keeps its tooling.
+
 ------------------------------------------------------------------------
 
 ## Important Rules
