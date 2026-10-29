@@ -50,7 +50,7 @@ try {
 	// ── 1. upgrade rerun from 1.1.3 ─────────────────────────────────
 	update_option( 'neural_forms_db_version', '1.1.3' );
 	Database::maybe_upgrade();
-	check( 'upgrade: db version back to 1.2.0', get_option( 'neural_forms_db_version' ), '1.2.0' );
+	check( 'upgrade: db version back to the current schema version', get_option( 'neural_forms_db_version' ), NEURAL_FORMS_DB_VERSION );
 	$cols = array_column( $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}neural_forms_entries", ARRAY_A ), 'Field' );
 	foreach ( array( 'assigned_to', 'lead_stage', 'follow_up_due', 'follow_up_done', 'follow_up_overdue_sent' ) as $c ) check( "upgrade: entries.$c exists", in_array( $c, $cols, true ), true );
 	$cols2 = array_column( $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}neural_forms_entry_ai_responses", ARRAY_A ), 'Field' );
@@ -259,6 +259,49 @@ try {
 	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/entries/counts' ); $req->set_query_params( array( 'form_id' => $form_id ) ); $res = $server->dispatch( $req );
 	$counts = $res->get_data();
 	check( 'REST: counts include stages + overdue', isset( $counts['stages']['contacted'], $counts['overdue'] ) && $counts['overdue'] >= 1, true );
+	// ── 12. Part B: pricing end to end ──────────────────────────────
+	$pform_id = (int) FormRepository::create( array( 'name' => 'A6 pricing form', 'slug' => 'a6-pricing-' . time(), 'status' => 'active',
+		'form_schema' => array( 'fields' => array(
+			array( 'id' => 'email', 'type' => 'email', 'label' => 'Email', 'required' => true ),
+			array( 'id' => 'service', 'type' => 'product', 'label' => 'Service', 'pricing' => array( 'mode' => 'fixed', 'price' => '1000.00' ) ),
+			array( 'id' => 'addons', 'type' => 'product', 'label' => 'Add-ons', 'pricing' => array( 'mode' => 'options', 'display' => 'checkboxes' ), 'options' => array( array( 'value' => 'seo', 'label' => 'SEO', 'price' => '150' ), array( 'value' => 'copy', 'label' => 'Copy', 'price' => '150' ) ) ),
+			array( 'id' => 'rush', 'type' => 'product', 'label' => 'Rush', 'pricing' => array( 'mode' => 'fixed', 'price' => '500' ), 'conditional_logic' => array( 'enabled' => true, 'field' => 'addons', 'operator' => 'contains', 'value' => 'seo' ) ),
+			array( 'id' => 'grand', 'type' => 'calculated', 'label' => 'Grand', 'expression' => '{service} + {addons} + {rush}', 'format' => 'currency' ),
+		) ),
+		'settings' => \NeuralForms\Forms\FormSettingsSanitizer::sanitize( array( 'pricing' => array( 'currency' => 'USD', 'discounts' => array( array( 'id' => 'ten', 'label' => 'Launch', 'type' => 'percent', 'value' => '10' ) ), 'deposit' => array( 'type' => 'percent', 'value' => '30' ) ) ) ),
+	) );
+	$created['forms'][] = $pform_id;
+	$pf = FormRepository::find( $pform_id );
+	check( 'pricing: schema + settings saved (validator accepted products/calculated)', \NeuralForms\Forms\FormValidator::validate_schema( $pf['form_schema'] ) === true && \NeuralForms\Forms\FormValidator::validate_settings_logic( $pf['settings'], $pf['form_schema'] ) === true, true );
+	$phtml = FormRenderer::render( $pform_id );
+	check( 'pricing: renderer emits product inputs, calculated output, totals and config', strpos( $phtml, 'name="addons[choice][]"' ) !== false && strpos( $phtml, 'data-neural-forms-calculated="grand"' ) !== false && strpos( $phtml, 'data-neural-forms-totals' ) !== false && strpos( $phtml, 'data-neural-forms-pricing=' ) !== false, true );
+	$psubmit = static function ( array $data ) use ( $server, $pform_id ) {
+		$req = new WP_REST_Request( 'POST', '/neural-forms/v1/forms/' . $pform_id . '/submit' );
+		$req->set_header( 'Content-Type', 'application/json' );
+		$req->set_body( wp_json_encode( $data + array( 'neural_forms_website' => '' ) ) );
+		$res = $server->dispatch( $req );
+		return array( 'status' => $res->get_status(), 'body' => $res->get_data() );
+	};
+	// Tampered: client sends a "price" and a calculated value — both ignored. seo chosen → rush visible (+500).
+	$pr = $psubmit( array( 'email' => 'p@example.test', 'service' => array( 'price' => '1' ), 'addons' => array( 'choice' => array( 'seo' ) ), 'grand' => '0', 'rush' => array() ) );
+	check( 'pricing: submit 201', $pr['status'] === 201 ? 201 : $pr['body'], 201 );
+	// An unknown option value is a validation error, not silently priced.
+	$bad = $psubmit( array( 'email' => 'x@example.test', 'addons' => array( 'choice' => array( 'hack' ) ) ) );
+	check( 'pricing: unknown option rejected with 422', $bad['status'], 422 );
+	$pe = (int) ( $pr['body']['entry_id'] ?? 0 ); $created['entries'][] = $pe;
+	check( 'pricing: response totals (1000+150+500=1650, -10% = 1485, 30% deposit = 445.50)', array( $pr['body']['pricing']['total'] ?? null, $pr['body']['pricing']['due_now'] ?? null, $pr['body']['pricing']['remaining'] ?? null ), array( 148500, 44550, 103950 ), true );
+	$prow = EntryRepository::get( $pe );
+	check( 'pricing: snapshot stored with 3 lines + calculated', array( count( $prow['pricing']['line_items'] ?? array() ), $prow['pricing']['calculated']['grand']['display'] ?? null, $prow['amount_total_minor'], $prow['amount_due_minor'], $prow['currency'], $prow['payment_status'] ), array( 3, '$1,650.00', 148500, 44550, 'USD', 'pending' ), true );
+	check( 'pricing: stored product value is the sanitised shape', $prow['data']['addons'] ?? null, array( 'choice' => array( 'seo' ) ) );
+	check( 'pricing: calculated value never stored in data', isset( $prow['data']['grand'] ), false );
+	// Hidden rush (no seo) → not priced.
+	$pr2 = $psubmit( array( 'email' => 'p2@example.test', 'addons' => array( 'choice' => array( 'copy' ) ) ) );
+	$pe2 = (int) ( $pr2['body']['entry_id'] ?? 0 ); $created['entries'][] = $pe2;
+	check( 'pricing: hidden product excluded (1000+150 = 1150, -10% = 1035)', $pr2['body']['pricing']['total'] ?? null, 103500 );
+	$csv_req = new WP_REST_Request( 'GET', '/neural-forms/v1/entries/export' ); $csv_req->set_query_params( array( 'form_id' => $pform_id ) );
+	$csv = $server->dispatch( $csv_req );
+	check( 'pricing: CSV export renders product choices', $csv->get_status() === 200 && strpos( (string) wp_json_encode( $csv->get_data() ), 'SEO' ) !== false, true );
+
 } catch ( \Throwable $e ) {
 	$failed++;
 	echo "FATAL ", get_class( $e ), ': ', $e->getMessage(), ' @ ', $e->getFile(), ':', $e->getLine(), "\n";

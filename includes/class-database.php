@@ -182,6 +182,11 @@ class Database {
   follow_up_due datetime DEFAULT NULL,
   follow_up_done tinyint(1) NOT NULL DEFAULT 0,
   follow_up_overdue_sent tinyint(1) NOT NULL DEFAULT 0,
+  pricing_snapshot longtext DEFAULT NULL,
+  amount_total_minor bigint(20) DEFAULT NULL,
+  amount_due_minor bigint(20) DEFAULT NULL,
+  currency varchar(3) DEFAULT NULL,
+  payment_status varchar(24) NOT NULL DEFAULT 'none',
   submitted_at datetime NOT NULL,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
@@ -191,7 +196,8 @@ class Database {
   KEY ai_status (ai_status),
   KEY lead_stage (lead_stage),
   KEY assigned_to (assigned_to),
-  KEY follow_up_due (follow_up_due)
+  KEY follow_up_due (follow_up_due),
+  KEY payment_status (payment_status)
 ) {$charset};";
 	}
 

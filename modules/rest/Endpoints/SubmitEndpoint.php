@@ -366,6 +366,29 @@ class SubmitEndpoint {
 		// removed from BOTH $raw_data and the local $schema_fields copy
 		// used by the rest of this method, so the validator never sees
 		// the locked field and never produces a required error for it.
+		// 1.2.0 part B: a Calculated value is never accepted from the client;
+		// with the calculations capability locked, Product fields are not
+		// rendered and must not be accepted either (same as Matrix below).
+		$_strip_types = array( 'calculated' );
+		if ( ! Capabilities::can( Capabilities::CALCULATIONS ) ) {
+			$_strip_types[] = 'product';
+		}
+		foreach ( $schema_fields as $_pf ) {
+			$_pf = (array) $_pf;
+			if ( in_array( (string) ( $_pf['type'] ?? '' ), $_strip_types, true ) && ! empty( $_pf['id'] ) ) {
+				unset( $raw_data[ (string) $_pf['id'] ] );
+			}
+		}
+		$schema_fields = array_values(
+			array_filter(
+				$schema_fields,
+				static function ( $f ) use ( $_strip_types ) {
+					$f = (array) $f;
+					return ! in_array( (string) ( $f['type'] ?? '' ), $_strip_types, true );
+				}
+			)
+		);
+
 		if ( ! Capabilities::can( Capabilities::FIELD_MATRIX ) ) {
 			$matrix_ids = array();
 			foreach ( $schema_fields as $_cap_field ) {
@@ -421,6 +444,14 @@ class SubmitEndpoint {
 		// should not appear in the stored entry data blob.
 		$sanitized_data = $this->sanitize_fields( $schema_fields, $raw_data );
 
+		// 1.2.0 part B: authoritative totals. Computed from the SAVED form and
+		// the sanitised (post-visibility) data — posted prices/totals are
+		// never read. Stored on the entry as the pricing snapshot.
+		$_pricing = null;
+		if ( Capabilities::can( Capabilities::CALCULATIONS ) && \NeuralForms\Pricing\PriceEngine::form_has_pricing( $form ) ) {
+			$_pricing = \NeuralForms\Pricing\PriceEngine::evaluate( $form, $sanitized_data, $_hidden_ids );
+		}
+
 		// ' Step 8: Assemble server-side context '
 		// These values are server-derived, never client-trusted.
 		// form_version is an MD5 of the schema at the moment of submission -
@@ -436,6 +467,9 @@ class SubmitEndpoint {
 			'submitted_at' => current_time( 'mysql', true ),   // UTC
 			'form_version' => md5( (string) wp_json_encode( $form['form_schema'] ) ),
 		);
+		if ( $_pricing ) {
+			$context['pricing'] = $_pricing;
+		}
 
 		// ' Step 9: Persist '
 		// EntryRepository::create() already logs the raw DB error internally.
@@ -499,6 +533,21 @@ class SubmitEndpoint {
 			'success'  => true,
 			'entry_id' => $entry_id,
 		);
+
+		// 1.2.0 part B: totals for the confirmation (never trusted back).
+		if ( $_pricing ) {
+			$body['pricing'] = array(
+				'currency'  => $_pricing['currency'],
+				'total'     => $_pricing['total'],
+				'due_now'   => $_pricing['due_now'],
+				'remaining' => $_pricing['remaining'],
+				'formatted' => array(
+					'total'     => \NeuralForms\Pricing\Money::format( (int) $_pricing['total'], $_pricing['currency'] ),
+					'due_now'   => \NeuralForms\Pricing\Money::format( (int) $_pricing['due_now'], $_pricing['currency'] ),
+					'remaining' => \NeuralForms\Pricing\Money::format( (int) $_pricing['remaining'], $_pricing['currency'] ),
+				),
+			);
+		}
 
 		// 1.2.0: conditional confirmation / redirect chosen server-side.
 		$outcome = $this->resolve_success_outcome( $form, $_effective_data, $_effective_types );
@@ -946,6 +995,29 @@ class SubmitEndpoint {
 	 * @param array $raw_data       Stripped submitted data (schema keys only).
 	 * @return array                Associative array of field_id => sanitized value.
 	 */
+	/**
+	 * Product value (1.2.0, part B): { choice: string|string[], qty: int, amount: string }.
+	 * Only the keys the mode uses survive; prices never come from the client.
+	 */
+	private function sanitize_product( $value, array $field ): array {
+		$p     = \NeuralForms\Pricing\PriceEngine::product_pricing( $field );
+		$value = is_array( $value ) ? $value : array();
+		$out   = array();
+		if ( $p['mode'] === 'options' ) {
+			$choices = $value['choice'] ?? array();
+			$choices = is_array( $choices ) ? $choices : array( $choices );
+			$choices = array_values( array_unique( array_map( 'sanitize_text_field', array_map( 'strval', array_filter( $choices, 'is_scalar' ) ) ) ) );
+			$out['choice'] = $p['display'] === 'checkboxes' ? $choices : ( $choices[0] ?? '' );
+		} elseif ( $p['mode'] === 'input' ) {
+			$out['amount'] = isset( $value['amount'] ) && is_numeric( $value['amount'] ) ? (string) round( (float) $value['amount'], 3 ) : '';
+		}
+		if ( $p['quantity']['enabled'] ) {
+			$q          = isset( $value['qty'] ) && is_numeric( $value['qty'] ) ? (int) $value['qty'] : $p['quantity']['default'];
+			$out['qty'] = max( $p['quantity']['min'], min( $p['quantity']['max'], $q ) );
+		}
+		return $out;
+	}
+
 	private function sanitize_fields( array $schema_fields, array $raw_data ): array {
 		$sanitized = array();
 
@@ -1037,6 +1109,9 @@ class SubmitEndpoint {
 			// Pass through as-is - do not stringify it.
 			case 'file':
 				return is_array( $value ) ? $value : null;
+
+			case 'product':
+				return $this->sanitize_product( $value, $field );
 
 			case 'matrix':
 				// Stored shape mirrors what the validator accepted:

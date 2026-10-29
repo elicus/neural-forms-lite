@@ -4724,3 +4724,19 @@
 #neural-forms-app .nf-ai-behaviour__knowledge { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 #neural-forms-app .nf-ai-behaviour__knowledge label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 #neural-forms-app .nf-ai-behaviour__knowledge em { color: #9ca3af; font-size: 11px; font-style: normal; }
+
+/* Pricing fields + settings (1.2.0, part B) */
+#neural-forms-app .nf-inspector__block { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+#neural-forms-app .nf-inspector__row { display: flex; gap: 8px; }
+#neural-forms-app .nf-inspector__row > .nf-inspector__field, #neural-forms-app .nf-inspector__row > .nf-form-settings__field { flex: 1 1 0; min-width: 0; }
+#neural-forms-app .nf-inspector__option-price { width: 72px; flex: 0 0 72px; text-align: right; }
+#neural-forms-app .nf-inspector__chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+#neural-forms-app .nf-inspector__chip { appearance: none; border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+#neural-forms-app .nf-inspector__chip:hover { border-color: var( --nf-primary ); color: var( --nf-primary ); }
+#neural-forms-app .nf-preview__product { display: flex; align-items: center; gap: 12px; }
+#neural-forms-app .nf-preview__product-price { font-weight: 600; color: #111827; }
+#neural-forms-app .nf-preview__choice .nf-preview__product-price { margin-left: 6px; color: #6b7280; font-style: normal; font-size: 12px; }
+#neural-forms-app .nf-preview__product-qty input { width: 56px; margin-left: 4px; }
+#neural-forms-app .nf-preview__calculated { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; }
+#neural-forms-app .nf-preview__calculated-value { font-weight: 700; font-size: 15px; }
+#neural-forms-app .nf-preview__calculated-expr { font-size: 11px; color: #6b7280; }

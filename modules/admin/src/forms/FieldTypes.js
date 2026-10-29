@@ -24,6 +24,8 @@ export const FIELD_TYPES = [
 	{ value: 'poll',          label: 'Poll'          },
 	{ value: 'quiz_question', label: 'Quiz'          },
 	{ value: 'repeater',      label: 'Repeater'      },
+	{ value: 'product',       label: 'Product'       },
+	{ value: 'calculated',    label: 'Calculated'    },
 	{ value: 'file',          label: 'File Upload'   },
 	{ value: 'hidden',        label: 'Hidden'        },
 ];
@@ -116,6 +118,31 @@ export function newField( type, existingIds = [] ) {
 		// add their first child field; the full child DnD experience
 		// lands in Commit 2.
 		base.fields = [];
+	}
+
+	if ( type === 'product' ) {
+		base.label    = 'Product';
+		base.required = false;
+		base.pricing  = {
+			mode:       'options',
+			price:      '',
+			display:    'select',
+			quantity:   { enabled: false, min: 1, max: 10, default: 1 },
+			min_amount: '',
+			max_amount: '',
+		};
+		base.options = [
+			{ value: 'option_1', label: 'Option 1', price: '0' },
+			{ value: 'option_2', label: 'Option 2', price: '0' },
+		];
+	}
+
+	if ( type === 'calculated' ) {
+		base.label      = 'Total';
+		base.required   = false;
+		base.expression = '';
+		base.format     = 'currency';
+		base.decimals   = 2;
 	}
 
 	if ( type === 'matrix' ) {

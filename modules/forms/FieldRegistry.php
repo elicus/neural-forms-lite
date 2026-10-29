@@ -129,6 +129,21 @@ class FieldRegistry {
 			'label'    => 'Matrix',
 			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width' ),
 		),
+		// Product (1.2.0, part B): a priced item. `pricing` carries mode
+		// (fixed | options | input), price, display, quantity bounds,
+		// min/max amount; `options` carry a `price` each. Posted value is
+		// an array { choice, qty, amount }. PriceEngine owns the money.
+		'product'       => array(
+			'label'    => 'Product',
+			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'options', 'pricing', 'width' ),
+		),
+		// Calculated (1.2.0, part B): display-only value computed from an
+		// `expression` over numeric fields and product totals; never
+		// posted, never stored in entry data (lives in the pricing snapshot).
+		'calculated'    => array(
+			'label'    => 'Calculated',
+			'supports' => array( 'label', 'show_label', 'help_text', 'css_class', 'expression', 'format', 'decimals', 'width' ),
+		),
 		// Repeater: repeatable group of child fields. Nested `settings`
 		// carries min_items / max_items / columns / add_button_label /
 		// remove_button_label; nested `fields` carries the child-field

@@ -267,7 +267,9 @@ final class ConditionEngine {
 		}
 
 		$control_type = (string) ( $field_types[ $control_id ] ?? '' );
-		$is_choice    = in_array( $control_type, array( 'checkbox', 'acceptance', 'radio', 'checkboxes' ), true );
+		// product (1.2.0 part B) counts as a choice type: an unanswered
+		// product is "empty", never the lenient absent-field pass.
+		$is_choice    = in_array( $control_type, array( 'checkbox', 'acceptance', 'radio', 'checkboxes', 'product' ), true );
 
 		if ( ! array_key_exists( $control_id, $data ) ) {
 			if ( ! $is_choice ) {
@@ -285,6 +287,13 @@ final class ConditionEngine {
 		if ( is_array( $control_raw ) ) {
 			if ( isset( $control_raw['filename'] ) ) {
 				$control_val = 'file_uploaded';
+			} elseif ( array_key_exists( 'choice', $control_raw ) || array_key_exists( 'amount', $control_raw ) || $control_type === 'product' ) {
+				// Product value { choice, qty, amount } (1.2.0 part B): the
+				// condition sees the choice(s), or the typed amount.
+				$choice = $control_raw['choice'] ?? ( $control_raw['amount'] ?? '' );
+				$control_val = is_array( $choice )
+					? implode( ',', array_map( 'strval', array_filter( $choice, 'is_scalar' ) ) )
+					: trim( (string) $choice );
 			} else {
 				$control_val = implode( ',', array_map( 'strval', array_filter( $control_raw, 'is_scalar' ) ) );
 			}

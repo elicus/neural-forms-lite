@@ -34,7 +34,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Version constants:**
   - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.0` on dev. The 2026-10-29 cut of `release/1.2.0` (Release A only) was NOT published: the owner clarified that the whole draft (Release A + B) is version 1.2.0, so Release B lands on dev first and `release/1.2.0` is re-cut from dev when it is done (see `docs/RELEASE-1.2-PLAN.md` and `docs/RELEASE-1.2-PLAN-B.md`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
-  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.0` (adds the lead-management columns on entries, `meta` on `neural_forms_entry_ai_responses`, and the three `neural_forms_workflow*` tables). Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
+  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.1` (1.2.0 added the lead-management columns, `meta` on `neural_forms_entry_ai_responses` and the three `neural_forms_workflow*` tables; 1.2.1 adds the pricing / payment columns on entries). The schema version intentionally runs ahead of the plugin version inside the 1.2.0 cycle so dev sites that already migrated pick up the part-B columns. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
 **Identifiers deliberately NOT renamed** (changing these would break installs):
 
@@ -490,6 +490,9 @@ Capabilities::INTEGRATIONS                    // 'integrations' (added 1.1.0)
 Capabilities::CONDITIONAL_LOGIC_ADVANCED      // 'conditional_logic_advanced' (added 1.2.0)
 Capabilities::WORKFLOWS                       // 'workflows' (added 1.2.0)
 Capabilities::AI_BUSINESS_CONTEXT             // 'ai_business_context' (added 1.2.0)
+Capabilities::CALCULATIONS                    // 'calculations' (added 1.2.0 part B)
+Capabilities::QUOTES                          // 'quotes' (added 1.2.0 part B)
+Capabilities::PAYMENTS                        // 'payments' (added 1.2.0 part B)
 
 Capabilities::can( $cap )      // apply_filters("neural_forms_can_{$cap}", false)
 Capabilities::all()            // snapshot of every cap (localized to React)
@@ -794,6 +797,56 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Calculations: Product + Calculated fields, pricing (1.2.0 part B, B1)
+
+- **Engine** `modules/pricing/`: `Money` (integer minor units, currency
+  exponent table, half-up `percent_of`), `Expression` (tokeniser +
+  shunting-yard, `+ - * / ( )`, `round min max if`, no eval),
+  `PriceEngine::evaluate( $form, $data, $hidden_ids )` → snapshot
+  `{ currency, exponent, line_items[], subtotal, discount, total, deposit,
+  due_now, remaining, calculated{}, errors[], formula_revision }`,
+  `client_config()` for the frontend, `ProductFormatter::display()` for
+  emails / CSV / AI / inbox. JS mirror: `computePricing()` +
+  `nfEvalExpression()` in form-submit.js. Fixtures
+  `tests/fixtures/pricing.json` (+ `pricing.client.json` emitted by the
+  PHP test) run by `tests/PriceEngineTest.php` and `tests/PriceEngineTest.js`.
+- **Field schemas.** `product`: `pricing { mode fixed|options|input,
+  price, display select|radio|checkboxes, quantity {enabled,min,max,
+  default}, min_amount, max_amount }` + `options[].price`; posted as
+  `{id}[choice]` / `{id}[choice][]` / `{id}[qty]` / `{id}[amount]`,
+  sanitised by `SubmitEndpoint::sanitize_product()` to `{ choice, qty,
+  amount }`. `calculated`: `expression, format currency|number,
+  decimals`; never posted, never in entry `data` (lives in the snapshot).
+- **Form settings `pricing`** `{ currency, discounts[{ id, label,
+  conditions (v2), type percent|fixed, value, max }], deposit { type
+  none|percent|fixed, value } }` — `PriceEngine::normalize_settings()`,
+  dropped when default-only. First matching discount wins; conditions see
+  a product as its CHOICE, expressions see its TOTAL.
+- **Validation.** `FormValidator::validate_product()` (prices parse,
+  unique option values, bounds), calculated expressions parse,
+  `validate_calculations()` (refs must be number/range/rating/product/
+  calculated, no self-ref, `PriceEngine::find_cycle()`),
+  `validate_settings_pricing()` (called from `validate_settings_logic`).
+- **Gating** (`Capabilities::CALCULATIONS`): builder chips locked, renderer
+  renders nothing for product/calculated (admin-only notice, like Matrix),
+  submit strips product values and never evaluates pricing; stored
+  snapshots stay readable. `calculated` values are stripped from every
+  submission regardless.
+- **Submit** (`SubmitEndpoint`): after sanitising, `PriceEngine::evaluate`
+  with the hidden ids → `$context['pricing']` →
+  `EntryRepository::create()` writes `pricing_snapshot`,
+  `amount_total_minor`, `amount_due_minor`, `currency`, `payment_status`
+  (`pending` when something is due, else `none`); 201 body gains
+  `pricing { currency, total, due_now, remaining, formatted{} }`.
+- **Frontend**: `data-neural-forms-pricing` (client config) on the form,
+  `.neural-forms-form__totals` block, `data-neural-forms-line-total` per
+  product, `<output data-neural-forms-calculated>`; `initPricing()` re-runs
+  on input/change and after every conditional pass.
+- **Builder**: `PricingFieldsPalette`, `ProductSettingsBlock`,
+  `CalculatedSettingsBlock` (click-to-insert field chips), price column in
+  `OptionsEditor`, previews; Form settings › Pricing (`PricingSection`).
+  Inbox: `PricingCard` on the entry + `formatProductValue()`.
 
 ### Business-aware AI drafts (1.2.0, A5)
 

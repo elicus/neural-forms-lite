@@ -195,6 +195,42 @@ export function formatChoiceValue( value, field ) {
 		.join( ', ' );
 }
 
+/**
+ * Product value { choice, qty, amount } → "SEO, Copywriting × 2" (mirrors
+ * PHP ProductFormatter::display).
+ */
+export function formatProductValue( value, field ) {
+	if ( ! field || field.type !== 'product' ) return null;
+	const p = ( field.pricing && typeof field.pricing === 'object' ) ? field.pricing : { mode: 'options' };
+	const v = ( value && typeof value === 'object' && ! Array.isArray( value ) ) ? value : {};
+	const qtyOn = !! ( p.quantity && p.quantity.enabled );
+	const qty = qtyOn && v.qty != null && v.qty !== '' ? Number( v.qty ) : 1;
+	const suffix = qtyOn ? ' × ' + qty : '';
+	if ( p.mode === 'input' ) return v.amount != null ? String( v.amount ) : '';
+	if ( p.mode === 'fixed' ) return __( 'Included', 'neural-forms-lite' ) + suffix;
+	const labels = {};
+	for ( const opt of ( Array.isArray( field.options ) ? field.options : [] ) ) {
+		if ( ! opt ) continue;
+		const val = opt.value != null && String( opt.value ) !== '' ? String( opt.value ) : String( opt.label ?? '' );
+		if ( val ) labels[ val ] = opt.label ? String( opt.label ) : val;
+	}
+	const choices = Array.isArray( v.choice ) ? v.choice : ( v.choice != null && v.choice !== '' ? [ v.choice ] : [] );
+	const text = choices.map( ( c ) => labels[ String( c ) ] ?? String( c ) ).join( ', ' );
+	return text ? text + suffix : '';
+}
+
+/** Minor units → "$1,250.50" (mirrors PHP Money::format for the inbox). */
+export function formatMinor( minor, currency ) {
+	const exp = { BIF: 0, CLP: 0, DJF: 0, GNF: 0, JPY: 0, KMF: 0, KRW: 0, MGA: 0, PYG: 0, RWF: 0, UGX: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0, BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3 }[ currency ] ?? 2;
+	const sym = { USD: '$', EUR: '€', GBP: '£', INR: '₹', AUD: 'A$', CAD: 'C$', NZD: 'NZ$', SGD: 'S$', JPY: '¥', ZAR: 'R', BRL: 'R$', MXN: 'MX$' }[ currency ] ?? ( currency + ' ' );
+	const n = Number( minor ) || 0;
+	const neg = n < 0;
+	const abs = Math.abs( n );
+	const whole = Math.floor( abs / Math.pow( 10, exp ) );
+	const frac = String( abs % Math.pow( 10, exp ) ).padStart( exp, '0' );
+	return ( neg ? '-' : '' ) + sym + whole.toString().replace( /\B(?=(\d{3})+(?!\d))/g, ',' ) + ( exp ? '.' + frac : '' );
+}
+
 export function formatRepeaterValueLines( value, field ) {
 	const out = [];
 	if ( ! field || typeof field !== 'object' ) return out;

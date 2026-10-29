@@ -300,6 +300,15 @@ class ExportEndpoint {
 							'cell_part'  => $rc['part'], // value | filename | url
 						);
 					}
+				} elseif ( $type === 'calculated' ) {
+					continue; // never in entry data; see the pricing columns
+				} elseif ( $type === 'product' ) {
+					$dynamic_cols[] = array(
+						'header'    => $field_id,
+						'source_id' => $field_id,
+						'part'      => 'product',
+						'field'     => $field,
+					);
 				} elseif ( $type === 'matrix' ) {
 					// Matrix expands to one CSV column per configured row.
 					// `field` is captured so build_row can map stored
@@ -404,6 +413,8 @@ class ExportEndpoint {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['filename'] ?? '' ) : '' );
 			} elseif ( $col['part'] === 'url' ) {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['url'] ?? '' ) : '' );
+			} elseif ( $col['part'] === 'product' ) {
+				$row[] = self::escape_csv_formula( \NeuralForms\Pricing\ProductFormatter::display( $raw, is_array( $col['field'] ?? null ) ? $col['field'] : array() ) );
 			} elseif ( $col['part'] === 'matrix_row' ) {
 				$field    = is_array( $col['field'] ?? null ) ? $col['field'] : array();
 				$row_val  = (string) ( $col['row_value'] ?? '' );

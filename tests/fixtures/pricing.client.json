@@ -1,0 +1,387 @@
+[
+    {
+        "name": "draft example: 1000 + 2 x 150 add-ons, 10% discount, 30% deposit",
+        "config": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "service",
+                    "label": "Service",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 100000,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                },
+                {
+                    "id": "addons",
+                    "label": "Add-ons",
+                    "mode": "options",
+                    "display": "checkboxes",
+                    "price": 0,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": {
+                        "seo": 15000,
+                        "copy": 15000,
+                        "hosting": 9900
+                    }
+                }
+            ],
+            "calculated": [
+                {
+                    "id": "total_calc",
+                    "expression": "{service} + {addons}",
+                    "format": "currency",
+                    "decimals": 2
+                }
+            ],
+            "discounts": [
+                {
+                    "id": "ten",
+                    "label": "Launch offer",
+                    "conditions": null,
+                    "type": "percent",
+                    "bp": 1000,
+                    "amount": 0,
+                    "max": null
+                }
+            ],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            }
+        }
+    },
+    {
+        "name": "quantity and unit price, no discount, no deposit",
+        "config": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "seats",
+                    "label": "Seats",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 4999,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 100,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": null
+        }
+    },
+    {
+        "name": "quantity clamped to max, tampered qty ignored",
+        "config": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "seats",
+                    "label": "Seats",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 1000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 5,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": null
+        }
+    },
+    {
+        "name": "hidden product contributes nothing; unknown option ignored; single-choice takes first only",
+        "config": {
+            "currency": "EUR",
+            "exponent": 2,
+            "symbol": "€",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "options",
+                    "display": "radio",
+                    "price": 0,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": {
+                        "basic": 2000,
+                        "pro": 5000
+                    }
+                },
+                {
+                    "id": "extra",
+                    "label": "Extra",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 50000,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": null
+        }
+    },
+    {
+        "name": "conditional discount: fixed 25 off only when plan is pro, capped by max",
+        "config": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "options",
+                    "display": "select",
+                    "price": 0,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": {
+                        "basic": 2000,
+                        "pro": 5000
+                    }
+                }
+            ],
+            "calculated": [],
+            "discounts": [
+                {
+                    "id": "pro_off",
+                    "label": "",
+                    "conditions": {
+                        "v": 2,
+                        "action": "show",
+                        "match": "all",
+                        "rules": [
+                            {
+                                "field": "plan",
+                                "operator": "equals",
+                                "value": "pro"
+                            }
+                        ]
+                    },
+                    "type": "fixed",
+                    "bp": 0,
+                    "amount": 2500,
+                    "max": 1500
+                },
+                {
+                    "id": "fallback",
+                    "label": "",
+                    "conditions": null,
+                    "type": "percent",
+                    "bp": 500,
+                    "amount": 0,
+                    "max": null
+                }
+            ],
+            "deposit": null
+        }
+    },
+    {
+        "name": "discount never exceeds subtotal; zero total means nothing due",
+        "config": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "item",
+                    "label": "Item",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 1000,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [
+                {
+                    "id": "big",
+                    "label": "",
+                    "conditions": null,
+                    "type": "fixed",
+                    "bp": 0,
+                    "amount": 10000,
+                    "max": null
+                }
+            ],
+            "deposit": {
+                "type": "percent",
+                "bp": 5000,
+                "amount": 0
+            }
+        }
+    },
+    {
+        "name": "zero-decimal currency and half-up percent rounding",
+        "config": {
+            "currency": "JPY",
+            "exponent": 0,
+            "symbol": "¥",
+            "products": [
+                {
+                    "id": "item",
+                    "label": "Item",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 1005,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [
+                {
+                    "id": "d",
+                    "label": "",
+                    "conditions": null,
+                    "type": "percent",
+                    "bp": 1250,
+                    "amount": 0,
+                    "max": null
+                }
+            ],
+            "deposit": {
+                "type": "fixed",
+                "bp": 0,
+                "amount": 300
+            }
+        }
+    },
+    {
+        "name": "visitor-entered amount clamped to min/max; calculated fields chain and use if()",
+        "config": {
+            "currency": "GBP",
+            "exponent": 2,
+            "symbol": "£",
+            "products": [
+                {
+                    "id": "gift",
+                    "label": "Donation",
+                    "mode": "input",
+                    "display": "select",
+                    "price": 0,
+                    "quantity": {
+                        "enabled": false,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": 500,
+                    "max": 50000,
+                    "options": []
+                }
+            ],
+            "calculated": [
+                {
+                    "id": "per_head",
+                    "expression": "if({guests} > 10, 15, 20)",
+                    "format": "number",
+                    "decimals": 0
+                },
+                {
+                    "id": "catering",
+                    "expression": "round({guests} * {per_head}, 2)",
+                    "format": "currency",
+                    "decimals": 2
+                }
+            ],
+            "discounts": [],
+            "deposit": null
+        }
+    },
+    {
+        "name": "no products: everything zero, calculated still works on plain numbers",
+        "config": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [],
+            "calculated": [
+                {
+                    "id": "avg",
+                    "expression": "({a} + {b}) / 2",
+                    "format": "number",
+                    "decimals": 1
+                }
+            ],
+            "discounts": [],
+            "deposit": null
+        }
+    }
+]

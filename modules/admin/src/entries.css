@@ -2127,3 +2127,19 @@
 .neural-forms-entry-detail__ai-sources code { background: #f3f4f6; border-radius: 4px; padding: 1px 6px; font-size: 11px; }
 .neural-forms-entry-detail__ai-sources em { color: #9ca3af; font-style: normal; }
 .neural-forms-entry-detail__ai-carousel-footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Pricing card (1.2.0, part B) */
+.neural-forms-entry-detail__pricing-lines { width: 100%; border-collapse: collapse; font-size: 13px; margin: 4px 0 8px; }
+.neural-forms-entry-detail__pricing-lines td { padding: 4px 0; border-bottom: 1px solid #f3f4f6; }
+.neural-forms-entry-detail__pricing-lines td small { color: #9ca3af; }
+.neural-forms-entry-detail__pricing-lines .is-num { text-align: right; white-space: nowrap; color: #374151; }
+.neural-forms-entry-detail__pricing-totals, .neural-forms-entry-detail__pricing-calc { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; margin: 0; font-size: 13px; }
+.neural-forms-entry-detail__pricing-totals dt { color: #6b7280; }
+.neural-forms-entry-detail__pricing-totals dd { margin: 0; text-align: right; font-weight: 600; }
+.neural-forms-entry-detail__pricing-totals .is-total { font-size: 15px; color: #111827; padding-top: 4px; border-top: 1px solid #e5e7eb; }
+.neural-forms-entry-detail__pricing-calc { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #e5e7eb; color: #6b7280; }
+.neural-forms-entry-detail__pricing-calc dd { margin: 0; text-align: right; }
+.neural-forms-entries-pill--pay { margin-left: 8px; background: #eef2ff; color: #3730a3; }
+.neural-forms-entries-pill--pay-paid, .neural-forms-entries-pill--pay-deposit_paid { background: #dcfce7; color: #166534; }
+.neural-forms-entries-pill--pay-failed, .neural-forms-entries-pill--pay-cancelled { background: #fee2e2; color: #991b1b; }
+.neural-forms-entries-pill--pay-refunded, .neural-forms-entries-pill--pay-partially_refunded { background: #fef3c7; color: #92400e; }

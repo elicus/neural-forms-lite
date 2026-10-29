@@ -1,0 +1,124 @@
+{
+  "_doc": "Shared pricing fixtures: PriceEngine::evaluate (PHP) and computePricing (form-submit.js) must produce the same numbers. Amounts are integer minor units. `form` carries form_schema + settings; `data` is the submitted data; `hidden` lists ids hidden by logic.",
+  "cases": [
+    {
+      "name": "draft example: 1000 + 2 x 150 add-ons, 10% discount, 30% deposit",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "service", "type": "product", "label": "Service", "pricing": { "mode": "fixed", "price": "1000.00" } },
+          { "id": "addons", "type": "product", "label": "Add-ons", "pricing": { "mode": "options", "display": "checkboxes" },
+            "options": [ { "value": "seo", "label": "SEO", "price": "150.00" }, { "value": "copy", "label": "Copywriting", "price": "150.00" }, { "value": "hosting", "label": "Hosting", "price": "99.00" } ] },
+          { "id": "total_calc", "type": "calculated", "label": "Total", "expression": "{service} + {addons}", "format": "currency" }
+        ] },
+        "settings": { "pricing": { "currency": "USD", "discounts": [ { "id": "ten", "label": "Launch offer", "type": "percent", "value": "10" } ], "deposit": { "type": "percent", "value": "30" } } }
+      },
+      "data": { "addons": { "choice": [ "seo", "copy" ] } },
+      "hidden": [],
+      "expected": { "subtotal": 130000, "discount": 13000, "total": 117000, "due_now": 35100, "remaining": 81900, "lines": 3, "calculated": { "total_calc": 1300 } }
+    },
+    {
+      "name": "quantity and unit price, no discount, no deposit",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "seats", "type": "product", "label": "Seats", "pricing": { "mode": "fixed", "price": "49.99", "quantity": { "enabled": true, "min": 1, "max": 100, "default": 1 } } }
+        ] },
+        "settings": { "pricing": { "currency": "USD" } }
+      },
+      "data": { "seats": { "qty": "3" } },
+      "hidden": [],
+      "expected": { "subtotal": 14997, "discount": 0, "total": 14997, "due_now": 14997, "remaining": 0, "lines": 1, "calculated": {} }
+    },
+    {
+      "name": "quantity clamped to max, tampered qty ignored",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "seats", "type": "product", "label": "Seats", "pricing": { "mode": "fixed", "price": "10", "quantity": { "enabled": true, "min": 1, "max": 5 } } }
+        ] },
+        "settings": { "pricing": { "currency": "USD" } }
+      },
+      "data": { "seats": { "qty": "999" } },
+      "hidden": [],
+      "expected": { "subtotal": 5000, "discount": 0, "total": 5000, "due_now": 5000, "remaining": 0, "lines": 1, "calculated": {} }
+    },
+    {
+      "name": "hidden product contributes nothing; unknown option ignored; single-choice takes first only",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "plan", "type": "product", "label": "Plan", "pricing": { "mode": "options", "display": "radio" }, "options": [ { "value": "basic", "label": "Basic", "price": "20" }, { "value": "pro", "label": "Pro", "price": "50" } ] },
+          { "id": "extra", "type": "product", "label": "Extra", "pricing": { "mode": "fixed", "price": "500" } }
+        ] },
+        "settings": { "pricing": { "currency": "EUR" } }
+      },
+      "data": { "plan": { "choice": [ "pro", "basic" ] }, "extra": {} , "hacked": { "choice": "pro" } },
+      "hidden": [ "extra" ],
+      "expected": { "subtotal": 5000, "discount": 0, "total": 5000, "due_now": 5000, "remaining": 0, "lines": 1, "calculated": {} }
+    },
+    {
+      "name": "conditional discount: fixed 25 off only when plan is pro, capped by max",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "plan", "type": "product", "label": "Plan", "pricing": { "mode": "options", "display": "select" }, "options": [ { "value": "basic", "label": "Basic", "price": "20" }, { "value": "pro", "label": "Pro", "price": "50" } ] }
+        ] },
+        "settings": { "pricing": { "currency": "USD", "discounts": [
+          { "id": "pro_off", "type": "fixed", "value": "25", "max": "15", "conditions": { "enabled": true, "rules": [ { "field": "plan", "operator": "equals", "value": "pro" } ] } },
+          { "id": "fallback", "type": "percent", "value": "5" }
+        ] } }
+      },
+      "data": { "plan": { "choice": "pro" } },
+      "hidden": [],
+      "expected": { "subtotal": 5000, "discount": 1500, "total": 3500, "due_now": 3500, "remaining": 0, "lines": 1, "calculated": {} }
+    },
+    {
+      "name": "discount never exceeds subtotal; zero total means nothing due",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "item", "type": "product", "label": "Item", "pricing": { "mode": "fixed", "price": "10" } }
+        ] },
+        "settings": { "pricing": { "currency": "USD", "discounts": [ { "id": "big", "type": "fixed", "value": "100" } ], "deposit": { "type": "percent", "value": "50" } } }
+      },
+      "data": {},
+      "hidden": [],
+      "expected": { "subtotal": 1000, "discount": 1000, "total": 0, "due_now": 0, "remaining": 0, "lines": 1, "calculated": {} }
+    },
+    {
+      "name": "zero-decimal currency and half-up percent rounding",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "item", "type": "product", "label": "Item", "pricing": { "mode": "fixed", "price": "1005" } }
+        ] },
+        "settings": { "pricing": { "currency": "JPY", "discounts": [ { "id": "d", "type": "percent", "value": "12.5" } ], "deposit": { "type": "fixed", "value": "300" } } }
+      },
+      "data": {},
+      "hidden": [],
+      "expected": { "subtotal": 1005, "discount": 126, "total": 879, "due_now": 300, "remaining": 579, "lines": 1, "calculated": {} }
+    },
+    {
+      "name": "visitor-entered amount clamped to min/max; calculated fields chain and use if()",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "gift", "type": "product", "label": "Donation", "pricing": { "mode": "input", "min_amount": "5", "max_amount": "500" } },
+          { "id": "guests", "type": "number", "label": "Guests" },
+          { "id": "per_head", "type": "calculated", "expression": "if({guests} > 10, 15, 20)", "format": "number", "decimals": 0 },
+          { "id": "catering", "type": "calculated", "expression": "round({guests} * {per_head}, 2)", "format": "currency" }
+        ] },
+        "settings": { "pricing": { "currency": "GBP" } }
+      },
+      "data": { "gift": { "amount": "1000" }, "guests": "12" },
+      "hidden": [],
+      "expected": { "subtotal": 50000, "discount": 0, "total": 50000, "due_now": 50000, "remaining": 0, "lines": 1, "calculated": { "per_head": 15, "catering": 180 } }
+    },
+    {
+      "name": "no products: everything zero, calculated still works on plain numbers",
+      "form": {
+        "form_schema": { "fields": [
+          { "id": "a", "type": "number" }, { "id": "b", "type": "number" },
+          { "id": "avg", "type": "calculated", "expression": "({a} + {b}) / 2", "format": "number", "decimals": 1 }
+        ] },
+        "settings": {}
+      },
+      "data": { "a": "3", "b": "4" },
+      "hidden": [],
+      "expected": { "subtotal": 0, "discount": 0, "total": 0, "due_now": 0, "remaining": 0, "lines": 0, "calculated": { "avg": 3.5 } }
+    }
+  ]
+}

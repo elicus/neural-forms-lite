@@ -170,6 +170,28 @@ final class Capabilities {
 	const AI_BUSINESS_CONTEXT = 'ai_business_context';
 
 	/**
+	 * CALCULATIONS (added 1.2.0, part B): the Product and Calculated field
+	 * types plus form pricing (currency, discount rules, deposit). Lite
+	 * ships the engine (modules/pricing) and ALWAYS recomputes totals on
+	 * submit for stored forms; the capability gates the builder chips,
+	 * the renderer (locked → fields and totals are not rendered, like
+	 * Matrix) and the submit strip.
+	 */
+	const CALCULATIONS = 'calculations';
+
+	/**
+	 * QUOTES (added 1.2.0, part B): numbered, versioned, branded quotes
+	 * with PDF and token links, built from an entry's pricing snapshot.
+	 */
+	const QUOTES = 'quotes';
+
+	/**
+	 * PAYMENTS (added 1.2.0, part B): Stripe Checkout for the amount due
+	 * (full or deposit), webhook-verified, with reconciliation.
+	 */
+	const PAYMENTS = 'payments';
+
+	/**
 	 * True when the given premium capability is unlocked in this install.
 	 *
 	 * @param string $cap One of the AI_* constants on this class.
@@ -206,6 +228,9 @@ final class Capabilities {
 			self::CONDITIONAL_LOGIC_ADVANCED      => self::can( self::CONDITIONAL_LOGIC_ADVANCED ),
 			self::WORKFLOWS                       => self::can( self::WORKFLOWS ),
 			self::AI_BUSINESS_CONTEXT             => self::can( self::AI_BUSINESS_CONTEXT ),
+			self::CALCULATIONS                    => self::can( self::CALCULATIONS ),
+			self::QUOTES                          => self::can( self::QUOTES ),
+			self::PAYMENTS                        => self::can( self::PAYMENTS ),
 		);
 	}
 

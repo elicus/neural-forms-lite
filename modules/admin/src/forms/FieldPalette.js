@@ -74,6 +74,8 @@ const ADVANCED_TYPES = [
 // `window.neuralFormsAdmin.plugin.capabilities[CAP]` is false the
 // chip renders disabled with a Pro badge.
 const MATRIX_CAP   = 'field_matrix';
+const CALC_CAP     = 'calculations';
+const PRICING_TYPES = [ 'product', 'calculated' ];
 const REPEATER_CAP = 'field_repeater';
 
 // Conditional Logic is NOT in this list. It already shipped in
@@ -163,6 +165,23 @@ export function BasicFieldsPalette( { onAddField } ) {
 						onAddField={ onAddField }
 					/>
 				) ) }
+			</div>
+		</section>
+	);
+}
+
+export function PricingFieldsPalette( { onAddField } ) {
+	const types = FIELD_TYPES.filter( ( t ) => PRICING_TYPES.includes( t.value ) );
+	const caps  = readCaps();
+	const unlocked = caps[ CALC_CAP ] === true;
+	return (
+		<section className="nf-palette__section">
+			<h3 className="nf-palette__title">{ __( 'Pricing Fields', 'neural-forms-lite' ) }</h3>
+			<div className="nf-palette__grid">
+				{ types.map( ( t ) => unlocked
+					? <FieldChip key={ t.value } type={ t.value } label={ t.label } onAddField={ onAddField } />
+					: <LockedProChip key={ t.value } label={ t.label } />
+				) }
 			</div>
 		</section>
 	);

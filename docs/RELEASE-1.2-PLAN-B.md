@@ -103,7 +103,7 @@ No card data touches WordPress (hosted Checkout only). Secrets never appear in R
 | Milestone | Deliverable | Exit gate |
 |---|---|---|
 | B0 ✅ | this document; versions stay 1.2.0 / 1.1.0; dev reverted to those | done 2026-10-29 |
-| B1 | product + calculated fields, pricing settings, PriceEngine + Expression (PHP + JS), fixtures, entry columns, submit recompute, live totals, builder locked/unlocked states | CQ1–CQ6; fixture parity on PHP 7.4 / 8.2 / Node |
+| B1 ✅ 2026-10-29 | product + calculated fields, pricing settings, PriceEngine + Expression (PHP + JS), fixtures, entry columns, submit recompute, live totals, builder locked/unlocked states | CQ1–CQ6 pass: 9 shared fixtures on PHP 7.4 / 8.2 / Node 18; live harness: tampered price / calculated / unknown option ignored, hidden product excluded, snapshot + columns stored, CSV shows choices |
 | B2 | quotes table, numbering, branding, HTML + PDF, token routes, inbox Quote card, email send, expiry cron | CQ7–CQ11 |
 | B3 | Stripe settings + vault, Checkout creation, return pages, webhook + event store, status model, reconciliation cron + button | PAY1–PAY13 (webhook replay / out-of-order / mismatch covered by unit tests on the handler with recorded events) |
 | B4 | `payment_confirmed` trigger, `create_quote_draft` action, quote pay links, inbox filters | end-to-end deposit, full payment, failed, refund scenarios on the live harness |

@@ -566,6 +566,8 @@ class NotificationService {
 					$lines[] = $label . ":\n" . implode( "\n", $rendered );
 				}
 				continue;
+			} elseif ( $field['type'] === 'product' ) {
+				$value = \NeuralForms\Pricing\ProductFormatter::display( $raw, $field );
 			} elseif ( $field['type'] === 'matrix' ) {
 				// Matrix renders one line per configured row, indented under
 				// the field label so the visual hierarchy mirrors how a

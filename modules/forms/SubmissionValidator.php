@@ -113,6 +113,11 @@ class SubmissionValidator {
 
 			$type = $field['type'] ?? 'text';
 
+			// 1.2.0 part B: a Calculated field is display-only — nothing to validate.
+			if ( $type === 'calculated' ) {
+				continue;
+			}
+
 			// Use array_key_exists rather than isset so an explicitly submitted
 			// null is treated the same as a missing key - both mean the client
 			// sent no usable value for this field.
@@ -290,6 +295,33 @@ class SubmissionValidator {
 					/* translators: %s: field label */
 					'message' => sprintf( __( 'Please select at least one option for %s.', 'neural-forms-lite' ), $label ),
 				);
+			}
+			return null;
+		}
+
+		if ( $type === 'product' ) {
+			// Required means: a choice (options mode) or an amount (input
+			// mode). A fixed-price product is always "answered".
+			$p = \NeuralForms\Pricing\PriceEngine::product_pricing( $field );
+			$v = is_array( $value ) ? $value : array();
+			if ( $p['mode'] === 'options' ) {
+				$choices = $v['choice'] ?? array();
+				$choices = is_array( $choices ) ? array_filter( $choices, static function ( $c ) { return is_scalar( $c ) && (string) $c !== ''; } ) : ( (string) $choices !== '' ? array( $choices ) : array() );
+				if ( ! $choices ) {
+					return array(
+						'code'    => 'required',
+						/* translators: %s: field label */
+						'message' => sprintf( __( 'Please choose an option for %s.', 'neural-forms-lite' ), $label ),
+					);
+				}
+			} elseif ( $p['mode'] === 'input' ) {
+				if ( ! isset( $v['amount'] ) || ! is_numeric( $v['amount'] ) ) {
+					return array(
+						'code'    => 'required',
+						/* translators: %s: field label */
+						'message' => sprintf( __( 'Please enter an amount for %s.', 'neural-forms-lite' ), $label ),
+					);
+				}
 			}
 			return null;
 		}
@@ -593,6 +625,45 @@ class SubmissionValidator {
 				}
 				break;
 
+			case 'product':
+				$p = \NeuralForms\Pricing\PriceEngine::product_pricing( $field );
+				$v = is_array( $value ) ? $value : array();
+				if ( $p['mode'] === 'options' ) {
+					$allowed = self::get_select_option_values( $field );
+					$choices = $v['choice'] ?? array();
+					$choices = is_array( $choices ) ? $choices : array( $choices );
+					foreach ( $choices as $c ) {
+						if ( ! is_scalar( $c ) || ( (string) $c !== '' && ! in_array( (string) $c, $allowed, true ) ) ) {
+							return array(
+								'code'    => 'invalid_option',
+								/* translators: %s: field label */
+								'message' => sprintf( __( 'Please select a valid option for %s.', 'neural-forms-lite' ), $label ),
+							);
+						}
+					}
+					if ( $p['display'] !== 'checkboxes' && count( array_filter( $choices, static function ( $c ) { return (string) $c !== ''; } ) ) > 1 ) {
+						return array(
+							'code'    => 'invalid_option',
+							/* translators: %s: field label */
+							'message' => sprintf( __( 'Please select only one option for %s.', 'neural-forms-lite' ), $label ),
+						);
+					}
+				} elseif ( $p['mode'] === 'input' && isset( $v['amount'] ) && $v['amount'] !== '' && ! is_numeric( $v['amount'] ) ) {
+					return array(
+						'code'    => 'invalid_number',
+						/* translators: %s: field label */
+						'message' => sprintf( __( '%s must be a number.', 'neural-forms-lite' ), $label ),
+					);
+				}
+				if ( isset( $v['qty'] ) && $v['qty'] !== '' && ( ! is_numeric( $v['qty'] ) || (int) $v['qty'] < 1 ) ) {
+					return array(
+						'code'    => 'invalid_number',
+						/* translators: %s: field label */
+						'message' => sprintf( __( 'Quantity for %s must be a whole number of at least 1.', 'neural-forms-lite' ), $label ),
+					);
+				}
+				break;
+
 			case 'matrix':
 				// Shape:
 				// radio:    row_value => "column_value"
@@ -802,7 +873,7 @@ class SubmissionValidator {
 	 * @return mixed
 	 */
 	/** Field types whose submitted value is legitimately an array. */
-	private const ARRAY_VALUE_TYPES = array( 'checkboxes', 'file', 'matrix', 'repeater' );
+	private const ARRAY_VALUE_TYPES = array( 'checkboxes', 'file', 'matrix', 'repeater', 'product' );
 
 	/** Max items accepted in an array-valued field (checkboxes / repeater iterations / matrix rows). */
 	public const MAX_ARRAY_ITEMS = 200;

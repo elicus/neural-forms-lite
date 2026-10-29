@@ -51,6 +51,7 @@ const BASE_SECTIONS = [
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
 	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
 	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
+	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules and deposit for Product fields on this form.' },
 ];
 
 /**
@@ -139,6 +140,138 @@ const STARTER_RESULT_MESSAGES = [
 	{ min: 50, max: 79, title: 'Good attempt',    message: 'Nice work. Review the explanations and try again.' },
 	{ min: 80, max: 100, title: 'Excellent',      message: 'Great job! You passed with a strong score.' },
 ];
+
+/**
+ * Pricing (1.2.0, part B, Pro): currency, discount rules (first match
+ * wins, each with optional conditions via the shared editor) and deposit.
+ * Mirrors PriceEngine::normalize_settings(). Product field prices are
+ * typed in this currency.
+ */
+const CURRENCIES = [ 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD', 'NZD', 'SGD', 'AED', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'JPY', 'ZAR', 'BRL', 'MXN' ];
+
+function PricingSection( { value, onChange, fields } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.calculations;
+	const v = { currency: 'USD', discounts: [], deposit: { type: 'none', value: '' }, ...( value || {} ) };
+	v.deposit = { type: 'none', value: '', ...( v.deposit || {} ) };
+	const set = ( patch ) => onChange( { ...v, ...patch } );
+	const sources = flattenFields( Array.isArray( fields ) ? fields : [] ).filter( ( n ) => n && n.id && n.type !== 'hidden' );
+	const hasProducts = sources.some( ( n ) => n.type === 'product' );
+	const custom = ! CURRENCIES.includes( v.currency );
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Price your services with Product fields, show a live total with discounts and a deposit, and calculate values from answers. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</div>
+		);
+	}
+
+	const updateDiscount = ( i, patch ) => set( { discounts: v.discounts.map( ( d, k ) => ( k === i ? { ...d, ...patch } : d ) ) } );
+	const removeDiscount = ( i ) => set( { discounts: v.discounts.filter( ( _, k ) => k !== i ) } );
+	const moveDiscount = ( i, dir ) => {
+		const j = i + dir;
+		if ( j < 0 || j >= v.discounts.length ) return;
+		const next = v.discounts.slice(); const t = next[ i ]; next[ i ] = next[ j ]; next[ j ] = t;
+		set( { discounts: next } );
+	};
+	const addDiscount = () => {
+		if ( v.discounts.length >= 20 ) return;
+		set( { discounts: [ ...v.discounts, { id: 'discount_' + Math.random().toString( 36 ).slice( 2, 8 ), label: '', type: 'percent', value: '10', max: '', conditions: null } ] } );
+	};
+
+	return (
+		<div className="nf-pricing">
+			{ ! hasProducts && (
+				<p className="nf-form-settings__hint">{ __( 'Add a Product field to the form to start pricing. These settings apply once it has one.', 'neural-forms-lite' ) }</p>
+			) }
+			<label className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Currency', 'neural-forms-lite' ) }</span>
+				<select value={ custom ? 'other' : v.currency } onChange={ ( e ) => set( { currency: e.target.value === 'other' ? '' : e.target.value } ) }>
+					{ CURRENCIES.map( ( c ) => <option key={ c } value={ c }>{ c }</option> ) }
+					<option value="other">{ __( 'Other ISO code…', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+			{ custom && (
+				<label className="nf-form-settings__field">
+					<span className="nf-form-settings__label">{ __( 'ISO 4217 code', 'neural-forms-lite' ) }</span>
+					<input type="text" maxLength={ 3 } value={ v.currency } placeholder="e.g. CZK" onChange={ ( e ) => set( { currency: e.target.value.toUpperCase() } ) } />
+				</label>
+			) }
+
+			<h4 className="nf-form-settings__subtitle">{ __( 'Discount rules', 'neural-forms-lite' ) }</h4>
+			<p className="nf-form-settings__rules-note">{ __( 'Checked in order; the first rule whose conditions match is applied. A rule without conditions always matches. Discounts never take the total below zero.', 'neural-forms-lite' ) }</p>
+			<div className="nf-form-settings__rules">
+				{ v.discounts.map( ( d, i ) => (
+					<div className="nf-form-settings__rule" key={ d.id || i }>
+						<div className="nf-form-settings__rule-head">
+							<strong>{ sprintf( __( 'Discount %d', 'neural-forms-lite' ), i + 1 ) }</strong>
+							<button type="button" onClick={ () => moveDiscount( i, -1 ) } disabled={ i === 0 } aria-label={ __( 'Move up', 'neural-forms-lite' ) }>↑</button>
+							<button type="button" onClick={ () => moveDiscount( i, 1 ) } disabled={ i === v.discounts.length - 1 } aria-label={ __( 'Move down', 'neural-forms-lite' ) }>↓</button>
+							<button type="button" onClick={ () => removeDiscount( i ) } aria-label={ __( 'Remove discount', 'neural-forms-lite' ) }>{ __( 'Remove', 'neural-forms-lite' ) }</button>
+						</div>
+						<label className="nf-inspector__field">
+							<span className="nf-inspector__label">{ __( 'Label (shown to the visitor)', 'neural-forms-lite' ) }</span>
+							<input type="text" value={ d.label || '' } placeholder={ __( 'e.g. Launch offer', 'neural-forms-lite' ) } onChange={ ( e ) => updateDiscount( i, { label: e.target.value } ) } />
+						</label>
+						<div className="nf-inspector__row">
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Type', 'neural-forms-lite' ) }</span>
+								<select value={ d.type === 'fixed' ? 'fixed' : 'percent' } onChange={ ( e ) => updateDiscount( i, { type: e.target.value } ) }>
+									<option value="percent">{ __( 'Percent off', 'neural-forms-lite' ) }</option>
+									<option value="fixed">{ __( 'Fixed amount off', 'neural-forms-lite' ) }</option>
+								</select>
+							</label>
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ d.type === 'fixed' ? __( 'Amount', 'neural-forms-lite' ) : __( 'Percent', 'neural-forms-lite' ) }</span>
+								<input type="text" inputMode="decimal" value={ d.value ?? '' } onChange={ ( e ) => updateDiscount( i, { value: e.target.value } ) } />
+							</label>
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Max amount (optional)', 'neural-forms-lite' ) }</span>
+								<input type="text" inputMode="decimal" value={ d.max ?? '' } onChange={ ( e ) => updateDiscount( i, { max: e.target.value } ) } />
+							</label>
+						</div>
+						<span className="nf-inspector__label">{ __( 'Apply when', 'neural-forms-lite' ) }</span>
+						<ConditionEditor
+							value={ { ...toEditableConditional( d.conditions ), enabled: true } }
+							onChange={ ( next ) => updateDiscount( i, { conditions: ( next.rules.length || next.groups.length ) ? { ...next, enabled: true } : null } ) }
+							sources={ sources }
+							allowGroups
+							actionLabels={ null }
+							showEnable={ false }
+							emptySourcesHint={ __( 'Add a field to the form first.', 'neural-forms-lite' ) }
+						/>
+						{ d.conditions && ( toEditableConditional( d.conditions ).rules.length + toEditableConditional( d.conditions ).groups.length ) > 0
+							? <p className="nf-inspector__cl-summary">{ sprintf( __( 'Applies when %s.', 'neural-forms-lite' ), describeConditional( d.conditions, sources ) ) }</p>
+							: <p className="nf-inspector__cl-hint">{ __( 'No conditions: always applies (if no earlier rule matched).', 'neural-forms-lite' ) }</p> }
+					</div>
+				) ) }
+			</div>
+			<button type="button" className="nf-form-settings__rules-add" onClick={ addDiscount } disabled={ v.discounts.length >= 20 }>
+				{ __( '+ Add discount rule', 'neural-forms-lite' ) }
+			</button>
+
+			<h4 className="nf-form-settings__subtitle">{ __( 'Deposit', 'neural-forms-lite' ) }</h4>
+			<div className="nf-inspector__row">
+				<label className="nf-form-settings__field">
+					<span className="nf-form-settings__label">{ __( 'Collect', 'neural-forms-lite' ) }</span>
+					<select value={ v.deposit.type } onChange={ ( e ) => set( { deposit: { ...v.deposit, type: e.target.value } } ) }>
+						<option value="none">{ __( 'The full amount', 'neural-forms-lite' ) }</option>
+						<option value="percent">{ __( 'A percentage as deposit', 'neural-forms-lite' ) }</option>
+						<option value="fixed">{ __( 'A fixed deposit', 'neural-forms-lite' ) }</option>
+					</select>
+				</label>
+				{ v.deposit.type !== 'none' && (
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ v.deposit.type === 'fixed' ? __( 'Deposit amount', 'neural-forms-lite' ) : __( 'Deposit percent', 'neural-forms-lite' ) }</span>
+						<input type="text" inputMode="decimal" value={ v.deposit.value ?? '' } placeholder={ v.deposit.type === 'fixed' ? '250' : '30' } onChange={ ( e ) => set( { deposit: { ...v.deposit, value: e.target.value } } ) } />
+					</label>
+				) }
+			</div>
+			<p className="nf-form-settings__hint">{ __( 'The visitor sees the total, the amount due now and the remaining balance. Payment collection is configured under Payments once connected.', 'neural-forms-lite' ) }</p>
+		</div>
+	);
+}
 
 /**
  * Per-form AI behaviour (1.2.0, Pro): tone, language policy and a
@@ -676,6 +809,21 @@ export default function FormSettings( {
 					{ section === 'workflows' && (
 						<div className="nf-form-settings__body">
 							<WorkflowsSection formId={ formId } fields={ fields } />
+						</div>
+					) }
+
+					{ section === 'pricing' && (
+						<div className="nf-form-settings__body">
+							<PricingSection
+								value={ s.pricing && typeof s.pricing === 'object' ? s.pricing : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									const isDefault = ( ! next.currency || next.currency === 'USD' ) && ! ( next.discounts && next.discounts.length ) && ( ! next.deposit || ! next.deposit.type || next.deposit.type === 'none' );
+									if ( isDefault ) delete copy.pricing; else copy.pricing = next;
+									onChange( copy );
+								} }
+								fields={ fields }
+							/>
 						</div>
 					) }
 

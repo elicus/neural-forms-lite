@@ -74,6 +74,11 @@ function domValue( data, types, id ) {
 	if ( t === 'checkbox' || t === 'acceptance' ) {
 		return ( v === 1 || v === '1' || v === true ) ? '1' : '';
 	}
+	if ( v && typeof v === 'object' && ! Array.isArray( v ) ) {
+		// product { choice, qty, amount } → what getFieldValue() returns
+		const c = v.choice !== undefined ? v.choice : ( v.amount !== undefined ? v.amount : '' );
+		return Array.isArray( c ) ? c.map( String ).join( ',' ) : String( c ?? '' );
+	}
 	if ( Array.isArray( v ) ) return v.map( String ).join( ',' );
 	if ( v === null || v === undefined ) return '';
 	return String( v );

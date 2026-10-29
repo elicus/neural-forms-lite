@@ -487,6 +487,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		$fields = is_array( $entry['data'] ?? null ) ? $entry['data'] : array();
 		if ( ! empty( $fields ) && ! empty( $form ) ) {
 			$fields = self::strip_ai_excluded( $fields, $form );
+			$fields = self::readable_products( $fields, $form );
 			$fields = $this->enrich_matrix_fields( $fields, $form );
 		}
 		return array(
@@ -529,6 +530,21 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		foreach ( \NeuralForms\Forms\SchemaHelper::flatten_fields( $nodes ) as $f ) {
 			if ( ! empty( $f['ai_exclude'] ) && isset( $f['id'] ) ) {
 				unset( $fields[ (string) $f['id'] ] );
+			}
+		}
+		return $fields;
+	}
+
+	/**
+	 * Product values (1.2.0, part B) go to the model as "SEO, Copywriting × 2"
+	 * rather than { choice, qty } arrays.
+	 */
+	public static function readable_products( array $fields, array $form ): array {
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		foreach ( \NeuralForms\Forms\SchemaHelper::flatten_fields( is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array() ) as $f ) {
+			$id = (string) ( $f['id'] ?? '' );
+			if ( ( $f['type'] ?? '' ) === 'product' && $id !== '' && array_key_exists( $id, $fields ) ) {
+				$fields[ $id ] = \NeuralForms\Pricing\ProductFormatter::display( $fields[ $id ], $f );
 			}
 		}
 		return $fields;

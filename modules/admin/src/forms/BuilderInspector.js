@@ -332,7 +332,7 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				</label>
 			) }
 
-			{ [ 'select', 'radio', 'checkboxes', 'poll' ].includes( f.type ) && (
+			{ ( [ 'select', 'radio', 'checkboxes', 'poll' ].includes( f.type ) || ( f.type === 'product' && ( f.pricing?.mode || 'options' ) === 'options' ) ) && (
 				<OptionsEditor field={ f } onChange={ set } />
 			) }
 
@@ -350,6 +350,14 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 
 			{ f.type === 'poll' && (
 				<PollResultsPanel formId={ formId } fieldId={ f.id } />
+			) }
+
+			{ f.type === 'product' && (
+				<ProductSettingsBlock field={ f } onChange={ set } />
+			) }
+
+			{ f.type === 'calculated' && (
+				<CalculatedSettingsBlock field={ f } onChange={ set } nodes={ nodes } />
 			) }
 
 			{ f.type === 'matrix' && (
@@ -553,6 +561,17 @@ function OptionsEditor( { field, onChange } ) {
 						onChange={ ( e ) => updateAt( i, { value: e.target.value } ) }
 						placeholder={ __( 'value', 'neural-forms-lite' ) }
 					/>
+					{ field.type === 'product' && (
+						<input
+							type="text"
+							inputMode="decimal"
+							className="nf-inspector__option-price"
+							value={ opt && opt.price != null ? String( opt.price ) : '' }
+							onChange={ ( e ) => updateAt( i, { price: e.target.value } ) }
+							placeholder={ __( 'price', 'neural-forms-lite' ) }
+							aria-label={ __( 'Price', 'neural-forms-lite' ) }
+						/>
+					) }
 					<button
 						type="button"
 						className="nf-inspector__option-remove"
@@ -1582,6 +1601,151 @@ function LayoutLogicPanel( { kind, value, onChange, sources, firstStep } ) {
 					hiddenLabel={ isStep ? __( 'Step skipped', 'neural-forms-lite' ) : __( 'Hidden', 'neural-forms-lite' ) }
 				/>
 			) }
+		</div>
+	);
+}
+
+/**
+ * Product settings (1.2.0, part B). Mirrors PriceEngine::product_pricing():
+ *   mode fixed   → one price (+ optional quantity)
+ *   mode options → priced choices (select / radio / checkboxes = add-ons)
+ *   mode input   → the visitor types an amount between min and max
+ * Prices are plain decimal strings in the form's currency; the server
+ * converts to minor units and never trusts anything from the browser.
+ */
+function ProductSettingsBlock( { field, onChange } ) {
+	const p = {
+		mode: 'options', price: '', display: 'select',
+		quantity: { enabled: false, min: 1, max: 10, default: 1 },
+		min_amount: '', max_amount: '',
+		...( field.pricing && typeof field.pricing === 'object' ? field.pricing : {} ),
+	};
+	p.quantity = { enabled: false, min: 1, max: 10, default: 1, ...( p.quantity || {} ) };
+	const set = ( patch ) => onChange( { pricing: { ...p, ...patch } } );
+	const setQty = ( patch ) => set( { quantity: { ...p.quantity, ...patch } } );
+
+	return (
+		<div className="nf-inspector__block">
+			<h4 className="nf-inspector__cl-title">{ __( 'Pricing', 'neural-forms-lite' ) }</h4>
+
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'How is it priced?', 'neural-forms-lite' ) }</span>
+				<select value={ p.mode } onChange={ ( e ) => set( { mode: e.target.value } ) }>
+					<option value="fixed">{ __( 'Fixed price', 'neural-forms-lite' ) }</option>
+					<option value="options">{ __( 'Visitor picks a priced option', 'neural-forms-lite' ) }</option>
+					<option value="input">{ __( 'Visitor enters an amount', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+
+			{ p.mode === 'fixed' && (
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Price', 'neural-forms-lite' ) }</span>
+					<input type="text" inputMode="decimal" value={ p.price } placeholder="1000.00" onChange={ ( e ) => set( { price: e.target.value } ) } />
+				</label>
+			) }
+
+			{ p.mode === 'options' && (
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Show options as', 'neural-forms-lite' ) }</span>
+					<select value={ p.display } onChange={ ( e ) => set( { display: e.target.value } ) }>
+						<option value="select">{ __( 'Dropdown (one choice)', 'neural-forms-lite' ) }</option>
+						<option value="radio">{ __( 'Radio buttons (one choice)', 'neural-forms-lite' ) }</option>
+						<option value="checkboxes">{ __( 'Checkboxes (add-ons, several)', 'neural-forms-lite' ) }</option>
+					</select>
+					<span className="nf-inspector__cl-hint">{ __( 'Set each option\'s price in the Options list above.', 'neural-forms-lite' ) }</span>
+				</label>
+			) }
+
+			{ p.mode === 'input' && (
+				<div className="nf-inspector__row">
+					<label className="nf-inspector__field">
+						<span className="nf-inspector__label">{ __( 'Minimum', 'neural-forms-lite' ) }</span>
+						<input type="text" inputMode="decimal" value={ p.min_amount } placeholder="5" onChange={ ( e ) => set( { min_amount: e.target.value } ) } />
+					</label>
+					<label className="nf-inspector__field">
+						<span className="nf-inspector__label">{ __( 'Maximum', 'neural-forms-lite' ) }</span>
+						<input type="text" inputMode="decimal" value={ p.max_amount } placeholder="500" onChange={ ( e ) => set( { max_amount: e.target.value } ) } />
+					</label>
+				</div>
+			) }
+
+			{ p.mode !== 'input' && (
+				<>
+					<label className="nf-inspector__field nf-inspector__field--inline">
+						<input type="checkbox" checked={ !! p.quantity.enabled } onChange={ ( e ) => setQty( { enabled: e.target.checked } ) } />
+						<span>{ __( 'Let the visitor choose a quantity', 'neural-forms-lite' ) }</span>
+					</label>
+					{ p.quantity.enabled && (
+						<div className="nf-inspector__row">
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Min', 'neural-forms-lite' ) }</span>
+								<input type="number" min="1" value={ p.quantity.min } onChange={ ( e ) => setQty( { min: Math.max( 1, Number( e.target.value ) || 1 ) } ) } />
+							</label>
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Max', 'neural-forms-lite' ) }</span>
+								<input type="number" min="1" value={ p.quantity.max } onChange={ ( e ) => setQty( { max: Math.max( 1, Number( e.target.value ) || 1 ) } ) } />
+							</label>
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Default', 'neural-forms-lite' ) }</span>
+								<input type="number" min="1" value={ p.quantity.default } onChange={ ( e ) => setQty( { default: Math.max( 1, Number( e.target.value ) || 1 ) } ) } />
+							</label>
+						</div>
+					) }
+				</>
+			) }
+			<p className="nf-inspector__cl-hint">{ __( 'The currency is set under Form settings › Pricing. Totals are always recalculated on the server.', 'neural-forms-lite' ) }</p>
+		</div>
+	);
+}
+
+/**
+ * Calculated settings (1.2.0, part B): expression over {field_id} refs of
+ * number / range / rating / product / calculated fields; + - * / ( ),
+ * round(x, d), min(), max(), if(cond, a, b). Display only.
+ */
+function CalculatedSettingsBlock( { field, onChange, nodes } ) {
+	const refs = flattenFields( Array.isArray( nodes ) ? nodes : [] )
+		.filter( ( n ) => n && n.id && n.id !== field.id && [ 'number', 'range', 'rating', 'product', 'calculated' ].includes( n.type ) );
+	const insert = ( id ) => onChange( { expression: ( field.expression || '' ) + ( field.expression ? ' ' : '' ) + '{' + id + '}' } );
+	return (
+		<div className="nf-inspector__block">
+			<h4 className="nf-inspector__cl-title">{ __( 'Calculation', 'neural-forms-lite' ) }</h4>
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Expression', 'neural-forms-lite' ) }</span>
+				<textarea
+					rows={ 3 }
+					value={ typeof field.expression === 'string' ? field.expression : '' }
+					onChange={ ( e ) => onChange( { expression: e.target.value } ) }
+					placeholder="{service} + {addons} * 2"
+					spellCheck={ false }
+				/>
+				<span className="nf-inspector__cl-hint">{ __( 'Use + − × ÷ and brackets, round(x, decimals), min(), max() and if(condition, then, else). Click a field to insert it.', 'neural-forms-lite' ) }</span>
+			</label>
+			{ refs.length > 0 && (
+				<div className="nf-inspector__chips">
+					{ refs.map( ( r ) => (
+						<button key={ r.id } type="button" className="nf-inspector__chip" onClick={ () => insert( r.id ) } title={ r.id }>
+							{ r.label || r.id }
+						</button>
+					) ) }
+				</div>
+			) }
+			{ refs.length === 0 && <p className="nf-inspector__cl-hint">{ __( 'Add a Number or Product field to reference it here.', 'neural-forms-lite' ) }</p> }
+			<div className="nf-inspector__row">
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Show as', 'neural-forms-lite' ) }</span>
+					<select value={ field.format === 'number' ? 'number' : 'currency' } onChange={ ( e ) => onChange( { format: e.target.value } ) }>
+						<option value="currency">{ __( 'Currency', 'neural-forms-lite' ) }</option>
+						<option value="number">{ __( 'Number', 'neural-forms-lite' ) }</option>
+					</select>
+				</label>
+				{ field.format === 'number' && (
+					<label className="nf-inspector__field">
+						<span className="nf-inspector__label">{ __( 'Decimals', 'neural-forms-lite' ) }</span>
+						<input type="number" min="0" max="6" value={ Number.isFinite( Number( field.decimals ) ) ? Number( field.decimals ) : 2 } onChange={ ( e ) => onChange( { decimals: Math.max( 0, Math.min( 6, Number( e.target.value ) || 0 ) ) } ) } />
+					</label>
+				) }
+			</div>
 		</div>
 	);
 }

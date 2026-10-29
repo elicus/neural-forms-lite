@@ -66,7 +66,12 @@ class FormValidator {
 			return $result;
 		}
 
-		return self::validate_conditional_logic( $schema['fields'] );
+		$result = self::validate_conditional_logic( $schema['fields'] );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return self::validate_calculations( $schema['fields'] );
 	}
 
 	/**
@@ -188,6 +193,10 @@ class FormValidator {
 	 * @return true|\WP_Error
 	 */
 	public static function validate_settings_logic( array $settings, array $schema ) {
+		$pricing = self::validate_settings_pricing( $settings, $schema );
+		if ( is_wp_error( $pricing ) ) {
+			return $pricing;
+		}
 		$rules = $settings['on_success']['rules'] ?? null;
 		if ( ! is_array( $rules ) || ! $rules ) {
 			return true;
@@ -216,6 +225,172 @@ class FormValidator {
 			}
 			if ( ( $rule['mode'] ?? 'message' ) === 'redirect' && (string) ( $rule['url'] ?? '' ) === '' ) {
 				return new \WP_Error( 'invalid_form_data', $label . ' redirects but has no URL.', array( 'status' => 422 ) );
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Product field (1.2.0, part B): prices must parse, option values must
+	 * be unique, quantity bounds sane, input bounds ordered.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private static function validate_product( array $field, string $id ) {
+		$p   = \NeuralForms\Pricing\PriceEngine::product_pricing( $field );
+		$err = static function ( string $msg ) use ( $id ) {
+			return new \WP_Error( 'invalid_form_data', sprintf( 'Product "%s": %s', $id, $msg ), array( 'status' => 422 ) );
+		};
+		$is_price = static function ( $v ): bool {
+			return is_scalar( $v ) && preg_match( '/^\s*-?[\d,]+(\.\d+)?\s*$/', (string) $v ) && strpos( (string) $v, '-' ) === false;
+		};
+		if ( $p['mode'] === 'fixed' && ! $is_price( $p['price'] ) ) {
+			return $err( 'the price must be a number like 1250 or 99.50.' );
+		}
+		if ( $p['mode'] === 'options' ) {
+			$options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+			if ( ! $options ) {
+				return $err( 'add at least one priced option.' );
+			}
+			$seen = array();
+			foreach ( $options as $o ) {
+				$o = (array) $o;
+				$v = (string) ( $o['value'] ?? '' );
+				if ( $v === '' ) {
+					$v = (string) ( $o['label'] ?? '' );
+				}
+				if ( $v === '' ) {
+					continue;
+				}
+				if ( isset( $seen[ $v ] ) ) {
+					return $err( sprintf( 'option value "%s" is used twice.', $v ) );
+				}
+				$seen[ $v ] = true;
+				if ( ! $is_price( $o['price'] ?? '0' ) ) {
+					return $err( sprintf( 'option "%s" needs a numeric price.', $v ) );
+				}
+			}
+		}
+		if ( $p['mode'] === 'input' ) {
+			if ( $p['min_amount'] !== '' && ! $is_price( $p['min_amount'] ) ) {
+				return $err( 'the minimum amount must be a number.' );
+			}
+			if ( $p['max_amount'] !== '' && ! $is_price( $p['max_amount'] ) ) {
+				return $err( 'the maximum amount must be a number.' );
+			}
+			if ( $p['min_amount'] !== '' && $p['max_amount'] !== '' && (float) str_replace( ',', '', $p['min_amount'] ) > (float) str_replace( ',', '', $p['max_amount'] ) ) {
+				return $err( 'the minimum amount is above the maximum.' );
+			}
+		}
+		if ( $p['quantity']['enabled'] && $p['quantity']['max'] < $p['quantity']['min'] ) {
+			return $err( 'the maximum quantity is below the minimum.' );
+		}
+		return true;
+	}
+
+	/**
+	 * Second pass (1.2.0, part B): calculated-field references and cycles.
+	 * Runs from validate_schema() after the conditional-logic pass.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private static function validate_calculations( array $nodes ) {
+		$fields = SchemaHelper::flatten_fields( $nodes );
+		$numeric = array();
+		$has_calc = false;
+		foreach ( $fields as $f ) {
+			$id = (string) ( $f['id'] ?? '' );
+			$t  = (string) ( $f['type'] ?? '' );
+			if ( $id === '' ) {
+				continue;
+			}
+			if ( in_array( $t, array( 'number', 'range', 'rating', 'product', 'calculated', 'hidden' ), true ) ) {
+				$numeric[ $id ] = $t;
+			}
+			if ( $t === 'calculated' ) {
+				$has_calc = true;
+			}
+		}
+		if ( ! $has_calc ) {
+			return true;
+		}
+		foreach ( $fields as $f ) {
+			if ( ( $f['type'] ?? '' ) !== 'calculated' ) {
+				continue;
+			}
+			$id = (string) $f['id'];
+			try {
+				$refs = \NeuralForms\Pricing\Expression::parse( (string) ( $f['expression'] ?? '' ) )['refs'];
+			} catch ( \InvalidArgumentException $e ) {
+				return new \WP_Error( 'invalid_form_data', sprintf( 'Calculated field "%s": %s', $id, $e->getMessage() ), array( 'status' => 422 ) );
+			}
+			foreach ( $refs as $r ) {
+				if ( $r === $id ) {
+					return new \WP_Error( 'invalid_form_data', sprintf( 'Calculated field "%s" refers to itself.', $id ), array( 'status' => 422 ) );
+				}
+				if ( ! isset( $numeric[ $r ] ) ) {
+					return new \WP_Error( 'invalid_form_data', sprintf( 'Calculated field "%s" refers to "%s", which is not a number, product or calculated field in this form.', $id, $r ), array( 'status' => 422 ) );
+				}
+			}
+		}
+		$cycle = \NeuralForms\Pricing\PriceEngine::find_cycle( $fields );
+		if ( $cycle ) {
+			return new \WP_Error( 'invalid_form_data', sprintf( 'Calculated fields form a loop: %s.', implode( ' → ', $cycle ) ), array( 'status' => 422 ) );
+		}
+		return true;
+	}
+
+	/**
+	 * settings.pricing (1.2.0, part B): currency, discount rules (conditions
+	 * reference real fields, values numeric and bounded), deposit.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private static function validate_settings_pricing( array $settings, array $schema ) {
+		if ( ! isset( $settings['pricing'] ) || ! is_array( $settings['pricing'] ) ) {
+			return true;
+		}
+		$p   = \NeuralForms\Pricing\PriceEngine::normalize_settings( $settings['pricing'] );
+		$err = static function ( string $msg ) {
+			return new \WP_Error( 'invalid_form_data', 'Pricing: ' . $msg, array( 'status' => 422 ) );
+		};
+		$ids = array();
+		foreach ( SchemaHelper::flatten_fields( is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array() ) as $f ) {
+			$id = (string) ( $f['id'] ?? '' );
+			if ( $id !== '' ) {
+				$ids[] = $id;
+			}
+		}
+		$n = 0;
+		foreach ( $p['discounts'] as $d ) {
+			$n++;
+			if ( $d['type'] === 'percent' ) {
+				$bp = \NeuralForms\Pricing\Money::percent_to_basis_points( $d['value'] );
+				if ( $bp <= 0 || $bp > 10000 ) {
+					return $err( sprintf( 'discount %d must be a percentage between 0.01 and 100.', $n ) );
+				}
+			} elseif ( null === \NeuralForms\Pricing\Money::to_minor( $d['value'], $p['currency'] ) || \NeuralForms\Pricing\Money::to_minor( $d['value'], $p['currency'] ) <= 0 ) {
+				return $err( sprintf( 'discount %d must be a positive amount.', $n ) );
+			}
+			if ( $d['max'] !== '' && null === \NeuralForms\Pricing\Money::to_minor( $d['max'], $p['currency'] ) ) {
+				return $err( sprintf( 'discount %d has a maximum that is not a number.', $n ) );
+			}
+			if ( $d['conditions'] ) {
+				$r = ConditionEngine::validate( $d['conditions'], $ids, true, '', sprintf( 'Discount %d', $n ) );
+				if ( is_wp_error( $r ) ) {
+					return $r;
+				}
+			}
+		}
+		if ( $p['deposit']['type'] === 'percent' ) {
+			$bp = \NeuralForms\Pricing\Money::percent_to_basis_points( $p['deposit']['value'] );
+			if ( $bp <= 0 || $bp >= 10000 ) {
+				return $err( 'the deposit must be a percentage between 0.01 and 99.99.' );
+			}
+		} elseif ( $p['deposit']['type'] === 'fixed' ) {
+			$m = \NeuralForms\Pricing\Money::to_minor( $p['deposit']['value'], $p['currency'] );
+			if ( null === $m || $m <= 0 ) {
+				return $err( 'the deposit must be a positive amount.' );
 			}
 		}
 		return true;
@@ -788,6 +963,21 @@ class FormValidator {
 				if ( is_wp_error( $child_err ) ) {
 					return $child_err;
 				}
+			}
+		}
+
+		// 1.2.0 part B: Product + Calculated.
+		if ( $field['type'] === 'product' ) {
+			$err = self::validate_product( $field, $id );
+			if ( is_wp_error( $err ) ) {
+				return $err;
+			}
+		}
+		if ( $field['type'] === 'calculated' ) {
+			try {
+				\NeuralForms\Pricing\Expression::parse( (string) ( $field['expression'] ?? '' ) );
+			} catch ( \InvalidArgumentException $e ) {
+				return new \WP_Error( 'invalid_form_data', sprintf( 'Calculated field "%s": %s', $id, $e->getMessage() ), array( 'status' => 422 ) );
 			}
 		}
 

@@ -106,6 +106,27 @@ class EntryRepository {
 			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
+		// 1.2.0 part B: pricing snapshot (PriceEngine::evaluate output) in
+		// its own columns so lists can sort/filter without decoding JSON.
+		// Written after the insert so a snapshot problem can never lose
+		// the submission itself.
+		if ( false !== $inserted && is_array( $context['pricing'] ?? null ) ) {
+			$p = $context['pricing'];
+			$wpdb->update(
+				self::table(),
+				array(
+					'pricing_snapshot'   => wp_json_encode( $p, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+					'amount_total_minor' => (int) ( $p['total'] ?? 0 ),
+					'amount_due_minor'   => (int) ( $p['due_now'] ?? 0 ),
+					'currency'           => substr( (string) ( $p['currency'] ?? '' ), 0, 3 ),
+					'payment_status'     => (int) ( $p['due_now'] ?? 0 ) > 0 ? 'pending' : 'none',
+				),
+				array( 'id' => (int) $wpdb->insert_id ),
+				array( '%s', '%d', '%d', '%s', '%s' ),
+				array( '%d' )
+			);
+		}
+
 		if ( false === $inserted ) {
 			$db_err = $wpdb->last_error ?: '(no wpdb error message)';
 			Logger::file(
@@ -1209,6 +1230,14 @@ class EntryRepository {
 		$row['follow_up_due']          = isset( $row['follow_up_due'] ) && $row['follow_up_due'] ? (string) $row['follow_up_due'] : null;
 		$row['follow_up_done']         = isset( $row['follow_up_done'] ) ? (int) $row['follow_up_done'] : 0;
 		$row['follow_up_overdue_sent'] = isset( $row['follow_up_overdue_sent'] ) ? (int) $row['follow_up_overdue_sent'] : 0;
+		// 1.2.0 part B: pricing / payment columns.
+		$snap                       = isset( $row['pricing_snapshot'] ) && is_string( $row['pricing_snapshot'] ) ? json_decode( $row['pricing_snapshot'], true ) : null;
+		$row['pricing']             = is_array( $snap ) ? $snap : null;
+		$row['amount_total_minor']  = isset( $row['amount_total_minor'] ) && null !== $row['amount_total_minor'] ? (int) $row['amount_total_minor'] : null;
+		$row['amount_due_minor']    = isset( $row['amount_due_minor'] ) && null !== $row['amount_due_minor'] ? (int) $row['amount_due_minor'] : null;
+		$row['currency']            = isset( $row['currency'] ) && $row['currency'] ? (string) $row['currency'] : null;
+		$row['payment_status']      = isset( $row['payment_status'] ) && $row['payment_status'] !== '' ? (string) $row['payment_status'] : 'none';
+		unset( $row['pricing_snapshot'] );
 		$row['follow_up_overdue']      = ( null !== $row['follow_up_due'] && ! $row['follow_up_done']
 			&& strtotime( $row['follow_up_due'] . ' UTC' ) < time()
 			&& in_array( $row['status'] ?? '', array( 'new', 'read' ), true ) ) ? 1 : 0;

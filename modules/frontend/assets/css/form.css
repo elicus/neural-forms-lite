@@ -2096,3 +2096,23 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
     color: #6b7280;
     font-variant-numeric: tabular-nums;
 }
+
+/* ── Pricing: Product / Calculated / totals (1.2.0, part B) ───────── */
+.neural-forms-form__product-fixed { display: flex; align-items: center; gap: 0.5rem; }
+.neural-forms-form__product-price { font-weight: 600; color: inherit; opacity: 0.85; white-space: nowrap; }
+.neural-forms-form__product-option { display: flex; align-items: center; gap: 0.5rem; }
+.neural-forms-form__product-option .neural-forms-form__product-price { margin-left: auto; }
+.neural-forms-form__product-input { display: flex; align-items: center; gap: 0.25rem; }
+.neural-forms-form__product-symbol { opacity: 0.7; }
+.neural-forms-form__product-qty { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 0.9em; }
+.neural-forms-form__product-qty-input { width: 5rem; }
+.neural-forms-form__product-line { display: block; margin-top: 0.25rem; font-size: 0.9em; opacity: 0.75; min-height: 1em; }
+.neural-forms-form__product-line:empty { display: none; }
+.neural-forms-form__calculated { display: inline-block; padding: 0.5rem 0.75rem; border-radius: 0.5rem; background: rgba(0,0,0,0.04); font-weight: 600; min-width: 6rem; }
+.neural-forms-form__totals { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid rgba(0,0,0,0.1); border-radius: 0.75rem; display: grid; gap: 0.35rem; }
+.neural-forms-form__totals-row { display: flex; justify-content: space-between; gap: 1rem; }
+.neural-forms-form__totals-row--total { font-weight: 700; font-size: 1.05em; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 0.4rem; margin-top: 0.2rem; }
+.neural-forms-form__totals-row--due { font-weight: 600; }
+.neural-forms-form__totals-row--remaining { opacity: 0.75; font-size: 0.9em; }
+.neural-forms-form__totals-row[hidden] { display: none; }
+.neural-forms-product__notice { font-size: 0.85em; opacity: 0.7; }

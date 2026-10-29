@@ -875,6 +875,98 @@
         "a": "text"
       },
       "expected": true
+    },
+    {
+      "name": "product checkboxes: contains chosen add-on",
+      "logic": {
+        "enabled": true,
+        "field": "addons",
+        "operator": "contains",
+        "value": "seo"
+      },
+      "data": {
+        "addons": {
+          "choice": [
+            "seo",
+            "copy"
+          ]
+        }
+      },
+      "types": {
+        "addons": "product"
+      },
+      "expected": true
+    },
+    {
+      "name": "product checkboxes: contains missing add-on",
+      "logic": {
+        "enabled": true,
+        "field": "addons",
+        "operator": "contains",
+        "value": "hosting"
+      },
+      "data": {
+        "addons": {
+          "choice": [
+            "seo"
+          ]
+        }
+      },
+      "types": {
+        "addons": "product"
+      },
+      "expected": false
+    },
+    {
+      "name": "product select: equals chosen plan",
+      "logic": {
+        "enabled": true,
+        "field": "plan",
+        "operator": "equals",
+        "value": "pro"
+      },
+      "data": {
+        "plan": {
+          "choice": "pro",
+          "qty": "2"
+        }
+      },
+      "types": {
+        "plan": "product"
+      },
+      "expected": true
+    },
+    {
+      "name": "product absent: not_empty hides (choice type)",
+      "logic": {
+        "enabled": true,
+        "field": "plan",
+        "operator": "not_empty",
+        "value": ""
+      },
+      "data": {},
+      "types": {
+        "plan": "product"
+      },
+      "expected": false
+    },
+    {
+      "name": "product input amount: gte",
+      "logic": {
+        "enabled": true,
+        "field": "gift",
+        "operator": "gte",
+        "value": "100"
+      },
+      "data": {
+        "gift": {
+          "amount": "250"
+        }
+      },
+      "types": {
+        "gift": "product"
+      },
+      "expected": true
     }
   ],
   "resolve": [

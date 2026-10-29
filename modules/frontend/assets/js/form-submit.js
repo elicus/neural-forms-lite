@@ -51,6 +51,7 @@
 			handleSubmit( e, form );
 		} );
 		initConditional( form );
+		initPricing( form );
 		initWelcomeScreen( form );
 		initMultiStep( form );
 		initRepeaters( form );
@@ -1011,6 +1012,10 @@
 				en.wrapper.style.display = '';
 			}
 		}
+		// Visibility changes what is priced (1.2.0 part B).
+		if ( typeof form._nfPricingRender === 'function' ) {
+			form._nfPricingRender();
+		}
 	}
 
 	/**
@@ -1152,6 +1157,23 @@
 
 		var el = form.querySelector( '[name="' + fieldId + '"]' );
 		if ( ! el ) {
+			// Product field (1.2.0 part B): the condition sees the chosen
+			// option(s) or the typed amount — same as the PHP engine.
+			var pSel = form.querySelector( '[name="' + fieldId + '[choice]"]' );
+			if ( pSel && pSel.tagName === 'SELECT' ) return pSel.value;
+			var pRadios = form.querySelectorAll( '[name="' + fieldId + '[choice]"][type="radio"]' );
+			if ( pRadios.length ) {
+				for ( var pr = 0; pr < pRadios.length; pr++ ) if ( pRadios[ pr ].checked ) return pRadios[ pr ].value;
+				return '';
+			}
+			var pBoxes = form.querySelectorAll( '[name="' + fieldId + '[choice][]"][type="checkbox"]' );
+			if ( pBoxes.length ) {
+				var picked = [];
+				for ( var pb = 0; pb < pBoxes.length; pb++ ) if ( pBoxes[ pb ].checked ) picked.push( pBoxes[ pb ].value );
+				return picked.join( ',' );
+			}
+			var pAmount = form.querySelector( '[name="' + fieldId + '[amount]"]' );
+			if ( pAmount ) return pAmount.value;
 			return '';
 		}
 
@@ -1250,6 +1272,347 @@
 			node = node.parentElement;
 		}
 		return false;
+	}
+
+	// ── Pricing mirror (1.2.0, part B) ───────────────────────────────
+	//
+	// Live totals for forms with Product fields. Mirrors
+	// modules/pricing/PriceEngine.php + Expression.php; the server result
+	// is the only one stored or charged. Money is integer minor units.
+	// tests/PriceEngineTest.js runs the shared fixtures through
+	// computePricing() with the client config PriceEngine::client_config()
+	// emits (tests/fixtures/pricing.client.json).
+
+	function nfPercentOf( minor, bp ) {
+		var num = minor * bp;
+		var q   = Math.floor( Math.abs( num ) / 10000 );
+		var r   = Math.abs( num ) % 10000;
+		if ( r * 2 >= 10000 ) q++;
+		return num < 0 ? -q : q;
+	}
+
+	function nfToMinor( value, exponent ) {
+		var s = String( value === undefined || value === null ? '' : value ).replace( /[\s,]/g, '' );
+		var m = /^(-)?(\d+)(?:\.(\d+))?$/.exec( s );
+		if ( ! m ) return null;
+		var frac = ( m[ 3 ] || '' );
+		while ( frac.length < exponent + 1 ) frac += '0';
+		frac = frac.slice( 0, exponent + 1 );
+		var minor = parseInt( m[ 2 ], 10 ) * Math.pow( 10, exponent ) + ( exponent ? parseInt( frac.slice( 0, exponent ), 10 ) : 0 );
+		if ( parseInt( frac.charAt( exponent ), 10 ) >= 5 ) minor++;
+		return m[ 1 ] ? -minor : minor;
+	}
+
+	function nfFormatMinor( minor, cfg ) {
+		var exp = cfg.exponent || 0;
+		var neg = minor < 0;
+		var abs = Math.abs( minor );
+		var whole = Math.floor( abs / Math.pow( 10, exp ) );
+		var frac  = String( abs % Math.pow( 10, exp ) );
+		while ( frac.length < exp ) frac = '0' + frac;
+		var grouped = String( whole ).replace( /\B(?=(\d{3})+(?!\d))/g, ',' );
+		return ( neg ? '-' : '' ) + ( cfg.symbol || '' ) + grouped + ( exp ? '.' + frac : '' );
+	}
+
+	/** Expression evaluator — same grammar as Expression.php. Returns null on error. */
+	function nfEvalExpression( expr, resolve ) {
+		var tokens = [];
+		var i = 0, len = expr.length;
+		while ( i < len ) {
+			var c = expr.charAt( i );
+			if ( /\s/.test( c ) ) { i++; continue; }
+			if ( c === '{' ) {
+				var end = expr.indexOf( '}', i );
+				if ( end === -1 ) return null;
+				tokens.push( { t: 'ref', v: expr.slice( i + 1, end ) } );
+				i = end + 1; continue;
+			}
+			if ( /[0-9.]/.test( c ) ) {
+				var j = i;
+				while ( j < len && /[0-9.]/.test( expr.charAt( j ) ) ) j++;
+				var num = expr.slice( i, j );
+				if ( ( num.match( /\./g ) || [] ).length > 1 ) return null;
+				tokens.push( { t: 'num', v: parseFloat( num ) } );
+				i = j; continue;
+			}
+			if ( /[a-zA-Z]/.test( c ) ) {
+				var k = i;
+				while ( k < len && /[a-zA-Z]/.test( expr.charAt( k ) ) ) k++;
+				var name = expr.slice( i, k ).toLowerCase();
+				if ( [ 'round', 'min', 'max', 'if' ].indexOf( name ) === -1 ) return null;
+				if ( expr.charAt( k ) !== '(' ) return null;
+				tokens.push( { t: 'func', v: name } );
+				tokens.push( { t: 'lparen' } );
+				i = k + 1; continue;
+			}
+			var two = expr.substr( i, 2 );
+			if ( [ '<=', '>=', '==', '!=' ].indexOf( two ) !== -1 ) { tokens.push( { t: 'op', v: two } ); i += 2; continue; }
+			if ( '+-*/<>'.indexOf( c ) !== -1 ) { tokens.push( { t: 'op', v: c } ); i++; continue; }
+			if ( c === '(' ) { tokens.push( { t: 'lparen' } ); i++; continue; }
+			if ( c === ')' ) { tokens.push( { t: 'rparen' } ); i++; continue; }
+			if ( c === ',' ) { tokens.push( { t: 'comma' } ); i++; continue; }
+			return null;
+		}
+		var prec = { '==': 1, '!=': 1, '<': 2, '<=': 2, '>': 2, '>=': 2, '+': 3, '-': 3, '*': 4, '/': 4, neg: 5 };
+		var out = [], ops = [], argc = [], prev = null;
+		for ( var n = 0; n < tokens.length; n++ ) {
+			var tk = tokens[ n ];
+			if ( tk.t === 'num' || tk.t === 'ref' ) out.push( tk );
+			else if ( tk.t === 'func' ) { ops.push( tk ); argc.push( 1 ); }
+			else if ( tk.t === 'comma' ) {
+				while ( ops.length && ops[ ops.length - 1 ].t !== 'lparen' ) out.push( ops.pop() );
+				if ( ! ops.length ) return null;
+				argc[ argc.length - 1 ]++;
+			} else if ( tk.t === 'op' ) {
+				var op = tk.v;
+				var unary = ! prev || prev.t === 'op' || prev.t === 'lparen' || prev.t === 'comma';
+				if ( op === '-' && unary ) op = 'neg';
+				if ( op === '+' && unary ) { prev = tk; continue; }
+				while ( ops.length ) {
+					var top = ops[ ops.length - 1 ];
+					if ( top.t !== 'op' ) break;
+					var tp = prec[ top.v ], p = prec[ op ];
+					if ( tp > p || ( tp === p && op !== 'neg' ) ) { out.push( ops.pop() ); continue; }
+					break;
+				}
+				ops.push( { t: 'op', v: op } );
+			} else if ( tk.t === 'lparen' ) ops.push( tk );
+			else if ( tk.t === 'rparen' ) {
+				while ( ops.length && ops[ ops.length - 1 ].t !== 'lparen' ) out.push( ops.pop() );
+				if ( ! ops.length ) return null;
+				ops.pop();
+				if ( ops.length && ops[ ops.length - 1 ].t === 'func' ) {
+					var f = ops.pop(); f.argc = argc.pop(); out.push( f );
+				}
+			}
+			prev = tk;
+		}
+		while ( ops.length ) { var rest = ops.pop(); if ( rest.t === 'lparen' || rest.t === 'func' ) return null; out.push( rest ); }
+		var st = [];
+		for ( var q = 0; q < out.length; q++ ) {
+			var o = out[ q ];
+			if ( o.t === 'num' ) st.push( o.v );
+			else if ( o.t === 'ref' ) { var rv = resolve( o.v ); st.push( isFinite( Number( rv ) ) && rv !== '' && rv !== null && rv !== undefined ? Number( rv ) : 0 ); }
+			else if ( o.t === 'op' ) {
+				if ( o.v === 'neg' ) { if ( ! st.length ) return null; st.push( -st.pop() ); continue; }
+				if ( st.length < 2 ) return null;
+				var b = st.pop(), a = st.pop();
+				switch ( o.v ) {
+					case '+': st.push( a + b ); break;
+					case '-': st.push( a - b ); break;
+					case '*': st.push( a * b ); break;
+					case '/': if ( b === 0 ) return null; st.push( a / b ); break;
+					case '<': st.push( a < b ? 1 : 0 ); break;
+					case '<=': st.push( a <= b ? 1 : 0 ); break;
+					case '>': st.push( a > b ? 1 : 0 ); break;
+					case '>=': st.push( a >= b ? 1 : 0 ); break;
+					case '==': st.push( Math.abs( a - b ) < 1e-9 ? 1 : 0 ); break;
+					case '!=': st.push( Math.abs( a - b ) < 1e-9 ? 0 : 1 ); break;
+				}
+			} else if ( o.t === 'func' ) {
+				var nArgs = o.argc || 1;
+				if ( st.length < nArgs ) return null;
+				var args = st.splice( st.length - nArgs, nArgs );
+				switch ( o.v ) {
+					case 'round': { var d = args.length > 1 ? Math.max( 0, Math.min( 6, Math.trunc( args[ 1 ] ) ) ) : 0; var m2 = Math.pow( 10, d ); st.push( Math.round( args[ 0 ] * m2 ) / m2 ); break; }
+					case 'min': st.push( Math.min.apply( null, args ) ); break;
+					case 'max': st.push( Math.max.apply( null, args ) ); break;
+					case 'if': if ( args.length !== 3 ) return null; st.push( args[ 0 ] !== 0 ? args[ 1 ] : args[ 2 ] ); break;
+				}
+			}
+		}
+		return st.length === 1 ? st[ 0 ] : null;
+	}
+
+	/**
+	 * Pure pricing computation. cfg = PriceEngine::client_config();
+	 * read(id) → product value { choice, qty, amount } or a number-ish
+	 * string; isHidden(id) → true when hidden by logic or a skipped step.
+	 */
+	function computePricing( cfg, read, isHidden ) {
+		var exp = cfg.exponent || 0;
+		var lines = [], perField = {}, choiceOf = {};
+		var products = cfg.products || [];
+		for ( var i = 0; i < products.length; i++ ) {
+			var p = products[ i ];
+			if ( isHidden && isHidden( p.id ) ) continue;
+			var v = read( p.id );
+			v = ( v && typeof v === 'object' ) ? v : {};
+			var qty = 1;
+			if ( p.quantity && p.quantity.enabled ) {
+				var qraw = v.qty !== undefined && v.qty !== '' && isFinite( Number( v.qty ) ) ? Math.trunc( Number( v.qty ) ) : ( p.quantity.default || 1 );
+				qty = Math.max( p.quantity.min || 1, Math.min( p.quantity.max || 999, qraw ) );
+			}
+			if ( p.mode === 'fixed' ) {
+				lines.push( { field: p.id, label: p.label, choice: '', unit: p.price, qty: qty, total: p.price * qty } );
+				choiceOf[ p.id ] = '1';
+			} else if ( p.mode === 'input' ) {
+				var amount = v.amount !== undefined ? nfToMinor( v.amount, exp ) : null;
+				if ( amount === null ) { choiceOf[ p.id ] = ''; continue; }
+				if ( p.min !== null && p.min !== undefined ) amount = Math.max( p.min, amount );
+				if ( p.max !== null && p.max !== undefined ) amount = Math.min( p.max, amount );
+				amount = Math.max( 0, amount );
+				if ( amount === 0 ) { choiceOf[ p.id ] = ''; continue; }
+				lines.push( { field: p.id, label: p.label, choice: '', unit: amount, qty: 1, total: amount } );
+				choiceOf[ p.id ] = String( amount / Math.pow( 10, exp ) );
+			} else {
+				var choices = v.choice === undefined || v.choice === null ? [] : ( Array.isArray( v.choice ) ? v.choice : [ v.choice ] );
+				if ( p.display !== 'checkboxes' ) choices = choices.slice( 0, 1 );
+				var picked = [];
+				for ( var c = 0; c < choices.length; c++ ) {
+					var key = String( choices[ c ] );
+					if ( key === '' || ! Object.prototype.hasOwnProperty.call( p.options || {}, key ) ) continue;
+					picked.push( key );
+					lines.push( { field: p.id, label: p.label, choice: key, unit: p.options[ key ], qty: qty, total: p.options[ key ] * qty } );
+				}
+				choiceOf[ p.id ] = p.display === 'checkboxes' ? picked.join( ',' ) : ( picked[ 0 ] || '' );
+			}
+		}
+		var subtotal = 0;
+		for ( var l = 0; l < lines.length; l++ ) {
+			subtotal += lines[ l ].total;
+			perField[ lines[ l ].field ] = ( perField[ lines[ l ].field ] || 0 ) + lines[ l ].total;
+		}
+		var condGet = function ( id ) {
+			if ( Object.prototype.hasOwnProperty.call( choiceOf, id ) ) return choiceOf[ id ];
+			var r = read( id );
+			return ( r && typeof r === 'object' ) ? '' : ( r === undefined || r === null ? '' : String( r ) );
+		};
+		var discount = null;
+		var discounts = cfg.discounts || [];
+		for ( var d = 0; d < discounts.length; d++ ) {
+			var rule = discounts[ d ];
+			if ( rule.conditions ) {
+				var tree = normalizeConditional( rule.conditions );
+				if ( tree && ! evaluateConditionTree( tree, condGet, isHidden || null ) ) continue;
+			}
+			var amt = rule.type === 'percent' ? nfPercentOf( subtotal, rule.bp || 0 ) : ( rule.amount || 0 );
+			if ( rule.max !== null && rule.max !== undefined && rule.max >= 0 ) amt = Math.min( amt, rule.max );
+			amt = Math.max( 0, Math.min( amt, subtotal ) );
+			discount = { id: rule.id, label: rule.label, amount: amt };
+			break;
+		}
+		var total = Math.max( 0, subtotal - ( discount ? discount.amount : 0 ) );
+		var deposit = null, dueNow = total;
+		if ( cfg.deposit && total > 0 ) {
+			var dep = cfg.deposit.type === 'percent' ? nfPercentOf( total, cfg.deposit.bp || 0 ) : ( cfg.deposit.amount || 0 );
+			dep = Math.max( 0, Math.min( dep, total ) );
+			deposit = { amount: dep };
+			dueNow = dep > 0 ? dep : total;
+		}
+		var calculated = {};
+		var calcDefs = cfg.calculated || [];
+		var resolver = function ( ref ) {
+			if ( Object.prototype.hasOwnProperty.call( calculated, ref ) ) return calculated[ ref ].value;
+			if ( isHidden && isHidden( ref ) ) return 0;
+			if ( Object.prototype.hasOwnProperty.call( perField, ref ) ) return perField[ ref ] / Math.pow( 10, exp );
+			for ( var pi = 0; pi < products.length; pi++ ) if ( products[ pi ].id === ref ) return 0;
+			var raw = read( ref );
+			return ( raw && typeof raw === 'object' ) ? 0 : raw;
+		};
+		// dependency order: evaluate until stable (max N passes) — cycles are rejected at save time.
+		var pending = calcDefs.slice();
+		for ( var pass = 0; pass < calcDefs.length + 1 && pending.length; pass++ ) {
+			var next = [];
+			for ( var ci = 0; ci < pending.length; ci++ ) {
+				var def = pending[ ci ];
+				var needs = ( def.expression.match( /\{([a-z0-9_]+)\}/g ) || [] ).map( function ( m ) { return m.slice( 1, -1 ); } );
+				var blocked = false;
+				for ( var ni = 0; ni < needs.length; ni++ ) {
+					var dep2 = needs[ ni ];
+					var isCalc = false;
+					for ( var cj = 0; cj < calcDefs.length; cj++ ) if ( calcDefs[ cj ].id === dep2 ) isCalc = true;
+					if ( isCalc && ! Object.prototype.hasOwnProperty.call( calculated, dep2 ) && dep2 !== def.id ) blocked = true;
+				}
+				if ( blocked && pass < calcDefs.length ) { next.push( def ); continue; }
+				var value = nfEvalExpression( def.expression, resolver );
+				if ( value === null ) { calculated[ def.id ] = { value: 0, display: '—', error: true }; continue; }
+				var decimals = def.format === 'currency' ? exp : def.decimals;
+				var mult = Math.pow( 10, decimals );
+				var rounded = Math.round( value * mult ) / mult;
+				calculated[ def.id ] = {
+					value: rounded,
+					display: def.format === 'currency' ? nfFormatMinor( Math.round( rounded * Math.pow( 10, exp ) ), cfg ) : rounded.toFixed( decimals ).replace( /\B(?=(\d{3})+(?!\d))/g, ',' )
+				};
+			}
+			pending = next;
+		}
+		return { currency: cfg.currency, exponent: exp, line_items: lines, subtotal: subtotal, discount: discount, total: total, deposit: deposit, due_now: dueNow, remaining: total - dueNow, calculated: calculated };
+	}
+
+	/** Read a product's posted-shaped value from the DOM. */
+	function readProductValue( form, id ) {
+		var v = {};
+		var sel = form.querySelector( '[name="' + id + '[choice]"]' );
+		if ( sel && sel.tagName === 'SELECT' ) v.choice = sel.value;
+		else {
+			var radios = form.querySelectorAll( '[name="' + id + '[choice]"][type="radio"]' );
+			if ( radios.length ) { v.choice = ''; for ( var r = 0; r < radios.length; r++ ) if ( radios[ r ].checked ) v.choice = radios[ r ].value; }
+		}
+		var boxes = form.querySelectorAll( '[name="' + id + '[choice][]"][type="checkbox"]' );
+		if ( boxes.length ) { v.choice = []; for ( var b = 0; b < boxes.length; b++ ) if ( boxes[ b ].checked ) v.choice.push( boxes[ b ].value ); }
+		var qty = form.querySelector( '[name="' + id + '[qty]"]' );
+		if ( qty ) v.qty = qty.value;
+		var amount = form.querySelector( '[name="' + id + '[amount]"]' );
+		if ( amount ) v.amount = amount.value;
+		return v;
+	}
+
+	function initPricing( form ) {
+		var raw = form.getAttribute( 'data-neural-forms-pricing' );
+		if ( ! raw ) return;
+		var cfg;
+		try { cfg = JSON.parse( raw ); } catch ( e ) { return; }
+		if ( ! cfg || ! cfg.products ) return;
+		var productIds = {};
+		for ( var i = 0; i < cfg.products.length; i++ ) productIds[ cfg.products[ i ].id ] = true;
+
+		var isHidden = function ( id ) {
+			var wrap = form.querySelector( '[data-neural-forms-field-id="' + cssEscapeValue( id ) + '"]' );
+			if ( ! wrap ) return false;
+			if ( wrap.style.display === 'none' ) return true;
+			return isInsideHiddenConditional( wrap, form );
+		};
+		var read = function ( id ) {
+			return productIds[ id ] ? readProductValue( form, id ) : getFieldValue( form, id );
+		};
+		var render = function () {
+			var res = computePricing( cfg, read, isHidden );
+			var box = form.querySelector( '[data-neural-forms-totals]' );
+			if ( box ) {
+				var set = function ( key, text, show ) {
+					var el = box.querySelector( '[data-total="' + key + '"]' );
+					if ( el ) el.textContent = text;
+					var row = el ? el.parentElement : null;
+					if ( row && show !== undefined ) row.hidden = ! show;
+				};
+				set( 'subtotal', nfFormatMinor( res.subtotal, cfg ) );
+				var hasDiscount = !! ( res.discount && res.discount.amount > 0 );
+				set( 'discount', hasDiscount ? '−' + nfFormatMinor( res.discount.amount, cfg ) : '', hasDiscount );
+				var dl = box.querySelector( '[data-total-label="discount"]' );
+				if ( dl && hasDiscount && res.discount.label ) dl.textContent = res.discount.label;
+				set( 'total', nfFormatMinor( res.total, cfg ) );
+				var hasDeposit = !! ( res.deposit && res.deposit.amount > 0 && res.deposit.amount < res.total );
+				set( 'due_now', nfFormatMinor( res.due_now, cfg ), hasDeposit );
+				set( 'remaining', nfFormatMinor( res.remaining, cfg ), hasDeposit );
+			}
+			var perField = {};
+			for ( var l = 0; l < res.line_items.length; l++ ) perField[ res.line_items[ l ].field ] = ( perField[ res.line_items[ l ].field ] || 0 ) + res.line_items[ l ].total;
+			var lineEls = form.querySelectorAll( '[data-neural-forms-line-total]' );
+			for ( var e = 0; e < lineEls.length; e++ ) {
+				var fid = lineEls[ e ].getAttribute( 'data-neural-forms-line-total' );
+				lineEls[ e ].textContent = Object.prototype.hasOwnProperty.call( perField, fid ) ? nfFormatMinor( perField[ fid ], cfg ) : '';
+			}
+			var calcEls = form.querySelectorAll( '[data-neural-forms-calculated]' );
+			for ( var k = 0; k < calcEls.length; k++ ) {
+				var cid = calcEls[ k ].getAttribute( 'data-neural-forms-calculated' );
+				calcEls[ k ].textContent = res.calculated[ cid ] ? res.calculated[ cid ].display : '—';
+			}
+		};
+		form.addEventListener( 'input', render );
+		form.addEventListener( 'change', render );
+		form._nfPricingRender = render;
+		render();
 	}
 
 	/**

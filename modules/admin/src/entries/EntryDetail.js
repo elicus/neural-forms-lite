@@ -35,13 +35,13 @@
  *   onMarkNeedsReply  () => Promise<void>  — flips needs_reply = 1
  */
 
-import { useEffect, useState } from '@wordpress/element';
+import { Fragment, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import api from '../api';
 import AiAnalysisCard from './AiAnalysisCard';
 import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
-import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines } from './helpers';
+import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines, formatProductValue, formatMinor } from './helpers';
 import LeadPanel, { ActivityTimeline } from './LeadPanel';
 
 function StatusPill( { entry } ) {
@@ -371,6 +371,58 @@ function Conversation( { entry, fieldLabels, fieldSchemas, refreshSignal } ) {
 	);
 }
 
+/**
+ * Pricing snapshot card (1.2.0, part B): line items, discount, total,
+ * deposit and the payment status pill.
+ */
+const PAYMENT_LABELS = {
+	none: '', pending: __( 'Payment pending', 'neural-forms-lite' ), processing: __( 'Payment processing', 'neural-forms-lite' ),
+	failed: __( 'Payment failed', 'neural-forms-lite' ), cancelled: __( 'Checkout cancelled', 'neural-forms-lite' ), deposit_paid: __( 'Deposit paid', 'neural-forms-lite' ),
+	paid: __( 'Paid in full', 'neural-forms-lite' ), partially_refunded: __( 'Partially refunded', 'neural-forms-lite' ), refunded: __( 'Refunded', 'neural-forms-lite' ),
+};
+
+function PricingCard( { pricing, paymentStatus } ) {
+	const cur = pricing.currency || 'USD';
+	const f = ( m ) => formatMinor( m, cur );
+	const lines = Array.isArray( pricing.line_items ) ? pricing.line_items : [];
+	const status = paymentStatus && PAYMENT_LABELS[ paymentStatus ] ? paymentStatus : 'none';
+	return (
+		<section className="neural-forms-entry-detail__data-card neural-forms-entry-detail__pricing">
+			<h4 className="neural-forms-entry-detail__data-card-title">
+				{ __( 'Pricing', 'neural-forms-lite' ) }
+				{ status !== 'none' && <span className={ 'neural-forms-entries-pill neural-forms-entries-pill--pay neural-forms-entries-pill--pay-' + status }>{ PAYMENT_LABELS[ status ] }</span> }
+			</h4>
+			{ lines.length > 0 && (
+				<table className="neural-forms-entry-detail__pricing-lines">
+					<tbody>
+						{ lines.map( ( l, i ) => (
+							<tr key={ i }>
+								<td>{ l.choice_label || l.label }{ l.choice_label && l.label !== l.choice_label ? <small> · { l.label }</small> : null }</td>
+								<td className="is-num">{ l.qty > 1 ? `${ l.qty } × ${ f( l.unit ) }` : '' }</td>
+								<td className="is-num">{ f( l.total ) }</td>
+							</tr>
+						) ) }
+					</tbody>
+				</table>
+			) }
+			<dl className="neural-forms-entry-detail__pricing-totals">
+				<dt>{ __( 'Subtotal', 'neural-forms-lite' ) }</dt><dd>{ f( pricing.subtotal ) }</dd>
+				{ pricing.discount && pricing.discount.amount > 0 && <><dt>{ pricing.discount.label || __( 'Discount', 'neural-forms-lite' ) }</dt><dd>−{ f( pricing.discount.amount ) }</dd></> }
+				<dt className="is-total">{ __( 'Total', 'neural-forms-lite' ) }</dt><dd className="is-total">{ f( pricing.total ) }</dd>
+				{ pricing.deposit && pricing.deposit.amount > 0 && <><dt>{ __( 'Due now (deposit)', 'neural-forms-lite' ) }</dt><dd>{ f( pricing.due_now ) }</dd><dt>{ __( 'Remaining balance', 'neural-forms-lite' ) }</dt><dd>{ f( pricing.remaining ) }</dd></> }
+			</dl>
+			{ pricing.calculated && Object.keys( pricing.calculated ).length > 0 && (
+				<dl className="neural-forms-entry-detail__pricing-calc">
+					{ Object.entries( pricing.calculated ).map( ( [ id, c ] ) => <Fragment key={ id }><dt>{ id }</dt><dd>{ c.display }</dd></Fragment> ) }
+				</dl>
+			) }
+			{ Array.isArray( pricing.errors ) && pricing.errors.length > 0 && (
+				<p className="neural-forms-entry-detail__lead-error">{ pricing.errors.map( ( e ) => e.field + ': ' + e.message ).join( ' · ' ) }</p>
+			) }
+		</section>
+	);
+}
+
 function NeedsReplyBanner( { entry, onMarkNeedsReply, onDismiss } ) {
 	const category = String( entry.ai_category || '' ).trim();
 	const [ busy, setBusy ] = useState( false );
@@ -586,6 +638,10 @@ export default function EntryDetail( {
 				</aside>
 			) }
 
+			{ entry.pricing && typeof entry.pricing === 'object' && (
+				<PricingCard pricing={ entry.pricing } paymentStatus={ entry.payment_status } />
+			) }
+
 			<section className="neural-forms-entry-detail__data-card">
 				<h4 className="neural-forms-entry-detail__data-card-title">{ __( 'Submitted fields', 'neural-forms-lite' ) }</h4>
 				{ rows.length === 0 ? (
@@ -595,6 +651,16 @@ export default function EntryDetail( {
 						{ rows.map( ( [ k, v ] ) => {
 							const label = ( fieldLabels && fieldLabels[ k ] ) || k;
 							const field = ( fieldSchemas && fieldSchemas[ k ] ) || null;
+
+							// Product (1.2.0 part B): "SEO, Copywriting × 2".
+							if ( field && field.type === 'product' ) {
+								return (
+									<div key={ k } className="neural-forms-entry-detail__field-row">
+										<dt>{ label }</dt>
+										<dd>{ formatProductValue( v, field ) || __( '(nothing chosen)', 'neural-forms-lite' ) }</dd>
+									</div>
+								);
+							}
 
 							// Repeater: render per-iteration block of child label/value lines.
 							if ( field && field.type === 'repeater' ) {

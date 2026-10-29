@@ -294,6 +294,15 @@ final class FormSettingsSanitizer {
 		if ( isset( $out['on_success'] ) && is_array( $out['on_success'] ) ) {
 			$out['on_success'] = self::sanitize_on_success( $out['on_success'] );
 		}
+		if ( array_key_exists( 'pricing', $out ) ) {
+			$clean = \NeuralForms\Pricing\PriceEngine::normalize_settings( $out['pricing'] );
+			// Default-only (USD, no discounts, no deposit) → drop the key.
+			if ( $clean['currency'] === 'USD' && ! $clean['discounts'] && $clean['deposit']['type'] === 'none' ) {
+				unset( $out['pricing'] );
+			} else {
+				$out['pricing'] = $clean;
+			}
+		}
 		if ( array_key_exists( 'ai_behaviour', $out ) ) {
 			$clean = self::sanitize_ai_behaviour( $out['ai_behaviour'] );
 			if ( $clean ) {
