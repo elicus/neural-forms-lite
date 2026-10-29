@@ -115,13 +115,17 @@ class AdminPanel {
 
 		// Submenu order is driven by the sequence of add_submenu_page()
 		// calls below. Intentional ordering (Forms first, Import last):
+		// Grouped by use case (owner request 2026-10-29): build → handle
+		// leads and money → measure → connect and configure.
 		// 1. Forms          ← landing page (matches the parent slug)
 		// 2. Entries        ← submissions inbox (carries unread bubble)
-		// 3. Analytics      ← form-level conversion / drop-off
-		// 4. Stats          ← admin dashboard KPIs
-		// 5. Integrations   ← provider config (Pro-gated, Lite shows shell)
-		// 6. Settings       ← email / CAPTCHA / Cloud AI
-		// 7. Import         ← CF7 migration, conditional on CF7 active
+		// 3. Quotes         ← quote branding / numbering (1.2.0 part B)
+		// 4. Payments       ← every payment, invoices, refunds (1.2.0 part B)
+		// 5. Analytics      ← form-level conversion / drop-off
+		// 6. Stats          ← admin dashboard KPIs
+		// 7. Integrations   ← provider config (Pro-gated, Lite shows shell)
+		// 8. Settings       ← email / CAPTCHA / Cloud AI
+		// 9. Import         ← CF7 migration, conditional on CF7 active
 		//
 		// Templates used to be its own submenu (slug 'neural-forms-templates')
 		// in 1.1.0 — removed once the popup variant landed on the Forms list.
@@ -165,7 +169,29 @@ class AdminPanel {
 			array( self::class, 'render_page' )
 		);
 
-		// 4. Analytics screen (1.1.0). Independent split bundle.
+		// 3. Quotes (1.2.0 part B): business details, numbering and terms
+		// for quotes. Lite shows the menu with a Pro lock card; Pro flips
+		// Capabilities::QUOTES.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Quotes - Neural Forms', 'neural-forms-lite' ),
+			__( 'Quotes', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-quotes',
+			array( self::class, 'render_page' )
+		);
+
+		// 4. Payments (1.2.0 part B): every payment, invoices, refunds.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Payments - Neural Forms', 'neural-forms-lite' ),
+			__( 'Payments', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-payments',
+			array( self::class, 'render_page' )
+		);
+
+		// 5. Analytics screen (1.1.0). Independent split bundle.
 		// render_results_page() emits the #neural-forms-results-app root
 		// that the analytics bundle mounts into; the rest of the screens
 		// (Forms / Entries / Settings / Stats / Import) each have their
@@ -184,7 +210,7 @@ class AdminPanel {
 			array( self::class, 'render_results_page' )
 		);
 
-		// 5. Stats.
+		// 6. Stats.
 		add_submenu_page(
 			'neural-forms',
 			__( 'Stats - Neural Forms', 'neural-forms-lite' ),
@@ -194,7 +220,7 @@ class AdminPanel {
 			array( self::class, 'render_page' )
 		);
 
-		// 6. Integrations (1.1.0). Lite always shows the menu entry;
+		// 7. Integrations (1.1.0). Lite always shows the menu entry;
 		// the page renders in a locked Pro-upsell state when
 		// Capabilities::INTEGRATIONS is false (default in Lite). Pro
 		// flips the filter and the provider tabs become live.
@@ -207,29 +233,7 @@ class AdminPanel {
 			array( self::class, 'render_page' )
 		);
 
-		// 6b. Quotes (1.2.0 part B): business details, numbering and terms
-		// for quotes. Lite shows the menu with a Pro lock card; Pro flips
-		// Capabilities::QUOTES.
-		add_submenu_page(
-			'neural-forms',
-			__( 'Quotes - Neural Forms', 'neural-forms-lite' ),
-			__( 'Quotes', 'neural-forms-lite' ),
-			NEURAL_FORMS_CAP_MANAGE_FORMS,
-			'neural-forms-quotes',
-			array( self::class, 'render_page' )
-		);
-
-		// 6c. Payments (1.2.0 part B): every payment, invoices, refunds.
-		add_submenu_page(
-			'neural-forms',
-			__( 'Payments - Neural Forms', 'neural-forms-lite' ),
-			__( 'Payments', 'neural-forms-lite' ),
-			NEURAL_FORMS_CAP_MANAGE_FORMS,
-			'neural-forms-payments',
-			array( self::class, 'render_page' )
-		);
-
-		// 7. Settings.
+		// 8. Settings.
 		add_submenu_page(
 			'neural-forms',
 			__( 'Settings - Neural Forms', 'neural-forms-lite' ),
