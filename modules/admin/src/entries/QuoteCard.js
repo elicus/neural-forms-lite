@@ -137,7 +137,7 @@ export default function QuoteCard( { entry, capabilities } ) {
 				<p className="neural-forms-entry-detail__lead-upsell">{ __( 'Turn this entry into a numbered, branded quote with a PDF and a secure link your customer can open, with Neural Forms Pro.', 'neural-forms-lite' ) }</p>
 			) }
 			{ needsBranding && (
-				<p className="neural-forms-entry-detail__quote-hint">{ __( 'Add your business name and details under Settings › Quotes so they appear on the quote.', 'neural-forms-lite' ) }</p>
+				<p className="neural-forms-entry-detail__quote-hint">{ __( 'Add your business name and details on the Neural Forms › Quotes page so they appear on the quote.', 'neural-forms-lite' ) }</p>
 			) }
 			{ error && <p className="neural-forms-entry-detail__lead-error" role="alert">{ error }</p> }
 			{ notice && <p className="neural-forms-entry-detail__quote-notice" role="status">{ notice }</p> }

@@ -841,8 +841,10 @@ on `neural_forms_quote_pdf_available` / `neural_forms_quote_pdf`).
   Activity types `quote.*` (and `payment.*`) are now listed/deleted by
   `EntryActivity` next to `entry.*` / `workflow.*`.
 - **Settings:** option `neural_forms_quote_settings` (`QuoteSettings`),
-  `GET|PUT /quotes/settings`; Settings › Quotes (`QuoteSettingsSection`,
-  settings bundle, self-saving). Inbox: `entries/QuoteCard.js` under the
+  `GET|PUT /quotes/settings`; its OWN admin page Neural Forms › Quotes
+  (`screens/Quotes.js`, `build:quotes`) — the owner asked for it to be
+  moved out of Settings on 2026-10-29 because the long Settings page was
+  confusing. Inbox: `entries/QuoteCard.js` under the
   Pricing card (draft editor, issue, send, copy link, revise; upsell when
   locked).
 - Tests: `tests/QuotesTest.php` (pure parts), `tests/live/B2QuotesHarness.php`
@@ -1273,6 +1275,7 @@ you rebuild a single bundle in isolation without touching siblings
 | `build/settings.js` | `src/settings-entry.js` | `npm run build:settings` | Settings screen — `src/screens/Settings.js` + `src/settings.css`. Pro fills `SettingsSpamPanel` and `SettingsSiteProfile` slots. |
 | `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Entries inbox — `src/entries/*` + `src/entries.css`. Pro fills `EntryAiActions` and `EntryReplyActions` slots. |
 | `build/import.js` | `src/import-entry.js` | `npm run build:import` | Import (CF7 migration) — 3-state list / preview / result flow over `/migration/cf7/*`. |
+| `build/quotes.js` | `src/quotes-entry.js` | `npm run build:quotes` | Quotes page (`?page=neural-forms-quotes`) — `src/screens/Quotes.js`; imports `settings.css` so it looks like Settings (1.2.0 part B). |
 | `build/integrations.js` | `src/integrations-entry.js` | `npm run build:integrations` | Integrations screen — `src/screens/Integrations.js` + `src/integrations.css` (Pro-ready provider config surfaces; also `src/forms/IntegrationsSection.js` in the builder). |
 | `build/templates.js` | `src/templates-entry.js` | `npm run build:templates` | Template library modal — `src/templates/TemplateLibrary.js` + `TemplateLibraryModal.js`. |
 | `build/block.js` | `src/block-index.js` | `npm run build:block` | Gutenberg form-rendering block (registered via `frontend/block/block.json`). |

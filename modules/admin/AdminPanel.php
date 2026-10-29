@@ -34,6 +34,8 @@ class AdminPanel {
 		// unlock the provider tabs (which still show "Coming soon"
 		// until the actual provider work ships).
 		'neural-forms-integrations' => 'integrations',
+		// 1.2.0 part B: quote branding / numbering (own page, not Settings).
+		'neural-forms-quotes'       => 'quotes',
 	);
 
 	public static function boot(): void {
@@ -201,6 +203,18 @@ class AdminPanel {
 			__( 'Integrations', 'neural-forms-lite' ),
 			NEURAL_FORMS_CAP_MANAGE_FORMS,
 			'neural-forms-integrations',
+			array( self::class, 'render_page' )
+		);
+
+		// 6b. Quotes (1.2.0 part B): business details, numbering and terms
+		// for quotes. Lite shows the menu with a Pro lock card; Pro flips
+		// Capabilities::QUOTES.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Quotes - Neural Forms', 'neural-forms-lite' ),
+			__( 'Quotes', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-quotes',
 			array( self::class, 'render_page' )
 		);
 
@@ -697,6 +711,29 @@ class AdminPanel {
 					(string) filemtime( $build_dir . 'integrations.css' )
 				);
 			}
+		}
+
+		// Quotes page (1.2.0 part B) — build/quotes.js + build/quotes.css
+		// on ?page=neural-forms-quotes. Same per-screen pattern as above.
+		if (
+			self::get_current_screen() === 'quotes'
+			&& file_exists( $build_dir . 'quotes.js' )
+		) {
+			$asset_file = $build_dir . 'quotes.asset.php';
+			$asset      = file_exists( $asset_file ) ? require $asset_file : array();
+			if ( ! is_array( $asset ) ) {
+				$asset = array();
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'quotes.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script( 'neural-forms-admin', $build_url . 'quotes.js', $deps, $version, true );
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+			if ( file_exists( $build_dir . 'quotes.css' ) ) {
+				wp_enqueue_style( 'neural-forms-admin', $build_url . 'quotes.css', array( 'wp-components' ), (string) filemtime( $build_dir . 'quotes.css' ) );
+			}
+			wp_enqueue_media();
 		}
 
 		// Page-header unifier — applies the canonical Templates-style

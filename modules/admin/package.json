@@ -6,7 +6,7 @@
   "license": "GPL-2.0-or-later",
   "author": "Elicus",
   "scripts": {
-    "build": "npm run build:builder && npm run build:results && npm run build:blocks-extra && npm run build:forms && npm run build:entries && npm run build:settings && npm run build:stats && npm run build:import && npm run build:integrations && npm run build:templates && npm run build:block",
+    "build": "npm run build:builder && npm run build:results && npm run build:blocks-extra && npm run build:forms && npm run build:entries && npm run build:settings && npm run build:stats && npm run build:import && npm run build:integrations && npm run build:quotes && npm run build:templates && npm run build:block",
     "build:builder": "wp-scripts build --config webpack.split.config.js --env screen=builder",
     "build:results": "wp-scripts build --config webpack.split.config.js --env screen=results",
     "build:blocks-extra": "wp-scripts build --config webpack.split.config.js --env screen=blocks-extra",
@@ -16,6 +16,7 @@
     "build:stats": "wp-scripts build --config webpack.split.config.js --env screen=stats",
     "build:import": "wp-scripts build --config webpack.split.config.js --env screen=import",
     "build:integrations": "wp-scripts build --config webpack.split.config.js --env screen=integrations",
+    "build:quotes": "wp-scripts build --config webpack.split.config.js --env screen=quotes",
     "build:templates": "wp-scripts build --config webpack.split.config.js --env screen=templates",
     "build:block": "wp-scripts build --config webpack.split.config.js --env screen=block",
     "lint:js": "wp-scripts lint-js src",
