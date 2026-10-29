@@ -226,8 +226,9 @@ final class PaymentService {
 		$token = PaymentTokens::derive( (int) $payment['id'], (string) $payment['token_seed'] );
 		$base  = rest_url( 'neural-forms/v1/payments/' . (int) $payment['id'] . '/return' );
 		return array(
-			'success' => add_query_arg( array( 'token' => $token, 'result' => 'success' ), $base ),
-			'cancel'  => add_query_arg( array( 'token' => $token, 'result' => 'cancel' ), $base ),
+			// `nf_token`, not `token`: PayPal appends its own `token=<order id>` to the return URL.
+			'success' => add_query_arg( array( 'nf_token' => $token, 'result' => 'success' ), $base ),
+			'cancel'  => add_query_arg( array( 'nf_token' => $token, 'result' => 'cancel' ), $base ),
 			'webhook' => rest_url( 'neural-forms/v1/payments/webhook/' . (string) $payment['provider'] ),
 		);
 	}

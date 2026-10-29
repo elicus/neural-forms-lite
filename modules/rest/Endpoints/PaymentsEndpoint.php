@@ -123,7 +123,7 @@ final class PaymentsEndpoint {
 	 */
 	public function invoice( WP_REST_Request $request ) {
 		$payment = PaymentRepository::get( (int) $request['id'] );
-		$token   = (string) $request->get_param( 'token' );
+		$token   = (string) ( $request->get_param( 'nf_token' ) ?: $request->get_param( 'token' ) );
 		$allowed = $payment && ( ( $token !== '' && PaymentTokens::check( $payment, $token ) ) || current_user_can( 'manage_options' ) );
 		if ( ! $allowed || ! in_array( $payment['status'], \NeuralForms\Payments\PaymentStatus::SETTLED, true ) ) {
 			return QuotesBoot::raw_response( '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Not found</title></head><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>' . esc_html__( 'Invoice not found', 'neural-forms-lite' ) . '</h1></body></html>', 'text/html; charset=UTF-8', 404 );
@@ -153,7 +153,8 @@ final class PaymentsEndpoint {
 
 	public function return_page( WP_REST_Request $request ) {
 		$payment = PaymentRepository::get( (int) $request['id'] );
-		if ( ! $payment || ! PaymentTokens::check( $payment, (string) $request->get_param( 'token' ) ) ) {
+		$presented = (string) ( $request->get_param( 'nf_token' ) ?: $request->get_param( 'token' ) );
+		if ( ! $payment || ! PaymentTokens::check( $payment, $presented ) ) {
 			return QuotesBoot::raw_response( '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Not found</title></head><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>' . esc_html__( 'Payment not found', 'neural-forms-lite' ) . '</h1></body></html>', 'text/html; charset=UTF-8', 404 );
 		}
 		$result = (string) $request->get_param( 'result' ) === 'cancel' ? 'cancel' : 'success';
