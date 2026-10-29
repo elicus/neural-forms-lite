@@ -32,7 +32,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Plugin header name:** `Neural Forms Lite`
 - **Main class:** `NeuralForms\NeuralForms` (namespace **not** renamed)
 - **Version constants:**
-  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.0` on dev (1.1.3 is on `release/1.1.3`; 1.1.4 was renumbered to 1.2.0 on 2026-10-29 for the conditional-logic + workflows + business-context release, see `docs/RELEASE-1.2-PLAN.md`).
+  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.1` on dev (1.2.0 shipped 2026-10-29 on `release/1.2.0` / `main`; see `docs/RELEASE-1.2-PLAN.md`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
   - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.0` (adds the lead-management columns on entries, `meta` on `neural_forms_entry_ai_responses`, and the three `neural_forms_workflow*` tables). Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
