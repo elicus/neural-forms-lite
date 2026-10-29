@@ -382,7 +382,7 @@ class StatsEndpoint {
 			)
 		);
 
-		$next_run     = wp_next_scheduled( 'neural_forms_process_queue' );
+		$next_run     = wp_next_scheduled( \NeuralForms\AI\AIQueueProcessor::CRON_HOOK );
 		$last_cron_ts = is_int( $next_run ) && $next_run > 0
 			? (int) $next_run - 5 * MINUTE_IN_SECONDS
 			: 0;

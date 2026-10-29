@@ -3,6 +3,7 @@ namespace NeuralForms\Frontend;
 
 use NeuralForms\Core\Capabilities;
 use NeuralForms\Core\Config;
+use NeuralForms\Forms\ConditionEngine;
 use NeuralForms\Forms\FieldRegistry;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\SchemaHelper;
@@ -436,7 +437,7 @@ class FormRenderer {
 				. ' aria-valuemin="0" aria-valuemax="' . (int) $total . '" aria-valuenow="1">'
 				. '<div class="neural-forms-form__progress-bar-fill" style="width:' . (int) $pct . '%"></div>'
 				. '</div>'
-				. '<p class="neural-forms-form__progress-text">'
+				. '<p class="neural-forms-form__progress-text" aria-live="polite">'
 				. sprintf(
 					/* translators: 1: current step number  2: total steps */
 					esc_html__( 'Step %1$d of %2$d', 'neural-forms-lite' ),
@@ -957,6 +958,11 @@ class FormRenderer {
 		if ( $section_id !== '' ) {
 			$html .= ' data-neural-forms-section-id="' . esc_attr( $section_id ) . '"';
 		}
+		// 1.2.0: a section (heading block) can be shown/hidden by logic.
+		$cl = $section['conditional_logic'] ?? null;
+		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+			$html .= ' data-conditional="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
+		}
 		$html .= '>';
 		if ( $title !== '' ) {
 			$html .= '<h3 class="neural-forms-form__section-title">' . esc_html( $title ) . '</h3>';
@@ -985,6 +991,15 @@ class FormRenderer {
 		}
 		if ( $btn_prev !== '' ) {
 			$html .= ' data-step-button-previous="' . esc_attr( $btn_prev ) . '"';
+		}
+		// 1.2.0: step eligibility. Deliberately NOT data-conditional —
+		// inactive steps are display:none too, and the serializer treats
+		// a display:none [data-conditional] ancestor as "hidden by logic".
+		// form-submit.js reads data-conditional-step and marks skipped
+		// steps with .neural-forms-form__step--skipped instead.
+		$cl = $step['conditional_logic'] ?? null;
+		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+			$html .= ' data-conditional-step="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
 		}
 		$html .= '>';
 
@@ -1132,26 +1147,15 @@ class FormRenderer {
 		}
 
 		// ' Conditional logic data attribute '
-		// When a field has conditional_logic.enabled = true and references another
-		// field, emit data-conditional so form-submit.js can evaluate visibility
-		// client-side without knowing the full schema.
-		//
-		// Only emit the keys the frontend actually needs: field, operator, value.
-		// Ignore all other keys so the attribute stays small.
+		// When a field has active conditional logic, emit the normalised
+		// v2 tree (ConditionEngine::for_attribute) so form-submit.js can
+		// evaluate visibility client-side without knowing the full schema.
+		// Legacy single-rule objects are normalised here, so the frontend
+		// only ever sees the v2 shape.
 		$conditional_attr = '';
 		$cl = $field['conditional_logic'] ?? null;
-		if (
-			is_array( $cl )
-			&& ! empty( $cl['enabled'] )
-			&& isset( $cl['field'] )
-			&& (string) $cl['field'] !== ''
-		) {
-			$cl_data = [
-				'field'    => (string) ( $cl['field']    ?? '' ),
-				'operator' => (string) ( $cl['operator'] ?? 'equals' ),
-				'value'    => (string) ( $cl['value']    ?? '' ),
-			];
-			$conditional_attr = ' data-conditional="' . esc_attr( (string) wp_json_encode( $cl_data ) ) . '"';
+		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+			$conditional_attr = ' data-conditional="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
 		}
 
 		// Scoped IDs: neural-forms-{form_id}-{field_id}

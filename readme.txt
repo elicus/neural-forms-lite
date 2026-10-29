@@ -4,7 +4,7 @@ Tags: ai form builder, multi-step form, contact form, form builder, lead inbox
 Requires at least: 6.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.3
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,6 +24,8 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * 18 field types: Text, Email, Textarea, Select, Checkbox, Number, Phone, URL, Date, Acceptance, Radio, Checkboxes, Range, Poll, Quiz, File Upload, Hidden, and Rating
 * Row and column layouts (1 to 4 columns per row, mobile-responsive)
 * Multi-step forms with steps, sections, and welcome screens
+* Conditional logic: show or hide any field when all or any of several conditions match
+* Exclude any field from AI so its answer never leaves your site
 * Native Gutenberg block with 150+ styling attributes
 * Shortcode support: [neural-forms id="42"]
 * Form template library: pick a template, click once, your form is live
@@ -36,6 +38,13 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * Privacy mode: disable IP and user-agent storage (GDPR-friendly)
 * One-click Contact Form 7 migration
 * Developer hooks, capability filters, and React SlotFill registry
+
+= More in Neural Forms Pro =
+
+* Condition groups ("A and (B or C)"), conditional sections, step skipping, and a different confirmation or redirect per rule
+* Lead stages, owners, follow-up reminders and an activity timeline on every entry
+* Workflows: when a submission arrives, an AI analysis finishes, a stage changes or a follow-up is overdue, assign it, notify your team, send a fixed acknowledgement, set a follow-up, prepare an AI draft for review, or sync to HubSpot, Mailchimp, WhatsApp or Zapier
+* Business knowledge, brand voice and reply-language policy so AI drafts answer from your approved facts and flag what they cannot answer
 
 = AI Analysis for Your Submissions =
 
@@ -247,6 +256,20 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
+= 1.2.0 - 2026-10-29 =
+
+* Added: Conditional logic can combine several conditions with All or Any and show or hide a field.
+* Added: Pro users can group conditions, show or skip steps and sections based on answers, and pick a confirmation message or redirect per rule.
+* Added: Pro users can track each lead through stages, assign an owner, set follow-up reminders and see an activity timeline on every entry.
+* Added: Workflows for Pro users: when a submission arrives, an AI analysis finishes, a stage changes or a follow-up is overdue, assign, notify, acknowledge, set a follow-up or prepare an AI draft, with a test run and history.
+* Added: A Processing health card in Settings shows waiting jobs and how to set up a system cron.
+* Added: Pro users can give AI drafts approved business knowledge, a brand voice and a reply-language policy, site-wide and per form; drafts show which facts they used and flag what they could not answer.
+* Added: Any field can be excluded from AI so its answer never leaves your site.
+* Added: Translate an AI draft into your site language from the drafts carousel.
+* Fixed: Cloud error messages show their real code instead of a bare HTTP status.
+* Fixed: "Analyze with AI" runs immediately when a queued job was never picked up by cron.
+* Fixed: Upstream failures no longer show a Cloudflare error page on proxied sites.
+
 = 1.1.3 - 2026-10-28 =
 
 * Security: Uploaded files are no longer visible through the public WordPress media API.
@@ -305,6 +328,9 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.2.0 =
+Conditional logic can now combine several conditions. Pro adds condition groups, step skipping, conditional confirmations, lead stages with follow-ups, workflows and business knowledge for AI drafts. The database upgrades automatically on first admin load; Pro 1.1.0 requires this version.
 
 = 1.1.3 =
 Privacy mode now actually stops IP and user-agent storage; sites with it on have existing entries cleaned on update. Security fix for the submission rate limit. Sites behind a reverse proxy or Cloudflare should add their proxy ranges via the `neural_forms_trusted_proxies` filter so the inbox shows real visitor IPs. Emails now go out from your site title and WordPress admin email when the Sender fields are blank; if your admin email is on another domain, set an on-domain Sender email in Settings > Email for best deliverability.

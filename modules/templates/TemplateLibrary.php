@@ -513,19 +513,19 @@ class TemplateLibrary {
 	 */
 	private static function validate_bundle_shape( $bundle ) {
 		if ( ! is_array( $bundle ) ) {
-			return new WP_Error( 'template_bundle_invalid', __( 'Template bundle is not a valid object.', 'neural-forms-lite' ), array( 'status' => 502 ) );
+			return new WP_Error( 'template_bundle_invalid', __( 'Template bundle is not a valid object.', 'neural-forms-lite' ), array( 'status' => 424 ) );
 		}
 		if ( empty( $bundle['builder'] ) || ! is_string( $bundle['builder'] ) ) {
-			return new WP_Error( 'template_bundle_missing_builder', __( 'Template bundle is missing the builder field.', 'neural-forms-lite' ), array( 'status' => 502 ) );
+			return new WP_Error( 'template_bundle_missing_builder', __( 'Template bundle is missing the builder field.', 'neural-forms-lite' ), array( 'status' => 424 ) );
 		}
 		if ( ! isset( $bundle['page'] ) || ! is_array( $bundle['page'] ) ) {
-			return new WP_Error( 'template_bundle_missing_page', __( 'Template bundle is missing the page object.', 'neural-forms-lite' ), array( 'status' => 502 ) );
+			return new WP_Error( 'template_bundle_missing_page', __( 'Template bundle is missing the page object.', 'neural-forms-lite' ), array( 'status' => 424 ) );
 		}
 		if ( ! isset( $bundle['page']['post_content'] ) || ! is_string( $bundle['page']['post_content'] ) ) {
-			return new WP_Error( 'template_bundle_missing_content', __( 'Template bundle page is missing post_content.', 'neural-forms-lite' ), array( 'status' => 502 ) );
+			return new WP_Error( 'template_bundle_missing_content', __( 'Template bundle page is missing post_content.', 'neural-forms-lite' ), array( 'status' => 424 ) );
 		}
 		if ( isset( $bundle['forms'] ) && ! is_array( $bundle['forms'] ) ) {
-			return new WP_Error( 'template_bundle_forms_invalid', __( 'Template bundle "forms" is not an array.', 'neural-forms-lite' ), array( 'status' => 502 ) );
+			return new WP_Error( 'template_bundle_forms_invalid', __( 'Template bundle "forms" is not an array.', 'neural-forms-lite' ), array( 'status' => 424 ) );
 		}
 		return null;
 	}
@@ -976,7 +976,7 @@ class TemplateLibrary {
 			return new WP_Error(
 				'template_remote_failed',
 				__( 'Couldn\'t reach the template library right now. Please try again later.', 'neural-forms-lite' ),
-				array( 'status' => 502 )
+				array( 'status' => 424 )
 			);
 		}
 
@@ -986,7 +986,7 @@ class TemplateLibrary {
 				'template_remote_status',
 				/* translators: %d: HTTP status code returned by the remote template host. */
 				sprintf( __( 'Template host returned HTTP %d.', 'neural-forms-lite' ), $code ),
-				array( 'status' => 502 )
+				array( 'status' => 424 )
 			);
 		}
 
@@ -996,7 +996,7 @@ class TemplateLibrary {
 			return new WP_Error(
 				'template_remote_json',
 				__( 'Template host returned an invalid JSON payload.', 'neural-forms-lite' ),
-				array( 'status' => 502 )
+				array( 'status' => 424 )
 			);
 		}
 

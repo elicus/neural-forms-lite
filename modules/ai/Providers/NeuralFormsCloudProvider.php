@@ -3,6 +3,7 @@ namespace NeuralForms\AI\Providers;
 
 use NeuralForms\AI\Contracts\AIAnalysisProviderInterface;
 use NeuralForms\AI\AIRepository;
+use NeuralForms\Core\Capabilities;
 use NeuralForms\AI\Exceptions\CloudPlanException;
 use NeuralForms\AI\Exceptions\CloudSafetyException;
 
@@ -89,9 +90,12 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			$payload['previous_priority'] = $prev_priority;
 		}
 
+		$this->attach_ai_behaviour( $payload, $form );
+
 		$body = $this->post( '/v1/ai/analyze', $payload );
 
 		$result = $this->normalize_analysis( $body );
+		$result['knowledge_revision'] = (int) ( $body['knowledge_revision'] ?? 0 );
 
 		$result['ai_provider'] = $this->provider_id();
 		$result['ai_model']    = 'cloud';
@@ -137,12 +141,17 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			$payload['current_tier'] = $cur_tier;
 		}
 
+		$this->attach_ai_behaviour( $payload, $form );
+
 		$body = $this->post( '/v1/ai/reply/regenerate', $payload );
 
-		return array(
-			'reply_draft' => sanitize_textarea_field( (string) ( $body['reply_draft'] ?? '' ) ),
-			'tier_used'   => $this->normalize_tier( $body['tier_used'] ?? null ),
-			'usage'       => is_array( $body['usage'] ?? null ) ? $body['usage'] : array(),
+		return array_merge(
+			array(
+				'reply_draft' => sanitize_textarea_field( (string) ( $body['reply_draft'] ?? '' ) ),
+				'tier_used'   => $this->normalize_tier( $body['tier_used'] ?? null ),
+				'usage'       => is_array( $body['usage'] ?? null ) ? $body['usage'] : array(),
+			),
+			$this->normalize_business_extras( $body )
 		);
 	}
 
@@ -161,13 +170,19 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 *
 	 * @throws \RuntimeException
 	 */
-	public function polish_reply( string $draft, array $entry, array $form ): array {
+	public function polish_reply( string $draft, array $entry, array $form, array $options = array() ): array {
 		$payload = array(
 			'text'     => $draft,
 			// Sent for cloud-side request logging; not used to gate anything.
 			'entry_id' => (int) ( $entry['id'] ?? 0 ),
 			'site_url' => site_url(),
 		);
+		// 1.2.0: translation reuses polish — a BCP-47 target language.
+		$translate_to = isset( $options['translate_to'] ) ? trim( (string) $options['translate_to'] ) : '';
+		if ( $translate_to !== '' && preg_match( '/^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/', $translate_to ) ) {
+			$payload['translate_to'] = $translate_to;
+		}
+		$this->attach_ai_behaviour( $payload, $form );
 
 		$cur_tier = isset( $entry['ai_tier'] ) ? (string) $entry['ai_tier'] : '';
 		if ( $cur_tier !== '' ) {
@@ -176,11 +191,76 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 
 		$body = $this->post( '/v1/ai/reply/polish', $payload );
 
-		return array(
-			'polished_reply' => sanitize_textarea_field( (string) ( $body['polished_reply'] ?? '' ) ),
-			'tier_used'      => $this->normalize_tier( $body['tier_used'] ?? null ),
-			'usage'          => is_array( $body['usage'] ?? null ) ? $body['usage'] : array(),
+		return array_merge(
+			array(
+				'polished_reply' => sanitize_textarea_field( (string) ( $body['polished_reply'] ?? '' ) ),
+				'tier_used'      => $this->normalize_tier( $body['tier_used'] ?? null ),
+				'usage'          => is_array( $body['usage'] ?? null ) ? $body['usage'] : array(),
+			),
+			$this->normalize_business_extras( $body )
 		);
+	}
+
+	/**
+	 * Per-form AI behaviour (1.2.0): tone / language / knowledge picker
+	 * from `settings.ai_behaviour`. Sent only when the Pro capability is
+	 * unlocked — a Lite install never sends the key, so the cloud applies
+	 * its site-level defaults.
+	 */
+	private function attach_ai_behaviour( array &$payload, array $form ): void {
+		if ( ! Capabilities::can( Capabilities::AI_BUSINESS_CONTEXT ) ) {
+			return;
+		}
+		$b = $form['settings']['ai_behaviour'] ?? null;
+		if ( ! is_array( $b ) ) {
+			return;
+		}
+		$out = array();
+		if ( isset( $b['tone'] ) && is_string( $b['tone'] ) && trim( $b['tone'] ) !== '' ) {
+			$out['tone'] = mb_substr( trim( $b['tone'] ), 0, 64 );
+		}
+		if ( isset( $b['language_mode'] ) && in_array( $b['language_mode'], array( 'detect', 'fixed', 'fallback' ), true ) && $b['language_mode'] !== 'detect' ) {
+			$out['language_mode'] = $b['language_mode'];
+		}
+		if ( isset( $b['language'] ) && is_string( $b['language'] ) && preg_match( '/^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/', trim( $b['language'] ) ) ) {
+			$out['language'] = trim( $b['language'] );
+		}
+		if ( isset( $b['knowledge_ids'] ) && is_array( $b['knowledge_ids'] ) ) {
+			$ids = array();
+			foreach ( $b['knowledge_ids'] as $id ) {
+				$id = preg_replace( '/[^a-z0-9_-]/', '', strtolower( (string) $id ) );
+				if ( $id !== '' ) {
+					$ids[] = $id;
+				}
+			}
+			if ( $ids ) {
+				$out['knowledge_ids'] = array_slice( array_values( array_unique( $ids ) ), 0, 50 );
+			}
+		}
+		if ( $out ) {
+			$payload['ai_behaviour'] = $out;
+		}
+	}
+
+	/**
+	 * knowledge_refs / missing_info / reply_language / knowledge_revision
+	 * from a cloud reply (1.2.0). Absent keys are simply absent.
+	 */
+	private function normalize_business_extras( array $body ): array {
+		$out = array();
+		if ( isset( $body['knowledge_refs'] ) && is_array( $body['knowledge_refs'] ) ) {
+			$out['knowledge_refs'] = array_values( array_filter( array_map( 'sanitize_text_field', array_map( 'strval', $body['knowledge_refs'] ) ) ) );
+		}
+		if ( isset( $body['missing_info'] ) && is_array( $body['missing_info'] ) ) {
+			$out['missing_info'] = array_values( array_filter( array_map( 'sanitize_text_field', array_map( 'strval', $body['missing_info'] ) ) ) );
+		}
+		if ( isset( $body['reply_language'] ) && is_string( $body['reply_language'] ) && preg_match( '/^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/', $body['reply_language'] ) ) {
+			$out['reply_language'] = $body['reply_language'];
+		}
+		if ( isset( $body['knowledge_revision'] ) ) {
+			$out['knowledge_revision'] = (int) $body['knowledge_revision'];
+		}
+		return $out;
 	}
 
 	/**
@@ -232,6 +312,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		if ( $code < 200 || $code >= 300 ) {
 			// Plan-related errors carry structured data so the plugin can react
 			// without parsing messages. Surface them as a typed exception.
+			$data      = self::flatten_error_body( $data );
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
 
 			// SafetyGate decisions: distinct exception so AIQueueProcessor
@@ -329,6 +410,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 		$data = json_decode( $raw, true );
 
 		if ( $code < 200 || $code >= 300 ) {
+			$data      = self::flatten_error_body( $data );
 			$body_code = is_array( $data ) ? (string) ( $data['code'] ?? '' ) : '';
 			if ( in_array( $body_code, array( 'feature_locked', 'quota_exceeded' ), true ) ) {
 				$quota = is_array( $data['quota'] ?? null ) ? $data['quota'] : array();
@@ -404,6 +486,7 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	private function format_entry( array $entry, array $form = array() ): array {
 		$fields = is_array( $entry['data'] ?? null ) ? $entry['data'] : array();
 		if ( ! empty( $fields ) && ! empty( $form ) ) {
+			$fields = self::strip_ai_excluded( $fields, $form );
 			$fields = $this->enrich_matrix_fields( $fields, $form );
 		}
 		return array(
@@ -435,6 +518,22 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	 * field. Fields with no entry value, or whose stored value is not
 	 * an array, are skipped (no envelope written).
 	 */
+	/**
+	 * Per-field "exclude from AI" (1.2.0, free in Lite): a field with
+	 * `ai_exclude: true` in the schema never leaves WordPress. Applied
+	 * before anything is sent, for every AI endpoint.
+	 */
+	public static function strip_ai_excluded( array $fields, array $form ): array {
+		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
+		$nodes  = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
+		foreach ( \NeuralForms\Forms\SchemaHelper::flatten_fields( $nodes ) as $f ) {
+			if ( ! empty( $f['ai_exclude'] ) && isset( $f['id'] ) ) {
+				unset( $fields[ (string) $f['id'] ] );
+			}
+		}
+		return $fields;
+	}
+
 	private function enrich_matrix_fields( array $fields, array $form ): array {
 		$schema = is_array( $form['form_schema'] ?? null ) ? $form['form_schema'] : array();
 		$nodes  = is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array();
@@ -549,6 +648,23 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 	// Response normalization
 
 	/**
+	 * The cloud's exception filter nests generic errors as
+	 * `{ "error": { "code", "message", "status" } }` while plan / safety
+	 * errors stay flat (`{ "code", "message", ... }`). Lift the nested
+	 * shape to the flat one so callers always see the code and message
+	 * instead of a bare "HTTP 503".
+	 *
+	 * @param mixed $data Decoded JSON body.
+	 * @return mixed
+	 */
+	private static function flatten_error_body( $data ) {
+		if ( is_array( $data ) && ! isset( $data['code'] ) && is_array( $data['error'] ?? null ) ) {
+			return array_merge( $data, $data['error'] );
+		}
+		return $data;
+	}
+
+	/**
 	 * Recursively run esc_html() on the scalar values of a quota array so
 	 * the result is safe to hand to a thrown exception. Non-scalar values
 	 * (which the cloud API never returns under `quota`) are dropped.
@@ -599,6 +715,6 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 			'is_spam'         => (bool) ( $data['is_spam'] ?? false ),
 			'spam_confidence' => min( 100, max( 0, (int) ( $data['spam_confidence'] ?? 0 ) ) ),
 			'spam_reason'     => sanitize_text_field( (string) ( $data['spam_reason'] ?? '' ) ),
-		);
+		) + $this->normalize_business_extras( $data );
 	}
 }

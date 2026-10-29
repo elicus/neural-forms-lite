@@ -24,7 +24,7 @@
  */
 
 import { useState, useEffect, useRef } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { KIND_ANALYZE, KIND_REANALYZE, KIND_REGENERATE, KIND_POLISH } from './constants';
 import { formatDate } from './helpers';
 
@@ -44,6 +44,8 @@ export default function AiCarousel( {
 	drafts,
 	selectedId,
 	onFinalize,
+	onTranslate,
+	siteLanguage,
 	busy,
 	generating,
 	generatingLabel,
@@ -150,7 +152,25 @@ export default function AiCarousel( {
 				</dl>
 			) }
 
+			{ Array.isArray( draft.meta?.missing_info ) && draft.meta.missing_info.length > 0 && (
+				<div className="neural-forms-entry-detail__ai-needs-info" role="note">
+					<strong>{ __( 'Needs business information:', 'neural-forms-lite' ) }</strong>
+					{ ' ' }{ draft.meta.missing_info.join( ' · ' ) }
+					{ ' ' }<span>{ __( 'Fill the placeholders before sending, or add these facts under Settings → Business context.', 'neural-forms-lite' ) }</span>
+				</div>
+			) }
+
 			<pre className="neural-forms-entry-detail__ai-carousel-body">{ bodyForKind( draft ) }</pre>
+
+			{ Array.isArray( draft.meta?.knowledge_refs ) && draft.meta.knowledge_refs.length > 0 && (
+				<p className="neural-forms-entry-detail__ai-sources">
+					<span>{ __( 'Sources used:', 'neural-forms-lite' ) }</span>
+					{ draft.meta.knowledge_refs.map( ( ref ) => (
+						<code key={ ref }>{ ref }</code>
+					) ) }
+					{ draft.meta.knowledge_revision ? <em>{ sprintf( __( 'knowledge rev. %d', 'neural-forms-lite' ), draft.meta.knowledge_revision ) }</em> : null }
+				</p>
+			) }
 
 			<footer className="neural-forms-entry-detail__ai-carousel-footer">
 				<button
@@ -164,6 +184,22 @@ export default function AiCarousel( {
 						: __( 'Use this draft', 'neural-forms-lite' )
 					}
 				</button>
+				{ onTranslate && siteLanguage && draft.meta?.reply_language && draft.meta.reply_language.split( '-' )[ 0 ].toLowerCase() !== siteLanguage.split( '-' )[ 0 ].toLowerCase() && (
+					<button
+						type="button"
+						className="neural-forms-entries-btn"
+						onClick={ () => onTranslate( draft, siteLanguage ) }
+						disabled={ busy === 'translate' }
+						title={ __( 'Creates a translated copy as a new draft (uses one polish credit)', 'neural-forms-lite' ) }
+					>
+						{ busy === 'translate'
+							? __( 'Translating…', 'neural-forms-lite' )
+							: sprintf( __( 'Translate to %s', 'neural-forms-lite' ), siteLanguage ) }
+					</button>
+				) }
+				{ draft.meta?.reply_language && (
+					<span className="neural-forms-entries-pill neural-forms-entries-pill--neutral">{ draft.meta.reply_language }</span>
+				) }
 			</footer>
 		</section>
 	);

@@ -61,7 +61,176 @@ class FormValidator {
 
 		$seen_ids = array();
 
-		return self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
+		$result = self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return self::validate_conditional_logic( $schema['fields'] );
+	}
+
+	/**
+	 * Second pass (1.2.0): validate every field's conditional_logic
+	 * against the full id set, so a rule cannot reference a field that
+	 * is not in the form, itself, or use an unknown operator. Nested
+	 * groups require the advanced-logic capability (Pro).
+	 *
+	 * Runs only when at least one field has enabled logic, so schemas
+	 * without conditions never load the engine.
+	 *
+	 * @param array $nodes Top-level schema nodes.
+	 * @return true|\WP_Error
+	 */
+	private static function validate_conditional_logic( array $nodes ) {
+		$fields     = SchemaHelper::flatten_fields( $nodes );
+		$ids        = array();
+		$with_logic = array();
+		foreach ( $fields as $f ) {
+			$f  = (array) $f;
+			$id = (string) ( $f['id'] ?? '' );
+			if ( $id === '' ) {
+				continue;
+			}
+			$ids[] = $id;
+			$cl    = $f['conditional_logic'] ?? null;
+			if ( is_array( $cl ) && ! empty( $cl['enabled'] ) ) {
+				$with_logic[] = $f;
+			}
+		}
+
+		$steps    = SchemaHelper::step_logic_map( $nodes );
+		$sections = SchemaHelper::section_logic_map( $nodes );
+		$has_step_logic = false;
+		foreach ( $steps as $st ) {
+			if ( is_array( $st['logic'] ) && ! empty( $st['logic']['enabled'] ) ) {
+				$has_step_logic = true;
+			}
+		}
+		$has_section_logic = false;
+		foreach ( $sections as $sec ) {
+			if ( is_array( $sec['logic'] ) && ! empty( $sec['logic']['enabled'] ) ) {
+				$has_section_logic = true;
+			}
+		}
+
+		if ( ! $with_logic && ! $has_step_logic && ! $has_section_logic ) {
+			return true;
+		}
+
+		$advanced = (bool) apply_filters( 'neural_forms_can_conditional_logic_advanced', false );
+
+		foreach ( $with_logic as $f ) {
+			$label  = isset( $f['label'] ) && is_string( $f['label'] ) && $f['label'] !== '' ? $f['label'] : (string) $f['id'];
+			$result = ConditionEngine::validate( $f['conditional_logic'], $ids, $advanced, (string) $f['id'], $label );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+		}
+
+		// Step eligibility (Pro): a step may only depend on fields from
+		// EARLIER steps — never its own or a later one — so the visitor
+		// can never be on a step whose eligibility flips while typing.
+		$earlier_ids = array();
+		foreach ( $steps as $st ) {
+			$logic = $st['logic'];
+			if ( is_array( $logic ) && ! empty( $logic['enabled'] ) ) {
+				$label = 'Step ' . ( $st['index'] + 1 );
+				if ( ! $advanced ) {
+					return self::locked( $label . ' uses conditional step logic, which requires Neural Forms Pro.' );
+				}
+				if ( $st['index'] === 0 && ConditionEngine::is_active( $logic ) ) {
+					return new \WP_Error( 'invalid_form_data', 'The first step cannot have conditional logic; there is no earlier answer to decide it.', array( 'status' => 422 ) );
+				}
+				$result = ConditionEngine::validate( $logic, $earlier_ids, true, $st['id'], $label );
+				if ( is_wp_error( $result ) ) {
+					// Re-word the "not in this form" message for the step case.
+					$msg = $result->get_error_message();
+					if ( strpos( $msg, 'is not in this form' ) !== false ) {
+						foreach ( ConditionEngine::references( $logic ) as $ref ) {
+							if ( ! in_array( $ref, $earlier_ids, true ) ) {
+								return new \WP_Error( 'invalid_form_data', sprintf( '%s can only depend on fields from earlier steps; "%s" is not one of them.', $label, $ref ), array( 'status' => 422 ) );
+							}
+						}
+					}
+					return $result;
+				}
+			}
+			foreach ( $st['field_ids'] as $fid ) {
+				$earlier_ids[] = $fid;
+			}
+		}
+
+		// Sections (Pro): heading blocks, may depend on any field.
+		foreach ( $sections as $sec ) {
+			$logic = $sec['logic'];
+			if ( is_array( $logic ) && ! empty( $logic['enabled'] ) ) {
+				if ( ! $advanced ) {
+					return self::locked( 'Conditional sections require Neural Forms Pro.' );
+				}
+				$result = ConditionEngine::validate( $logic, $ids, true, $sec['id'], 'Section ' . $sec['id'] );
+				if ( is_wp_error( $result ) ) {
+					return $result;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Conditional confirmations / redirects (1.2.0, Pro): validate
+	 * `settings.on_success.rules[]` against the schema before saving.
+	 * Each rule needs enabled conditions that reference real fields;
+	 * the default outcome (mode/message/url) is untouched here.
+	 *
+	 * @param array $settings Sanitised form settings.
+	 * @param array $schema   Form schema ({ fields: [...] }).
+	 * @return true|\WP_Error
+	 */
+	public static function validate_settings_logic( array $settings, array $schema ) {
+		$rules = $settings['on_success']['rules'] ?? null;
+		if ( ! is_array( $rules ) || ! $rules ) {
+			return true;
+		}
+		$advanced = (bool) apply_filters( 'neural_forms_can_conditional_logic_advanced', false );
+		if ( ! $advanced ) {
+			return self::locked( 'Conditional confirmations require Neural Forms Pro.' );
+		}
+		$ids = array();
+		foreach ( SchemaHelper::flatten_fields( is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array() ) as $f ) {
+			$id = (string) ( $f['id'] ?? '' );
+			if ( $id !== '' ) {
+				$ids[] = $id;
+			}
+		}
+		$n = 0;
+		foreach ( $rules as $rule ) {
+			$n++;
+			$label = 'Confirmation rule ' . $n;
+			if ( ! is_array( $rule ) || ! is_array( $rule['conditions'] ?? null ) || ! ConditionEngine::is_active( $rule['conditions'] ) ) {
+				return new \WP_Error( 'invalid_form_data', $label . ' has no conditions. Add at least one condition or remove the rule.', array( 'status' => 422 ) );
+			}
+			$result = ConditionEngine::validate( $rule['conditions'], $ids, true, '', $label );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+			if ( ( $rule['mode'] ?? 'message' ) === 'redirect' && (string) ( $rule['url'] ?? '' ) === '' ) {
+				return new \WP_Error( 'invalid_form_data', $label . ' redirects but has no URL.', array( 'status' => 422 ) );
+			}
+		}
+		return true;
+	}
+
+	private static function locked( string $message ): \WP_Error {
+		return new \WP_Error(
+			'pro_feature_locked',
+			$message,
+			array(
+				'status'       => 403,
+				'feature'      => 'conditional_logic_advanced',
+				'requires_pro' => true,
+			)
+		);
 	}
 
 	/**

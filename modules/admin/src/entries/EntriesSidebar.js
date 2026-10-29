@@ -22,7 +22,7 @@
  */
 
 import { __ } from '@wordpress/i18n';
-import { SYSTEM_VIEWS, SMART_FILTERS } from './constants';
+import { SYSTEM_VIEWS, visibleSmartFilters } from './constants';
 
 /* Inline SVG icon set. Stroke uses currentColor so the icon picks up
  * the parent button's color for active / hover / muted states with a
@@ -46,6 +46,7 @@ function ReplyIcon()       { return ( <svg { ...ICON_PROPS }><polyline points="9
 function StarIcon()        { return ( <svg { ...ICON_PROPS }><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9 12 2" /></svg> ); }
 function SpamIcon()        { return ( <svg { ...ICON_PROPS }><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="13" /><line x1="12" y1="16" x2="12" y2="16.01" /></svg> ); }
 function TrashIcon()       { return ( <svg { ...ICON_PROPS }><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></svg> ); }
+function ClockIcon()       { return ( <svg { ...ICON_PROPS }><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg> ); }
 function AlertTriangleIcon(){ return ( <svg { ...ICON_PROPS }><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12" y2="17.01" /></svg> ); }
 
 const VIEW_ICONS = {
@@ -57,6 +58,7 @@ const VIEW_ICONS = {
 	trash:          TrashIcon,
 	high_priority:  StarIcon,
 	spam_suspected: AlertTriangleIcon,
+	overdue:        ClockIcon,
 };
 
 function ViewIcon( { id } ) {
@@ -227,7 +229,7 @@ export default function EntriesSidebar( {
 						{ __( 'Smart Filters', 'neural-forms-lite' ) }
 					</h3>
 					<ul className="neural-forms-entries-sidebar__list">
-						{ SMART_FILTERS.map( ( v ) => (
+						{ visibleSmartFilters( window.neuralFormsAdmin?.plugin?.capabilities ).map( ( v ) => (
 							<li key={ v.id }>
 								<button
 									type="button"

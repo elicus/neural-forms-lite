@@ -22,6 +22,8 @@ import { __, sprintf } from '@wordpress/i18n';
 import { FIELD_TYPES } from './FieldTypes';
 import PollResultsPanel from './PollResultsPanel';
 import AiPromptPanel from './AiPromptPanel';
+import { toEditableConditional } from './schemaHelper';
+import ConditionEditor, { describeConditional } from './ConditionEditor';
 import {
 	isRow,
 	isStep,
@@ -318,6 +320,17 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 					placeholder={ __( 'optional', 'neural-forms-lite' ) }
 				/>
 			</label>
+
+			{ f.type !== 'hidden' && (
+				<label className="nf-inspector__field nf-inspector__field--inline" title={ __( 'When on, this field\'s answer is removed before anything is sent to Neural Forms Cloud. Use it for IDs, card numbers, health details or anything the AI should never see.', 'neural-forms-lite' ) }>
+					<input
+						type="checkbox"
+						checked={ !! f.ai_exclude }
+						onChange={ ( e ) => set( { ai_exclude: e.target.checked ? true : undefined } ) }
+					/>
+					<span>{ __( 'Exclude from AI', 'neural-forms-lite' ) }</span>
+				</label>
+			) }
 
 			{ [ 'select', 'radio', 'checkboxes', 'poll' ].includes( f.type ) && (
 				<OptionsEditor field={ f } onChange={ set } />
@@ -1444,192 +1457,130 @@ function MatrixSettingsBlock( { field, onChange } ) {
 }
 
 /**
- * Conditional Logic editor.
+ * Conditional Logic panels (1.2.0).
  *
- * Writes the v1.0.0 canonical schema verbatim:
+ * All three (field, step, section) are thin wrappers over the shared
+ * <ConditionEditor> in ConditionEditor.js, which edits the v2 object:
  *
- *   field.conditional_logic = {
- *     enabled:  true,
- *     field:    'source_field_id',
- *     operator: 'equals' | 'not_equals' | 'contains' | 'empty' | 'not_empty',
- *     value:    'comparison'
- *   }
+ *   { enabled, version: 2, action: 'show'|'hide', match: 'all'|'any',
+ *     rules: [ { field, operator, value } ], groups: [ { match, rules } ] }
  *
- * Frontend support already exists: FormRenderer.php emits a
- * data-conditional attribute when enabled is true, and form-submit.js
- * (in the rich admin bundle) plus SubmitEndpoint.php both honour the
- * rule. This editor only writes; it does not modify the rendering or
- * submission pipeline.
+ * - Field: flat rules are free; condition groups need the
+ *   `conditional_logic_advanced` capability (Pro).
+ * - Step: Pro only. Sources are fields from EARLIER steps (the server
+ *   rejects anything else) and the first step can never carry logic.
+ * - Section: Pro only. A section is a heading block, so its logic just
+ *   shows/hides the heading. Sources are every other field.
  *
- * Source field list: walks the FULL schema (root + every column) via
- * flattenFields, so a root-level field can depend on a field nested
- * inside a column. Excludes the current field, hidden fields, and
- * fields without an id.
+ * FormRenderer emits the normalised tree as data-conditional
+ * (fields, sections) / data-conditional-step (steps); form-submit.js
+ * and SubmitEndpoint evaluate it.
  */
 
-const CL_OPERATORS = [
-	{ value: 'equals',     label: 'equals',                          needsValue: true  },
-	{ value: 'not_equals', label: 'does not equal',                  needsValue: true  },
-	{ value: 'contains',   label: 'contains',                        needsValue: true  },
-	{ value: 'empty',      label: 'is empty',                        needsValue: false },
-	{ value: 'not_empty',  label: 'is not empty',                    needsValue: false },
-	{ value: 'gte',        label: 'is greater than or equal to',     needsValue: true, numericOnly: true },
-	{ value: 'lte',        label: 'is less than or equal to',        needsValue: true, numericOnly: true },
-];
+function readCapabilities() {
+	if ( typeof window === 'undefined' ) return {};
+	return ( window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+}
 
-/**
- * Field types whose values are numeric — the only types where
- * `gte` / `lte` make sense as a comparison operator.
- */
-const CL_NUMERIC_SOURCE_TYPES = [ 'number', 'range', 'rating' ];
+const PRO_LOGIC_HINT = __( 'Condition groups such as “A and (B or C)”, conditional sections and step skipping are available in Neural Forms Pro.', 'neural-forms-lite' );
+
+function LogicSummary( { value, sources, shownLabel, hiddenLabel } ) {
+	const cl = toEditableConditional( value );
+	if ( ! cl.enabled || ( ! cl.rules.length && ! cl.groups.length ) ) return null;
+	const text = describeConditional( cl, sources );
+	return (
+		<p className="nf-inspector__cl-summary">
+			{ sprintf(
+				/* translators: 1: "Shown"/"Hidden", 2: rule summary */
+				__( '%1$s when %2$s.', 'neural-forms-lite' ),
+				cl.action === 'hide' ? hiddenLabel : shownLabel,
+				text
+			) }
+		</p>
+	);
+}
 
 function ConditionalLogicPanel( { field, onChange, nodes } ) {
-	const cl = field && typeof field.conditional_logic === 'object' && field.conditional_logic !== null
-		? field.conditional_logic
-		: {};
-	const enabled  = !! cl.enabled;
-	const operator = CL_OPERATORS.find( ( o ) => o.value === cl.operator ) ? cl.operator : 'equals';
-	const opMeta   = CL_OPERATORS.find( ( o ) => o.value === operator );
+	const caps = readCapabilities();
+	const advancedUnlocked = !! caps.conditional_logic_advanced;
 
 	// All real fields, minus the current field. flattenFields already
 	// skips rows + columns and only emits leaf input nodes.
 	const allLeaves = flattenFields( Array.isArray( nodes ) ? nodes : [] );
 	const sources = allLeaves.filter( ( n ) => n && n.id && n.id !== field.id && n.type !== 'hidden' );
 
-	const sourceId = ( typeof cl.field === 'string' && cl.field ) ? cl.field : '';
-	const sourceField = sources.find( ( s ) => s.id === sourceId ) || null;
-
-	const setCL = ( patch ) => {
-		onChange( { conditional_logic: { ...cl, ...patch } } );
-	};
-
-	const toggle = ( on ) => {
-		if ( ! on ) {
-			// Disabled: keep the rule on the field but flip enabled off.
-			// We could remove the key entirely, but keeping it preserves
-			// the user's settings if they re-enable.
-			onChange( { conditional_logic: { ...cl, enabled: false } } );
-			return;
-		}
-		onChange( {
-			conditional_logic: {
-				enabled:  true,
-				field:    cl.field    || ( sources[ 0 ] && sources[ 0 ].id ) || '',
-				operator: cl.operator || 'equals',
-				value:    cl.value    !== undefined ? cl.value : '',
-			},
-		} );
-	};
-
-	const sourceOptions = Array.isArray( sourceField?.options ) ? sourceField.options : [];
-	const sourceIsChoice  = sourceField && [ 'select', 'radio' ].includes( sourceField.type ) && sourceOptions.length > 0;
-	const sourceIsNumeric = !! ( sourceField && CL_NUMERIC_SOURCE_TYPES.includes( sourceField.type ) );
-
-	// Operators visible in the dropdown — numericOnly ones hide when
-	// the source field can't be compared numerically (text, email, etc.).
-	const visibleOperators = CL_OPERATORS.filter(
-		( op ) => ! op.numericOnly || sourceIsNumeric
-	);
-
 	return (
 		<div className="nf-inspector__cl">
 			<h4 className="nf-inspector__cl-title">{ __( 'Conditional Logic', 'neural-forms-lite' ) }</h4>
+			<ConditionEditor
+				value={ field.conditional_logic }
+				onChange={ ( next ) => onChange( { conditional_logic: next } ) }
+				sources={ sources }
+				allowGroups={ advancedUnlocked }
+				actionLabels={ {
+					show: __( 'Show this field', 'neural-forms-lite' ),
+					hide: __( 'Hide this field', 'neural-forms-lite' ),
+				} }
+				lockedHint={ PRO_LOGIC_HINT }
+			/>
+			<LogicSummary
+				value={ field.conditional_logic }
+				sources={ sources }
+				shownLabel={ __( 'Shown', 'neural-forms-lite' ) }
+				hiddenLabel={ __( 'Hidden', 'neural-forms-lite' ) }
+			/>
+		</div>
+	);
+}
 
-			<label className="nf-inspector__field nf-inspector__field--inline">
-				<input
-					type="checkbox"
-					checked={ enabled }
-					onChange={ ( e ) => toggle( e.target.checked ) }
-				/>
-				<span>{ __( 'Enable conditional logic', 'neural-forms-lite' ) }</span>
-			</label>
+/**
+ * Pro-only logic panel for steps and sections. Renders an upsell note
+ * when the capability is locked (an existing configuration is still
+ * summarised so the user knows it is there).
+ */
+function LayoutLogicPanel( { kind, value, onChange, sources, firstStep } ) {
+	const caps = readCapabilities();
+	const unlocked = !! caps.conditional_logic_advanced;
+	const isStep = kind === 'step';
 
-			{ enabled && sources.length === 0 && (
+	return (
+		<div className="nf-inspector__cl">
+			<h4 className="nf-inspector__cl-title">
+				{ isStep ? __( 'Step logic', 'neural-forms-lite' ) : __( 'Conditional Logic', 'neural-forms-lite' ) }
+			</h4>
+			{ firstStep && (
 				<p className="nf-inspector__cl-hint">
-					{ __( 'Add another field to this form to use as the rule source.', 'neural-forms-lite' ) }
+					{ __( 'The first step is always shown; there is no earlier answer to decide it.', 'neural-forms-lite' ) }
 				</p>
 			) }
-
-			{ enabled && sources.length > 0 && (
-				<div className="nf-inspector__cl-rule">
-					<p className="nf-inspector__cl-prefix">
-						{ __( 'Show this field if', 'neural-forms-lite' ) }
-					</p>
-
-					<label className="nf-inspector__field">
-						<span className="nf-inspector__label">{ __( 'Field', 'neural-forms-lite' ) }</span>
-						<select
-							value={ sourceId }
-							onChange={ ( e ) => {
-								const nextSourceId = e.target.value;
-								const nextSource   = sources.find( ( s ) => s.id === nextSourceId );
-								const nextIsNumeric = !! ( nextSource && CL_NUMERIC_SOURCE_TYPES.includes( nextSource.type ) );
-								// If the current operator is numeric-only
-								// and the new source isn't numeric, drop
-								// back to 'equals' so the rule stays
-								// representable in the dropdown.
-								const opMetaCurrent = CL_OPERATORS.find( ( o ) => o.value === cl.operator );
-								const nextOperator = ( opMetaCurrent && opMetaCurrent.numericOnly && ! nextIsNumeric )
-									? 'equals'
-									: ( cl.operator || 'equals' );
-								setCL( { field: nextSourceId, value: '', operator: nextOperator } );
-							} }
-						>
-							{ sources.map( ( s ) => (
-								<option key={ s.id } value={ s.id }>
-									{ s.label || s.id }
-								</option>
-							) ) }
-						</select>
-					</label>
-
-					<label className="nf-inspector__field">
-						<span className="nf-inspector__label">{ __( 'Operator', 'neural-forms-lite' ) }</span>
-						<select
-							value={ operator }
-							onChange={ ( e ) => {
-								const next = e.target.value;
-								const nextMeta = CL_OPERATORS.find( ( o ) => o.value === next );
-								// Drop value when switching to an operator that doesn't use it.
-								setCL( {
-									operator: next,
-									value: nextMeta && nextMeta.needsValue ? ( cl.value ?? '' ) : '',
-								} );
-							} }
-						>
-							{ visibleOperators.map( ( o ) => (
-								<option key={ o.value } value={ o.value }>{ __( o.label, 'neural-forms-lite' ) }</option>
-							) ) }
-						</select>
-					</label>
-
-					{ opMeta && opMeta.needsValue && (
-						<label className="nf-inspector__field">
-							<span className="nf-inspector__label">{ __( 'Value', 'neural-forms-lite' ) }</span>
-							{ sourceIsChoice ? (
-								<select
-									value={ typeof cl.value === 'string' ? cl.value : '' }
-									onChange={ ( e ) => setCL( { value: e.target.value } ) }
-								>
-									<option value="">{ __( 'Select value...', 'neural-forms-lite' ) }</option>
-									{ sourceOptions.map( ( opt, i ) => {
-										const v = ( opt && opt.value ) || ( opt && opt.label ) || '';
-										return v ? (
-											<option key={ i } value={ v }>{ ( opt && opt.label ) || v }</option>
-										) : null;
-									} ) }
-								</select>
-							) : (
-								<input
-									type={ opMeta && opMeta.numericOnly ? 'number' : 'text' }
-									step={ opMeta && opMeta.numericOnly ? 'any' : undefined }
-									value={ typeof cl.value === 'string' ? cl.value : '' }
-									onChange={ ( e ) => setCL( { value: e.target.value } ) }
-								/>
-							) }
-						</label>
-					) }
-				</div>
+			{ ! firstStep && unlocked && (
+				<ConditionEditor
+					value={ value }
+					onChange={ onChange }
+					sources={ sources }
+					allowGroups
+					actionLabels={ isStep
+						? { show: __( 'Show this step', 'neural-forms-lite' ), hide: __( 'Skip this step', 'neural-forms-lite' ) }
+						: { show: __( 'Show this section', 'neural-forms-lite' ), hide: __( 'Hide this section', 'neural-forms-lite' ) } }
+					emptySourcesHint={ isStep
+						? __( 'Add a field to an earlier step to use as the rule source.', 'neural-forms-lite' )
+						: __( 'Add a field to this form to use as the rule source.', 'neural-forms-lite' ) }
+				/>
+			) }
+			{ ! firstStep && ! unlocked && (
+				<p className="nf-inspector__cl-hint nf-inspector__cl-hint--pro">
+					{ isStep
+						? __( 'Skip or show this step based on earlier answers with Neural Forms Pro.', 'neural-forms-lite' )
+						: __( 'Show or hide this section based on answers with Neural Forms Pro.', 'neural-forms-lite' ) }
+				</p>
+			) }
+			{ ! firstStep && (
+				<LogicSummary
+					value={ value }
+					sources={ sources }
+					shownLabel={ isStep ? __( 'Step shown', 'neural-forms-lite' ) : __( 'Shown', 'neural-forms-lite' ) }
+					hiddenLabel={ isStep ? __( 'Step skipped', 'neural-forms-lite' ) : __( 'Hidden', 'neural-forms-lite' ) }
+				/>
 			) }
 		</div>
 	);
@@ -1835,6 +1786,13 @@ function SectionInspector( { hit, nodes, onChange } ) {
 			<p className="nf-inspector__hint">
 				{ __( 'Sections are visual dividers. They never carry input values.', 'neural-forms-lite' ) }
 			</p>
+
+			<LayoutLogicPanel
+				kind="section"
+				value={ s.conditional_logic }
+				onChange={ ( next ) => set( { conditional_logic: next } ) }
+				sources={ flattenFields( Array.isArray( nodes ) ? nodes : [] ).filter( ( n ) => n && n.id && n.type !== 'hidden' ) }
+			/>
 		</>
 	);
 }
@@ -1943,6 +1901,22 @@ function StepInspector( { nodes, stepId, onChange, formSchemaSettings, onChangeF
 					</select>
 				</label>
 			</div>
+
+			<LayoutLogicPanel
+				kind="step"
+				value={ step.conditional_logic }
+				onChange={ ( next ) => setStep( { conditional_logic: next } ) }
+				firstStep={ stepNumber === 1 }
+				sources={ ( () => {
+					// Only fields from EARLIER steps may drive this step.
+					const earlier = [];
+					for ( const st of steps ) {
+						if ( st.id === stepId ) break;
+						earlier.push( ...flattenFields( st.fields || [] ) );
+					}
+					return earlier.filter( ( n ) => n && n.id && n.type !== 'hidden' );
+				} )() }
+			/>
 		</>
 	);
 }

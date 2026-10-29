@@ -167,7 +167,9 @@ class ReplyEndpoint {
 		EntryRepository::update( $entry_id, array( 'needs_reply' => 0 ) );
 
 		// Persist the outgoing message so it appears in the thread view.
-		$message_result = EntryMessageRepository::create(
+		// 1.2.0: who reviewed/sent it and which AI draft (if any) it came from.
+		$source_response_id = (int) $request->get_param( 'source_response_id' );
+		$message_result     = EntryMessageRepository::create(
 			array(
 				'entry_id'  => $entry_id,
 				'type'      => 'outgoing',
@@ -175,8 +177,19 @@ class ReplyEndpoint {
 				'recipient' => $to,
 				'subject'   => $subject,
 				'body'      => $body,
+				'meta'      => array_filter(
+					array(
+						'status'             => 'sent',
+						'reviewed_by'        => function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0,
+						'source_response_id' => $source_response_id > 0 ? $source_response_id : null,
+					),
+					static function ( $v ) { return null !== $v; }
+				),
 			)
 		);
+		if ( class_exists( '\\NeuralForms\\Storage\\EntryActivity' ) ) {
+			\NeuralForms\Storage\EntryActivity::record( $entry_id, 'entry.reply_sent', sprintf( __( 'Reply sent to %s', 'neural-forms-lite' ), $to ), array( 'message_id' => is_wp_error( $message_result ) ? null : $message_result, 'source_response_id' => $source_response_id > 0 ? $source_response_id : null ) );
+		}
 
 		$message_id = is_wp_error( $message_result ) ? null : $message_result;
 

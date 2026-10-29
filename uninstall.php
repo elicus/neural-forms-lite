@@ -36,6 +36,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		$hooks = array(
 			'neural_forms_log_cleanup',
 			'neural_forms_ai_draft_purge',
+			'neural_forms_follow_up_sweep',
 			'neural_forms_process_ai_queue',
 			'neural_forms_process_queue',
 		);
@@ -82,6 +83,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		delete_option( 'neural_forms_ai_revoke_snapshot' );
 		delete_option( 'neural_forms_template_imports' );
 		delete_option( 'neural_forms_log_token' );
+		delete_option( 'neural_forms_queue_last_run' );
 
 		// Template-catalog transients (prefix neural_forms_template_catalog_v2_<builder>).
 		global $wpdb;
@@ -111,6 +113,9 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			$wpdb->prefix . 'neural_forms_queue',
 			$wpdb->prefix . 'neural_forms_entry_messages',
 			$wpdb->prefix . 'neural_forms_entry_ai_responses',
+			$wpdb->prefix . 'neural_forms_workflows',
+			$wpdb->prefix . 'neural_forms_workflow_runs',
+			$wpdb->prefix . 'neural_forms_workflow_actions',
 		);
 		foreach ( $tables as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange

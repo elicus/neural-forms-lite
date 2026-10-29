@@ -7,6 +7,8 @@
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Storage\EntryRepository;
+use NeuralForms\Storage\EntryActivity;
+use NeuralForms\Storage\LeadStages;
 use NeuralForms\Storage\AIResponseRepository;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\AI\AIRepository;
@@ -152,6 +154,29 @@ class EntriesEndpoint {
 		);
 
 		// Detail - returns full entry including the data field.
+		// 1.2.0: entry activity timeline (assignments, stage changes,
+		// follow-ups, workflow actions).
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/activity',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_activity' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
+
+		// 1.2.0: users an entry may be assigned to.
+		register_rest_route(
+			$ns,
+			'/entries/assignees',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_assignees' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
+
 		register_rest_route(
 			$ns,
 			'/entries/(?P<id>[\d]+)',
@@ -221,6 +246,16 @@ class EntriesEndpoint {
 			'search'     => $search,
 			'sort_order' => (string) $request->get_param( 'sort_order' ),
 		);
+		// 1.2.0 lead filters (additive, combine with any view).
+		if ( null !== $request->get_param( 'stage' ) && (string) $request->get_param( 'stage' ) !== '' ) {
+			$list_args['stage'] = (string) $request->get_param( 'stage' );
+		}
+		if ( null !== $request->get_param( 'assigned_to' ) && (string) $request->get_param( 'assigned_to' ) !== '' ) {
+			$list_args['assigned_to'] = (int) $request->get_param( 'assigned_to' );
+		}
+		if ( $request->get_param( 'overdue' ) ) {
+			$list_args['overdue'] = true;
+		}
 
 		// Resolve folder → form_ids / exclude_form_ids using the
 		// shared FormTypeDetector via FormRepository::get_form_ids_by_detected_type.
@@ -624,10 +659,13 @@ class EntriesEndpoint {
 		$text    = trim( (string) $request->get_param( 'text' ) );
 		$form_id = (int) ( $entry['form_id'] ?? 0 );
 		$form    = $form_id > 0 ? ( \NeuralForms\Forms\FormRepository::find( $form_id ) ?? array() ) : array();
+		// 1.2.0: optional translation target (BCP-47). Validated again by the provider.
+		$translate_to = trim( (string) $request->get_param( 'translate_to' ) );
+		$options      = $translate_to !== '' ? array( 'translate_to' => $translate_to ) : array();
 
 		try {
 			$provider = \NeuralForms\AI\AiManager::resolve();
-			$result   = $provider->polish_reply( $text, $entry, $form );
+			$result   = $provider->polish_reply( $text, $entry, $form, $options );
 			// Mirror the cloud's authoritative `credits_remaining` into the
 			// local cache so the Settings credits widget refreshes immediately.
 			PlanManager::apply_usage( is_array( $result['usage'] ?? null ) ? $result['usage'] : array() );
@@ -637,7 +675,7 @@ class EntriesEndpoint {
 			return new WP_Error(
 				'ai_polish_failed',
 				__( 'Neural AI could not refine the reply. Please try again.', 'neural-forms-lite' ),
-				array( 'status' => 502 )
+				array( 'status' => 424 )
 			);
 		}
 
@@ -653,12 +691,15 @@ class EntriesEndpoint {
 				'polished_reply' => $result['polished_reply'] ?? '',
 				'reply_draft'    => $text,
 				'ai_provider'    => $provider->provider_id(),
+				'reply_language' => $result['reply_language'] ?? '',
+				'meta'           => $translate_to !== '' ? array( 'translated_to' => $translate_to ) : array(),
 			)
 		);
 
 		return rest_ensure_response(
 			array(
 				'polished_reply' => $result['polished_reply'],
+				'reply_language' => $result['reply_language'] ?? '',
 				'usage'          => is_array( $result['usage'] ?? null ) ? $result['usage'] : array(),
 			)
 		);
@@ -840,6 +881,20 @@ class EntriesEndpoint {
 			$fields['needs_reply'] = $request->get_param( 'needs_reply' );
 		}
 
+		// 1.2.0 lead management (stage / owner / follow-up). Writes
+		// need the workflows capability (Pro); reads are always free.
+		$lead_patch = self::extract_lead_fields( $request->get_params() );
+		if ( $lead_patch ) {
+			if ( ! Capabilities::can( Capabilities::WORKFLOWS ) ) {
+				return Capabilities::locked_error( Capabilities::WORKFLOWS );
+			}
+			$lead_check = self::validate_lead_fields( $lead_patch );
+			if ( is_wp_error( $lead_check ) ) {
+				return $lead_check;
+			}
+			$fields = array_merge( $fields, $lead_patch );
+		}
+
 		// When an entry is being restored out of spam, clear the auto-spam flag
 		// so the "AI filtered" badge disappears and does not re-appear erroneously.
 		if (
@@ -871,14 +926,175 @@ class EntriesEndpoint {
 		// Return fresh row so the client applies confirmed values.
 		$entry = EntryRepository::get( $id );
 
+		if ( $lead_patch ) {
+			self::record_lead_activity( $id, $existing, $entry, $lead_patch );
+		}
+
 		return rest_ensure_response(
 			array(
-				'id'          => $entry['id'],
-				'status'      => $entry['status'],
-				'is_starred'  => $entry['is_starred'],
-				'needs_reply' => $entry['needs_reply'],
+				'id'                => $entry['id'],
+				'status'            => $entry['status'],
+				'is_starred'        => $entry['is_starred'],
+				'needs_reply'       => $entry['needs_reply'],
+				'assigned_to'       => $entry['assigned_to'],
+				'lead_stage'        => $entry['lead_stage'],
+				'follow_up_due'     => $entry['follow_up_due'],
+				'follow_up_done'    => $entry['follow_up_done'],
+				'follow_up_overdue' => $entry['follow_up_overdue'],
 			)
 		);
+	}
+
+	/**
+	 * GET /entries/{id}/activity — timeline rows, newest first.
+	 */
+	public function get_activity( WP_REST_Request $request ) {
+		$id = (int) $request['id'];
+		if ( ! EntryRepository::get( $id ) ) {
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+		return rest_ensure_response( EntryActivity::list( $id, 100 ) );
+	}
+
+	/**
+	 * GET /entries/assignees — users an entry can be assigned to.
+	 *
+	 * 1.2.0 keeps the existing single permission model: everyone who
+	 * can manage entries (manage_options) is assignable. A per-form
+	 * access model is a separate feature.
+	 */
+	public function get_assignees( WP_REST_Request $request ) {
+		return rest_ensure_response( self::assignable_users() );
+	}
+
+	/**
+	 * @return array[] [ { id, name, email, avatar }, ... ] sorted by name.
+	 */
+	public static function assignable_users(): array {
+		$users = get_users(
+			array(
+				'capability' => 'manage_options',
+				'orderby'    => 'display_name',
+				'order'      => 'ASC',
+				'number'     => 200,
+				'fields'     => array( 'ID', 'display_name', 'user_email' ),
+			)
+		);
+		$out = array();
+		foreach ( (array) $users as $u ) {
+			$out[] = array(
+				'id'     => (int) $u->ID,
+				'name'   => (string) $u->display_name,
+				'email'  => (string) $u->user_email,
+				'avatar' => function_exists( 'get_avatar_url' ) ? (string) get_avatar_url( (int) $u->ID, array( 'size' => 48 ) ) : '',
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Pick the lead-management keys out of a PATCH body (1.2.0).
+	 * Pure, so it is unit-testable without WordPress.
+	 *
+	 * @param array $params Request params.
+	 * @return array Subset with only assigned_to / lead_stage / follow_up_due / follow_up_done.
+	 */
+	public static function extract_lead_fields( array $params ): array {
+		$out = array();
+		foreach ( array( 'assigned_to', 'lead_stage', 'follow_up_due', 'follow_up_done' ) as $key ) {
+			if ( array_key_exists( $key, $params ) ) {
+				$out[ $key ] = $params[ $key ];
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Validate the VALUES of a lead patch (1.2.0).
+	 *
+	 *   assigned_to     0 / null (unassign) or the id of a user who can manage entries
+	 *   lead_stage      a registered stage id (LeadStages)
+	 *   follow_up_due   null / '' (clear) or a parseable date-time
+	 *   follow_up_done  0 / 1
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function validate_lead_fields( array $patch ) {
+		if ( array_key_exists( 'lead_stage', $patch ) ) {
+			$stage = LeadStages::sanitize_id( (string) $patch['lead_stage'] );
+			if ( $stage === '' || ! LeadStages::is_valid( $stage ) ) {
+				return new WP_Error( 'invalid_lead_stage', __( 'Unknown lead stage.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+		}
+		if ( array_key_exists( 'assigned_to', $patch ) ) {
+			$uid = (int) $patch['assigned_to'];
+			if ( $uid < 0 ) {
+				return new WP_Error( 'invalid_assignee', __( 'Invalid assignee.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+			if ( $uid > 0 && function_exists( 'user_can' ) && ! user_can( $uid, 'manage_options' ) ) {
+				return new WP_Error( 'invalid_assignee', __( 'That user cannot manage entries and cannot be assigned.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+		}
+		if ( array_key_exists( 'follow_up_due', $patch ) ) {
+			$raw = $patch['follow_up_due'];
+			if ( null !== $raw && $raw !== '' && null === EntryRepository::normalize_datetime( $raw ) ) {
+				return new WP_Error( 'invalid_follow_up', __( 'Follow-up date is not a valid date.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Write timeline rows for what a lead patch actually changed.
+	 */
+	private static function record_lead_activity( int $id, array $before, array $after, array $patch ): void {
+		if ( array_key_exists( 'assigned_to', $patch ) && ( $before['assigned_to'] ?? null ) !== ( $after['assigned_to'] ?? null ) ) {
+			$to   = $after['assigned_to'] ? get_userdata( (int) $after['assigned_to'] ) : null;
+			$name = $to && isset( $to->display_name ) ? (string) $to->display_name : '';
+			EntryActivity::record(
+				$id,
+				'entry.assigned',
+				$name !== ''
+					/* translators: %s: user display name */
+					? sprintf( __( 'Assigned to %s', 'neural-forms-lite' ), $name )
+					: __( 'Unassigned', 'neural-forms-lite' ),
+				array( 'from' => $before['assigned_to'] ?? null, 'to' => $after['assigned_to'] ?? null, 'to_name' => $name )
+			);
+		}
+		if ( array_key_exists( 'lead_stage', $patch ) && ( $before['lead_stage'] ?? '' ) !== ( $after['lead_stage'] ?? '' ) ) {
+			EntryActivity::record(
+				$id,
+				'entry.stage_changed',
+				sprintf(
+					/* translators: 1: previous stage, 2: new stage */
+					__( 'Stage changed from %1$s to %2$s', 'neural-forms-lite' ),
+					LeadStages::label( (string) ( $before['lead_stage'] ?? '' ) ),
+					LeadStages::label( (string) ( $after['lead_stage'] ?? '' ) )
+				),
+				array( 'from' => $before['lead_stage'] ?? null, 'to' => $after['lead_stage'] ?? null, 'source' => 'user' )
+			);
+		}
+		if ( array_key_exists( 'follow_up_due', $patch ) && ( $before['follow_up_due'] ?? null ) !== ( $after['follow_up_due'] ?? null ) ) {
+			if ( $after['follow_up_due'] ) {
+				EntryActivity::record(
+					$id,
+					'entry.follow_up_set',
+					/* translators: %s: date-time */
+					sprintf( __( 'Follow-up due %s', 'neural-forms-lite' ), (string) $after['follow_up_due'] ),
+					array( 'due' => $after['follow_up_due'] )
+				);
+			} else {
+				EntryActivity::record( $id, 'entry.follow_up_cleared', __( 'Follow-up cleared', 'neural-forms-lite' ) );
+			}
+		}
+		if ( array_key_exists( 'follow_up_done', $patch ) && (int) ( $before['follow_up_done'] ?? 0 ) !== (int) ( $after['follow_up_done'] ?? 0 ) ) {
+			EntryActivity::record(
+				$id,
+				'entry.follow_up_done',
+				$after['follow_up_done'] ? __( 'Follow-up marked done', 'neural-forms-lite' ) : __( 'Follow-up reopened', 'neural-forms-lite' ),
+				array( 'done' => (int) $after['follow_up_done'] )
+			);
+		}
 	}
 
 	/**
@@ -911,6 +1127,10 @@ class EntriesEndpoint {
 		}
 
 		$ok = EntryRepository::delete( $id );
+
+		if ( $ok ) {
+			EntryActivity::delete_for_entry( $id );
+		}
 
 		if ( ! $ok ) {
 			return new WP_Error(
@@ -1024,10 +1244,26 @@ class EntriesEndpoint {
 	}
 
 	/**
-	 * Return WP_Error 409 when the entry already has a queued or processing job.
+	 * Seconds a queue row may sit in 'processing' before it is treated as
+	 * orphaned (PHP timeout / fatal mid-run). Mirrors the 2-minute window
+	 * AIQueueProcessor::run() uses to re-claim stuck rows.
+	 */
+	const AI_JOB_ACTIVE_WINDOW = 120;
+
+	/**
+	 * Return WP_Error 409 only when a queue worker is genuinely mid-run on
+	 * this entry (status 'processing', claimed within AI_JOB_ACTIVE_WINDOW).
 	 *
-	 * Safety valve: if the entry claims to be busy but no active job exists in
-	 * the queue, the entry is orphaned - reset it so the user isn't locked out.
+	 * A job that is merely 'pending' means WP-Cron has not picked it up yet
+	 * (low-traffic site, DISABLE_WP_CRON without a system cron, object-cache
+	 * staleness…). The admin clicking "Analyze with AI" is the explicit
+	 * request to run it now, so those rows — and 'processing' rows older
+	 * than the window — are marked 'superseded' and the inline analysis
+	 * proceeds. Before 1.1.4 this returned 409 "already running" and the
+	 * entry stayed "Queued" forever on sites whose cron never fired.
+	 *
+	 * Safety valve: if the entry claims to be busy but no job row exists at
+	 * all, the entry is orphaned — reset it so the user isn't locked out.
 	 */
 	private function check_ai_not_busy( array $entry ) {
 		$busy = array( 'queued', 'processing' );
@@ -1035,36 +1271,81 @@ class EntriesEndpoint {
 			return true;
 		}
 
-		// Check if an active job actually exists for this entry.
 		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_queue';
 		// LIKE pattern interpolates (int) $entry['id'] - integer cast first, then
 		// passed via the %s placeholder which adds quoting. Safe from injection.
-		$active_job = $wpdb->get_var(
+		$jobs = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT COUNT(*) FROM %i
-				 WHERE ( payload LIKE %s OR payload LIKE %s )
+				'SELECT id, status, scheduled_at FROM %i
+				 WHERE payload LIKE %s
 				   AND status IN ( \'pending\', \'processing\' )
 				   AND attempts < %d',
-				$wpdb->prefix . 'neural_forms_queue',
-				// Delimited match: entry 12 must not match a job for entry 123.
-				'%"entry_id":' . (int) $entry['id'] . ',%',
-				'%"entry_id":' . (int) $entry['id'] . '}%',
+				$table,
+				'%"entry_id":' . (int) $entry['id'] . '%',
 				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
-			)
+			),
+			ARRAY_A
 		);
+		$jobs = is_array( $jobs ) ? $jobs : array();
 
-		if ( (int) $active_job > 0 ) {
+		$decision = self::classify_active_jobs( $jobs, time() );
+
+		if ( $decision['running'] ) {
 			return new WP_Error(
 				'ai_already_processing',
-				__( 'An Neural AI job for this entry is already running.', 'neural-forms-lite' ),
+				__( 'Neural AI is processing this entry right now. Please wait a moment and refresh.', 'neural-forms-lite' ),
 				array( 'status' => 409 )
 			);
 		}
 
-		// No active job - entry is orphaned. Reset so the user can retry.
-		\NeuralForms\AI\AIRepository::update_status( (int) $entry['id'], 'failed' );
+		foreach ( $decision['supersede'] as $job_id ) {
+			$wpdb->update(
+				$table,
+				array(
+					'status'       => 'superseded',
+					'processed_at' => current_time( 'mysql', true ),
+					'error'        => 'Superseded by a manual "Analyze with AI" run.',
+				),
+				array( 'id' => (int) $job_id ),
+				array( '%s', '%s', '%s' ),
+				array( '%d' )
+			);
+		}
+
+		if ( empty( $jobs ) ) {
+			// No job row at all - entry is orphaned. Reset so the user can retry.
+			\NeuralForms\AI\AIRepository::update_status( (int) $entry['id'], 'failed' );
+		}
 
 		return true;
+	}
+
+	/**
+	 * Decide what to do with the queue rows found for an entry.
+	 *
+	 * @param array<int, array{id:int|string,status:string,scheduled_at:string}> $jobs
+	 * @param int $now Unix timestamp.
+	 * @return array{running: bool, supersede: int[]}
+	 */
+	private static function classify_active_jobs( array $jobs, int $now ): array {
+		$running   = false;
+		$supersede = array();
+		foreach ( $jobs as $job ) {
+			$status = (string) ( $job['status'] ?? '' );
+			if ( 'processing' === $status ) {
+				$claimed = strtotime( (string) ( $job['scheduled_at'] ?? '' ) . ' UTC' );
+				if ( false !== $claimed && ( $now - $claimed ) < self::AI_JOB_ACTIVE_WINDOW ) {
+					$running = true;
+					continue;
+				}
+			}
+			$supersede[] = (int) $job['id'];
+		}
+		return array(
+			'running'   => $running,
+			'supersede' => $running ? array() : $supersede,
+		);
 	}
 
 	// Permission
@@ -1176,6 +1457,12 @@ class EntriesEndpoint {
 					return in_array( (int) $value, array( 0, 1 ), true );
 				},
 			),
+			// 1.2.0 lead management — values validated in update_entry()
+			// via validate_lead_fields() so the error messages are specific.
+			'assigned_to'    => array( 'required' => false ),
+			'lead_stage'     => array( 'required' => false, 'sanitize_callback' => 'sanitize_text_field' ),
+			'follow_up_due'  => array( 'required' => false ),
+			'follow_up_done' => array( 'required' => false ),
 		);
 	}
 

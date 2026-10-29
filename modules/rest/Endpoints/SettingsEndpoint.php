@@ -539,7 +539,7 @@ class SettingsEndpoint {
 			return new WP_Error(
 				'connection_failed',
 				$response->get_error_message(),
-				array( 'status' => 502 )
+				array( 'status' => 424 )
 			);
 		}
 

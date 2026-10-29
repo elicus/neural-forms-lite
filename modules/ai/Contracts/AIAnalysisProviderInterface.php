@@ -65,7 +65,7 @@ interface AIAnalysisProviderInterface {
 	 * }
 	 * @throws \RuntimeException On any transport or API failure.
 	 */
-	public function polish_reply( string $draft, array $entry, array $form ): array;
+	public function polish_reply( string $draft, array $entry, array $form, array $options = array() ): array;
 
 	/**
 	 * Short identifier for this provider implementation.

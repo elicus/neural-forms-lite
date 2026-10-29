@@ -42,6 +42,7 @@ import AiAnalysisCard from './AiAnalysisCard';
 import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
 import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines } from './helpers';
+import LeadPanel, { ActivityTimeline } from './LeadPanel';
 
 function StatusPill( { entry } ) {
 	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
@@ -459,6 +460,12 @@ export default function EntryDetail( {
 	draftFreshKey,
 	onToggleStar,
 	onMarkNeedsReply,
+	leadStages,
+	assignees,
+	onUpdateLead,
+	activityRefreshSignal,
+	onTranslate,
+	siteLanguage,
 } ) {
 	const [ needsReplyDismissed, setNeedsReplyDismissed ] = useState( false );
 
@@ -532,6 +539,14 @@ export default function EntryDetail( {
 					onDismiss={ () => setNeedsReplyDismissed( true ) }
 				/>
 			) }
+
+			<LeadPanel
+				entry={ entry }
+				capabilities={ capabilities }
+				leadStages={ leadStages }
+				assignees={ assignees }
+				onUpdateLead={ onUpdateLead }
+			/>
 
 			{ creditsExhausted && (
 				<aside className="neural-forms-entries-pro-notice neural-forms-entries-pro-notice--credits" role="status">
@@ -808,6 +823,13 @@ export default function EntryDetail( {
 						: __( 'Generating reply…', 'neural-forms-lite' )
 				}
 				freshKey={ draftFreshKey }
+				onTranslate={ onTranslate }
+				siteLanguage={ siteLanguage }
+			/>
+
+			<ActivityTimeline
+				entry={ entry }
+				refreshSignal={ activityRefreshSignal }
 			/>
 
 			<Conversation

@@ -34,9 +34,13 @@
  * nav collapses into a horizontal row of pills above the panel.
  */
 
-import { useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { useEffect, useState } from '@wordpress/element';
+import { __, sprintf } from '@wordpress/i18n';
 import IntegrationsSection from './IntegrationsSection';
+import api from '../api';
+import ConditionEditor, { describeConditional } from './ConditionEditor';
+import WorkflowsSection from './WorkflowsSection';
+import { flattenFields, toEditableConditional } from './schemaHelper';
 
 const BASE_SECTIONS = [
 	{ id: 'process_with_ai', label: 'Process with AI', hint: 'Decide how Neural Forms uses AI for this form.' },
@@ -45,6 +49,8 @@ const BASE_SECTIONS = [
 	{ id: 'on_success',   label: 'On success',   hint: 'What submitters see after a successful submit.' },
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
+	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
+	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
 ];
 
 /**
@@ -134,11 +140,255 @@ const STARTER_RESULT_MESSAGES = [
 	{ min: 80, max: 100, title: 'Excellent',      message: 'Great job! You passed with a strong score.' },
 ];
 
+/**
+ * Per-form AI behaviour (1.2.0, Pro): tone, language policy and a
+ * knowledge picker. Saved as settings.ai_behaviour and sent with every
+ * AI call for this form (the cloud applies the site-level business
+ * context otherwise). Knowledge items come from Pro's business-context
+ * endpoint; without Pro the section is an upsell.
+ */
+function AiBehaviourSection( { value, onChange } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.ai_business_context;
+	const [ knowledge, setKnowledge ] = useState( null );
+	const [ loadError, setLoadError ] = useState( '' );
+	const v = value || {};
+	const set = ( patch ) => onChange( { ...v, ...patch } );
+
+	useEffect( () => {
+		if ( ! unlocked ) return;
+		api( '/neural-forms-pro/v1/business-context' )
+			.then( ( res ) => setKnowledge( Array.isArray( res?.knowledge ) ? res.knowledge : [] ) )
+			.catch( ( e ) => { setKnowledge( [] ); setLoadError( e?.message || '' ); } );
+	}, [ unlocked ] );
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Give AI drafts for this form their own tone, reply language and a curated set of business facts (opening hours, services, prices, policies). Drafts then quote your approved knowledge and flag what they cannot answer instead of inventing it. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</div>
+		);
+	}
+
+	const selected = Array.isArray( v.knowledge_ids ) ? v.knowledge_ids : [];
+	const toggleId = ( id ) => set( { knowledge_ids: selected.includes( id ) ? selected.filter( ( x ) => x !== id ) : [ ...selected, id ] } );
+
+	return (
+		<div className="nf-ai-behaviour">
+			<label className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Tone for this form', 'neural-forms-lite' ) }</span>
+				<input type="text" maxLength={ 64 } value={ v.tone || '' } placeholder={ __( 'Leave empty to use the site-wide voice', 'neural-forms-lite' ) } onChange={ ( e ) => set( { tone: e.target.value } ) } />
+			</label>
+			<label className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Reply language', 'neural-forms-lite' ) }</span>
+				<select value={ v.language_mode || '' } onChange={ ( e ) => set( { language_mode: e.target.value || undefined, language: e.target.value ? ( v.language || '' ) : undefined } ) }>
+					<option value="">{ __( 'Use the site-wide policy', 'neural-forms-lite' ) }</option>
+					<option value="fixed">{ __( 'Always reply in a fixed language', 'neural-forms-lite' ) }</option>
+					<option value="fallback">{ __( "Visitor's language, fall back to a fixed one", 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+			{ v.language_mode && (
+				<label className="nf-form-settings__field">
+					<span className="nf-form-settings__label">{ __( 'Language code', 'neural-forms-lite' ) }</span>
+					<input type="text" maxLength={ 10 } value={ v.language || '' } placeholder="en, de, fr-CA" onChange={ ( e ) => set( { language: e.target.value } ) } />
+				</label>
+			) }
+			<div className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Knowledge this form may use', 'neural-forms-lite' ) }</span>
+				{ knowledge === null && <span className="nf-form-settings__hint">{ __( 'Loading business knowledge…', 'neural-forms-lite' ) }</span> }
+				{ knowledge && knowledge.length === 0 && (
+					<span className="nf-form-settings__hint">
+						{ loadError || __( 'No business knowledge yet. Add FAQs, services and policies under Settings → Business context; all enabled items are used until you pick some here.', 'neural-forms-lite' ) }
+					</span>
+				) }
+				{ knowledge && knowledge.length > 0 && (
+					<>
+						<span className="nf-form-settings__hint">{ __( 'Nothing ticked = every enabled item. Tick items to restrict this form to them.', 'neural-forms-lite' ) }</span>
+						<ul className="nf-ai-behaviour__knowledge">
+							{ knowledge.map( ( k ) => (
+								<li key={ k.id }>
+									<label>
+										<input type="checkbox" checked={ selected.includes( k.id ) } onChange={ () => toggleId( k.id ) } disabled={ ! k.enabled } />
+										<span>{ k.title }{ ! k.enabled ? ' ' + __( '(disabled)', 'neural-forms-lite' ) : '' }</span>
+										<em>{ k.type }</em>
+									</label>
+								</li>
+							) ) }
+						</ul>
+					</>
+				) }
+			</div>
+		</div>
+	);
+}
+
+/**
+ * Conditional confirmations / redirects (1.2.0, Pro).
+ *
+ * settings.on_success.rules = [ { id, conditions, mode, message, url } ]
+ * Ordered; the server picks the FIRST matching rule after validation and
+ * falls back to the default outcome above when none matches. Flat rules
+ * and condition groups both use the shared ConditionEditor.
+ */
+const MAX_CONFIRMATION_RULES = 10;
+
+function readCaps() {
+	if ( typeof window === 'undefined' ) return {};
+	return ( window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+}
+
+function newRuleId() {
+	return 'rule_' + Math.random().toString( 36 ).slice( 2, 10 );
+}
+
+function ConfirmationRules( { rules, onChange, fields } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.conditional_logic_advanced;
+	const sources  = flattenFields( Array.isArray( fields ) ? fields : [] ).filter( ( n ) => n && n.id && n.type !== 'hidden' );
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Show a different message or redirect based on the answers — for example send “Website” enquiries to a booking page. Conditional confirmations are available in Neural Forms Pro.', 'neural-forms-lite' ) }
+				{ rules.length > 0 && (
+					<>
+						{ ' ' }
+						{ sprintf(
+							/* translators: %d: number of saved rules */
+							__( 'This form has %d saved rule(s) that keep working.', 'neural-forms-lite' ),
+							rules.length
+						) }
+					</>
+				) }
+			</div>
+		);
+	}
+
+	const update = ( i, patch ) => onChange( rules.map( ( r, k ) => ( k === i ? { ...r, ...patch } : r ) ) );
+	const remove = ( i ) => onChange( rules.filter( ( _, k ) => k !== i ) );
+	const move   = ( i, dir ) => {
+		const j = i + dir;
+		if ( j < 0 || j >= rules.length ) return;
+		const next = rules.slice();
+		const t = next[ i ]; next[ i ] = next[ j ]; next[ j ] = t;
+		onChange( next );
+	};
+	const add = () => {
+		if ( rules.length >= MAX_CONFIRMATION_RULES ) return;
+		onChange( [ ...rules, {
+			id:         newRuleId(),
+			conditions: { enabled: true, version: 2, action: 'show', match: 'all', rules: [ { field: ( sources[ 0 ] && sources[ 0 ].id ) || '', operator: 'equals', value: '' } ], groups: [] },
+			mode:       'message',
+			message:    '',
+			url:        '',
+		} ] );
+	};
+
+	// Two rules with identical conditions can never both be useful: the
+	// second is unreachable. Flag it so ordering surprises are visible.
+	const signatures = rules.map( ( r ) => JSON.stringify( toEditableConditional( r.conditions ) ) );
+
+	return (
+		<div className="nf-form-settings__rules-wrap">
+			<h4 className="nf-form-settings__subtitle">{ __( 'Conditional confirmations', 'neural-forms-lite' ) }</h4>
+			<p className="nf-form-settings__rules-note">
+				{ __( 'Rules are checked in order after a successful submission. The first matching rule decides what the visitor sees; when none matches, the default above is used.', 'neural-forms-lite' ) }
+			</p>
+
+			<div className="nf-form-settings__rules">
+				{ rules.map( ( rule, i ) => {
+					const duplicateOf = signatures.indexOf( signatures[ i ] );
+					const summary = describeConditional( rule.conditions, sources );
+					return (
+						<div className="nf-form-settings__rule" key={ rule.id || i }>
+							<div className="nf-form-settings__rule-head">
+								<strong>{ sprintf( __( 'Rule %d', 'neural-forms-lite' ), i + 1 ) }</strong>
+								<button type="button" onClick={ () => move( i, -1 ) } disabled={ i === 0 } aria-label={ __( 'Move up', 'neural-forms-lite' ) }>↑</button>
+								<button type="button" onClick={ () => move( i, 1 ) } disabled={ i === rules.length - 1 } aria-label={ __( 'Move down', 'neural-forms-lite' ) }>↓</button>
+								<button type="button" onClick={ () => remove( i ) } aria-label={ __( 'Remove rule', 'neural-forms-lite' ) }>{ __( 'Remove', 'neural-forms-lite' ) }</button>
+							</div>
+
+							<ConditionEditor
+								value={ { ...toEditableConditional( rule.conditions ), enabled: true } }
+								onChange={ ( next ) => update( i, { conditions: { ...next, enabled: true } } ) }
+								sources={ sources }
+								allowGroups
+								actionLabels={ null }
+								showEnable={ false }
+								emptySourcesHint={ __( 'Add a field to this form first.', 'neural-forms-lite' ) }
+							/>
+
+							{ duplicateOf !== i && (
+								<p className="nf-inspector__cl-hint nf-inspector__cl-hint--pro">
+									{ sprintf(
+										/* translators: %d: rule number */
+										__( 'Same conditions as rule %d, which runs first — this rule can never match.', 'neural-forms-lite' ),
+										duplicateOf + 1
+									) }
+								</p>
+							) }
+
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Then', 'neural-forms-lite' ) }</span>
+								<select
+									value={ rule.mode === 'redirect' ? 'redirect' : 'message' }
+									onChange={ ( e ) => update( i, { mode: e.target.value } ) }
+								>
+									<option value="message">{ __( 'Show a message', 'neural-forms-lite' ) }</option>
+									<option value="redirect">{ __( 'Redirect to a URL', 'neural-forms-lite' ) }</option>
+								</select>
+							</label>
+
+							{ rule.mode !== 'redirect' && (
+								<label className="nf-inspector__field">
+									<span className="nf-inspector__label">{ __( 'Message', 'neural-forms-lite' ) }</span>
+									<textarea
+										rows={ 3 }
+										value={ rule.message || '' }
+										onChange={ ( e ) => update( i, { message: e.target.value } ) }
+									/>
+								</label>
+							) }
+							{ rule.mode === 'redirect' && (
+								<label className="nf-inspector__field">
+									<span className="nf-inspector__label">{ __( 'Redirect URL', 'neural-forms-lite' ) }</span>
+									<input
+										type="url"
+										value={ rule.url || '' }
+										onChange={ ( e ) => update( i, { url: e.target.value } ) }
+										placeholder="https://"
+									/>
+								</label>
+							) }
+
+							{ summary && (
+								<p className="nf-inspector__cl-summary">
+									{ sprintf( __( 'When %s.', 'neural-forms-lite' ), summary ) }
+								</p>
+							) }
+						</div>
+					);
+				} ) }
+			</div>
+
+			<button
+				type="button"
+				className="nf-form-settings__rules-add"
+				onClick={ add }
+				disabled={ rules.length >= MAX_CONFIRMATION_RULES || sources.length === 0 }
+			>
+				{ __( '+ Add rule', 'neural-forms-lite' ) }
+			</button>
+		</div>
+	);
+}
+
 export default function FormSettings( {
 	settings,
 	onChange,
 	formSchemaSettings,
 	onChangeFormSchemaSettings,
+	formId,
 	hasQuiz,
 	detectedType,
 	fields,
@@ -374,6 +624,16 @@ export default function FormSettings( {
 									/>
 								</label>
 							) }
+
+							<ConfirmationRules
+								rules={ Array.isArray( onSuccess.rules ) ? onSuccess.rules : [] }
+								onChange={ ( rules ) => {
+									const next = { ...onSuccess };
+									if ( rules.length ) next.rules = rules; else delete next.rules;
+									set( { on_success: next } );
+								} }
+								fields={ fields }
+							/>
 						</div>
 					) }
 
@@ -410,6 +670,25 @@ export default function FormSettings( {
 									/>
 								</label>
 							) }
+						</div>
+					) }
+
+					{ section === 'workflows' && (
+						<div className="nf-form-settings__body">
+							<WorkflowsSection formId={ formId } fields={ fields } />
+						</div>
+					) }
+
+					{ section === 'ai_behaviour' && (
+						<div className="nf-form-settings__body">
+							<AiBehaviourSection
+								value={ s.ai_behaviour && typeof s.ai_behaviour === 'object' ? s.ai_behaviour : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									if ( next && ( next.tone || next.language_mode || ( next.knowledge_ids && next.knowledge_ids.length ) ) ) copy.ai_behaviour = next; else delete copy.ai_behaviour;
+									onChange( copy );
+								} }
+							/>
 						</div>
 					) }
 
