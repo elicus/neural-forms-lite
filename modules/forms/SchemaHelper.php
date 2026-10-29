@@ -644,7 +644,7 @@ class SchemaHelper {
 			$style = self::DEFAULT_SECTION_STYLE;
 		}
 
-		return array(
+		$out = array(
 			'id'          => isset( $section['id'] ) && is_string( $section['id'] ) && $section['id'] !== ''
 				? $section['id']
 				: self::generate_section_id(),
@@ -653,6 +653,11 @@ class SchemaHelper {
 			'description' => isset( $section['description'] ) && is_string( $section['description'] ) ? $section['description'] : '',
 			'settings'    => array( 'style' => $style ),
 		);
+		// 1.2.0: sections may carry conditional logic (hides the heading).
+		if ( isset( $section['conditional_logic'] ) && is_array( $section['conditional_logic'] ) ) {
+			$out['conditional_logic'] = $section['conditional_logic'];
+		}
+		return $out;
 	}
 
 	/** Default settings for a freshly-created step. */
@@ -725,7 +730,7 @@ class SchemaHelper {
 			}
 		}
 
-		return array(
+		$out = array(
 			'id'          => isset( $step['id'] ) && is_string( $step['id'] ) && $step['id'] !== ''
 				? $step['id']
 				: self::generate_step_id(),
@@ -735,6 +740,11 @@ class SchemaHelper {
 			'settings'    => $settings,
 			'fields'      => $children,
 		);
+		// 1.2.0: steps may carry conditional logic (step eligibility).
+		if ( isset( $step['conditional_logic'] ) && is_array( $step['conditional_logic'] ) ) {
+			$out['conditional_logic'] = $step['conditional_logic'];
+		}
+		return $out;
 	}
 
 	/**
@@ -987,5 +997,65 @@ class SchemaHelper {
 			return $str . ' MB';
 		}
 		return (string) max( 1, (int) round( $bytes / 1024 ) ) . ' KB';
+	}
+
+	/**
+	 * Top-level steps with their conditional logic and the ids of the
+	 * fields they contain (1.2.0). Used by SubmitEndpoint to hide every
+	 * field of an ineligible step and by FormValidator to check that a
+	 * step only depends on fields from earlier steps.
+	 *
+	 * @param array $nodes Top-level schema nodes.
+	 * @return array[] [ { id, index, logic|null, field_ids[] }, ... ] in order.
+	 */
+	public static function step_logic_map( array $nodes ): array {
+		$out   = array();
+		$index = 0;
+		foreach ( $nodes as $node ) {
+			if ( ! self::is_step( $node ) ) {
+				continue;
+			}
+			$fields = is_array( $node['fields'] ?? null ) ? $node['fields'] : array();
+			$ids    = array();
+			foreach ( self::flatten_fields( $fields ) as $f ) {
+				$fid = (string) ( $f['id'] ?? '' );
+				if ( $fid !== '' ) {
+					$ids[] = $fid;
+				}
+			}
+			$logic = isset( $node['conditional_logic'] ) && is_array( $node['conditional_logic'] ) ? $node['conditional_logic'] : null;
+			$out[] = array(
+				'id'        => (string) ( $node['id'] ?? '' ),
+				'index'     => $index,
+				'logic'     => $logic,
+				'field_ids' => $ids,
+			);
+			$index++;
+		}
+		return $out;
+	}
+
+	/**
+	 * Every section node (top level or inside a step) with its logic.
+	 *
+	 * @return array[] [ { id, logic|null }, ... ]
+	 */
+	public static function section_logic_map( array $nodes ): array {
+		$out = array();
+		foreach ( $nodes as $node ) {
+			if ( self::is_section( $node ) ) {
+				$out[] = array(
+					'id'    => (string) ( $node['id'] ?? '' ),
+					'logic' => isset( $node['conditional_logic'] ) && is_array( $node['conditional_logic'] ) ? $node['conditional_logic'] : null,
+				);
+				continue;
+			}
+			if ( self::is_step( $node ) && is_array( $node['fields'] ?? null ) ) {
+				foreach ( self::section_logic_map( $node['fields'] ) as $s ) {
+					$out[] = $s;
+				}
+			}
+		}
+		return $out;
 	}
 }

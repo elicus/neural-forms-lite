@@ -312,6 +312,12 @@ class FormsEndpoint {
 		// FormSettingsSanitizer for the contract.
 		$clean_settings = FormSettingsSanitizer::sanitize( $request->get_param( 'settings' ) ?? array() );
 
+		// 1.2.0: conditional confirmations reference schema fields.
+		$settings_check = FormValidator::validate_settings_logic( $clean_settings, is_array( $schema ) ? $schema : array() );
+		if ( is_wp_error( $settings_check ) ) {
+			return $settings_check;
+		}
+
 		$id = FormRepository::create(
 			array(
 				'name'        => $name,
@@ -399,6 +405,21 @@ class FormsEndpoint {
 		$clean_settings = null !== $settings_param
 			? FormSettingsSanitizer::sanitize( $settings_param )
 			: null;
+
+		// 1.2.0: conditional confirmations reference schema fields —
+		// validate against the schema being saved, or the stored one
+		// when only settings were sent.
+		if ( is_array( $clean_settings ) ) {
+			$schema_for_check = is_array( $schema ) ? $schema : null;
+			if ( null === $schema_for_check ) {
+				$existing         = FormRepository::find( (int) $request->get_param( 'id' ) );
+				$schema_for_check = is_array( $existing['form_schema'] ?? null ) ? $existing['form_schema'] : array();
+			}
+			$settings_check = FormValidator::validate_settings_logic( $clean_settings, $schema_for_check );
+			if ( is_wp_error( $settings_check ) ) {
+				return $settings_check;
+			}
+		}
 
 		// Use array_key_exists so an explicit null description clears the field.
 		$data = array_filter(

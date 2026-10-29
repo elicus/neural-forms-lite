@@ -35,8 +35,10 @@
  */
 
 import { useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import IntegrationsSection from './IntegrationsSection';
+import ConditionEditor, { describeConditional } from './ConditionEditor';
+import { flattenFields, toEditableConditional } from './schemaHelper';
 
 const BASE_SECTIONS = [
 	{ id: 'process_with_ai', label: 'Process with AI', hint: 'Decide how Neural Forms uses AI for this form.' },
@@ -133,6 +135,167 @@ const STARTER_RESULT_MESSAGES = [
 	{ min: 50, max: 79, title: 'Good attempt',    message: 'Nice work. Review the explanations and try again.' },
 	{ min: 80, max: 100, title: 'Excellent',      message: 'Great job! You passed with a strong score.' },
 ];
+
+/**
+ * Conditional confirmations / redirects (1.2.0, Pro).
+ *
+ * settings.on_success.rules = [ { id, conditions, mode, message, url } ]
+ * Ordered; the server picks the FIRST matching rule after validation and
+ * falls back to the default outcome above when none matches. Flat rules
+ * and condition groups both use the shared ConditionEditor.
+ */
+const MAX_CONFIRMATION_RULES = 10;
+
+function readCaps() {
+	if ( typeof window === 'undefined' ) return {};
+	return ( window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+}
+
+function newRuleId() {
+	return 'rule_' + Math.random().toString( 36 ).slice( 2, 10 );
+}
+
+function ConfirmationRules( { rules, onChange, fields } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.conditional_logic_advanced;
+	const sources  = flattenFields( Array.isArray( fields ) ? fields : [] ).filter( ( n ) => n && n.id && n.type !== 'hidden' );
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Show a different message or redirect based on the answers — for example send “Website” enquiries to a booking page. Conditional confirmations are available in Neural Forms Pro.', 'neural-forms-lite' ) }
+				{ rules.length > 0 && (
+					<>
+						{ ' ' }
+						{ sprintf(
+							/* translators: %d: number of saved rules */
+							__( 'This form has %d saved rule(s) that keep working.', 'neural-forms-lite' ),
+							rules.length
+						) }
+					</>
+				) }
+			</div>
+		);
+	}
+
+	const update = ( i, patch ) => onChange( rules.map( ( r, k ) => ( k === i ? { ...r, ...patch } : r ) ) );
+	const remove = ( i ) => onChange( rules.filter( ( _, k ) => k !== i ) );
+	const move   = ( i, dir ) => {
+		const j = i + dir;
+		if ( j < 0 || j >= rules.length ) return;
+		const next = rules.slice();
+		const t = next[ i ]; next[ i ] = next[ j ]; next[ j ] = t;
+		onChange( next );
+	};
+	const add = () => {
+		if ( rules.length >= MAX_CONFIRMATION_RULES ) return;
+		onChange( [ ...rules, {
+			id:         newRuleId(),
+			conditions: { enabled: true, version: 2, action: 'show', match: 'all', rules: [ { field: ( sources[ 0 ] && sources[ 0 ].id ) || '', operator: 'equals', value: '' } ], groups: [] },
+			mode:       'message',
+			message:    '',
+			url:        '',
+		} ] );
+	};
+
+	// Two rules with identical conditions can never both be useful: the
+	// second is unreachable. Flag it so ordering surprises are visible.
+	const signatures = rules.map( ( r ) => JSON.stringify( toEditableConditional( r.conditions ) ) );
+
+	return (
+		<div className="nf-form-settings__rules-wrap">
+			<h4 className="nf-form-settings__subtitle">{ __( 'Conditional confirmations', 'neural-forms-lite' ) }</h4>
+			<p className="nf-form-settings__rules-note">
+				{ __( 'Rules are checked in order after a successful submission. The first matching rule decides what the visitor sees; when none matches, the default above is used.', 'neural-forms-lite' ) }
+			</p>
+
+			<div className="nf-form-settings__rules">
+				{ rules.map( ( rule, i ) => {
+					const duplicateOf = signatures.indexOf( signatures[ i ] );
+					const summary = describeConditional( rule.conditions, sources );
+					return (
+						<div className="nf-form-settings__rule" key={ rule.id || i }>
+							<div className="nf-form-settings__rule-head">
+								<strong>{ sprintf( __( 'Rule %d', 'neural-forms-lite' ), i + 1 ) }</strong>
+								<button type="button" onClick={ () => move( i, -1 ) } disabled={ i === 0 } aria-label={ __( 'Move up', 'neural-forms-lite' ) }>↑</button>
+								<button type="button" onClick={ () => move( i, 1 ) } disabled={ i === rules.length - 1 } aria-label={ __( 'Move down', 'neural-forms-lite' ) }>↓</button>
+								<button type="button" onClick={ () => remove( i ) } aria-label={ __( 'Remove rule', 'neural-forms-lite' ) }>{ __( 'Remove', 'neural-forms-lite' ) }</button>
+							</div>
+
+							<ConditionEditor
+								value={ { ...toEditableConditional( rule.conditions ), enabled: true } }
+								onChange={ ( next ) => update( i, { conditions: { ...next, enabled: true } } ) }
+								sources={ sources }
+								allowGroups
+								actionLabels={ null }
+								showEnable={ false }
+								emptySourcesHint={ __( 'Add a field to this form first.', 'neural-forms-lite' ) }
+							/>
+
+							{ duplicateOf !== i && (
+								<p className="nf-inspector__cl-hint nf-inspector__cl-hint--pro">
+									{ sprintf(
+										/* translators: %d: rule number */
+										__( 'Same conditions as rule %d, which runs first — this rule can never match.', 'neural-forms-lite' ),
+										duplicateOf + 1
+									) }
+								</p>
+							) }
+
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Then', 'neural-forms-lite' ) }</span>
+								<select
+									value={ rule.mode === 'redirect' ? 'redirect' : 'message' }
+									onChange={ ( e ) => update( i, { mode: e.target.value } ) }
+								>
+									<option value="message">{ __( 'Show a message', 'neural-forms-lite' ) }</option>
+									<option value="redirect">{ __( 'Redirect to a URL', 'neural-forms-lite' ) }</option>
+								</select>
+							</label>
+
+							{ rule.mode !== 'redirect' && (
+								<label className="nf-inspector__field">
+									<span className="nf-inspector__label">{ __( 'Message', 'neural-forms-lite' ) }</span>
+									<textarea
+										rows={ 3 }
+										value={ rule.message || '' }
+										onChange={ ( e ) => update( i, { message: e.target.value } ) }
+									/>
+								</label>
+							) }
+							{ rule.mode === 'redirect' && (
+								<label className="nf-inspector__field">
+									<span className="nf-inspector__label">{ __( 'Redirect URL', 'neural-forms-lite' ) }</span>
+									<input
+										type="url"
+										value={ rule.url || '' }
+										onChange={ ( e ) => update( i, { url: e.target.value } ) }
+										placeholder="https://"
+									/>
+								</label>
+							) }
+
+							{ summary && (
+								<p className="nf-inspector__cl-summary">
+									{ sprintf( __( 'When %s.', 'neural-forms-lite' ), summary ) }
+								</p>
+							) }
+						</div>
+					);
+				} ) }
+			</div>
+
+			<button
+				type="button"
+				className="nf-form-settings__rules-add"
+				onClick={ add }
+				disabled={ rules.length >= MAX_CONFIRMATION_RULES || sources.length === 0 }
+			>
+				{ __( '+ Add rule', 'neural-forms-lite' ) }
+			</button>
+		</div>
+	);
+}
 
 export default function FormSettings( {
 	settings,
@@ -374,6 +537,16 @@ export default function FormSettings( {
 									/>
 								</label>
 							) }
+
+							<ConfirmationRules
+								rules={ Array.isArray( onSuccess.rules ) ? onSuccess.rules : [] }
+								onChange={ ( rules ) => {
+									const next = { ...onSuccess };
+									if ( rules.length ) next.rules = rules; else delete next.rules;
+									set( { on_success: next } );
+								} }
+								fields={ fields }
+							/>
 						</div>
 					) }
 

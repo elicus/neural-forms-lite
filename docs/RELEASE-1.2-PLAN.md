@@ -191,7 +191,7 @@ Pro `Unlocker.php` adds three `__return_true` lines. Cloud plan gating stays ind
 |---|---|---|
 | A0 (this document) | code map, contracts, decisions, version bump on dev | owner sign-off on §1 and §9 |
 | A1 ✅ 2026-10-29 | `ConditionEngine` (PHP + JS), v2 normaliser, flat All/Any + show/hide editor, fixtures, Lite capability stubs, Pro unlock lines | CL1 to CL4 pass on PHP 7.4 and 8.2 and Node |
-| A2 | sections, step eligibility, conditional confirmations, builder validation, Pro unlock | all CL criteria; manual CL9 pass; shortcode / block / Divi smoke |
+| A2 ✅ 2026-10-29 | sections, step eligibility, conditional confirmations, builder validation, Pro unlock | CL1–CL8 automated; CL9 (keyboard / screen reader on a branching multi-step form) and CL10 (shortcode / block / Divi smoke) are manual checks still to run in A6 |
 | A3 | DB 1.2.0 migration, entry columns, activity log, entry PATCH/list additions, inbox controls, Overdue view | migration rerun-safe; privacy export/erase cover new columns |
 | A4 | WorkflowEngine, queue processor, six Lite actions, Pro actions filter, REST, editor, test run, history, processing health | WF1 to WF12 |
 | A5 | cloud business-context storage + routes + prompt block + response fields; Pro card; Lite `ai_behaviour`, `ai_exclude`, carousel sources and warnings, translation toggle, reviewed_by | AI1 to AI9; API suite green; deploy to s2 |

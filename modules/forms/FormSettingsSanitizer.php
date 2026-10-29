@@ -57,6 +57,9 @@ defined( 'ABSPATH' ) || exit;
  */
 final class FormSettingsSanitizer {
 
+	/** Upper bound on conditional confirmation rules per form (1.2.0). */
+	const MAX_CONFIRMATION_RULES = 10;
+
 	// HubSpot form IDs are GUID-shaped: alphanumeric + dashes (we also
 	// allow underscores defensively in case HubSpot ever extends it).
 	const HS_FORM_ID_PATTERN = '/^[A-Za-z0-9_\-]+$/';
@@ -288,6 +291,9 @@ final class FormSettingsSanitizer {
 		}
 
 		$out = $settings;
+		if ( isset( $out['on_success'] ) && is_array( $out['on_success'] ) ) {
+			$out['on_success'] = self::sanitize_on_success( $out['on_success'] );
+		}
 		if ( array_key_exists( 'integrations', $out ) ) {
 			$clean = self::sanitize_integrations( $out['integrations'] );
 			if ( empty( $clean ) ) {
@@ -298,6 +304,63 @@ final class FormSettingsSanitizer {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * Sanitize `settings.on_success` (1.2.0). The default outcome
+	 * (mode / message / url) round-trips as before; the optional
+	 * `rules[]` list (conditional confirmations, Pro) is normalised:
+	 *
+	 *   rules[] = { id, conditions: <ConditionEngine v2, enabled>,
+	 *               mode: message|redirect, message, url }
+	 *
+	 * Unknown keys are dropped, URLs go through esc_url_raw, messages
+	 * through wp_kses_post, at most MAX_CONFIRMATION_RULES rules are
+	 * kept, and a rule without any usable condition is dropped. The
+	 * schema-aware checks (field references exist, Pro unlocked) run in
+	 * FormValidator::validate_settings_logic() from FormsEndpoint.
+	 *
+	 * @param array $on_success
+	 * @return array
+	 */
+	public static function sanitize_on_success( array $on_success ): array {
+		if ( ! array_key_exists( 'rules', $on_success ) ) {
+			return $on_success;
+		}
+		$rules_in = is_array( $on_success['rules'] ) ? $on_success['rules'] : array();
+		$rules    = array();
+		foreach ( $rules_in as $rule ) {
+			if ( ! is_array( $rule ) ) {
+				continue;
+			}
+			$conditions = is_array( $rule['conditions'] ?? null ) ? $rule['conditions'] : array();
+			$norm       = ConditionEngine::normalize( $conditions );
+			$norm['enabled'] = true;
+			if ( ! $norm['rules'] && ! $norm['groups'] ) {
+				continue;
+			}
+			$id = isset( $rule['id'] ) && is_scalar( $rule['id'] ) ? sanitize_key( (string) $rule['id'] ) : '';
+			if ( $id === '' ) {
+				$id = 'rule_' . substr( md5( (string) wp_json_encode( $norm ) . count( $rules ) ), 0, 8 );
+			}
+			$mode = ( $rule['mode'] ?? 'message' ) === 'redirect' ? 'redirect' : 'message';
+			$rules[] = array(
+				'id'         => $id,
+				'conditions' => $norm,
+				'mode'       => $mode,
+				'message'    => isset( $rule['message'] ) && is_string( $rule['message'] ) ? wp_kses_post( $rule['message'] ) : '',
+				'url'        => isset( $rule['url'] ) && is_string( $rule['url'] ) ? esc_url_raw( $rule['url'] ) : '',
+			);
+			if ( count( $rules ) >= self::MAX_CONFIRMATION_RULES ) {
+				break;
+			}
+		}
+		if ( $rules ) {
+			$on_success['rules'] = $rules;
+		} else {
+			unset( $on_success['rules'] );
+		}
+		return $on_success;
 	}
 
 	/**

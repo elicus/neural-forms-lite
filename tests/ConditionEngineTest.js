@@ -55,7 +55,8 @@ const frontend = new Function(
 	extract( frontSrc, 'evaluateCondition' ) + '\n' +
 	extract( frontSrc, 'normalizeConditional' ) + '\n' +
 	extract( frontSrc, 'evaluateConditionTree' ) + '\n' +
-	'return { evaluateCondition, normalizeConditional, evaluateConditionTree };'
+	extract( frontSrc, 'computeStepEligibility' ) + '\n' +
+	'return { evaluateCondition, normalizeConditional, evaluateConditionTree, computeStepEligibility };'
 )();
 
 const builder = new Function(
@@ -112,6 +113,38 @@ for ( const c of fixtures.resolve ) {
 		}
 	} while ( changed && ++guard < 50 );
 	check( 'resolve: ' + c.name, Object.keys( hidden ).sort(), c.expected_hidden.slice().sort() );
+}
+
+// ── step eligibility fixtures (computeStepEligibility) ──────────────
+function flattenIds( nodes ) {
+	const out = [];
+	for ( const n of nodes || [] ) {
+		if ( ! n ) continue;
+		if ( n.type === 'step' ) { out.push( ...flattenIds( n.fields ) ); continue; }
+		if ( n.type === 'row' ) { for ( const c of n.columns || [] ) out.push( ...flattenIds( c.fields ) ); continue; }
+		if ( n.type === 'section' || n.type === 'welcome_screen' ) continue;
+		if ( n.id ) out.push( n );
+	}
+	return out;
+}
+for ( const c of fixtures.resolve_steps || [] ) {
+	const types = {};
+	for ( const f of flattenIds( c.nodes ) ) types[ f.id ] = f.type;
+	const stepMeta = c.nodes.filter( ( n ) => n.type === 'step' ).map( ( st ) => ( {
+		tree:     st.conditional_logic && st.conditional_logic.enabled ? frontend.normalizeConditional( st.conditional_logic ) : null,
+		fieldIds: flattenIds( st.fields ).map( ( f ) => f.id ),
+	} ) );
+	// Field-level logic hidden set, as updateConditionalFields would compute it
+	// (fields in skipped steps count as unavailable via the step pass).
+	const getter = ( id ) => domValue( c.data, types, id );
+	const fieldLogic = flattenIds( c.nodes ).filter( ( f ) => f.conditional_logic && f.conditional_logic.enabled );
+	const hiddenFields = {};
+	for ( const f of fieldLogic ) {
+		const tree = frontend.normalizeConditional( f.conditional_logic );
+		if ( tree && ! frontend.evaluateConditionTree( tree, getter, ( id ) => !! hiddenFields[ id ] ) ) hiddenFields[ f.id ] = true;
+	}
+	const eligible = frontend.computeStepEligibility( stepMeta, getter, ( id ) => !! hiddenFields[ id ] );
+	check( 'steps: ' + c.name, eligible, c.expected_eligible );
 }
 
 // ── normaliser parity: frontend vs builder copy ─────────────────────

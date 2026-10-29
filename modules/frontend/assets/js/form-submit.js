@@ -800,6 +800,19 @@
 						// moment showSuccess() runs.
 						populateDynamicResults( form, polls, quiz );
 
+						// 1.2.0: a conditional confirmation chosen by the
+						// server overrides the form's default outcome.
+						var outcome = ( payload && payload.outcome && typeof payload.outcome === 'object' ) ? payload.outcome : null;
+						if ( outcome && outcome.mode === 'redirect' && outcome.url ) {
+							try { window.location.assign( outcome.url ); } catch ( navErr ) { window.location.href = outcome.url; }
+							break;
+						}
+						if ( outcome && outcome.mode === 'message' ) {
+							applySuccessMessage( form, outcome.message || '' );
+							showSuccess( form );
+							break;
+						}
+
 						if ( ! redirectIfConfigured( form, 'success' ) ) {
 							showSuccess( form );
 						}
@@ -1228,9 +1241,49 @@
 			if ( node.hasAttribute( 'data-conditional' ) && node.style.display === 'none' ) {
 				return true;
 			}
+			// 1.2.0: a step skipped by conditional step logic. (Inactive
+			// steps are display:none too, so the marker is a class, not
+			// the display state.)
+			if ( node.classList && node.classList.contains( 'neural-forms-form__step--skipped' ) ) {
+				return true;
+			}
 			node = node.parentElement;
 		}
 		return false;
+	}
+
+	/**
+	 * Decide which steps are eligible (1.2.0, Pro step logic).
+	 *
+	 * Pure: no DOM. Mirrors the step pass in
+	 * SubmitEndpoint::resolve_hidden_field_ids(). A step with no logic
+	 * is always eligible. A step whose logic fails is skipped, and
+	 * every field inside it counts as unavailable for later rules.
+	 *
+	 * @param  {Array}    steps          [ { tree: Object|null, fieldIds: string[] } ] in order.
+	 * @param  {Function} getValue       fieldId → current string value.
+	 * @param  {Function} isHiddenField  fieldId → true when hidden by field logic.
+	 * @return {boolean[]}               eligible flag per step index.
+	 */
+	function computeStepEligibility( steps, getValue, isHiddenField ) {
+		var unavailable = {};
+		var eligible    = [];
+		for ( var i = 0; i < steps.length; i++ ) {
+			var st = steps[ i ];
+			var ok = true;
+			if ( st.tree ) {
+				ok = evaluateConditionTree( st.tree, getValue, function ( id ) {
+					return !! unavailable[ id ] || ( isHiddenField ? isHiddenField( id ) : false );
+				} );
+			}
+			eligible.push( ok );
+			if ( ! ok ) {
+				for ( var j = 0; j < st.fieldIds.length; j++ ) {
+					unavailable[ st.fieldIds[ j ] ] = true;
+				}
+			}
+		}
+		return eligible;
 	}
 
 	// Serialization
@@ -2114,6 +2167,23 @@
 	}
 
 	/**
+	 * Replace the default success copy with a server-chosen message
+	 * (conditional confirmation). The message was passed through
+	 * wp_kses_post on the server, so it may carry basic HTML.
+	 *
+	 * @param {HTMLFormElement} form
+	 * @param {string} message
+	 */
+	function applySuccessMessage( form, message ) {
+		if ( ! message ) return;
+		var wrap = form.parentElement;
+		var p    = wrap ? wrap.querySelector( '.neural-forms-form__success-message' ) : null;
+		if ( p ) {
+			p.innerHTML = message;
+		}
+	}
+
+	/**
 	 * 201 - Hide the form, reveal the success message.
 	 *
 	 * .neural-forms-form__success is a sibling of <form> inside .neural-forms-form-wrap,
@@ -2781,6 +2851,82 @@
 
 		var current = 0;
 
+		// 1.2.0: step eligibility. Each step may carry
+		// data-conditional-step (normalised v2 tree). Skipped steps get
+		// .neural-forms-form__step--skipped so the serializer drops their
+		// values and navigation jumps over them.
+		var stepMeta = [];
+		for ( var si = 0; si < steps.length; si++ ) {
+			var tree = null;
+			var rawAttr = steps[ si ].getAttribute( 'data-conditional-step' );
+			if ( rawAttr ) {
+				try { tree = normalizeConditional( JSON.parse( rawAttr ) ); } catch ( e ) { tree = null; }
+			}
+			var idEls = steps[ si ].querySelectorAll( '[data-neural-forms-field-id]' );
+			var ids = [];
+			for ( var fi = 0; fi < idEls.length; fi++ ) {
+				ids.push( idEls[ fi ].getAttribute( 'data-neural-forms-field-id' ) );
+			}
+			stepMeta.push( { tree: tree, fieldIds: ids } );
+		}
+		var hasStepLogic = false;
+		for ( var hi = 0; hi < stepMeta.length; hi++ ) {
+			if ( stepMeta[ hi ].tree ) hasStepLogic = true;
+		}
+		var eligible = [];
+		for ( var ei = 0; ei < steps.length; ei++ ) eligible.push( true );
+
+		function isFieldHiddenByLogic( fieldId ) {
+			var wrap = form.querySelector( '[data-neural-forms-field-id="' + cssEscapeValue( fieldId ) + '"]' );
+			return !! ( wrap && wrap.hasAttribute( 'data-conditional' ) && wrap.style.display === 'none' );
+		}
+
+		function refreshEligibility() {
+			if ( ! hasStepLogic ) return;
+			eligible = computeStepEligibility(
+				stepMeta,
+				function ( id ) { return getFieldValue( form, id ); },
+				isFieldHiddenByLogic
+			);
+			for ( var i = 0; i < steps.length; i++ ) {
+				if ( eligible[ i ] ) {
+					steps[ i ].classList.remove( 'neural-forms-form__step--skipped' );
+				} else {
+					steps[ i ].classList.add( 'neural-forms-form__step--skipped' );
+					steps[ i ].classList.remove( 'is-active' );
+					steps[ i ].style.display = 'none';
+				}
+			}
+		}
+
+		function eligibleCount() {
+			var n = 0;
+			for ( var i = 0; i < eligible.length; i++ ) if ( eligible[ i ] ) n++;
+			return n;
+		}
+
+		function eligiblePosition( index ) {
+			var n = 0;
+			for ( var i = 0; i < index; i++ ) if ( eligible[ i ] ) n++;
+			return n;
+		}
+
+		function nextEligible( from ) {
+			for ( var i = from + 1; i < steps.length; i++ ) if ( eligible[ i ] ) return i;
+			return -1;
+		}
+
+		function prevEligible( from ) {
+			for ( var i = from - 1; i >= 0; i-- ) if ( eligible[ i ] ) return i;
+			return -1;
+		}
+
+		if ( hasStepLogic ) {
+			form.addEventListener( 'input',  refreshEligibility );
+			form.addEventListener( 'change', refreshEligibility );
+			refreshEligibility();
+		}
+
 		// Transition config (read once from data attrs set by BlockHandler).
 		var transitionType   = form.getAttribute( 'data-step-transition' )          || 'none';
 		var transitionDir    = form.getAttribute( 'data-step-transition-dir' )       || 'auto';
@@ -2818,8 +2964,18 @@
 
 			if ( mode === 'numbers' ) {
 				var items = progress.querySelectorAll( '.neural-forms-form__progress-item' );
+				var shown = 0;
 				for ( var i = 0; i < items.length; i++ ) {
 					items[ i ].classList.remove( 'is-active', 'is-complete' );
+					if ( hasStepLogic && ! eligible[ i ] ) {
+						// Skipped step: hide its indicator entirely.
+						items[ i ].style.display = 'none';
+						continue;
+					}
+					items[ i ].style.display = '';
+					shown++;
+					var num = items[ i ].querySelector( '.neural-forms-form__progress-num' );
+					if ( num && hasStepLogic ) num.textContent = String( shown );
 					if ( i < index )      items[ i ].classList.add( 'is-complete' );
 					else if ( i === index ) items[ i ].classList.add( 'is-active' );
 				}
@@ -2830,10 +2986,15 @@
 				var fill = progress.querySelector( '.neural-forms-form__progress-bar-fill' );
 				var text = progress.querySelector( '.neural-forms-form__progress-text' );
 				var track = progress.querySelector( '.neural-forms-form__progress-bar-track' );
-				var pct  = steps.length > 0 ? Math.round( ( ( index + 1 ) / steps.length ) * 100 ) : 0;
+				var total = hasStepLogic ? eligibleCount() : steps.length;
+				var pos   = hasStepLogic ? eligiblePosition( index ) + 1 : index + 1;
+				var pct  = total > 0 ? Math.round( ( pos / total ) * 100 ) : 0;
 				if ( fill ) fill.style.width = pct + '%';
-				if ( text ) text.textContent = 'Step ' + ( index + 1 ) + ' of ' + steps.length;
-				if ( track ) track.setAttribute( 'aria-valuenow', String( index + 1 ) );
+				if ( text ) text.textContent = 'Step ' + pos + ' of ' + total;
+				if ( track ) {
+					track.setAttribute( 'aria-valuemax', String( total ) );
+					track.setAttribute( 'aria-valuenow', String( pos ) );
+				}
 			}
 		}
 
@@ -2967,14 +3128,27 @@
 		function afterShow( index, suppressScroll ) {
 			updateNavLabels( steps[ index ] );
 
-			if ( prevBtn ) prevBtn.style.display = ( index === 0 ) ? 'none' : '';
-			if ( nextBtn ) nextBtn.style.display = ( index === steps.length - 1 ) ? 'none' : '';
-			if ( submit )  submit.style.display  = ( index === steps.length - 1 ) ? '' : 'none';
+			var isFirst = hasStepLogic ? prevEligible( index ) === -1 : index === 0;
+			var isLast  = hasStepLogic ? nextEligible( index ) === -1 : index === steps.length - 1;
+			if ( prevBtn ) prevBtn.style.display = isFirst ? 'none' : '';
+			if ( nextBtn ) nextBtn.style.display = isLast  ? 'none' : '';
+			if ( submit )  submit.style.display  = isLast  ? '' : 'none';
 
 			updateProgress( index );
 
 			if ( typeof updateConditionalFields === 'function' ) {
 				updateConditionalFields( form );
+			}
+			// Field visibility can change step eligibility (a hidden
+			// controller fails a step rule), so recompute after the pass.
+			if ( hasStepLogic ) {
+				refreshEligibility();
+				var nowFirst = prevEligible( index ) === -1;
+				var nowLast  = nextEligible( index ) === -1;
+				if ( prevBtn ) prevBtn.style.display = nowFirst ? 'none' : '';
+				if ( nextBtn ) nextBtn.style.display = nowLast  ? 'none' : '';
+				if ( submit )  submit.style.display  = nowLast  ? '' : 'none';
+				updateProgress( index );
 			}
 
 			// Skip the scrollIntoView when this is the page-load initial
@@ -3058,9 +3232,11 @@
 				e.preventDefault();
 				if ( _animating ) return;
 				if ( ! validateStep( steps[ current ] ) ) return;
-				if ( current < steps.length - 1 ) {
+				refreshEligibility();
+				var target = hasStepLogic ? nextEligible( current ) : ( current < steps.length - 1 ? current + 1 : -1 );
+				if ( target !== -1 ) {
 					var from = current;
-					current += 1;
+					current = target;
 					show( current, true, from );
 				}
 			} );
@@ -3070,9 +3246,11 @@
 			prevBtn.addEventListener( 'click', function ( e ) {
 				e.preventDefault();
 				if ( _animating ) return;
-				if ( current > 0 ) {
+				refreshEligibility();
+				var target = hasStepLogic ? prevEligible( current ) : ( current > 0 ? current - 1 : -1 );
+				if ( target !== -1 ) {
 					var from = current;
-					current -= 1;
+					current = target;
 					show( current, false, from );
 				}
 			} );
@@ -3091,6 +3269,7 @@
 		// drift between visible state and internal index.
 		form._nfMultiStepReset = function () {
 			current = 0;
+			refreshEligibility();
 			show( 0 );
 		};
 	}

@@ -958,6 +958,11 @@ class FormRenderer {
 		if ( $section_id !== '' ) {
 			$html .= ' data-neural-forms-section-id="' . esc_attr( $section_id ) . '"';
 		}
+		// 1.2.0: a section (heading block) can be shown/hidden by logic.
+		$cl = $section['conditional_logic'] ?? null;
+		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+			$html .= ' data-conditional="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
+		}
 		$html .= '>';
 		if ( $title !== '' ) {
 			$html .= '<h3 class="neural-forms-form__section-title">' . esc_html( $title ) . '</h3>';
@@ -986,6 +991,15 @@ class FormRenderer {
 		}
 		if ( $btn_prev !== '' ) {
 			$html .= ' data-step-button-previous="' . esc_attr( $btn_prev ) . '"';
+		}
+		// 1.2.0: step eligibility. Deliberately NOT data-conditional —
+		// inactive steps are display:none too, and the serializer treats
+		// a display:none [data-conditional] ancestor as "hidden by logic".
+		// form-submit.js reads data-conditional-step and marks skipped
+		// steps with .neural-forms-form__step--skipped instead.
+		$cl = $step['conditional_logic'] ?? null;
+		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+			$html .= ' data-conditional-step="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
 		}
 		$html .= '>';
 

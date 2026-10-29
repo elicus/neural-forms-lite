@@ -3,6 +3,7 @@
 = 1.2.0 - Unreleased =
 
 * Added: Conditional logic can combine several conditions with All or Any and show or hide a field.
+* Added: Pro users can group conditions, show or skip steps and sections based on answers, and pick a confirmation message or redirect per rule.
 * Fixed: Cloud error messages show their real code instead of a bare HTTP status.
 * Fixed: "Analyze with AI" runs immediately when a queued job was never picked up by cron.
 * Fixed: Upstream failures no longer show a Cloudflare error page on proxied sites.

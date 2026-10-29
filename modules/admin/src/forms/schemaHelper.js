@@ -427,13 +427,18 @@ export function normalizeSection( section ) {
 	const settingsIn = ( section.settings && typeof section.settings === 'object' ) ? section.settings : {};
 	const styleRaw   = typeof settingsIn.style === 'string' ? settingsIn.style : DEFAULT_SECTION_STYLE;
 	const style      = VALID_SECTION_STYLES.includes( styleRaw ) ? styleRaw : DEFAULT_SECTION_STYLE;
-	return {
+	const out = {
 		id: ( typeof section.id === 'string' && section.id ) ? section.id : newSectionId(),
 		type: SECTION_TYPE,
 		title: typeof section.title === 'string' ? section.title : '',
 		description: typeof section.description === 'string' ? section.description : '',
 		settings: { style },
 	};
+	// 1.2.0: sections may carry conditional logic (hides the heading).
+	if ( section.conditional_logic && typeof section.conditional_logic === 'object' ) {
+		out.conditional_logic = section.conditional_logic;
+	}
+	return out;
 }
 
 /**
@@ -477,7 +482,7 @@ export function normalizeStep( step ) {
 			continue;
 		}
 	}
-	return {
+	const out = {
 		id: ( typeof step.id === 'string' && step.id ) ? step.id : newStepId(),
 		type: STEP_TYPE,
 		title: typeof step.title === 'string' ? step.title : '',
@@ -485,6 +490,11 @@ export function normalizeStep( step ) {
 		settings,
 		fields: children,
 	};
+	// 1.2.0: steps may carry conditional logic (step eligibility).
+	if ( step.conditional_logic && typeof step.conditional_logic === 'object' ) {
+		out.conditional_logic = step.conditional_logic;
+	}
+	return out;
 }
 
 /**

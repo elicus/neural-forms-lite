@@ -329,7 +329,8 @@ class SubmitEndpoint {
 		// unticked checkbox or radio controller as empty (an unticked box
 		// is not posted on the multipart path and posted as 0 by the JS
 		// serializer; neither should count as "visible").
-		$_hidden_ids = $this->resolve_hidden_field_ids( $schema_fields, $raw_data );
+		$_top_nodes  = is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array();
+		$_hidden_ids = $this->resolve_hidden_field_ids( $schema_fields, $raw_data, $_top_nodes );
 		if ( $_hidden_ids ) {
 			foreach ( $_hidden_ids as $_hid ) {
 				unset( $raw_data[ $_hid ] );
@@ -344,6 +345,16 @@ class SubmitEndpoint {
 					}
 				)
 			);
+		}
+		// 1.2.0: the effective payload (hidden fields removed) is what
+		// conditional confirmations are evaluated against.
+		$_effective_data  = $raw_data;
+		$_effective_types = array();
+		foreach ( $schema_fields as $_sf ) {
+			$_sf = (array) $_sf;
+			if ( ! empty( $_sf['id'] ) ) {
+				$_effective_types[ (string) $_sf['id'] ] = (string) ( $_sf['type'] ?? 'text' );
+			}
 		}
 
 		// ' Step 5b: Capability-locked field strip '
@@ -488,6 +499,12 @@ class SubmitEndpoint {
 			'success'  => true,
 			'entry_id' => $entry_id,
 		);
+
+		// 1.2.0: conditional confirmation / redirect chosen server-side.
+		$outcome = $this->resolve_success_outcome( $form, $_effective_data, $_effective_types );
+		if ( $outcome ) {
+			$body['outcome'] = $outcome;
+		}
 
 		// Poll Phase 3: piggyback poll results on the submit response so
 		// after_vote / always polls can refresh visually without a second
@@ -1998,7 +2015,7 @@ class SubmitEndpoint {
 	 * @param array $raw_data       Submitted data keyed by field id.
 	 * @return string[]  Field ids to strip from data + validation.
 	 */
-	private function resolve_hidden_field_ids( array $schema_fields, array $raw_data ): array {
+	private function resolve_hidden_field_ids( array $schema_fields, array $raw_data, array $top_nodes = array() ): array {
 		$types = array();
 		$rules = array();
 		foreach ( $schema_fields as $f ) {
@@ -2014,6 +2031,19 @@ class SubmitEndpoint {
 			}
 		}
 
+		// 1.2.0: step eligibility (Pro). An ineligible step hides every
+		// field it contains. Steps may only reference earlier steps'
+		// fields (validator), so one forward pass per iteration suffices.
+		$steps = array();
+		if ( $top_nodes ) {
+			foreach ( SchemaHelper::step_logic_map( $top_nodes ) as $st ) {
+				$logic = $st['logic'];
+				if ( is_array( $logic ) && ! empty( $logic['enabled'] ) && ConditionEngine::is_active( $logic ) && $st['field_ids'] ) {
+					$steps[] = array( 'logic' => ConditionEngine::normalize( $logic ), 'field_ids' => $st['field_ids'] );
+				}
+			}
+		}
+
 		// Iterate to a fixed point: a rule that depends on a controller
 		// hidden in an earlier pass fails (the engine treats hidden
 		// controllers as unavailable), which can hide further fields.
@@ -2021,6 +2051,16 @@ class SubmitEndpoint {
 		$guard  = 0;
 		do {
 			$changed = false;
+			foreach ( $steps as $st ) {
+				if ( ! ConditionEngine::evaluate( $st['logic'], $raw_data, $types, array_keys( $hidden ) ) ) {
+					foreach ( $st['field_ids'] as $fid ) {
+						if ( ! isset( $hidden[ $fid ] ) ) {
+							$hidden[ $fid ] = true;
+							$changed        = true;
+						}
+					}
+				}
+			}
 			foreach ( $rules as $id => $cl ) {
 				if ( isset( $hidden[ $id ] ) ) {
 					continue;
@@ -2033,6 +2073,44 @@ class SubmitEndpoint {
 		} while ( $changed && ++$guard < 50 );
 
 		return array_keys( $hidden );
+	}
+
+	/**
+	 * Conditional confirmation (1.2.0, Pro): pick the first
+	 * `settings.on_success.rules[]` entry whose conditions match the
+	 * effective (post-visibility) submission. Returns null when no rule
+	 * matches so the frontend falls back to the default outcome it
+	 * already has in the form's data attributes.
+	 *
+	 * @param array $form        Stored form row.
+	 * @param array $data        Effective submitted data (hidden fields removed).
+	 * @param array $field_types field id => type.
+	 * @return array|null { mode, message, url }
+	 */
+	private function resolve_success_outcome( array $form, array $data, array $field_types ) {
+		$rules = $form['settings']['on_success']['rules'] ?? null;
+		if ( ! is_array( $rules ) || ! $rules ) {
+			return null;
+		}
+		foreach ( $rules as $rule ) {
+			if ( ! is_array( $rule ) || ! is_array( $rule['conditions'] ?? null ) || ! ConditionEngine::is_active( $rule['conditions'] ) ) {
+				continue;
+			}
+			if ( ! ConditionEngine::evaluate( $rule['conditions'], $data, $field_types ) ) {
+				continue;
+			}
+			$mode = ( $rule['mode'] ?? 'message' ) === 'redirect' ? 'redirect' : 'message';
+			$url  = $mode === 'redirect' ? esc_url_raw( (string) ( $rule['url'] ?? '' ) ) : '';
+			if ( $mode === 'redirect' && $url === '' ) {
+				continue; // misconfigured rule: never redirect to nowhere
+			}
+			return array(
+				'mode'    => $mode,
+				'message' => $mode === 'message' ? wp_kses_post( (string) ( $rule['message'] ?? '' ) ) : '',
+				'url'     => $url,
+			);
+		}
+		return null;
 	}
 
 	// Utilities

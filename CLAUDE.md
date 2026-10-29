@@ -817,17 +817,48 @@ the builder writes v2 when the user next saves that field's logic.
   the flattened fields: unknown operator, unknown/self field reference,
   bad action/match, > 10 rules → 422 `invalid_form_data`; groups
   without the `conditional_logic_advanced` cap → 403 `pro_feature_locked`.
-- Builder: `ConditionalLogicPanel` in `BuilderInspector.js` (flat
-  All/Any list, show/hide, summary line); shared helpers
-  `normalizeConditional()` / `toEditableConditional()` /
-  `CONDITION_OPERATORS` in `schemaHelper.js`. The builder copy of
+- Builder helpers `normalizeConditional()` / `toEditableConditional()`
+  / `CONDITION_OPERATORS` live in `schemaHelper.js`. The builder copy of
   `normalizeConditional()` must stay equivalent to the frontend one.
 - Fixtures: `tests/fixtures/conditions.json`, run by
   `tests/ConditionEngineTest.php` and (Node 18)
   `tests/ConditionEngineTest.js`. Add a case there, not ad-hoc asserts,
   when touching any evaluator.
 - Sections are heading nodes (title + description, no children), so a
-  "conditional section" (A2) hides the heading only.
+  "conditional section" hides the heading only (`data-conditional` on
+  the section div; same evaluator as fields).
+- **Steps (Pro, A2):** a Step node's `conditional_logic` decides
+  eligibility. The renderer emits it as `data-conditional-step` (NOT
+  `data-conditional`, because inactive steps are `display:none` too and
+  the serializer treats a hidden `[data-conditional]` ancestor as
+  "hidden by logic"). form-submit.js `computeStepEligibility()` (pure,
+  fixture-tested) marks skipped steps with
+  `.neural-forms-form__step--skipped`; the serializer skips their
+  inputs; Next/Prev jump over them; progress counts eligible steps
+  only. Server: `resolve_hidden_field_ids()` takes the top-level nodes
+  as a 3rd arg and hides every field of an ineligible step
+  (`SchemaHelper::step_logic_map()`). Validation: a step may only
+  reference fields from EARLIER steps, and the first step can never
+  carry logic.
+- **Conditional confirmations (Pro, A2):** `settings.on_success.rules[]
+  = { id, conditions (v2, enabled), mode, message, url }`, ordered,
+  first match wins, default `on_success.mode/message/url` otherwise.
+  Sanitised by `FormSettingsSanitizer::sanitize_on_success()`
+  (kses + esc_url_raw, max 10), validated against the schema by
+  `FormValidator::validate_settings_logic()` from `FormsEndpoint`
+  (create + update; update without a schema loads the stored one).
+  `SubmitEndpoint::resolve_success_outcome()` adds `outcome: { mode,
+  message, url }` to the 201 body only when a rule matched; the JS
+  applies it (`applySuccessMessage()` / redirect) and otherwise falls
+  back to the `data-on-success-*` attributes as before.
+- Builder: `ConditionEditor.js` is the single editor (rules, Pro
+  groups, action/match head). `BuilderInspector.js` wraps it for
+  fields (`ConditionalLogicPanel`) and steps/sections
+  (`LayoutLogicPanel`, Pro upsell when locked); `FormSettings.js`
+  `ConfirmationRules` uses it for the on_success rules (duplicate
+  condition sets are flagged as unreachable).
+- Tests: `tests/ConditionalStepsAndConfirmationsTest.php` + the
+  `resolve_steps` fixtures (also run by the Node test).
 - Standalone test files that load `FormValidator.php`, `FormRenderer.php`
   or `SubmitEndpoint.php` and exercise logic must also require
   `modules/forms/ConditionEngine.php` (no autoloader in tests).
