@@ -253,6 +253,9 @@ class EntriesEndpoint {
 		if ( null !== $request->get_param( 'assigned_to' ) && (string) $request->get_param( 'assigned_to' ) !== '' ) {
 			$list_args['assigned_to'] = (int) $request->get_param( 'assigned_to' );
 		}
+		if ( null !== $request->get_param( 'payment_status' ) && (string) $request->get_param( 'payment_status' ) !== '' ) {
+			$list_args['payment_status'] = (string) $request->get_param( 'payment_status' );
+		}
 		if ( $request->get_param( 'overdue' ) ) {
 			$list_args['overdue'] = true;
 		}
@@ -1132,6 +1135,9 @@ class EntriesEndpoint {
 			EntryActivity::delete_for_entry( $id );
 			if ( class_exists( '\\NeuralForms\\Quotes\\QuoteRepository' ) ) {
 				\NeuralForms\Quotes\QuoteRepository::delete_for_entry( $id );
+			}
+			if ( class_exists( '\\NeuralForms\\Payments\\PaymentRepository' ) ) {
+				\NeuralForms\Payments\PaymentRepository::delete_for_entry( $id );
 			}
 		}
 

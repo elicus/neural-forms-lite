@@ -29,7 +29,7 @@ final class QuoteRepository {
 			'number'             => isset( $fields['number'] ) && $fields['number'] !== '' ? (string) $fields['number'] : null,
 			'revision'           => max( 1, (int) ( $fields['revision'] ?? 1 ) ),
 			'supersedes_id'      => ! empty( $fields['supersedes_id'] ) ? (int) $fields['supersedes_id'] : null,
-			'status'             => in_array( $fields['status'] ?? 'draft', self::STATUSES, true ) ? $fields['status'] : 'draft',
+			'status'             => isset( $fields['status'] ) && in_array( $fields['status'], self::STATUSES, true ) ? $fields['status'] : 'draft',
 			'currency'           => substr( (string) ( $fields['currency'] ?? 'USD' ), 0, 3 ),
 			'amount_total_minor' => (int) ( $fields['amount_total_minor'] ?? 0 ),
 			'amount_due_minor'   => (int) ( $fields['amount_due_minor'] ?? 0 ),

@@ -714,6 +714,30 @@ class FormRenderer {
 			? (string) $options['submit_button_text']
 			: __( 'Submit', 'neural-forms-lite' );
 
+		// 1.2.0 part B: when the form takes a payment, say so on the button and
+		// let the visitor pick a method when the form allows a choice.
+		$payment_choice_html = '';
+		if ( class_exists( '\\NeuralForms\\Payments\\PaymentService' ) && \NeuralForms\Payments\PaymentService::enabled_for( $form ) ) {
+			$pay_settings = \NeuralForms\Payments\PaymentService::settings( $form );
+			if ( ! array_key_exists( 'submit_button_text', $options ) || (string) $options['submit_button_text'] === '' || (string) $options['submit_button_text'] === __( 'Submit', 'neural-forms-lite' ) ) {
+				$submit_text = $pay_settings['submit_label'] !== '' ? $pay_settings['submit_label'] : __( 'Continue to payment', 'neural-forms-lite' );
+			}
+			$pay_providers = \NeuralForms\Payments\PaymentService::providers_for( $form );
+			if ( $pay_settings['provider'] === 'choice' && count( $pay_providers ) > 1 ) {
+				$payment_choice_html .= '<fieldset class="neural-forms-form__pay-choice"><legend class="neural-forms-form__label">' . esc_html__( 'Pay with', 'neural-forms-lite' ) . '</legend>';
+				$first = true;
+				foreach ( $pay_providers as $pid => $pp ) {
+					$cid = 'nf-pay-' . esc_attr( $pid ) . '-' . esc_attr( (string) ( $form['id'] ?? '0' ) );
+					$payment_choice_html .= '<label class="neural-forms-form__radio-label neural-forms-form__pay-option" for="' . $cid . '"><input type="radio" id="' . $cid . '" name="nf_payment_provider" value="' . esc_attr( $pid ) . '"' . ( $first ? ' checked' : '' ) . ' class="neural-forms-form__radio"> <span>' . esc_html( $pp->label() ) . '</span></label>';
+					$first = false;
+				}
+				$payment_choice_html .= '</fieldset>';
+			}
+			if ( $pay_settings['description'] !== '' ) {
+				$payment_choice_html .= '<p class="neural-forms-form__pay-note">' . esc_html( $pay_settings['description'] ) . '</p>';
+			}
+		}
+
 		if ( $btn_icon_svg !== '' ) {
 			$btn_icon_pos  = (string) ( $options['btn_icon_position'] ?? 'after' );
 			$btn_icon_cls  = 'nf-btn-icon nf-btn-icon--' . esc_attr( $btn_icon_pos );
@@ -731,7 +755,7 @@ class FormRenderer {
 			$btn_content = esc_html( $submit_text );
 		}
 
-		$submit_wrap_html = '<div class="neural-forms-form__submit-wrap">'
+		$submit_wrap_html = $payment_choice_html . '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
 				. $btn_content
 				. '</button>'

@@ -435,6 +435,7 @@ removed as dead code. Keep `__meter-cta`, `__meter-msg`, `__meter-btn`.
 | `neural_forms_ai_draft_purge` | daily | `AIResponseRepository::purge_older_than( DRAFT_TTL_DAYS )` | Garbage-collect stale (non-finalized) carousel drafts older than 30 days |
 | `neural_forms_follow_up_sweep` | hourly | `WorkflowEngine::sweep_overdue_follow_ups()` | Fire the `follow_up_overdue` workflow trigger once per overdue, open follow-up (1.2.0) |
 | `neural_forms_quote_expire` | daily | `QuoteService::expire_due()` | Move issued quotes past `valid_until` to `expired` (1.2.0 part B) |
+| `neural_forms_payment_reconcile` | daily | `PaymentService::reconcile_due()` | Ask the gateway about attempts still open after an hour (PAY12) (1.2.0 part B) |
 
 Both hooks are scheduled in `Activator::activate()`, cleared in
 `Deactivator::deactivate()`, and self-scheduled in `NeuralForms::boot()`
@@ -519,7 +520,7 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `ai_business_context` | `neural_forms_can_ai_business_context` | Per-form AI behaviour (tone, language, knowledge picker) and sending `ai_behaviour` to the cloud (milestone A5) |
 | `calculations` | `neural_forms_can_calculations` | Priced Item + Calculated fields, Form settings › Pricing, server-side pricing snapshot (part B, B1) |
 | `quotes` | `neural_forms_can_quotes` | Quote writes (create / edit / issue / revise / send / settings) and the inbox Quote card actions; stored quotes stay readable when locked (part B, B2) |
-| `payments` | `neural_forms_can_payments` | Stripe / PayPal checkout (part B, B3) |
+| `payments` | `neural_forms_can_payments` | Hosted checkout after submit (Stripe / PayPal providers live in Pro), Form settings › Payments, `POST /payments/{id}/check`; stored attempts stay readable when locked (part B, B3) |
 
 ### Where the checks are applied
 
@@ -801,6 +802,79 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Payments: Stripe + PayPal (1.2.0 part B, B3)
+
+`modules/payments/` — Lite owns the engine; Pro ships the two gateways
+(`neural-forms-pro/modules/payments/{Stripe,PayPal}/`) through the
+`neural_forms_payment_providers` filter (id => `PaymentProviderInterface`).
+
+- **Contract** (`PaymentProviderInterface`): `create_checkout( $payment,
+  $entry, $form, $urls, $details )` → `{ session_id, url, account_id,
+  livemode }`, `fetch_checkout()` / `capture()` → normalised state
+  `{ state, paid, processing, failed, amount_minor, currency,
+  provider_payment_id, account_id, livemode, amount_refunded_minor }`,
+  `expire_checkout()`, `verify_webhook( WP_REST_Request )` → normalised
+  event `{ event_id, kind paid|completed|processing|failed|expired|
+  cancelled|refunded|ignored, session_id, provider_payment_id,
+  amount_minor, currency, livemode, account_id }`. Hosted checkout only —
+  no card data, no secrets in REST / logs / exports (PAY13).
+- **Tables** (DB 1.2.3): `neural_forms_payments` (one row per attempt;
+  `idempotency_key` UNIQUE = `nf-{entry}-{quote|0}-{attempt}`, PAY8) and
+  `neural_forms_payment_events` (`(provider, event_id)` UNIQUE, written
+  BEFORE processing, PAY5). The entry keeps only the aggregate
+  `payment_status` (`PaymentStatus::ENTRY_STATUSES`: none | pending |
+  processing | failed | cancelled | deposit_paid | paid |
+  partially_refunded | refunded), recomputed by `PaymentService::sync_entry()`.
+- **Status model** (`PaymentStatus`, pure, fixture-tested):
+  `apply_event()` refuses mode / account / currency / amount mismatches
+  (PAY4, PAY10), never regresses a settled attempt (PAY5), only `paid`
+  sets `amount_paid_minor` + `paid_at`; `aggregate()` keeps a deposit as
+  `deposit_paid` (never "paid in full", PAY2), a later failed attempt
+  cannot hide a settled one, and flags `needs_reconciliation` when two
+  settled attempts share one intent or exceed the total (PAY12).
+- **Flow**: `SubmitEndpoint` stores the entry first, then (cap `payments`,
+  `settings.payment.enabled`, `due_now > 0`) `PaymentService::start_checkout()`
+  → the 201 `outcome` becomes `{ mode: redirect, url }` (D8); a gateway
+  failure never fails the submission (`payment_error` on the body, attempt
+  `failed`). Open attempts are reused inside 23 h for the same amount
+  (PAY8) or marked `replaced` + expired at the gateway (PAY9); a form
+  price change never touches an open attempt. Quote checkouts
+  (`opts.quote`) take the quote's `due_now` and require
+  `QuoteService::can_start_payment()` (CQ9 / CQ11).
+- **The only paths to `paid`**: a signature-verified webhook
+  (`POST /neural-forms/v1/payments/webhook/{provider}`, Lite-owned route,
+  provider verifies) or a server-to-server `reconcile()` (daily cron, the
+  inbox "Check status now", or the return page). The return page
+  (`GET /payments/{id}/return?token&result`, HMAC token like quotes) only
+  READS stored state after reconciling; a forged URL is a 404 (PAY3).
+  PayPal captures an APPROVED order server-side in `capture()` and in the
+  `CHECKOUT.ORDER.APPROVED` webhook (browser closed, PAY6).
+- `do_action( 'neural_forms_payment_confirmed', $entry_id, $payment,
+  $aggregate )` fires once per newly paid attempt (B4 maps it to the
+  `payment_confirmed` workflow trigger). Refunds only change the financial
+  status, never the lead stage (PAY11). Activity rows `payment.*`.
+- **Form settings** `payment { enabled, provider auto|choice|<id>,
+  submit_label, description, success_url, cancel_url }`
+  (`FormSettingsSanitizer::sanitize_payment`, `FormValidator::
+  validate_settings_payment`: cap → 403, no Priced Item → 422). Renderer:
+  submit label becomes the payment label, `provider: choice` renders a
+  `nf_payment_provider` radio group before the submit button.
+- **Admin**: Integrations › Stripe / PayPal tabs (`PaymentProviderPanel`
+  in `screens/Integrations.js`, Pro REST `/neural-forms-pro/v1/
+  integrations/{stripe|paypal}/{status|settings|test|disconnect}`, secrets
+  masked, per-mode test / live credentials in `TokenVault`), Form
+  settings › Payments (`PaymentsSection`, reads `GET /payments/providers`),
+  inbox `entries/PaymentCard.js` (aggregate, attempts, events, Check
+  status now, copy checkout link). `GET /entries?payment_status=a,b`
+  filters the list.
+- Tests: `tests/PaymentsTest.php` (status model, tokens, sanitiser,
+  validator, SQL); `tests/live/B3PaymentsHarness.php` registers a FAKE
+  gateway through the filter and drives submit → redirect, PAY3/4/5/8/9/
+  10/11/12 and quote checkouts without network access. Pro:
+  `tests/StripeProviderTest.php` (signature verification on recorded
+  payloads, encoding, normalisation), `tests/PayPalProviderTest.php`.
+  Real gateway calls need the owner's test keys (not available locally).
 
 ### Quotes (1.2.0 part B, B2)
 

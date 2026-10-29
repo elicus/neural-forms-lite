@@ -17,6 +17,10 @@ class Activator {
 			wp_schedule_event( time(), 'daily', 'neural_forms_log_cleanup' );
 		}
 
+		if ( ! wp_next_scheduled( 'neural_forms_payment_reconcile' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_payment_reconcile' );
+		}
+
 		if ( ! wp_next_scheduled( 'neural_forms_quote_expire' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_quote_expire' );
 		}

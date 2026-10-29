@@ -268,6 +268,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Added: Translate an AI draft into your site language from the drafts carousel.
 * Added: Pro users can price their services with Priced Item fields (no WooCommerce needed), show a live total with discount rules and a deposit, and calculate values from answers; totals are always recalculated on the server.
 * Added: Pro users can turn a priced entry into a numbered, branded quote, send it as a PDF with a secure link, and keep every revision on record.
+* Added: Pro users can take a deposit or the full amount through Stripe or PayPal right after a priced form is submitted; payments are confirmed by the gateway and shown on the entry.
 * Fixed: Cloud error messages show their real code instead of a bare HTTP status.
 * Fixed: "Analyze with AI" runs immediately when a queued job was never picked up by cron.
 * Fixed: Upstream failures no longer show a Cloudflare error page on proxied sites.

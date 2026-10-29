@@ -17,6 +17,7 @@ class Deactivator {
 		wp_clear_scheduled_hook( 'neural_forms_ai_draft_purge' );
 		wp_clear_scheduled_hook( 'neural_forms_follow_up_sweep' );
 		wp_clear_scheduled_hook( 'neural_forms_quote_expire' );
+		wp_clear_scheduled_hook( 'neural_forms_payment_reconcile' );
 		wp_clear_scheduled_hook( \NeuralForms\Rest\Endpoints\SettingsEndpoint::PLAN_REFRESH_HOOK );
 
 		flush_rewrite_rules();

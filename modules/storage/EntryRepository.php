@@ -221,6 +221,14 @@ class EntryRepository {
 			$data['follow_up_overdue_sent'] = (int) (bool) $fields['follow_up_overdue_sent'];
 			$format[]                       = '%d';
 		}
+		// 1.2.0 part B: aggregate payment status (PaymentStatus::ENTRY_STATUSES).
+		if ( array_key_exists( 'payment_status', $fields ) && class_exists( '\\NeuralForms\\Payments\\PaymentStatus' ) ) {
+			$ps = (string) $fields['payment_status'];
+			if ( in_array( $ps, \NeuralForms\Payments\PaymentStatus::ENTRY_STATUSES, true ) ) {
+				$data['payment_status'] = $ps;
+				$format[]               = '%s';
+			}
+		}
 
 		if ( empty( $data ) ) {
 			return false;
@@ -1112,6 +1120,18 @@ class EntryRepository {
 		}
 
 		// 1.2.0 lead filters. Combine with any view (e.g. Inbox + stage).
+		// 1.2.0 part B: payment aggregate filter (comma list allowed, e.g. paid,deposit_paid).
+		if ( ! empty( $args['payment_status'] ) ) {
+			$wanted = array_values( array_filter( array_map( 'trim', explode( ',', (string) $args['payment_status'] ) ), static function ( $v ) { return preg_match( '/^[a-z_]+$/', $v ) === 1; } ) );
+			if ( $wanted ) {
+				$ph              = implode( ',', array_fill( 0, count( $wanted ), '%s' ) );
+				$plain_parts[]   = 'payment_status IN (' . $ph . ')';
+				$aliased_parts[] = 'e.payment_status IN (' . $ph . ')';
+				foreach ( $wanted as $w ) {
+					$values[] = $w;
+				}
+			}
+		}
 		$stage = isset( $args['stage'] ) ? LeadStages::sanitize_id( (string) $args['stage'] ) : '';
 		if ( $stage !== '' ) {
 			$plain_parts[]   = 'lead_stage = %s';

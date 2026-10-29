@@ -192,10 +192,46 @@ class FormValidator {
 	 * @param array $schema   Form schema ({ fields: [...] }).
 	 * @return true|\WP_Error
 	 */
+	/**
+	 * 1.2.0 part B: `settings.payment.enabled` needs the `payments`
+	 * capability (403) and at least one Priced Item field (422).
+	 *
+	 * @return true|\WP_Error
+	 */
+	public static function validate_settings_payment( array $settings, array $schema ) {
+		$p = is_array( $settings['payment'] ?? null ) ? $settings['payment'] : array();
+		if ( empty( $p['enabled'] ) ) {
+			return true;
+		}
+		if ( class_exists( '\\NeuralForms\\Core\\Capabilities' ) && ! \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::PAYMENTS ) ) {
+			return \NeuralForms\Core\Capabilities::locked_error( \NeuralForms\Core\Capabilities::PAYMENTS );
+		}
+		$has_product = false;
+		foreach ( SchemaHelper::flatten_fields( is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array() ) as $f ) {
+			if ( ( $f['type'] ?? '' ) === 'product' ) {
+				$has_product = true;
+				break;
+			}
+		}
+		if ( ! $has_product ) {
+			return new \WP_Error( 'invalid_form_data', __( 'Payments need at least one Priced Item field on the form.', 'neural-forms-lite' ), array( 'status' => 422 ) );
+		}
+		foreach ( array( 'success_url', 'cancel_url' ) as $k ) {
+			if ( ! empty( $p[ $k ] ) && ! preg_match( '#^https?://#i', (string) $p[ $k ] ) ) {
+				return new \WP_Error( 'invalid_form_data', sprintf( __( 'Payment %s must be an absolute http(s) URL.', 'neural-forms-lite' ), str_replace( '_', ' ', $k ) ), array( 'status' => 422 ) );
+			}
+		}
+		return true;
+	}
+
 	public static function validate_settings_logic( array $settings, array $schema ) {
 		$pricing = self::validate_settings_pricing( $settings, $schema );
 		if ( is_wp_error( $pricing ) ) {
 			return $pricing;
+		}
+		$payment = self::validate_settings_payment( $settings, $schema );
+		if ( is_wp_error( $payment ) ) {
+			return $payment;
 		}
 		$rules = $settings['on_success']['rules'] ?? null;
 		if ( ! is_array( $rules ) || ! $rules ) {

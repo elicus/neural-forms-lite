@@ -303,6 +303,14 @@ final class FormSettingsSanitizer {
 				$out['pricing'] = $clean;
 			}
 		}
+		if ( array_key_exists( 'payment', $out ) ) {
+			$clean = self::sanitize_payment( $out['payment'] );
+			if ( $clean ) {
+				$out['payment'] = $clean;
+			} else {
+				unset( $out['payment'] );
+			}
+		}
 		if ( array_key_exists( 'ai_behaviour', $out ) ) {
 			$clean = self::sanitize_ai_behaviour( $out['ai_behaviour'] );
 			if ( $clean ) {
@@ -335,6 +343,33 @@ final class FormSettingsSanitizer {
 	 *
 	 * @param mixed $raw
 	 */
+	/**
+	 * 1.2.0 part B: per-form payment settings
+	 * { enabled, provider auto|choice|<id>, submit_label, description, success_url, cancel_url }.
+	 * Returns an empty array (= drop the key) when everything is default.
+	 */
+	public static function sanitize_payment( $raw ): array {
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$provider = isset( $raw['provider'] ) && is_scalar( $raw['provider'] ) ? strtolower( preg_replace( '/[^a-z0-9_]/i', '', (string) $raw['provider'] ) ) : 'auto';
+		if ( $provider === '' ) {
+			$provider = 'auto';
+		}
+		$out = array(
+			'enabled'      => ! empty( $raw['enabled'] ),
+			'provider'     => substr( $provider, 0, 20 ),
+			'submit_label' => isset( $raw['submit_label'] ) && is_scalar( $raw['submit_label'] ) ? mb_substr( sanitize_text_field( (string) $raw['submit_label'] ), 0, 80 ) : '',
+			'description'  => isset( $raw['description'] ) && is_scalar( $raw['description'] ) ? mb_substr( sanitize_text_field( (string) $raw['description'] ), 0, 200 ) : '',
+			'success_url'  => isset( $raw['success_url'] ) && is_scalar( $raw['success_url'] ) && trim( (string) $raw['success_url'] ) !== '' ? esc_url_raw( trim( (string) $raw['success_url'] ) ) : '',
+			'cancel_url'   => isset( $raw['cancel_url'] ) && is_scalar( $raw['cancel_url'] ) && trim( (string) $raw['cancel_url'] ) !== '' ? esc_url_raw( trim( (string) $raw['cancel_url'] ) ) : '',
+		);
+		if ( ! $out['enabled'] && $out['provider'] === 'auto' && $out['submit_label'] === '' && $out['description'] === '' && $out['success_url'] === '' && $out['cancel_url'] === '' ) {
+			return array();
+		}
+		return $out;
+	}
+
 	public static function sanitize_ai_behaviour( $raw ): array {
 		if ( ! is_array( $raw ) ) {
 			return array();

@@ -39,6 +39,8 @@ class Database {
 			self::sql_workflow_runs( $charset ),
 			self::sql_workflow_actions( $charset ),
 			self::sql_quotes( $charset ),
+			self::sql_payments( $charset ),
+			self::sql_payment_events( $charset ),
 		);
 
 		foreach ( $tables as $sql ) {
@@ -408,6 +410,74 @@ class Database {
   KEY status (status),
   KEY number (number),
   KEY valid_until (valid_until)
+) {$charset};";
+	}
+
+	/**
+	 * Payment attempts (1.2.0 part B). One row per checkout attempt; the
+	 * entry keeps only the aggregate `payment_status`. `idempotency_key`
+	 * is unique so a double submit / retry can never create two open
+	 * attempts for the same entry + quote + attempt number (PAY8).
+	 */
+	private static function sql_payments( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_payments';
+
+		return "CREATE TABLE {$table} (
+  id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  entry_id bigint(20) UNSIGNED NOT NULL,
+  form_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+  quote_id bigint(20) UNSIGNED DEFAULT NULL,
+  provider varchar(20) NOT NULL,
+  livemode tinyint(1) NOT NULL DEFAULT 0,
+  account_id varchar(120) DEFAULT NULL,
+  session_id varchar(190) DEFAULT NULL,
+  provider_payment_id varchar(190) DEFAULT NULL,
+  kind varchar(10) NOT NULL DEFAULT 'full',
+  amount_due_minor bigint(20) NOT NULL DEFAULT 0,
+  amount_paid_minor bigint(20) NOT NULL DEFAULT 0,
+  amount_refunded_minor bigint(20) NOT NULL DEFAULT 0,
+  currency varchar(3) NOT NULL DEFAULT 'USD',
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  idempotency_key varchar(64) NOT NULL,
+  attempt int(11) UNSIGNED NOT NULL DEFAULT 1,
+  token_seed varchar(64) DEFAULT NULL,
+  checkout_url text DEFAULT NULL,
+  meta longtext DEFAULT NULL,
+  paid_at datetime DEFAULT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY idempotency_key (idempotency_key),
+  KEY entry_id (entry_id),
+  KEY session_id (session_id(100)),
+  KEY provider_payment_id (provider_payment_id(100)),
+  KEY status (status)
+) {$charset};";
+	}
+
+	/**
+	 * Provider webhook events (1.2.0 part B). `event_id` is unique per
+	 * provider so a redelivered event is a no-op (PAY5).
+	 */
+	private static function sql_payment_events( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_payment_events';
+
+		return "CREATE TABLE {$table} (
+  id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  provider varchar(20) NOT NULL,
+  event_id varchar(190) NOT NULL,
+  event_type varchar(80) NOT NULL,
+  livemode tinyint(1) NOT NULL DEFAULT 0,
+  payment_id bigint(20) UNSIGNED DEFAULT NULL,
+  result varchar(40) DEFAULT NULL,
+  detail text DEFAULT NULL,
+  received_at datetime NOT NULL,
+  processed_at datetime DEFAULT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY provider_event (provider,event_id),
+  KEY payment_id (payment_id)
 ) {$charset};";
 	}
 

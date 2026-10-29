@@ -52,6 +52,7 @@ const BASE_SECTIONS = [
 	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
 	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
 	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules and deposit for Priced Item fields on this form.' },
+	{ id: 'payments',     label: 'Payments',     hint: 'Send visitors to a hosted checkout for the amount due right after they submit.' },
 ];
 
 /**
@@ -280,6 +281,84 @@ function PricingSection( { value, onChange, fields } ) {
  * context otherwise). Knowledge items come from Pro's business-context
  * endpoint; without Pro the section is an upsell.
  */
+/**
+ * Payments (1.2.0 part B): per-form switch + provider choice. Credentials
+ * live on Neural Forms › Integrations (Stripe / PayPal tabs); this only
+ * decides whether THIS form sends the visitor to checkout for the amount
+ * due (the deposit when one is set, otherwise the full total).
+ */
+function PaymentsSection( { value, onChange, fields } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.payments;
+	const v = { enabled: false, provider: 'auto', submit_label: '', description: '', success_url: '', cancel_url: '', ...( value || {} ) };
+	const set = ( patch ) => onChange( { ...v, ...patch } );
+	const [ providers, setProviders ] = useState( null );
+	useEffect( () => {
+		if ( ! unlocked ) return;
+		let cancelled = false;
+		api( '/payments/providers' ).then( ( res ) => { if ( ! cancelled ) setProviders( Array.isArray( res?.providers ) ? res.providers : [] ); } ).catch( () => { if ( ! cancelled ) setProviders( [] ); } );
+		return () => { cancelled = true; };
+	}, [ unlocked ] );
+	const hasProducts = flattenFields( Array.isArray( fields ) ? fields : [] ).some( ( n ) => n && n.type === 'product' );
+	const configured  = ( providers || [] ).filter( ( p ) => p.configured );
+	const integrationsUrl = ( window.neuralFormsAdmin?.admin?.adminUrl || '' ) ? window.neuralFormsAdmin.admin.adminUrl + 'admin.php?page=neural-forms-integrations' : 'admin.php?page=neural-forms-integrations';
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Take a deposit or the full amount through Stripe or PayPal right after a priced form is submitted. Payments are confirmed by the gateway, never by the browser. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</div>
+		);
+	}
+	return (
+		<div className="nf-payments-section">
+			{ ! hasProducts && <p className="nf-form-settings__hint">{ __( 'Add a Priced Item field first — payments need an amount to charge.', 'neural-forms-lite' ) }</p> }
+			{ providers && configured.length === 0 && (
+				<p className="nf-form-settings__hint">
+					{ __( 'No payment provider is connected yet.', 'neural-forms-lite' ) } <a href={ integrationsUrl } target="_blank" rel="noopener noreferrer">{ __( 'Connect Stripe or PayPal under Integrations.', 'neural-forms-lite' ) }</a>
+				</p>
+			) }
+			<label className="nf-form-settings__field nf-payments-section__toggle">
+				<input type="checkbox" checked={ !! v.enabled } disabled={ ! hasProducts } onChange={ ( e ) => set( { enabled: e.target.checked } ) } />
+				<span>
+					<strong>{ __( 'Take payment after submit', 'neural-forms-lite' ) }</strong>
+					<small>{ __( 'The entry is saved first, then the visitor is sent to the hosted checkout for the amount due (the deposit when one is set, otherwise the total). Zero totals skip the checkout.', 'neural-forms-lite' ) }</small>
+				</span>
+			</label>
+			{ v.enabled && (
+				<>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'Payment method', 'neural-forms-lite' ) }</span>
+						<select value={ v.provider } onChange={ ( e ) => set( { provider: e.target.value } ) }>
+							<option value="auto">{ __( 'First connected provider', 'neural-forms-lite' ) }</option>
+							{ ( providers || [] ).map( ( p ) => <option key={ p.id } value={ p.id }>{ p.label }{ p.configured ? '' : ' — ' + __( 'not connected', 'neural-forms-lite' ) }{ p.configured && ! p.live ? ' (' + __( 'test mode', 'neural-forms-lite' ) + ')' : '' }</option> ) }
+							<option value="choice">{ __( 'Let the visitor choose', 'neural-forms-lite' ) }</option>
+						</select>
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'Submit button text', 'neural-forms-lite' ) }</span>
+						<input type="text" value={ v.submit_label } placeholder={ __( 'Continue to payment', 'neural-forms-lite' ) } maxLength={ 80 } onChange={ ( e ) => set( { submit_label: e.target.value } ) } />
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'Note above the button', 'neural-forms-lite' ) }</span>
+						<input type="text" value={ v.description } placeholder={ __( 'You will be taken to a secure checkout page.', 'neural-forms-lite' ) } maxLength={ 200 } onChange={ ( e ) => set( { description: e.target.value } ) } />
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'After payment, send to (optional)', 'neural-forms-lite' ) }</span>
+						<input type="url" value={ v.success_url } placeholder="https://" onChange={ ( e ) => set( { success_url: e.target.value } ) } />
+						<span className="nf-form-settings__hint">{ __( 'Leave empty to show the built-in confirmation page. The page only ever shows the status the gateway confirmed.', 'neural-forms-lite' ) }</span>
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'If the visitor cancels, send to (optional)', 'neural-forms-lite' ) }</span>
+						<input type="url" value={ v.cancel_url } placeholder="https://" onChange={ ( e ) => set( { cancel_url: e.target.value } ) } />
+					</label>
+					<p className="nf-form-settings__hint">{ __( 'Payments are confirmed by signed webhooks from the gateway, so make sure the webhook URL shown on the Integrations page is set up there. A "Submission received" workflow never carries a paid status; use the "Payment confirmed" trigger for that.', 'neural-forms-lite' ) }</p>
+				</>
+			) }
+		</div>
+	);
+}
+
 function AiBehaviourSection( { value, onChange } ) {
 	const caps     = readCaps();
 	const unlocked = !! caps.ai_business_context;
@@ -809,6 +888,21 @@ export default function FormSettings( {
 					{ section === 'workflows' && (
 						<div className="nf-form-settings__body">
 							<WorkflowsSection formId={ formId } fields={ fields } />
+						</div>
+					) }
+
+					{ section === 'payments' && (
+						<div className="nf-form-settings__body">
+							<PaymentsSection
+								value={ s.payment && typeof s.payment === 'object' ? s.payment : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									const isDefault = ! next.enabled && ( ! next.provider || next.provider === 'auto' ) && ! next.submit_label && ! next.description && ! next.success_url && ! next.cancel_url;
+									if ( isDefault ) delete copy.payment; else copy.payment = next;
+									onChange( copy );
+								} }
+								fields={ fields }
+							/>
 						</div>
 					) }
 

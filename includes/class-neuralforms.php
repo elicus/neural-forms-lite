@@ -119,6 +119,7 @@ final class NeuralForms {
 		\NeuralForms\Workflows\WorkflowEngine::boot();
 		// 1.2.0 part B: quotes (expiry cron + raw HTML / PDF serving).
 		\NeuralForms\Quotes\QuotesBoot::boot();
+		\NeuralForms\Payments\PaymentsBoot::boot();
 
 		// Log cleanup: daily cron to prune old DB rows and log files.
 		add_action( 'neural_forms_log_cleanup', array( \NeuralForms\Core\Logger::class, 'cleanup' ) );

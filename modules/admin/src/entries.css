@@ -2185,3 +2185,22 @@
 .neural-forms-entry-detail__quote-inline select { width: auto; }
 .neural-forms-entry-detail__quote-editor .neural-forms-entry-detail__pricing-totals { margin-top: 10px; }
 @media (max-width: 700px) { .neural-forms-entry-detail__quote-grid { grid-template-columns: 1fr; } }
+
+/* ── Payment card (1.2.0, part B) ──────────────────────────────── */
+.neural-forms-entry-detail__payments .neural-forms-entry-detail__data-card-title { display: flex; align-items: center; gap: 8px; }
+.neural-forms-entry-detail__pay-attempt { border: 1px solid #e5e7eb; border-left-width: 4px; border-radius: 8px; padding: 10px 12px; margin-top: 8px; background: #fff; }
+.neural-forms-entry-detail__pay-attempt.is-ok { border-left-color: #10b981; }
+.neural-forms-entry-detail__pay-attempt.is-wait { border-left-color: #f59e0b; }
+.neural-forms-entry-detail__pay-attempt.is-bad { border-left-color: #ef4444; }
+.neural-forms-entry-detail__pay-attempt.is-muted { border-left-color: #d1d5db; opacity: .85; }
+.neural-forms-entry-detail__pay-attempt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.neural-forms-entry-detail__pay-attempt-head em { color: #9ca3af; font-style: normal; }
+.neural-forms-entry-detail__pay-warning { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; }
+.neural-forms-entry-detail__pay-events { margin-top: 6px; font-size: 12px; color: #6b7280; }
+.neural-forms-entry-detail__pay-events summary { cursor: pointer; }
+.neural-forms-entry-detail__pay-events ul { margin: 4px 0 0 16px; padding: 0; }
+.neural-forms-entry-detail__pay-events small { color: #9ca3af; }
+.neural-forms-entries-pill--pay-paid, .neural-forms-entries-pill--pay-deposit_paid { background: #d1fae5; color: #065f46; }
+.neural-forms-entries-pill--pay-processing, .neural-forms-entries-pill--pay-pending { background: #fef3c7; color: #92400e; }
+.neural-forms-entries-pill--pay-expired, .neural-forms-entries-pill--pay-replaced, .neural-forms-entries-pill--pay-refunded { background: #e5e7eb; color: #374151; }
+.neural-forms-entries-pill--pay-partially_refunded { background: #ede9fe; color: #5b21b6; }

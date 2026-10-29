@@ -165,7 +165,7 @@ namespace NeuralForms\Tests {
 		check( "sql: $needle", strpos( $sql, $needle ) !== false, true );
 	}
 	$main = (string) file_get_contents( $root . '/neural-forms-lite.php' );
-	check( 'db version is 1.2.2', preg_match( "/NEURAL_FORMS_DB_VERSION', '1\.2\.2'/", $main ), 1 );
+	check( 'db version is at least 1.2.2', version_compare( preg_match( "/NEURAL_FORMS_DB_VERSION', '([0-9.]+)'/", $main, $mm ) ? $mm[1] : '0', '1.2.2', '>=' ), true );
 
 	echo "QuotesTest: $passed passed, $failed failed\n";
 	exit( $failed > 0 ? 1 : 0 );

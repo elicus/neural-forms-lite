@@ -38,6 +38,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			'neural_forms_ai_draft_purge',
 			'neural_forms_follow_up_sweep',
 			'neural_forms_quote_expire',
+			'neural_forms_payment_reconcile',
 			'neural_forms_process_ai_queue',
 			'neural_forms_process_queue',
 		);
@@ -122,6 +123,8 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			$wpdb->prefix . 'neural_forms_workflow_runs',
 			$wpdb->prefix . 'neural_forms_workflow_actions',
 			$wpdb->prefix . 'neural_forms_quotes',
+			$wpdb->prefix . 'neural_forms_payments',
+			$wpdb->prefix . 'neural_forms_payment_events',
 		);
 		foreach ( $tables as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange

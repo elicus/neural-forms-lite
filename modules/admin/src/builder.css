@@ -4740,3 +4740,9 @@
 #neural-forms-app .nf-preview__calculated { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; }
 #neural-forms-app .nf-preview__calculated-value { font-weight: 700; font-size: 15px; }
 #neural-forms-app .nf-preview__calculated-expr { font-size: 11px; color: #6b7280; }
+
+/* ── Form settings › Payments (1.2.0, part B) ─────────────────── */
+.nf-payments-section__toggle { flex-direction: row !important; align-items: flex-start; gap: 10px; }
+.nf-payments-section__toggle input { margin-top: 3px; }
+.nf-payments-section__toggle > span { display: flex; flex-direction: column; gap: 2px; }
+.nf-payments-section__toggle small { color: #6b7280; font-size: 12px; line-height: 1.5; }

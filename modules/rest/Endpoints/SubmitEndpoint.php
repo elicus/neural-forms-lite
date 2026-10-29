@@ -555,6 +555,21 @@ class SubmitEndpoint {
 			$body['outcome'] = $outcome;
 		}
 
+		// 1.2.0 part B: hosted checkout. The entry is already stored (above);
+		// a gateway failure never fails the submission — the inbox shows the
+		// attempt as failed and the visitor sees the normal confirmation.
+		if ( $_pricing && (int) ( $_pricing['due_now'] ?? 0 ) > 0 && \NeuralForms\Payments\PaymentService::enabled_for( $form ) ) {
+			$_entry_row = \NeuralForms\Storage\EntryRepository::get( (int) $entry_id );
+			$_chosen    = $request->get_param( 'nf_payment_provider' );
+			$_checkout  = $_entry_row ? \NeuralForms\Payments\PaymentService::start_checkout( $_entry_row, $form, array( 'provider' => is_string( $_chosen ) ? sanitize_key( $_chosen ) : '' ) ) : null;
+			if ( is_array( $_checkout ) && ! empty( $_checkout['url'] ) ) {
+				$body['outcome'] = array( 'mode' => 'redirect', 'url' => (string) $_checkout['url'] );
+				$body['payment'] = array( 'id' => (int) $_checkout['payment']['id'], 'provider' => (string) $_checkout['payment']['provider'], 'status' => (string) $_checkout['payment']['status'] );
+			} elseif ( is_wp_error( $_checkout ) ) {
+				$body['payment_error'] = __( 'The payment step could not be started. Your submission was saved and we will contact you.', 'neural-forms-lite' );
+			}
+		}
+
 		// Poll Phase 3: piggyback poll results on the submit response so
 		// after_vote / always polls can refresh visually without a second
 		// round-trip. visibility="never" polls are intentionally omitted.
