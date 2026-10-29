@@ -300,7 +300,13 @@ final class PaymentService {
 			}
 			return array( 'result' => 'ignored', 'reason' => $r['reason'] );
 		}
-		PaymentRepository::update( (int) $payment['id'], $r['fields'] );
+		// Atomic: only the worker that still sees the old status wins (PAY5 under concurrency).
+		if ( ! PaymentRepository::update_if_status( (int) $payment['id'], (string) $payment['status'], $r['fields'] ) ) {
+			if ( $event_row_id ) {
+				PaymentRepository::finish_event( $event_row_id, (int) $payment['id'], 'raced' );
+			}
+			return array( 'result' => 'ignored', 'reason' => 'raced' );
+		}
 		$payment = PaymentRepository::get( (int) $payment['id'] );
 		if ( $event_row_id ) {
 			PaymentRepository::finish_event( $event_row_id, (int) $payment['id'], 'applied:' . $r['reason'] );

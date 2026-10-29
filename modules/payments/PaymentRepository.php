@@ -114,6 +114,36 @@ final class PaymentRepository {
 		return false !== $r;
 	}
 
+	/**
+	 * Guarded status change: applies $fields only while the row still has
+	 * $from_status, so two workers (webhook + reconcile, two browser
+	 * refreshes) cannot both move the same attempt to `paid` and fire the
+	 * confirmed hook twice. Returns true when this call made the change.
+	 */
+	public static function update_if_status( int $id, string $from_status, array $fields ): bool {
+		global $wpdb;
+		$allowed = array( 'status', 'provider_payment_id', 'account_id', 'amount_paid_minor', 'amount_refunded_minor', 'paid_at' );
+		$set     = array( 'updated_at = %s' );
+		$values  = array( current_time( 'mysql', true ) );
+		foreach ( $allowed as $k ) {
+			if ( ! array_key_exists( $k, $fields ) ) {
+				continue;
+			}
+			$v = $fields[ $k ];
+			if ( null === $v ) {
+				$set[] = "$k = NULL";
+			} else {
+				$set[]    = "$k = " . ( in_array( $k, array( 'amount_paid_minor', 'amount_refunded_minor' ), true ) ? '%d' : '%s' );
+				$values[] = $v;
+			}
+		}
+		$values[] = $id;
+		$values[] = $from_status;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+		$r = $wpdb->query( $wpdb->prepare( 'UPDATE ' . self::table() . ' SET ' . implode( ', ', $set ) . ' WHERE id = %d AND status = %s', $values ) );
+		return false !== $r && $r > 0;
+	}
+
 	/** Mark every open attempt of an entry (except $keep_id) as replaced. */
 	public static function replace_open( int $entry_id, int $keep_id = 0 ): int {
 		global $wpdb;
