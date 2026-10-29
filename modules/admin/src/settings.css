@@ -883,8 +883,8 @@
 	}
 }
 
-/* Processing health (1.2.0) */
-.neural-forms-settings__health { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 12px; font-size: 13px; }
-.neural-forms-settings__health dt { color: #6b7280; }
-.neural-forms-settings__health dd { margin: 0; font-weight: 600; color: #111827; }
-.neural-forms-settings__code { margin: 6px 0 0; padding: 8px 10px; background: #111827; color: #e5e7eb; border-radius: 6px; font-size: 12px; overflow-x: auto; }
+/* Processing health (1.2.0) — rendered inside Field rows */
+.neural-forms-settings__health { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0 0; font-size: 13px; }
+.neural-forms-settings__health dt { color: var( --f-gray-500 ); margin: 0; }
+.neural-forms-settings__health dd { margin: 0; font-weight: 600; color: var( --f-gray-900 ); }
+.neural-forms-settings__code { margin: 4px 0 0; padding: 8px 10px; background: var( --f-gray-900 ); color: #e5e7eb; border-radius: 6px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
