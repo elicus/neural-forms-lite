@@ -38,6 +38,7 @@ import { useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import IntegrationsSection from './IntegrationsSection';
 import ConditionEditor, { describeConditional } from './ConditionEditor';
+import WorkflowsSection from './WorkflowsSection';
 import { flattenFields, toEditableConditional } from './schemaHelper';
 
 const BASE_SECTIONS = [
@@ -47,6 +48,7 @@ const BASE_SECTIONS = [
 	{ id: 'on_success',   label: 'On success',   hint: 'What submitters see after a successful submit.' },
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
+	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
 ];
 
 /**
@@ -302,6 +304,7 @@ export default function FormSettings( {
 	onChange,
 	formSchemaSettings,
 	onChangeFormSchemaSettings,
+	formId,
 	hasQuiz,
 	detectedType,
 	fields,
@@ -583,6 +586,12 @@ export default function FormSettings( {
 									/>
 								</label>
 							) }
+						</div>
+					) }
+
+					{ section === 'workflows' && (
+						<div className="nf-form-settings__body">
+							<WorkflowsSection formId={ formId } fields={ fields } />
 						</div>
 					) }
 

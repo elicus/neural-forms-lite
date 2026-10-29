@@ -862,6 +862,46 @@ class NotificationService {
 	 * @param string[]     $headers
 	 * @return bool
 	 */
+	// ── Public helpers for workflow actions (1.2.0) ──────────────────
+
+	/**
+	 * Replace {site_name}, {form_name}, {entry_url} and {field_id} tokens.
+	 *
+	 * @param string $template
+	 * @param array  $form     Form row (name + form_schema).
+	 * @param array  $data     Entry data keyed by field id.
+	 * @param int    $entry_id For {entry_url}.
+	 */
+	public static function render_tokens( string $template, array $form, array $data, int $entry_id = 0 ): string {
+		$fields = \NeuralForms\Forms\SchemaHelper::flatten_fields( is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array() );
+		$out    = self::apply_tokens( $template, (string) ( $form['name'] ?? '' ), $data, $fields );
+		if ( $entry_id > 0 && strpos( $out, '{entry_url}' ) !== false ) {
+			$out = str_replace( '{entry_url}', self::get_entry_url( $entry_id, (int) ( $form['id'] ?? 0 ) ), $out );
+		}
+		return $out;
+	}
+
+	/**
+	 * Send a plain-text email with the plugin's configured From headers.
+	 * Returns what wp_mail() returns: "accepted by the mailer", not
+	 * "delivered".
+	 *
+	 * @param string|string[] $to
+	 */
+	public static function send_mail( $to, string $subject, string $body, array $extra_headers = array() ): bool {
+		$headers = array_merge( self::build_from_headers( Config::all() ), $extra_headers );
+		return self::send_with_retry( $to, $subject, $body, $headers );
+	}
+
+	/**
+	 * The submitter's email address for an entry, or '' when the form has
+	 * no email field / the value is invalid.
+	 */
+	public static function submitter_email( array $form, array $data ): string {
+		$fields = \NeuralForms\Forms\SchemaHelper::flatten_fields( is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array() );
+		return self::find_submitter_email( $fields, $data );
+	}
+
 	private static function send_with_retry( $to, string $subject, string $body, array $headers ): bool {
 		if ( wp_mail( $to, $subject, $body, $headers ) ) {
 			return true;

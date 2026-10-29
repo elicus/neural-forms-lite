@@ -727,6 +727,7 @@ export default function Builder( { formId, isNew } ) {
 					<FormSettings
 						settings={ form.settings || {} }
 						onChange={ setSettings }
+						formId={ isNew ? 0 : Number( formId ) || 0 }
 						formSchemaSettings={ formSchemaSettings }
 						onChangeFormSchemaSettings={ setFormSchemaSettings }
 						fields={ fields }

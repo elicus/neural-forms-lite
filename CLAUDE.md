@@ -433,6 +433,7 @@ removed as dead code. Keep `__meter-cta`, `__meter-msg`, `__meter-btn`.
 |---|---|---|---|
 | `neural_forms_process_queue` | 5 min + 10s single-event after submission | `AIQueueProcessor::process_queue()` | Drain `neural_forms_queue` (AI analysis jobs) |
 | `neural_forms_ai_draft_purge` | daily | `AIResponseRepository::purge_older_than( DRAFT_TTL_DAYS )` | Garbage-collect stale (non-finalized) carousel drafts older than 30 days |
+| `neural_forms_follow_up_sweep` | hourly | `WorkflowEngine::sweep_overdue_follow_ups()` | Fire the `follow_up_overdue` workflow trigger once per overdue, open follow-up (1.2.0) |
 
 Both hooks are scheduled in `Activator::activate()`, cleared in
 `Deactivator::deactivate()`, and self-scheduled in `NeuralForms::boot()`
@@ -793,6 +794,77 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Workflows engine (1.2.0, A4)
+
+`modules/workflows/` — Lite owns the engine, Pro flips `workflows` and
+adds integration actions.
+
+- **Definition** (`WorkflowDefinition`): `{ form_id, name, trigger
+  (submission_received | analysis_completed | stage_changed |
+  follow_up_overdue), conditions (ConditionEngine v2 | null), actions[]
+  { key a1.., type, settings, continue_on_failure }, settings
+  { on_reanalysis, stage_from, stage_to } }`. Conditions may reference
+  form fields AND the meta pseudo-fields in `meta_sources()`
+  (ai_category, ai_priority, ai_score, ai_is_spam, lead_stage,
+  assigned_to, status); `evaluation_context()` always sets every meta
+  key (empty string when unknown) so "equals" on a missing AI result
+  fails instead of hitting the lenient absent-field fallback.
+- **Storage**: `WorkflowRepository` (`neural_forms_workflows`,
+  `revision` bumps on every update), `WorkflowRunRepository`
+  (`_runs` unique (workflow_id, event_id); `_actions` unique (run_id,
+  action_key)). A run stores a `definition` snapshot in `context`, so
+  edits never change queued work. Claims are single guarded UPDATEs.
+- **Dispatch** (`WorkflowEngine`): hooks `neural_forms_entry_created`
+  (prio 50), `neural_forms_entry_analysis_completed` (first analysis
+  only unless `on_reanalysis`), `neural_forms_lead_stage_changed`
+  (from/to filters), hourly `neural_forms_follow_up_sweep`
+  (sets `follow_up_overdue_sent` BEFORE dispatching). Event ids:
+  `created:{e}`, `analysis:{e}:{n}`, `stage:{e}:{from}>{to}:{ts}`,
+  `overdue:{e}:{due}`. Lineage `W{id}:R{run},…` blocks a workflow that
+  is already in the chain and caps depth at 3. Only active when
+  `Capabilities::WORKFLOWS` is unlocked.
+- **Queue**: runs are `job_type = 'workflow'` rows in
+  `neural_forms_queue`; `WorkflowQueueProcessor::run()` is a SECOND
+  callback on `AIQueueProcessor::CRON_HOOK` (priority 20) so workflows
+  run with AI off; it also writes `neural_forms_queue_last_run`.
+  `WorkflowEngine::kick_queue()` schedules a single event in 5 s.
+- **Runner** (`WorkflowRunner::process_run`): conditions evaluated
+  once (activity `workflow.started` / `workflow.skipped` with per-rule
+  results), then actions in order: `done` / `skipped` continue; `retry`
+  → backoff 1, 5, 30 min, max 3 attempts, run `waiting` + re-enqueued;
+  `failed` / `uncertain` stop dependents unless `continue_on_failure`
+  (uncertain is never auto-retried; manual Retry reopens the action).
+  Run ends `done | partial | failed | skipped`.
+  `dry_run()` = conditions + `describe()` per action, zero side effects.
+- **Actions** (`Actions/`, registry `ActionRegistry` + filter
+  `neural_forms_workflow_actions`): assign_user, set_stage (passes
+  `_context` lineage into `EntryRepository::update`), create_follow_up
+  (elapsed hours), notify_internal (fixed recipients, tokens
+  `{form_name} {site_name} {entry_url} {field_id}`),
+  send_acknowledgement (fixed template only — never AI text; records an
+  outgoing message), prepare_ai_draft (queues a `regenerate_reply` job;
+  nothing is sent). Pro adds sync_hubspot, sync_mailchimp,
+  send_whatsapp, send_zapier (`modules/workflows/ProWorkflowActions.php`),
+  each handing off to the provider's own scheduled-delivery hook so
+  payloads and telemetry match the automatic path.
+  `NotificationService::render_tokens() / send_mail() /
+  submitter_email()` are the public helpers actions use.
+- **REST** (`WorkflowsEndpoint`, manage_options + `workflows` cap except
+  `/workflows/health`): `/workflows?form_id`, `/workflows/meta`,
+  `/workflows/{id}` GET/PUT/DELETE (PUT with only `enabled` toggles),
+  `/workflows/{id}/test` (body may carry an unsaved `definition`),
+  `/workflows/{id}/runs`, `/workflows/{id}/cancel-pending`,
+  `/workflow-actions/{id}/retry`.
+- **UI**: Form settings › Workflows (`forms/WorkflowsSection.js`, builder
+  bundle): list with run counts, When/If/Then editor, Test run, History
+  with Retry; upsell when locked; needs a saved form id (`FormSettings`
+  now receives `formId`). Settings › Processing health
+  (`ProcessingHealthSection` in `screens/Settings.js`, settings bundle)
+  reads `/workflows/health` and shows the system-cron hint.
+- Tests: `tests/WorkflowDefinitionTest.php` (registry, normalise,
+  validate, evaluation context, event ids, lineage, backoff, describe).
+  DB-bound code (repositories, runner, processor) is exercised manually.
 
 ### Lead management + activity timeline (1.2.0, A3)
 

@@ -115,6 +115,8 @@ final class NeuralForms {
 		add_filter( 'cron_schedules', array( \NeuralForms\AI\AIQueueProcessor::class, 'add_cron_interval' ) );
 		\NeuralForms\AI\AIQueueProcessor::boot();
 		\NeuralForms\AI\QueueListener::boot();
+		// 1.2.0 workflows: event dispatch + queue drain on the same cron hook.
+		\NeuralForms\Workflows\WorkflowEngine::boot();
 
 		// Log cleanup: daily cron to prune old DB rows and log files.
 		add_action( 'neural_forms_log_cleanup', array( \NeuralForms\Core\Logger::class, 'cleanup' ) );
