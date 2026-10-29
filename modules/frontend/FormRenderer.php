@@ -2263,7 +2263,7 @@ class FormRenderer {
 		if ( ! Capabilities::can( Capabilities::CALCULATIONS ) ) {
 			if ( current_user_can( 'manage_options' ) ) {
 				return '<p class="neural-forms-product__notice" role="status">'
-					. esc_html__( 'Product field hidden — requires Neural Forms Pro. (Visible to administrators only.)', 'neural-forms-lite' )
+					. esc_html__( 'Priced Item field hidden — requires Neural Forms Pro. (Visible to administrators only.)', 'neural-forms-lite' )
 					. '</p>';
 			}
 			return '';

@@ -239,7 +239,7 @@ class FormValidator {
 	private static function validate_product( array $field, string $id ) {
 		$p   = \NeuralForms\Pricing\PriceEngine::product_pricing( $field );
 		$err = static function ( string $msg ) use ( $id ) {
-			return new \WP_Error( 'invalid_form_data', sprintf( 'Product "%s": %s', $id, $msg ), array( 'status' => 422 ) );
+			return new \WP_Error( 'invalid_form_data', sprintf( 'Priced Item "%s": %s', $id, $msg ), array( 'status' => 422 ) );
 		};
 		$is_price = static function ( $v ): bool {
 			return is_scalar( $v ) && preg_match( '/^\s*-?[\d,]+(\.\d+)?\s*$/', (string) $v ) && strpos( (string) $v, '-' ) === false;

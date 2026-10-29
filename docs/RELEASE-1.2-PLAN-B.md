@@ -12,7 +12,7 @@ done. Part A is in `docs/RELEASE-1.2-PLAN.md`.
 
 | Feature | Lite 1.2.0 | Pro 1.1.0 |
 |---|---|---|
-| Product field (priced choices, quantity) and Calculated field (expression) | engine shipped, locked in the builder (upsell), skipped by the renderer when locked — same pattern as Matrix / Repeater | unlocked (`calculations`) |
+| Priced Item field (schema type `product`; priced choices, quantity; prices live in the form, no WooCommerce) and Calculated field (expression) | engine shipped, locked in the builder (upsell), skipped by the renderer when locked — same pattern as Matrix / Repeater | unlocked (`calculations`) |
 | Form pricing: currency, discount rules, deposit | settings stored, enforced only with the capability | unlocked |
 | Authoritative server totals + pricing snapshot on the entry | yes (engine) | yes |
 | Quotes: numbered, versioned, branded HTML + PDF, token pay links | no | `quotes` |

@@ -51,7 +51,7 @@ const BASE_SECTIONS = [
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
 	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
 	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
-	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules and deposit for Product fields on this form.' },
+	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules and deposit for Priced Item fields on this form.' },
 ];
 
 /**
@@ -162,7 +162,7 @@ function PricingSection( { value, onChange, fields } ) {
 	if ( ! unlocked ) {
 		return (
 			<div className="nf-form-settings__pro-note">
-				{ __( 'Price your services with Product fields, show a live total with discounts and a deposit, and calculate values from answers. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+				{ __( 'Price your services with Priced Item fields, show a live total with discounts and a deposit, and calculate values from answers. Prices are set in the form itself; no WooCommerce or shop plugin is needed. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
 			</div>
 		);
 	}
@@ -183,7 +183,7 @@ function PricingSection( { value, onChange, fields } ) {
 	return (
 		<div className="nf-pricing">
 			{ ! hasProducts && (
-				<p className="nf-form-settings__hint">{ __( 'Add a Product field to the form to start pricing. These settings apply once it has one.', 'neural-forms-lite' ) }</p>
+				<p className="nf-form-settings__hint">{ __( 'Add a Priced Item field to the form to start pricing. These settings apply once it has one.', 'neural-forms-lite' ) }</p>
 			) }
 			<label className="nf-form-settings__field">
 				<span className="nf-form-settings__label">{ __( 'Currency', 'neural-forms-lite' ) }</span>

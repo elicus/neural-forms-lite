@@ -800,6 +800,14 @@ prevents overflow without needing `overflow: hidden` anywhere.
 
 ### Calculations: Product + Calculated fields, pricing (1.2.0 part B, B1)
 
+- **Naming / no WooCommerce.** The schema type key is `product` (never
+  rename it — stored forms depend on it) but every user-facing label says
+  **"Priced Item"** (palette chip, inspector, hints, admin notices,
+  validation messages, changelogs). Prices are defined inside the form
+  schema; the feature has NO dependency on WooCommerce or any shop plugin
+  and must never gain one. The owner raised this on 2026-10-29 after
+  reading "Product" as a Woo product picker.
+
 - **Engine** `modules/pricing/`: `Money` (integer minor units, currency
   exponent table, half-up `percent_of`), `Expression` (tokeniser +
   shunting-yard, `+ - * / ( )`, `round min max if`, no eval),

@@ -134,7 +134,7 @@ class FieldRegistry {
 		// min/max amount; `options` carry a `price` each. Posted value is
 		// an array { choice, qty, amount }. PriceEngine owns the money.
 		'product'       => array(
-			'label'    => 'Product',
+			'label'    => 'Priced Item',
 			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'options', 'pricing', 'width' ),
 		),
 		// Calculated (1.2.0, part B): display-only value computed from an

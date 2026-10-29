@@ -10,7 +10,7 @@
 * Added: Pro users can give AI drafts approved business knowledge, a brand voice and a reply-language policy, site-wide and per form; drafts show which facts they used and flag what they could not answer.
 * Added: Any field can be excluded from AI so its answer never leaves your site.
 * Added: Translate an AI draft into your site language from the drafts carousel.
-* Added: Pro users can price their services with Product fields, show a live total with discount rules and a deposit, and calculate values from answers; totals are always recalculated on the server.
+* Added: Pro users can price their services with Priced Item fields (no WooCommerce needed), show a live total with discount rules and a deposit, and calculate values from answers; totals are always recalculated on the server.
 * Fixed: Cloud error messages show their real code instead of a bare HTTP status.
 * Fixed: "Analyze with AI" runs immediately when a queued job was never picked up by cron.
 * Fixed: Upstream failures no longer show a Cloudflare error page on proxied sites.

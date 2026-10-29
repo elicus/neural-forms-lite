@@ -1693,7 +1693,7 @@ function ProductSettingsBlock( { field, onChange } ) {
 					) }
 				</>
 			) }
-			<p className="nf-inspector__cl-hint">{ __( 'The currency is set under Form settings › Pricing. Totals are always recalculated on the server.', 'neural-forms-lite' ) }</p>
+			<p className="nf-inspector__cl-hint">{ __( 'Prices are set here in the form; no WooCommerce or shop plugin is needed. The currency is set under Form settings › Pricing. Totals are always recalculated on the server.', 'neural-forms-lite' ) }</p>
 		</div>
 	);
 }
@@ -1730,7 +1730,7 @@ function CalculatedSettingsBlock( { field, onChange, nodes } ) {
 					) ) }
 				</div>
 			) }
-			{ refs.length === 0 && <p className="nf-inspector__cl-hint">{ __( 'Add a Number or Product field to reference it here.', 'neural-forms-lite' ) }</p> }
+			{ refs.length === 0 && <p className="nf-inspector__cl-hint">{ __( 'Add a Number or Priced Item field to reference it here.', 'neural-forms-lite' ) }</p> }
 			<div className="nf-inspector__row">
 				<label className="nf-inspector__field">
 					<span className="nf-inspector__label">{ __( 'Show as', 'neural-forms-lite' ) }</span>

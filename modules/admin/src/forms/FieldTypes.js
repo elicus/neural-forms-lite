@@ -24,7 +24,7 @@ export const FIELD_TYPES = [
 	{ value: 'poll',          label: 'Poll'          },
 	{ value: 'quiz_question', label: 'Quiz'          },
 	{ value: 'repeater',      label: 'Repeater'      },
-	{ value: 'product',       label: 'Product'       },
+	{ value: 'product',       label: 'Priced Item'   },
 	{ value: 'calculated',    label: 'Calculated'    },
 	{ value: 'file',          label: 'File Upload'   },
 	{ value: 'hidden',        label: 'Hidden'        },
@@ -121,7 +121,7 @@ export function newField( type, existingIds = [] ) {
 	}
 
 	if ( type === 'product' ) {
-		base.label    = 'Product';
+		base.label    = 'Priced Item';
 		base.required = false;
 		base.pricing  = {
 			mode:       'options',
