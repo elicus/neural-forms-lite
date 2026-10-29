@@ -825,6 +825,13 @@ prevents overflow without needing `overflow: hidden` anywhere.
   link, outgoing message row, `payment.invoice_sent` activity).
   **Automatic**: `maybe_auto_invoice()` after every newly paid attempt when
   `settings.payment.send_invoice` (default TRUE) and the entry has an email.
+- **Designing the documents**: Quotes page fields (business block, logo,
+  accent colour, footer, `invoice_title`, `invoice_note`, quote intro /
+  terms) feed both renderers. Developer hooks: `neural_forms_invoice_css`
+  / `neural_forms_quote_css` (inline stylesheet, dompdf-safe CSS only) and
+  `neural_forms_invoice_html( $html, $payment, $entry, $form, $quote,
+  $settings, $options )` / `neural_forms_quote_html( $html, $quote,
+  $options )` to restyle or replace the whole document (escape everything).
 - **Refunds**: `PaymentProviderInterface::refund( $payment, $amount_minor,
   $reason )` (Stripe `POST /v1/refunds` by payment_intent, PayPal
   `POST /v2/payments/captures/{id}/refund`, both with idempotency keys);

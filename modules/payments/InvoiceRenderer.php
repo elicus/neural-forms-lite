@@ -40,11 +40,17 @@ final class InvoiceRenderer {
 			'email' => (string) ( $quote['snapshot']['customer']['email'] ?? $payment['meta']['customer_email'] ?? '' ),
 		);
 		$logo  = isset( $options['logo_src'] ) && is_string( $options['logo_src'] ) ? $options['logo_src'] : (string) ( $settings['logo_url'] ?? '' );
-		$title = $number !== '' ? sprintf( self::t( 'Invoice %s' ), $number ) : self::t( 'Invoice' );
+		$doc   = trim( (string) ( $settings['invoice_title'] ?? '' ) ) !== '' ? (string) $settings['invoice_title'] : self::t( 'Invoice' );
+		$title = $number !== '' ? $doc . ' ' . $number : $doc;
 		$stamp = $refunded >= $paid && $paid > 0 ? self::t( 'REFUNDED' ) : ( $refunded > 0 ? self::t( 'PARTLY REFUNDED' ) : self::t( 'PAID' ) );
 		$stamp_class = $refunded > 0 ? 'is-refund' : 'is-paid';
 
-		$h  = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' . $e( $title ) . '</title><style>' . self::css( $accent, $mode ) . '</style></head><body class="nf-inv nf-inv--' . $e( $mode ) . '">';
+		/**
+		 * Filter the invoice stylesheet (inline CSS; dompdf understands tables,
+		 * inline-block and plain CSS 2.1 — no flexbox / grid / web fonts).
+		 */
+		$css = (string) apply_filters( 'neural_forms_invoice_css', self::css( $accent, $mode ), $accent, $mode, $payment );
+		$h   = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' . $e( $title ) . '</title><style>' . $css . '</style></head><body class="nf-inv nf-inv--' . $e( $mode ) . '">';
 		if ( $mode === 'html' && ! empty( $options['toolbar'] ) ) {
 			$h .= '<div class="nf-inv__toolbar"><button type="button" onclick="window.print()">' . $e( self::t( 'Print' ) ) . '</button>';
 			if ( ! empty( $options['pdf_url'] ) ) {
@@ -68,7 +74,7 @@ final class InvoiceRenderer {
 		if ( (string) ( $settings['tax_id'] ?? '' ) !== '' ) {
 			$h .= '<div class="nf-inv__biz-line">' . $e( sprintf( self::t( 'Tax ID: %s' ), (string) $settings['tax_id'] ) ) . '</div>';
 		}
-		$h .= '</td><td valign="top" align="right"><div class="nf-inv__title">' . $e( self::t( 'Invoice' ) ) . '</div><div class="nf-inv__stamp ' . $stamp_class . '">' . $e( $stamp ) . '</div><table class="nf-inv__meta">';
+		$h .= '</td><td valign="top" align="right"><div class="nf-inv__title">' . $e( $doc ) . '</div><div class="nf-inv__stamp ' . $stamp_class . '">' . $e( $stamp ) . '</div><table class="nf-inv__meta">';
 		if ( $number !== '' ) {
 			$h .= '<tr><th>' . $e( self::t( 'Number' ) ) . '</th><td>' . $e( $number ) . '</td></tr>';
 		}
@@ -125,12 +131,20 @@ final class InvoiceRenderer {
 			$h .= ' · ' . $e( (string) $payment['provider_payment_id'] );
 		}
 		$h .= '</div></div>';
+		if ( (string) ( $settings['invoice_note'] ?? '' ) !== '' ) {
+			$h .= '<div class="nf-inv__section"><div class="nf-inv__label">' . $e( self::t( 'Notes' ) ) . '</div><div class="nf-inv__text">' . nl2br( $e( (string) $settings['invoice_note'] ) ) . '</div></div>';
+		}
 		if ( (string) ( $settings['footer'] ?? '' ) !== '' ) {
 			$h .= '<div class="nf-inv__footer">' . nl2br( $e( (string) $settings['footer'] ) ) . '</div>';
 		}
 		$h .= '<div class="nf-inv__footer nf-inv__disclaimer">' . $e( self::t( 'Thank you for your business.' ) ) . '</div>';
 		$h .= '</div></body></html>';
-		return $h;
+		/**
+		 * Filter the finished invoice document. Return your own complete HTML
+		 * to replace the layout entirely; $payment / $entry / $quote are raw
+		 * data and must be escaped by the filter.
+		 */
+		return (string) apply_filters( 'neural_forms_invoice_html', $h, $payment, $entry, $form, $quote, $settings, $options );
 	}
 
 	/** Line items in a uniform shape from either a quote or an entry pricing snapshot. */

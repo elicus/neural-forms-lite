@@ -32,7 +32,8 @@ final class QuoteRenderer {
 		$e        = array( self::class, 'esc' );
 
 		$h  = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' . $e( $title ) . '</title>';
-		$h .= '<style>' . self::css( $accent, $mode ) . '</style></head><body class="nf-quote nf-quote--' . $e( $mode ) . '">';
+		$css = (string) apply_filters( 'neural_forms_quote_css', self::css( $accent, $mode ), $accent, $mode, $quote );
+		$h .= '<style>' . $css . '</style></head><body class="nf-quote nf-quote--' . $e( $mode ) . '">';
 		if ( $mode === 'html' && ! empty( $options['toolbar'] ) ) {
 			$h .= '<div class="nf-quote__toolbar">';
 			$h .= '<button type="button" onclick="window.print()">' . $e( self::t( 'Print' ) ) . '</button>';
@@ -149,7 +150,8 @@ final class QuoteRenderer {
 		}
 		$h .= '<div class="nf-quote__disclaimer">' . $e( self::t( 'This quote is an estimate for review and is not a tax invoice. Prices are valid until the date shown.' ) ) . '</div>';
 		$h .= '</div></div></body></html>';
-		return $h;
+		/** Filter the finished quote document (same contract as neural_forms_invoice_html). */
+		return (string) apply_filters( 'neural_forms_quote_html', $h, $quote, $options );
 	}
 
 	/** Suggested download filename. */

@@ -65,7 +65,7 @@ function QuoteSettingsForm( { unlocked, form, set, pickLogo, loadError } ) {
 		);
 	}
 	return (
-		<Section title={ __( 'Branding', 'neural-forms-lite' ) } description={ __( 'Business identity and text blocks printed on every quote.', 'neural-forms-lite' ) }>
+		<Section title={ __( 'Branding', 'neural-forms-lite' ) } description={ __( 'Business identity and text blocks printed on every quote and invoice.', 'neural-forms-lite' ) }>
 			{ ! form && ! loadError && <p className="neural-forms-settings__hint" style={ { padding: '16px 24px' } }>{ __( 'Loading…', 'neural-forms-lite' ) }</p> }
 			{ ! form && loadError && <p className="neural-forms-settings__hint is-error" style={ { padding: '16px 24px' } }>{ loadError }</p> }
 			{ form && <>
@@ -90,6 +90,8 @@ function QuoteSettingsForm( { unlocked, form, set, pickLogo, loadError } ) {
 				<Field label={ __( 'Introduction', 'neural-forms-lite' ) } hint={ __( 'Shown above the items on new quotes.', 'neural-forms-lite' ) }><Textarea rows={ 2 } value={ form.intro } onChange={ set( 'intro' ) } /></Field>
 				<Field label={ __( 'Terms', 'neural-forms-lite' ) }><Textarea rows={ 4 } value={ form.terms } onChange={ set( 'terms' ) } /></Field>
 				<Field label={ __( 'Footer', 'neural-forms-lite' ) }><Textarea rows={ 2 } value={ form.footer } onChange={ set( 'footer' ) } /></Field>
+				<Field label={ __( 'Invoice title', 'neural-forms-lite' ) } hint={ __( 'Heading printed on payment invoices, for example "Invoice" or "Receipt". Default: Invoice.', 'neural-forms-lite' ) }><TextInput value={ form.invoice_title || '' } placeholder="Invoice" onChange={ set( 'invoice_title' ) } /></Field>
+				<Field label={ __( 'Invoice note', 'neural-forms-lite' ) } hint={ __( 'Printed on every invoice under the payment details, for example bank details for the balance or a thank-you line.', 'neural-forms-lite' ) }><Textarea rows={ 3 } value={ form.invoice_note || '' } onChange={ set( 'invoice_note' ) } /></Field>
 				<Field label={ __( 'PDF', 'neural-forms-lite' ) }>
 					<p className="neural-forms-settings__hint" style={ { marginTop: 0 } }>{ form.pdf_available ? __( 'PDF generation is active. Quotes are emailed with a PDF attachment and a secure link.', 'neural-forms-lite' ) : __( 'PDF generation is not available on this server (it needs the PHP DOM and mbstring extensions and at least 96 MB of memory). Quotes are sent as a secure printable link instead.', 'neural-forms-lite' ) }</p>
 				</Field>

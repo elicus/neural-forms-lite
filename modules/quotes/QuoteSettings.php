@@ -31,6 +31,8 @@ final class QuoteSettings {
 			'terms'         => '',
 			'footer'        => '',
 			'accent_color'  => '#1e1b4b',
+			'invoice_title' => '',
+			'invoice_note'  => '',
 		);
 	}
 
@@ -54,12 +56,12 @@ final class QuoteSettings {
 			}
 		}
 		$out = $base;
-		foreach ( array( 'business_name', 'email', 'phone', 'website', 'tax_id', 'prefix' ) as $k ) {
+		foreach ( array( 'business_name', 'email', 'phone', 'website', 'tax_id', 'prefix', 'invoice_title' ) as $k ) {
 			if ( array_key_exists( $k, $raw ) && is_scalar( $raw[ $k ] ) ) {
 				$out[ $k ] = self::text( (string) $raw[ $k ], 190 );
 			}
 		}
-		foreach ( array( 'address', 'intro', 'terms', 'footer' ) as $k ) {
+		foreach ( array( 'address', 'intro', 'terms', 'footer', 'invoice_note' ) as $k ) {
 			if ( array_key_exists( $k, $raw ) && is_scalar( $raw[ $k ] ) ) {
 				$out[ $k ] = self::multiline( (string) $raw[ $k ], 4000 );
 			}

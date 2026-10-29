@@ -155,6 +155,8 @@ namespace NeuralForms\Tests {
 	$qpay  = array_merge( $ipay, array( 'kind' => 'full', 'amount_due_minor' => 50000, 'amount_paid_minor' => 50000 ) );
 	$qhtml = InvoiceRenderer::html( $qpay, $ientry, array(), $quote, $isettings );
 	check( 'invoice from quote: quote lines + number, customer from quote, no remaining balance', strpos( $qhtml, 'Design' ) !== false && strpos( $qhtml, 'Homepage' ) !== false && strpos( $qhtml, 'Q-2026-0009' ) !== false && strpos( $qhtml, 'Quote Customer' ) !== false && strpos( $qhtml, 'Remaining balance' ) === false, true );
+	$custom = InvoiceRenderer::html( $ipay, $ientry, array(), null, $isettings + array( 'invoice_title' => 'Receipt', 'invoice_note' => 'Bank: 12-34-56' ) );
+	check( 'invoice: custom title + note', strpos( $custom, '>Receipt<' ) !== false && strpos( $custom, 'Receipt INV-2026-0003' ) !== false && strpos( $custom, 'Bank: 12-34-56' ) !== false, true );
 	check( 'invoice: filename', InvoiceRenderer::filename( $ipay ), 'inv-2026-0003.pdf' );
 	check( 'invoice: no snapshot → single line from description', strpos( InvoiceRenderer::html( array_merge( $ipay, array( 'amount_due_minor' => 35100 ) ), array(), array(), null, $isettings ), 'Website project' ) !== false, true );
 	check( 'sanitize: send_invoice defaults to true when enabled', FormSettingsSanitizer::sanitize_payment( array( 'enabled' => true ) )['send_invoice'], true );
