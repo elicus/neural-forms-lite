@@ -437,7 +437,7 @@ class FormRenderer {
 				. ' aria-valuemin="0" aria-valuemax="' . (int) $total . '" aria-valuenow="1">'
 				. '<div class="neural-forms-form__progress-bar-fill" style="width:' . (int) $pct . '%"></div>'
 				. '</div>'
-				. '<p class="neural-forms-form__progress-text">'
+				. '<p class="neural-forms-form__progress-text" aria-live="polite">'
 				. sprintf(
 					/* translators: 1: current step number  2: total steps */
 					esc_html__( 'Step %1$d of %2$d', 'neural-forms-lite' ),

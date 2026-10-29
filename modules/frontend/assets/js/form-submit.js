@@ -2978,6 +2978,9 @@
 					if ( num && hasStepLogic ) num.textContent = String( shown );
 					if ( i < index )      items[ i ].classList.add( 'is-complete' );
 					else if ( i === index ) items[ i ].classList.add( 'is-active' );
+					// Assistive tech: mark the current step in the numbered list.
+					if ( i === index ) items[ i ].setAttribute( 'aria-current', 'step' );
+					else items[ i ].removeAttribute( 'aria-current' );
 				}
 				return;
 			}

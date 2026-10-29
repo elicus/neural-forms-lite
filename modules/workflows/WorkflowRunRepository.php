@@ -200,7 +200,12 @@ final class WorkflowRunRepository {
 	public static function reopen_action( int $action_id ): bool {
 		global $wpdb;
 		$action = self::get_action( $action_id );
-		if ( ! $action || ! in_array( $action['status'], array( 'failed', 'uncertain', 'skipped' ), true ) ) {
+		if ( ! $action ) {
+			return false;
+		}
+		$retryable = in_array( $action['status'], array( 'failed', 'uncertain', 'skipped' ), true )
+			|| ( $action['status'] === 'pending' && ! empty( $action['next_attempt_at'] ) ); // "retry now" on a waiting action
+		if ( ! $retryable ) {
 			return false;
 		}
 		$wpdb->update( self::actions_table(), array( 'status' => 'pending', 'attempts' => 0, 'next_attempt_at' => null, 'result' => null, 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => $action_id ), array( '%s', '%d', '%s', '%s', '%s' ), array( '%d' ) );

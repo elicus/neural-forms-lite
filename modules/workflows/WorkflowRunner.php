@@ -83,7 +83,10 @@ final class WorkflowRunner {
 		$waiting   = false;
 		$failed    = false;
 		$uncertain = false;
-		$stop      = false;
+		// $halt: null = keep executing; 'wait' = an earlier action is
+		// retrying, so dependents stay PENDING for the next pass; 'fail' =
+		// an earlier action failed for good, so dependents are SKIPPED.
+		$halt      = null;
 		$earliest_retry = null;
 
 		foreach ( $rows as $row ) {
@@ -92,11 +95,14 @@ final class WorkflowRunner {
 				WorkflowRunRepository::finish_action( (int) $row['id'], 'skipped', 'Action no longer in the definition.' );
 				continue;
 			}
-			if ( $stop ) {
-				if ( in_array( $row['status'], array( 'pending' ), true ) ) {
+			if ( $halt === 'fail' ) {
+				if ( $row['status'] === 'pending' ) {
 					WorkflowRunRepository::finish_action( (int) $row['id'], 'skipped', __( 'Skipped because an earlier action failed.', 'neural-forms-lite' ) );
 				}
 				continue;
+			}
+			if ( $halt === 'wait' ) {
+				continue; // leave as-is; the retry pass will reach it
 			}
 			if ( $row['status'] === 'done' || $row['status'] === 'skipped' ) {
 				continue;
@@ -104,21 +110,23 @@ final class WorkflowRunner {
 			if ( $row['status'] === 'failed' ) {
 				$failed = true;
 				if ( empty( $spec['continue_on_failure'] ) ) {
-					$stop = true;
+					$halt = 'fail';
 				}
 				continue;
 			}
 			if ( $row['status'] === 'uncertain' ) {
 				$uncertain = true;
 				if ( empty( $spec['continue_on_failure'] ) ) {
-					$stop = true;
+					$halt = 'fail';
 				}
 				continue;
 			}
 			if ( $row['status'] === 'pending' && ! empty( $row['next_attempt_at'] ) && strtotime( $row['next_attempt_at'] . ' UTC' ) > time() ) {
 				$waiting        = true;
 				$earliest_retry = $earliest_retry ? min( $earliest_retry, strtotime( $row['next_attempt_at'] . ' UTC' ) ) : strtotime( $row['next_attempt_at'] . ' UTC' );
-				$stop           = empty( $spec['continue_on_failure'] ); // dependents wait too
+				if ( empty( $spec['continue_on_failure'] ) ) {
+					$halt = 'wait'; // dependents wait too
+				}
 				continue;
 			}
 			if ( ! WorkflowRunRepository::claim_action( (int) $row['id'] ) ) {
@@ -137,16 +145,15 @@ final class WorkflowRunner {
 						WorkflowRunRepository::finish_action( (int) $row['id'], 'failed', sprintf( __( 'Gave up after %1$d attempts: %2$s', 'neural-forms-lite' ), $attempts, $result->message ) );
 						$failed = true;
 						if ( empty( $spec['continue_on_failure'] ) ) {
-							$stop = true;
+							$halt = 'fail';
 						}
 					} else {
 						$at = time() + WorkflowDefinition::backoff_minutes( $attempts ) * 60;
 						WorkflowRunRepository::finish_action( (int) $row['id'], 'pending', sprintf( __( 'Attempt %1$d failed: %2$s. Retrying.', 'neural-forms-lite' ), $attempts, $result->message ), null, gmdate( 'Y-m-d H:i:s', $at ) );
-						// Undo the attempts bump? No — attempts counts tries; keep it.
 						$waiting        = true;
 						$earliest_retry = $earliest_retry ? min( $earliest_retry, $at ) : $at;
 						if ( empty( $spec['continue_on_failure'] ) ) {
-							$stop = true;
+							$halt = 'wait';
 						}
 					}
 					break;
@@ -154,7 +161,7 @@ final class WorkflowRunner {
 					WorkflowRunRepository::finish_action( (int) $row['id'], 'uncertain', $result->message, $result->external_ref );
 					$uncertain = true;
 					if ( empty( $spec['continue_on_failure'] ) ) {
-						$stop = true;
+						$halt = 'fail';
 					}
 					break;
 				case ActionResult::FAILED:
@@ -162,7 +169,7 @@ final class WorkflowRunner {
 					WorkflowRunRepository::finish_action( (int) $row['id'], 'failed', $result->message );
 					$failed = true;
 					if ( empty( $spec['continue_on_failure'] ) ) {
-						$stop = true;
+						$halt = 'fail';
 					}
 					break;
 			}

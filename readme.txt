@@ -24,6 +24,8 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * 18 field types: Text, Email, Textarea, Select, Checkbox, Number, Phone, URL, Date, Acceptance, Radio, Checkboxes, Range, Poll, Quiz, File Upload, Hidden, and Rating
 * Row and column layouts (1 to 4 columns per row, mobile-responsive)
 * Multi-step forms with steps, sections, and welcome screens
+* Conditional logic: show or hide any field when all or any of several conditions match
+* Exclude any field from AI so its answer never leaves your site
 * Native Gutenberg block with 150+ styling attributes
 * Shortcode support: [neural-forms id="42"]
 * Form template library: pick a template, click once, your form is live
@@ -36,6 +38,13 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * Privacy mode: disable IP and user-agent storage (GDPR-friendly)
 * One-click Contact Form 7 migration
 * Developer hooks, capability filters, and React SlotFill registry
+
+= More in Neural Forms Pro =
+
+* Condition groups ("A and (B or C)"), conditional sections, step skipping, and a different confirmation or redirect per rule
+* Lead stages, owners, follow-up reminders and an activity timeline on every entry
+* Workflows: when a submission arrives, an AI analysis finishes, a stage changes or a follow-up is overdue, assign it, notify your team, send a fixed acknowledgement, set a follow-up, prepare an AI draft for review, or sync to HubSpot, Mailchimp, WhatsApp or Zapier
+* Business knowledge, brand voice and reply-language policy so AI drafts answer from your approved facts and flag what they cannot answer
 
 = AI Analysis for Your Submissions =
 

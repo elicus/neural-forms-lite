@@ -906,7 +906,13 @@ adds integration actions.
   reads `/workflows/health` and shows the system-cron hint.
 - Tests: `tests/WorkflowDefinitionTest.php` (registry, normalise,
   validate, evaluation context, event ids, lineage, backoff, describe).
-  DB-bound code (repositories, runner, processor) is exercised manually.
+  DB-bound code (repositories, runner, processor, REST) is covered by
+  `tests/live/A6LiveHarness.php`, run against the LOCAL site with
+  Local's PHP + MySQL socket (see its header); it is deliberately not
+  in the `tests/*.php` sweep.
+- Retry semantics: a `retry` outcome leaves dependents PENDING (`$halt
+  = 'wait'`), a final failure / uncertain outcome SKIPS them (`'fail'`).
+  `reopen_action()` also accepts a waiting action ("retry now").
 
 ### Lead management + activity timeline (1.2.0, A3)
 

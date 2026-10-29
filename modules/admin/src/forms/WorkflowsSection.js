@@ -181,7 +181,7 @@ function WorkflowEditor( { formId, initial, meta, sources, onSaved, onCancel } )
 
 			<h5 className="nf-wf-editor__step"><span>1</span>{ __( 'When', 'neural-forms-lite' ) }</h5>
 			<label className="nf-form-settings__field">
-				<select value={ wf.trigger } onChange={ ( e ) => set( { trigger: e.target.value } ) }>
+				<select value={ wf.trigger } onChange={ ( e ) => set( { trigger: e.target.value } ) } aria-label={ __( 'Trigger', 'neural-forms-lite' ) }>
 					{ triggers.map( ( t ) => <option key={ t.id } value={ t.id }>{ t.label }</option> ) }
 				</select>
 				{ triggerMeta && <span className="nf-form-settings__hint">{ triggerMeta.description }</span> }
@@ -235,7 +235,7 @@ function WorkflowEditor( { formId, initial, meta, sources, onSaved, onCancel } )
 						<div className="nf-wf-action" key={ i }>
 							<div className="nf-wf-action__head">
 								<strong>{ i + 1 }.</strong>
-								<select value={ a.type } onChange={ ( e ) => changeActionType( i, e.target.value ) }>
+								<select value={ a.type } onChange={ ( e ) => changeActionType( i, e.target.value ) } aria-label={ sprintf( __( 'Action %d type', 'neural-forms-lite' ), i + 1 ) }>
 									{ ! am && <option value={ a.type }>{ sprintf( __( '%s (not available)', 'neural-forms-lite' ), a.type ) }</option> }
 									{ actionsMeta.map( ( x ) => <option key={ x.type } value={ x.type }>{ x.label }</option> ) }
 								</select>
@@ -271,7 +271,7 @@ function WorkflowEditor( { formId, initial, meta, sources, onSaved, onCancel } )
 				</button>
 				<button type="button" className="nf-wf__btn" onClick={ onCancel } disabled={ busy }>{ __( 'Back to list', 'neural-forms-lite' ) }</button>
 				<span className="nf-wf-editor__test">
-					<input type="number" min="1" placeholder={ __( 'Entry # (optional)', 'neural-forms-lite' ) } value={ testEntryId } onChange={ ( e ) => setTestEntryId( e.target.value ) } />
+					<input type="number" min="1" placeholder={ __( 'Entry # (optional)', 'neural-forms-lite' ) } aria-label={ __( 'Entry number to test with (optional)', 'neural-forms-lite' ) } value={ testEntryId } onChange={ ( e ) => setTestEntryId( e.target.value ) } />
 					<button type="button" className="nf-wf__btn" onClick={ runTest } disabled={ busy || ! wf.id } title={ wf.id ? '' : __( 'Save first', 'neural-forms-lite' ) }>
 						{ __( 'Test run', 'neural-forms-lite' ) }
 					</button>

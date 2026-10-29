@@ -195,7 +195,25 @@ Pro `Unlocker.php` adds three `__return_true` lines. Cloud plan gating stays ind
 | A3 ✅ 2026-10-29 | DB 1.2.0 migration, entry columns, activity log, entry PATCH/list additions, inbox controls, Overdue view | migration rerun-safe (dbDelta, added columns only); new columns hold staff data, not submitter data, so the privacy exporter is unchanged and the eraser still deletes the entry plus its timeline |
 | A4 ✅ 2026-10-29 | WorkflowEngine, queue processor, six Lite actions, Pro actions filter, REST, editor, test run, history, processing health | WF1–WF12 designed in; WF4/WF6/WF8/WF10 covered by unit tests on the pure helpers, the rest need the manual end-to-end pass in A6 (DB-bound) |
 | A5 ✅ 2026-10-29 (code) | cloud business-context storage + routes + prompt block + response fields; Pro card; Lite `ai_behaviour`, `ai_exclude`, carousel sources and warnings, translation toggle, reviewed_by | API suite 301 green, plugin tests green; **cloud deploy to s2 is the owner's step** (rsync + `prisma migrate deploy` for the new columns); AI1–AI3 need a manual draft check after deploy |
-| A6 | upgrade test from 1.1.3 fixture DB, Pro 1.0.3 + Lite 1.2.0 combo test, accessibility pass, docs (CLAUDE.md sections, readme), changelogs in the standard short format, release cut per the release procedure | release gates in the draft §12 |
+| A6 ✅ 2026-10-29 | upgrade test from 1.1.3 fixture DB, Pro 1.0.3 + Lite 1.2.0 combo test, accessibility pass, docs (CLAUDE.md sections, readme), changelogs in the standard short format, release cut per the release procedure | see §11.1 |
+
+### 11.1 A6 results
+
+| Gate | How it was checked | Result |
+|---|---|---|
+| Upgrade from 1.1.3 | `tests/live/A6LiveHarness.php` on the local site: db_version forced to 1.1.3 → `maybe_upgrade()` → columns / tables / unique keys present; `create_tables()` rerun is a no-op with no DB error | pass |
+| Pro 1.0.3 on Lite 1.2.0 | every `neural_forms_can_*` filter, hook and slot Pro 1.0.3 uses still exists in Lite 1.2.0 (checked from `release/1.0.3`); Pro 1.0.3's `MIN_CORE` is 1.1.0 | pass |
+| Pro 1.1.0 on Lite < 1.2.0 | `NEURAL_FORMS_PRO_MIN_CORE = 1.2.0` → existing dependency notice; Pro's workflow actions boot only if Lite's action interface exists | pass (by design) |
+| Conditional logic, embed routes (CL10) | render / shortcode / block all emit `data-conditional` (v2) and `data-conditional-step`; Divi shares `FormRenderer` | pass (Divi by construction) |
+| Server recomputes applicability (CL5/CL6) | live submit: skipped step's required field neither blocks nor is stored; hidden field dropped; eligible step enforces required (422); conditional confirmation chosen server-side | pass |
+| Workflows WF1–WF12 | live harness: skip on unmet conditions, done with 5 effects, duplicate event → no run, B↔C stage loop blocked after one cycle each with a `workflow.loop_blocked` row, overdue fires once and re-arms on reschedule, mail failure → `waiting` with dependents left pending and a future job, retry-now → done, dry run with zero side effects, REST list/meta/health/activity/filters/counts | pass |
+| Accessibility (CL9) | new controls have labels or aria-labels; progress bar text is `aria-live`, numbered steps carry `aria-current="step"`; skipped steps are `display:none` (not focusable) | automated part pass; keyboard + screen-reader walk-through still manual |
+| AI1–AI3 (drafts quote knowledge / flag gaps) | needs the cloud deploy; prompt + parser covered by `test/business-context.test.ts` | manual after deploy |
+| Privacy | new columns are staff data; eraser deletes entry + timeline | pass |
+| Disabling a feature leaves history readable | capability off → stored rules still enforced, controls read-only, workflows stop dispatching but runs/history remain | pass |
+
+Fixed during A6: the runner skipped dependents of a *retrying* action as if it had failed; dependents now stay pending until the retry resolves. Manual "retry now" is allowed on a waiting action.
+
 
 A5 can start as soon as A1's `ai_exclude` field setting exists; it does not wait for A4.
 
