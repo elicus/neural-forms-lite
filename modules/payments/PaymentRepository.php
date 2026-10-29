@@ -131,6 +131,113 @@ final class PaymentRepository {
 		return array_map( array( self::class, 'decode' ), is_array( $rows ) ? $rows : array() );
 	}
 
+	/**
+	 * Admin list. $args: status (comma list), provider, form_id, kind,
+	 * date_from / date_to (Y-m-d, site-local days), search (entry id,
+	 * provider ids, invoice number), page, per_page.
+	 *
+	 * @return array { rows: array, total: int }
+	 */
+	public static function search( array $args ): array {
+		global $wpdb;
+		$where  = array( '1=1' );
+		$values = array();
+		if ( ! empty( $args['status'] ) ) {
+			$wanted = array_values( array_filter( array_map( 'trim', explode( ',', (string) $args['status'] ) ), static function ( $v ) { return in_array( $v, PaymentStatus::ATTEMPT_STATUSES, true ); } ) );
+			if ( $wanted ) {
+				$where[] = 'status IN (' . implode( ',', array_fill( 0, count( $wanted ), '%s' ) ) . ')';
+				foreach ( $wanted as $w ) { $values[] = $w; }
+			}
+		}
+		if ( ! empty( $args['provider'] ) ) {
+			$where[]  = 'provider = %s';
+			$values[] = preg_replace( '/[^a-z0-9_]/', '', strtolower( (string) $args['provider'] ) );
+		}
+		if ( ! empty( $args['form_id'] ) ) {
+			$where[]  = 'form_id = %d';
+			$values[] = (int) $args['form_id'];
+		}
+		if ( ! empty( $args['kind'] ) && in_array( $args['kind'], array( 'deposit', 'full' ), true ) ) {
+			$where[]  = 'kind = %s';
+			$values[] = $args['kind'];
+		}
+		if ( ! empty( $args['date_from'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $args['date_from'] ) ) {
+			$where[]  = 'created_at >= %s';
+			$values[] = get_gmt_from_date( $args['date_from'] . ' 00:00:00' );
+		}
+		if ( ! empty( $args['date_to'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $args['date_to'] ) ) {
+			$where[]  = 'created_at <= %s';
+			$values[] = get_gmt_from_date( $args['date_to'] . ' 23:59:59' );
+		}
+		if ( ! empty( $args['search'] ) ) {
+			$term = trim( (string) $args['search'] );
+			$like = '%' . $wpdb->esc_like( $term ) . '%';
+			if ( ctype_digit( $term ) ) {
+				$where[]  = '( entry_id = %d OR id = %d OR session_id LIKE %s OR provider_payment_id LIKE %s OR meta LIKE %s )';
+				$values[] = (int) $term; $values[] = (int) $term; $values[] = $like; $values[] = $like; $values[] = $like;
+			} else {
+				$where[]  = '( session_id LIKE %s OR provider_payment_id LIKE %s OR meta LIKE %s )';
+				$values[] = $like; $values[] = $like; $values[] = $like;
+			}
+		}
+		$per_page = max( 1, min( 200, (int) ( $args['per_page'] ?? 50 ) ) );
+		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
+		$sql      = 'WHERE ' . implode( ' AND ', $where );
+		$table    = self::table();
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$total = (int) $wpdb->get_var( $values ? $wpdb->prepare( "SELECT COUNT(*) FROM {$table} {$sql}", $values ) : "SELECT COUNT(*) FROM {$table} {$sql}" );
+		$q     = "SELECT * FROM {$table} {$sql} ORDER BY id DESC LIMIT %d OFFSET %d";
+		$rows  = $wpdb->get_results( $wpdb->prepare( $q, array_merge( $values, array( $per_page, ( $page - 1 ) * $per_page ) ) ), ARRAY_A );
+		// phpcs:enable
+		return array( 'rows' => array_map( array( self::class, 'decode' ), is_array( $rows ) ? $rows : array() ), 'total' => $total );
+	}
+
+	/** Totals per currency for the Payments page: paid, refunded, pending (open attempts), counts. */
+	public static function totals( array $args = array() ): array {
+		global $wpdb;
+		$table = self::table();
+		$where = '1=1';
+		$values = array();
+		if ( ! empty( $args['form_id'] ) ) {
+			$where   .= ' AND form_id = %d';
+			$values[] = (int) $args['form_id'];
+		}
+		if ( ! empty( $args['date_from'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $args['date_from'] ) ) {
+			$where   .= ' AND created_at >= %s';
+			$values[] = get_gmt_from_date( $args['date_from'] . ' 00:00:00' );
+		}
+		if ( ! empty( $args['date_to'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $args['date_to'] ) ) {
+			$where   .= ' AND created_at <= %s';
+			$values[] = get_gmt_from_date( $args['date_to'] . ' 23:59:59' );
+		}
+		$q = "SELECT currency, livemode,
+			SUM(CASE WHEN status IN ('paid','refunded','partially_refunded') THEN amount_paid_minor ELSE 0 END) AS paid,
+			SUM(CASE WHEN status IN ('paid','refunded','partially_refunded') THEN amount_refunded_minor ELSE 0 END) AS refunded,
+			SUM(CASE WHEN status IN ('pending','processing') THEN amount_due_minor ELSE 0 END) AS open_amount,
+			SUM(CASE WHEN status IN ('paid','refunded','partially_refunded') THEN 1 ELSE 0 END) AS paid_count,
+			SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) AS open_count,
+			SUM(CASE WHEN status IN ('failed','expired') THEN 1 ELSE 0 END) AS failed_count
+			FROM {$table} WHERE {$where} GROUP BY currency, livemode ORDER BY livemode DESC, currency ASC";
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $values ? $wpdb->prepare( $q, $values ) : $q, ARRAY_A );
+		$out  = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $r ) {
+			$c     = (string) $r['currency'];
+			$out[] = array(
+				'currency'     => $c,
+				'livemode'     => ! empty( $r['livemode'] ),
+				'paid'         => (int) $r['paid'],
+				'refunded'     => (int) $r['refunded'],
+				'net'          => (int) $r['paid'] - (int) $r['refunded'],
+				'open'         => (int) $r['open_amount'],
+				'paid_count'   => (int) $r['paid_count'],
+				'open_count'   => (int) $r['open_count'],
+				'failed_count' => (int) $r['failed_count'],
+			);
+		}
+		return $out;
+	}
+
 	public static function delete_for_entry( int $entry_id ): int {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery

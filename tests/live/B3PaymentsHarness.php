@@ -49,6 +49,8 @@ final class NF_FakeGateway implements PaymentProviderInterface {
 	public function fetch_checkout( array $payment ) { $this->calls[] = array( 'fetch', $payment['session_id'] ); return $this->state[ $payment['session_id'] ] ?? new WP_Error( 'nf', 'unknown' ); }
 	public function capture( array $payment ) { $this->calls[] = array( 'capture', $payment['session_id'] ); return $this->fetch_checkout( $payment ); }
 	public function expire_checkout( array $payment ) { $this->calls[] = array( 'expire', $payment['session_id'] ); if ( isset( $this->state[ $payment['session_id'] ] ) ) { $this->state[ $payment['session_id'] ]['state'] = 'expired'; } return true; }
+	public $refunds = array();
+	public function refund( array $payment, int $amount_minor, string $reason ) { $this->refunds[] = array( $payment['id'], $amount_minor, $reason ); if ( $this->fail_refund ?? false ) { return new WP_Error( 'fake_refund', 'Gateway refused the refund', array( 'status' => 424 ) ); } $sid = (string) $payment['session_id']; if ( isset( $this->state[ $sid ] ) ) { $this->state[ $sid ]['amount_refunded_minor'] = (int) $payment['amount_refunded_minor'] + $amount_minor; } return array( 'refund_id' => 'rf_' . count( $this->refunds ), 'amount_minor' => $amount_minor, 'total_refunded_minor' => (int) $payment['amount_refunded_minor'] + $amount_minor, 'status' => 'succeeded' ); }
 	public function verify_webhook( WP_REST_Request $request ) {
 		$body = json_decode( (string) $request->get_body(), true );
 		if ( (string) $request->get_header( 'x_fake_sig' ) !== 'good' ) { return new WP_Error( 'fake_sig', 'bad signature', array( 'status' => 400 ) ); }
@@ -60,7 +62,8 @@ add_filter( 'neural_forms_payment_providers', static function ( $p ) use ( $gw )
 PaymentProviderRegistry::reset();
 $confirmed = array();
 add_action( 'neural_forms_payment_confirmed', static function ( $entry_id, $payment, $agg ) use ( &$confirmed ) { $confirmed[] = array( $entry_id, $payment['id'], $agg['status'] ); }, 10, 3 );
-add_filter( 'pre_wp_mail', '__return_true' );
+$mails = array();
+add_filter( 'pre_wp_mail', static function ( $null, $atts ) use ( &$mails ) { $mails[] = $atts; return true; }, 10, 2 );
 global $wpdb;
 $created = array( 'forms' => array(), 'entries' => array() );
 $mk_event = static function ( array $o ) { return $o + array( 'event_id' => 'evt_' . wp_generate_password( 8, false ), 'type' => 'fake', 'raw_type' => 'fake', 'livemode' => false, 'account_id' => 'acct_fake', 'kind' => 'paid', 'session_id' => '', 'provider_payment_id' => '', 'amount_minor' => null, 'currency' => 'USD', 'amount_refunded_minor' => 0 ); };
@@ -157,9 +160,52 @@ try {
 	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments/' . $pid . '/return' ); $req->set_query_params( array( 'token' => $token, 'result' => 'success' ) ); $res = $server->dispatch( $req );
 	check( 'return page: deposit received + remaining balance', strpos( (string) $res->get_data(), 'Deposit received' ) !== false && strpos( (string) $res->get_data(), '$819.00' ) !== false, true );
 
+	// ── Invoices (auto + manual) and refunds from the admin ────────
+	$inv_mail = array_values( array_filter( $mails, static function ( $m ) { return strpos( (string) $m['subject'], 'Invoice INV-' ) === 0; } ) );
+	check( 'auto invoice emailed on confirmed payment (default on)', count( $inv_mail ) === 1 && strpos( (string) $inv_mail[0]['message'], '/payments/' . $pid . '/invoice?' ) !== false && is_array( $inv_mail[0]['attachments'] ) && count( $inv_mail[0]['attachments'] ) === 1, true );
+	$pinv = PaymentRepository::get( $pid );
+	check( 'invoice number assigned once (INV-YYYY-NNNN) + sent_to recorded', preg_match( '/^INV-' . gmdate( 'Y' ) . '-\d{4,}$/', (string) ( $pinv['meta']['invoice_number'] ?? '' ) ) === 1 && ( $pinv['meta']['invoice_sent_to'] ?? '' ) === 'buyer@harness.test', true );
+	$inv_no = (string) $pinv['meta']['invoice_number'];
+	wp_set_current_user( 0 );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments/' . $pid . '/invoice' ); $req->set_query_params( array( 'token' => $token ) ); $res = $server->dispatch( $req );
+	check( 'public invoice: html with number, PAID stamp, amount and remaining balance', $res->get_status() === 200 && strpos( (string) $res->get_data(), $inv_no ) !== false && strpos( (string) $res->get_data(), '>PAID<' ) !== false && strpos( (string) $res->get_data(), '$351.00' ) !== false && strpos( (string) $res->get_data(), '$819.00' ) !== false, true );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments/' . $pid . '/invoice' ); $req->set_query_params( array( 'token' => $token, 'format' => 'pdf' ) ); $res = $server->dispatch( $req );
+	check( 'public invoice pdf', $res->get_status() === 200 && strncmp( (string) $res->get_data(), '%PDF', 4 ) === 0, true );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments/' . $pid . '/invoice' ); $req->set_query_params( array( 'token' => 'nope' ) ); $res = $server->dispatch( $req );
+	check( 'invoice with bad token → 404', $res->get_status(), 404 );
+	wp_set_current_user( (int) ( get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ) )[0] ?? 1 ) );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments/' . $pid . '/invoice' ); $res = $server->dispatch( $req );
+	check( 'admin invoice preview without token', $res->get_status(), 200 );
+	$req = new WP_REST_Request( 'POST', '/neural-forms/v1/payments/' . $pid . '/invoice/send' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( wp_json_encode( array( 'to' => 'accounts@harness.test', 'message' => 'Copy for your records.' ) ) ); $res = $server->dispatch( $req );
+	$last = end( $mails );
+	check( 'manual invoice send to another address with note', $res->get_status() === 200 && (string) $last['to'] === 'accounts@harness.test' && strpos( (string) $last['message'], 'Copy for your records.' ) !== false && strpos( (string) $last['subject'], $inv_no ) !== false, true );
+	check( 'invoice number stable across sends', PaymentRepository::get( $pid )['meta']['invoice_number'], $inv_no );
+	$req = new WP_REST_Request( 'POST', '/neural-forms/v1/payments/' . $pid . '/refund' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( wp_json_encode( array( 'amount_minor' => 99999 ) ) ); $res = $server->dispatch( $req );
+	check( 'refund above the paid amount → 422', $res->get_status(), 422 );
+	$req = new WP_REST_Request( 'POST', '/neural-forms/v1/payments/' . $pid . '/refund' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( wp_json_encode( array( 'amount_minor' => 10000, 'reason' => 'Goodwill' ) ) ); $res = $server->dispatch( $req );
+	check( 'partial refund via the gateway → partially_refunded', $res->get_status() === 200 && $res->get_data()['payment']['status'] === 'partially_refunded' && $res->get_data()['payment']['amount_refunded_minor'] === 10000 && $gw->refunds[0][1] === 10000 && $gw->refunds[0][2] === 'Goodwill', true );
+	check( 'refund: entry aggregate partially_refunded, refundable 251.00 left', EntryRepository::get( $entry_id )['payment_status'] === 'partially_refunded' && $res->get_data()['payment']['refundable_minor'] === 25100, true );
+	$gw->fail_refund = true;
+	$req = new WP_REST_Request( 'POST', '/neural-forms/v1/payments/' . $pid . '/refund' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( '{}' ); $res = $server->dispatch( $req );
+	check( 'gateway refuses → 424, nothing recorded', $res->get_status() === 424 && PaymentRepository::get( $pid )['amount_refunded_minor'] === 10000, true );
+	$gw->fail_refund = false;
+	$req = new WP_REST_Request( 'POST', '/neural-forms/v1/payments/' . $pid . '/refund' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( '{}' ); $res = $server->dispatch( $req );
+	check( 'refund the rest → refunded', $res->get_status() === 200 && $res->get_data()['payment']['status'] === 'refunded' && $res->get_data()['payment']['amount_refunded_minor'] === 35100, true );
+	$req = new WP_REST_Request( 'POST', '/neural-forms/v1/payments/' . $pid . '/refund' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( '{}' ); $res = $server->dispatch( $req );
+	check( 'nothing left to refund → 409', $res->get_status(), 409 );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments/' . $pid . '/invoice' ); $res = $server->dispatch( $req );
+	check( 'invoice shows REFUNDED stamp afterwards', strpos( (string) $res->get_data(), '>REFUNDED<' ) !== false, true );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments' ); $req->set_query_params( array( 'status' => 'refunded,paid', 'search' => (string) $entry_id ) ); $res = $server->dispatch( $req );
+	$d = $res->get_data();
+	check( 'payments list: filtered row with customer, entry url, invoice links; totals per currency', $res->get_status() === 200 && $d['total'] === 1 && $d['payments'][0]['meta']['customer_email'] === 'buyer@harness.test' && strpos( $d['payments'][0]['entry_url'], 'entry_id=' . $entry_id ) !== false && isset( $d['payments'][0]['invoice_links']['view'] ) && is_array( $d['totals'] ) && ! isset( $d['payments'][0]['token_seed'] ), true );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payments' ); $req->set_query_params( array( 'provider' => 'fakepay', 'form_id' => $form_id ) ); $res = $server->dispatch( $req );
+	$tot = array_values( array_filter( $res->get_data()['totals'], static function ( $t ) { return $t['currency'] === 'USD' && ! $t['livemode']; } ) );
+	check( 'totals: paid 351.00, refunded 351.00, net 0', $tot && $tot[0]['paid'] === 35100 && $tot[0]['refunded'] === 35100 && $tot[0]['net'] === 0, true );
+	wp_set_current_user( 0 );
+
 	// Refund (PAY11): financial status only.
-	$res = $hook( $mk_event( array( 'event_id' => 'evt_refund_1', 'kind' => 'refunded', 'provider_payment_id' => 'fp_' . $pid, 'amount_refunded_minor' => 10000 ) ) );
-	check( 'refund: partially refunded via provider payment id', array( $res->get_data()['status'] ?? '', EntryRepository::get( $entry_id )['payment_status'] ), array( 'partially_refunded', 'partially_refunded' ) );
+	$res = $hook( $mk_event( array( 'event_id' => 'evt_refund_1', 'kind' => 'refunded', 'provider_payment_id' => 'fp_' . $pid, 'amount_refunded_minor' => 35100 ) ) );
+	check( 'refund webhook after full refund: cumulative total keeps the row refunded', array( PaymentRepository::get( $pid )['status'], EntryRepository::get( $entry_id )['payment_status'] ), array( 'refunded', 'refunded' ) );
 	check( 'PAY11: refund never changes lead stage', EntryRepository::get( $entry_id )['lead_stage'], 'new' );
 
 	// ── second entry: cancel, replacement, reconciliation, admin REST ──

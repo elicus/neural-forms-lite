@@ -803,6 +803,44 @@ prevents overflow without needing `overflow: hidden` anywhere.
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
 
+### Payments page, invoices, refunds (1.2.0 part B, owner request 2026-10-29)
+
+- **Payments page** Neural Forms › Payments (`screens/Payments.js`, bundle
+  `payments`): `GET /payments` (`PaymentRepository::search()` — status
+  comma list, provider, form_id, kind, date_from/to, search over entry id /
+  provider ids / meta incl. invoice number, paging + `X-Total-Count`) plus
+  `PaymentRepository::totals()` per currency and mode (received, refunded,
+  net, open, counts). Attempts store `customer_name`, `customer_email`,
+  `form_name` in `meta` at creation for the list.
+- **Invoices** (`modules/payments/InvoiceRenderer.php`): same escaped
+  table-only document as quotes, "Invoice" with a PAID / PARTLY REFUNDED /
+  REFUNDED stamp, lines from the quote snapshot (quote payments) or the
+  entry pricing snapshot, amount paid, refunded, remaining balance, payment
+  method + provider id; branding from `QuoteSettings`. Number
+  `INV-YYYY-NNNN` assigned once (`PaymentService::ensure_invoice_number()`,
+  stored in `meta.invoice_number`, same atomic counter as quotes). Routes:
+  `GET /payments/{id}/invoice` (payment token OR logged-in admin; `?format=pdf`
+  via `QuotePdf::from_html()`), `POST /payments/{id}/invoice/send` →
+  `PaymentService::send_invoice()` (plain-text mail + PDF attachment +
+  link, outgoing message row, `payment.invoice_sent` activity).
+  **Automatic**: `maybe_auto_invoice()` after every newly paid attempt when
+  `settings.payment.send_invoice` (default TRUE) and the entry has an email.
+- **Refunds**: `PaymentProviderInterface::refund( $payment, $amount_minor,
+  $reason )` (Stripe `POST /v1/refunds` by payment_intent, PayPal
+  `POST /v2/payments/captures/{id}/refund`, both with idempotency keys);
+  `PaymentService::refund()` checks cap, settled status and
+  `paid − refunded`, calls the gateway, records a `refund.issued` event and
+  applies a cumulative `refunded` event (so the gateway's own refund
+  webhook is a harmless duplicate), activity `payment.refund_issued` /
+  `payment.refund_failed`. `POST /payments/{id}/refund { amount_minor
+  (0 = all), reason }`. `expose()` adds `refundable_minor` and `invoice
+  { number, sent_at, sent_to }`. UI: Payments page dialogs + inbox
+  `PaymentCard` buttons (Invoice, Send invoice, Refund…).
+- Tests: `tests/PaymentsTest.php` (invoice document), live
+  `B3PaymentsHarness.php` (auto invoice mail + PDF, public/admin invoice
+  routes, manual send, partial → full refund, over-amount 422, gateway
+  refusal 424, list + totals), Pro provider tests (refund normalisation).
+
 ### Payment workflows, quote pay links, inbox payment views (1.2.0 part B, B4)
 
 - **Trigger `payment_confirmed`** (`WorkflowDefinition::TRIGGER_PAYMENT`):
@@ -1387,6 +1425,7 @@ you rebuild a single bundle in isolation without touching siblings
 | `build/settings.js` | `src/settings-entry.js` | `npm run build:settings` | Settings screen — `src/screens/Settings.js` + `src/settings.css`. Pro fills `SettingsSpamPanel` and `SettingsSiteProfile` slots. |
 | `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Entries inbox — `src/entries/*` + `src/entries.css`. Pro fills `EntryAiActions` and `EntryReplyActions` slots. |
 | `build/import.js` | `src/import-entry.js` | `npm run build:import` | Import (CF7 migration) — 3-state list / preview / result flow over `/migration/cf7/*`. |
+| `build/payments.js` | `src/payments-entry.js` | `npm run build:payments` | Payments page (`?page=neural-forms-payments`) — `src/screens/Payments.js` + `src/payments.css` (imports `settings.css`); list, totals, invoice, refund (1.2.0 part B). |
 | `build/quotes.js` | `src/quotes-entry.js` | `npm run build:quotes` | Quotes page (`?page=neural-forms-quotes`) — `src/screens/Quotes.js`; imports `settings.css` so it looks like Settings (1.2.0 part B). |
 | `build/integrations.js` | `src/integrations-entry.js` | `npm run build:integrations` | Integrations screen — `src/screens/Integrations.js` + `src/integrations.css` (Pro-ready provider config surfaces; also `src/forms/IntegrationsSection.js` in the builder). |
 | `build/templates.js` | `src/templates-entry.js` | `npm run build:templates` | Template library modal — `src/templates/TemplateLibrary.js` + `TemplateLibraryModal.js`. |

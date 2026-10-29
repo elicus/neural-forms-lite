@@ -2207,3 +2207,5 @@
 
 /* list row payment pill sits after the status pill */
 .neural-forms-entries-row .neural-forms-entries-pill--pay { margin-left: 6px; }
+
+.neural-forms-entry-detail__quote-btn.is-danger { color: #b91c1c; border-color: #fca5a5; }

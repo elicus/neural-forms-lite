@@ -290,7 +290,7 @@ function PricingSection( { value, onChange, fields } ) {
 function PaymentsSection( { value, onChange, fields } ) {
 	const caps     = readCaps();
 	const unlocked = !! caps.payments;
-	const v = { enabled: false, provider: 'auto', submit_label: '', description: '', success_url: '', cancel_url: '', ...( value || {} ) };
+	const v = { enabled: false, provider: 'auto', submit_label: '', description: '', success_url: '', cancel_url: '', send_invoice: true, ...( value || {} ) };
 	const set = ( patch ) => onChange( { ...v, ...patch } );
 	const [ providers, setProviders ] = useState( null );
 	useEffect( () => {
@@ -351,6 +351,13 @@ function PaymentsSection( { value, onChange, fields } ) {
 					<label className="nf-form-settings__field">
 						<span className="nf-form-settings__label">{ __( 'If the visitor cancels, send to (optional)', 'neural-forms-lite' ) }</span>
 						<input type="url" value={ v.cancel_url } placeholder="https://" onChange={ ( e ) => set( { cancel_url: e.target.value } ) } />
+					</label>
+					<label className="nf-form-settings__field nf-payments-section__toggle">
+						<input type="checkbox" checked={ v.send_invoice !== false } onChange={ ( e ) => set( { send_invoice: e.target.checked } ) } />
+						<span>
+							<strong>{ __( 'Email an invoice automatically when a payment is confirmed', 'neural-forms-lite' ) }</strong>
+							<small>{ __( 'Uses the branding from Neural Forms › Quotes. You can also send or resend invoices by hand from the entry or the Payments page.', 'neural-forms-lite' ) }</small>
+						</span>
 					</label>
 					<p className="nf-form-settings__hint">{ __( 'Payments are confirmed by signed webhooks from the gateway, so make sure the webhook URL shown on the Integrations page is set up there. A "Submission received" workflow never carries a paid status; use the "Payment confirmed" trigger for that.', 'neural-forms-lite' ) }</p>
 				</>
@@ -897,7 +904,7 @@ export default function FormSettings( {
 								value={ s.payment && typeof s.payment === 'object' ? s.payment : {} }
 								onChange={ ( next ) => {
 									const copy = { ...s };
-									const isDefault = ! next.enabled && ( ! next.provider || next.provider === 'auto' ) && ! next.submit_label && ! next.description && ! next.success_url && ! next.cancel_url;
+									const isDefault = ! next.enabled && ( ! next.provider || next.provider === 'auto' ) && ! next.submit_label && ! next.description && ! next.success_url && ! next.cancel_url && next.send_invoice !== false;
 									if ( isDefault ) delete copy.payment; else copy.payment = next;
 									onChange( copy );
 								} }

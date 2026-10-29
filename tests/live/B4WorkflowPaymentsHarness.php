@@ -42,6 +42,8 @@ final class NF_FakeGateway2 implements PaymentProviderInterface {
 	public function fetch_checkout( array $payment ) { return $this->state[ $payment['session_id'] ] ?? new WP_Error( 'nf', 'unknown' ); }
 	public function capture( array $payment ) { return $this->fetch_checkout( $payment ); }
 	public function expire_checkout( array $payment ) { return true; }
+	public $refunds = array();
+	public function refund( array $payment, int $amount_minor, string $reason ) { $this->refunds[] = array( $payment['id'], $amount_minor, $reason ); if ( $this->fail_refund ?? false ) { return new WP_Error( 'fake_refund', 'Gateway refused the refund', array( 'status' => 424 ) ); } $sid = (string) $payment['session_id']; if ( isset( $this->state[ $sid ] ) ) { $this->state[ $sid ]['amount_refunded_minor'] = (int) $payment['amount_refunded_minor'] + $amount_minor; } return array( 'refund_id' => 'rf_' . count( $this->refunds ), 'amount_minor' => $amount_minor, 'total_refunded_minor' => (int) $payment['amount_refunded_minor'] + $amount_minor, 'status' => 'succeeded' ); }
 	public function verify_webhook( WP_REST_Request $request ) { return json_decode( (string) $request->get_body(), true ); }
 }
 $gw = new NF_FakeGateway2();

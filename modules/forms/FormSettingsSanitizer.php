@@ -363,8 +363,9 @@ final class FormSettingsSanitizer {
 			'description'  => isset( $raw['description'] ) && is_scalar( $raw['description'] ) ? mb_substr( sanitize_text_field( (string) $raw['description'] ), 0, 200 ) : '',
 			'success_url'  => isset( $raw['success_url'] ) && is_scalar( $raw['success_url'] ) && trim( (string) $raw['success_url'] ) !== '' ? esc_url_raw( trim( (string) $raw['success_url'] ) ) : '',
 			'cancel_url'   => isset( $raw['cancel_url'] ) && is_scalar( $raw['cancel_url'] ) && trim( (string) $raw['cancel_url'] ) !== '' ? esc_url_raw( trim( (string) $raw['cancel_url'] ) ) : '',
+			'send_invoice' => array_key_exists( 'send_invoice', $raw ) ? ! empty( $raw['send_invoice'] ) : true,
 		);
-		if ( ! $out['enabled'] && $out['provider'] === 'auto' && $out['submit_label'] === '' && $out['description'] === '' && $out['success_url'] === '' && $out['cancel_url'] === '' ) {
+		if ( ! $out['enabled'] && $out['provider'] === 'auto' && $out['submit_label'] === '' && $out['description'] === '' && $out['success_url'] === '' && $out['cancel_url'] === '' && $out['send_invoice'] ) {
 			return array();
 		}
 		return $out;

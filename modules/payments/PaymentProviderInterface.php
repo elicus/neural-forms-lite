@@ -76,6 +76,16 @@ interface PaymentProviderInterface {
 	 */
 	public function verify_webhook( \WP_REST_Request $request );
 
+	/**
+	 * Refund part or all of a settled attempt at the gateway. Lite has
+	 * already checked the amount against what was paid minus earlier
+	 * refunds. Returns the gateway's view so Lite can record it:
+	 * { refund_id, amount_minor, total_refunded_minor, status: succeeded|pending|failed }
+	 *
+	 * @return array|\WP_Error
+	 */
+	public function refund( array $payment, int $amount_minor, string $reason );
+
 	/** Public status for the admin UI: never secrets. { configured, live, label, account } */
 	public function public_status(): array;
 }

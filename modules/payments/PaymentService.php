@@ -40,6 +40,7 @@ final class PaymentService {
 			'description'  => isset( $raw['description'] ) && is_string( $raw['description'] ) ? $raw['description'] : '',
 			'success_url'  => isset( $raw['success_url'] ) && is_string( $raw['success_url'] ) ? $raw['success_url'] : '',
 			'cancel_url'   => isset( $raw['cancel_url'] ) && is_string( $raw['cancel_url'] ) ? $raw['cancel_url'] : '',
+			'send_invoice' => array_key_exists( 'send_invoice', $raw ) ? ! empty( $raw['send_invoice'] ) : true,
 		);
 	}
 
@@ -167,7 +168,7 @@ final class PaymentService {
 				'currency'         => $currency,
 				'idempotency_key'  => $key,
 				'attempt'          => $attempt,
-				'meta'             => array( 'description' => $desc ),
+				'meta'             => array( 'description' => $desc, 'customer_email' => NotificationService::submitter_email( $form, is_array( $entry['data'] ?? null ) ? $entry['data'] : array() ), 'customer_name' => NotificationService::submitter_name( $form, is_array( $entry['data'] ?? null ) ? $entry['data'] : array() ), 'form_name' => (string) ( $form['name'] ?? '' ) ),
 			)
 		);
 		if ( ! $id ) {
@@ -297,8 +298,200 @@ final class PaymentService {
 			 * @param array $aggregate PaymentStatus::aggregate() for the entry.
 			 */
 			do_action( 'neural_forms_payment_confirmed', $entry_id, $payment, $aggregate );
+			self::maybe_auto_invoice( $payment );
 		}
 		return array( 'result' => 'applied', 'status' => (string) $payment['status'], 'newly_paid' => $r['newly_paid'] );
+	}
+
+	// ── Invoices ─────────────────────────────────────────────────────
+
+	/** Assigns the invoice number on first use (stored in meta, never changes). */
+	public static function ensure_invoice_number( array $payment ): array {
+		if ( ! empty( $payment['meta']['invoice_number'] ) ) {
+			return $payment;
+		}
+		$meta                   = $payment['meta'];
+		$meta['invoice_number'] = \NeuralForms\Quotes\QuoteNumbering::next( 'INV' );
+		$meta['invoice_issued_at'] = gmdate( 'Y-m-d H:i:s' );
+		PaymentRepository::update( (int) $payment['id'], array( 'meta' => $meta ) );
+		return PaymentRepository::get( (int) $payment['id'] ) ?: $payment;
+	}
+
+	/** Public links for the invoice (same token as the return page). */
+	public static function invoice_links( array $payment ): array {
+		if ( empty( $payment['token_seed'] ) ) {
+			return array();
+		}
+		$token = PaymentTokens::derive( (int) $payment['id'], (string) $payment['token_seed'] );
+		$base  = rest_url( 'neural-forms/v1/payments/' . (int) $payment['id'] . '/invoice' );
+		$out   = array( 'view' => add_query_arg( 'token', $token, $base ) );
+		if ( \NeuralForms\Quotes\QuotePdf::available() ) {
+			$out['pdf'] = add_query_arg( array( 'token' => $token, 'format' => 'pdf' ), $base );
+		}
+		return $out;
+	}
+
+	/** Invoice HTML (and PDF when Pro provides it) for a settled attempt. */
+	public static function invoice_html( array $payment, array $options = array() ): string {
+		$entry = EntryRepository::get( (int) $payment['entry_id'] );
+		$form  = $entry ? FormRepository::find( (int) $entry['form_id'] ) : null;
+		$quote = ! empty( $payment['quote_id'] ) ? QuoteRepository::get( (int) $payment['quote_id'] ) : null;
+		return InvoiceRenderer::html( $payment, $entry ?: array(), $form ?: array(), $quote, \NeuralForms\Quotes\QuoteSettings::get(), $options );
+	}
+
+	public static function invoice_pdf( array $payment ): ?string {
+		$html = self::invoice_html( $payment, array( 'mode' => 'pdf' ) );
+		return \NeuralForms\Quotes\QuotePdf::from_html( $html, array( 'payment_id' => (int) $payment['id'] ) );
+	}
+
+	/** Email the invoice. @return array|WP_Error */
+	public static function send_invoice( int $payment_id, string $to = '', string $message = '', int $user_id = 0, bool $automatic = false ) {
+		$payment = PaymentRepository::get( $payment_id );
+		if ( ! $payment ) {
+			return new WP_Error( 'not_found', __( 'Payment not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+		if ( ! in_array( $payment['status'], PaymentStatus::SETTLED, true ) ) {
+			return new WP_Error( 'payment_state', __( 'Only confirmed payments have an invoice.', 'neural-forms-lite' ), array( 'status' => 409 ) );
+		}
+		$to = sanitize_email( $to !== '' ? $to : (string) ( $payment['meta']['customer_email'] ?? '' ) );
+		if ( ! is_email( $to ) ) {
+			return new WP_Error( 'invalid_email', __( 'Enter a valid recipient email address.', 'neural-forms-lite' ), array( 'status' => 422 ) );
+		}
+		$payment  = self::ensure_invoice_number( $payment );
+		$settings = \NeuralForms\Quotes\QuoteSettings::get();
+		$biz      = (string) ( $settings['business_name'] ?: get_bloginfo( 'name' ) );
+		$c        = (string) $payment['currency'];
+		$number   = (string) $payment['meta']['invoice_number'];
+		$links    = self::invoice_links( $payment );
+		$name     = (string) ( $payment['meta']['customer_name'] ?? '' );
+		$lines    = array( $name !== '' ? sprintf( __( 'Hi %s,', 'neural-forms-lite' ), $name ) : __( 'Hello,', 'neural-forms-lite' ), '' );
+		if ( trim( $message ) !== '' ) {
+			$lines[] = sanitize_textarea_field( $message );
+			$lines[] = '';
+		}
+		$lines[] = sprintf( __( 'Thank you for your payment of %1$s. Your invoice %2$s is attached.', 'neural-forms-lite' ), Money::format( (int) $payment['amount_paid_minor'], $c ), $number );
+		$agg = self::entry_summary( (int) $payment['entry_id'] );
+		if ( (int) $agg['amounts']['remaining'] > 0 ) {
+			$lines[] = sprintf( __( 'Remaining balance: %s.', 'neural-forms-lite' ), $agg['formatted']['remaining'] );
+		}
+		$lines[] = '';
+		$lines[] = __( 'View the invoice online:', 'neural-forms-lite' );
+		$lines[] = $links['view'] ?? '';
+		$lines[] = '';
+		$lines[] = $biz;
+		$body    = implode( "\n", $lines );
+		$subject = sprintf( __( 'Invoice %1$s from %2$s', 'neural-forms-lite' ), $number, $biz );
+
+		$attachments = array();
+		$tmp         = null;
+		$pdf         = self::invoice_pdf( $payment );
+		if ( is_string( $pdf ) ) {
+			$tmp = wp_tempnam( 'invoice.pdf' );
+			if ( $tmp ) {
+				$named = dirname( $tmp ) . '/' . strtolower( preg_replace( '/[^A-Za-z0-9\-]+/', '-', $number ) ) . '.pdf';
+				if ( ! file_exists( $named ) && @rename( $tmp, $named ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					$tmp = $named;
+				}
+				file_put_contents( $tmp, $pdf ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+				$attachments[] = $tmp;
+			}
+		}
+		$sender  = NotificationService::resolve_sender( \NeuralForms\Core\Config::all() );
+		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
+		if ( $sender['email'] !== '' ) {
+			$headers[] = 'Reply-To: ' . ( $sender['name'] !== '' ? $sender['name'] . ' <' . $sender['email'] . '>' : $sender['email'] );
+		}
+		$sent = NotificationService::send_mail( $to, $subject, $body, $headers, $attachments );
+		if ( $tmp && file_exists( $tmp ) ) {
+			wp_delete_file( $tmp );
+		}
+		\NeuralForms\Storage\EntryMessageRepository::create(
+			array(
+				'entry_id'  => (int) $payment['entry_id'],
+				'type'      => 'outgoing',
+				'sender'    => $sender['email'] !== '' ? $sender['email'] : (string) get_bloginfo( 'admin_email' ),
+				'recipient' => $to,
+				'subject'   => $subject,
+				'body'      => $body,
+				'meta'      => array( 'status' => $sent ? 'sent' : 'failed', 'payment_id' => (int) $payment['id'], 'invoice_number' => $number, 'automatic' => $automatic, 'reviewed_by' => $user_id, 'pdf_attached' => ! empty( $attachments ) ),
+			)
+		);
+		if ( ! $sent ) {
+			EntryActivity::record( (int) $payment['entry_id'], 'payment.invoice_failed', sprintf( __( 'Invoice %s could not be emailed', 'neural-forms-lite' ), $number ), array( 'payment_id' => (int) $payment['id'], 'to' => $to, 'by' => $user_id ), 'error' );
+			return new WP_Error( 'send_failed', __( 'The email could not be sent. Check the site email configuration.', 'neural-forms-lite' ), array( 'status' => 424 ) );
+		}
+		$meta                    = $payment['meta'];
+		$meta['invoice_sent_at'] = gmdate( 'Y-m-d H:i:s' );
+		$meta['invoice_sent_to'] = $to;
+		PaymentRepository::update( (int) $payment['id'], array( 'meta' => $meta ) );
+		EntryActivity::record( (int) $payment['entry_id'], 'payment.invoice_sent', sprintf( __( 'Invoice %1$s emailed to %2$s%3$s', 'neural-forms-lite' ), $number, $to, $automatic ? ' ' . __( '(automatically)', 'neural-forms-lite' ) : '' ), array( 'payment_id' => (int) $payment['id'], 'to' => $to, 'by' => $user_id ) );
+		return array( 'sent' => true, 'number' => $number, 'payment' => PaymentRepository::get( (int) $payment['id'] ) );
+	}
+
+	/** Automatic invoice after a confirmed payment when the form has it on (default on). */
+	private static function maybe_auto_invoice( array $payment ): void {
+		$entry = EntryRepository::get( (int) $payment['entry_id'] );
+		$form  = $entry ? FormRepository::find( (int) $entry['form_id'] ) : null;
+		if ( ! $form || ! self::settings( $form )['send_invoice'] ) {
+			return;
+		}
+		$to = (string) ( $payment['meta']['customer_email'] ?? '' );
+		if ( $to === '' || ! is_email( $to ) ) {
+			return;
+		}
+		$r = self::send_invoice( (int) $payment['id'], $to, '', 0, true );
+		unset( $r );
+	}
+
+	// ── Refunds ──────────────────────────────────────────────────────
+
+	/**
+	 * Refund through the gateway, then record it (webhook redeliveries of
+	 * the same refund are harmless: refunds are applied as cumulative totals).
+	 *
+	 * @param int    $amount_minor 0 = everything still refundable.
+	 * @return array|WP_Error { payment, refunded_minor }
+	 */
+	public static function refund( int $payment_id, int $amount_minor = 0, string $reason = '', int $user_id = 0 ) {
+		if ( ! Capabilities::can( Capabilities::PAYMENTS ) ) {
+			return Capabilities::locked_error( Capabilities::PAYMENTS );
+		}
+		$payment = PaymentRepository::get( $payment_id );
+		if ( ! $payment ) {
+			return new WP_Error( 'not_found', __( 'Payment not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+		if ( ! in_array( $payment['status'], PaymentStatus::SETTLED, true ) ) {
+			return new WP_Error( 'payment_state', __( 'Only confirmed payments can be refunded.', 'neural-forms-lite' ), array( 'status' => 409 ) );
+		}
+		$refundable = (int) $payment['amount_paid_minor'] - (int) $payment['amount_refunded_minor'];
+		if ( $refundable <= 0 ) {
+			return new WP_Error( 'nothing_to_refund', __( 'This payment has already been fully refunded.', 'neural-forms-lite' ), array( 'status' => 409 ) );
+		}
+		$amount = $amount_minor > 0 ? $amount_minor : $refundable;
+		if ( $amount > $refundable ) {
+			return new WP_Error( 'amount_too_high', sprintf( __( 'You can refund at most %s.', 'neural-forms-lite' ), Money::format( $refundable, (string) $payment['currency'] ) ), array( 'status' => 422 ) );
+		}
+		$provider = PaymentProviderRegistry::get( (string) $payment['provider'] );
+		if ( ! $provider ) {
+			return new WP_Error( 'no_provider', __( 'The payment provider is not available.', 'neural-forms-lite' ), array( 'status' => 424 ) );
+		}
+		$reason = mb_substr( sanitize_text_field( $reason ), 0, 200 );
+		$r      = $provider->refund( $payment, $amount, $reason );
+		if ( is_wp_error( $r ) ) {
+			EntryActivity::record( (int) $payment['entry_id'], 'payment.refund_failed', sprintf( __( 'Refund of %1$s failed: %2$s', 'neural-forms-lite' ), Money::format( $amount, (string) $payment['currency'] ), $r->get_error_message() ), array( 'payment_id' => $payment_id, 'by' => $user_id ), 'error' );
+			return $r;
+		}
+		$total = isset( $r['total_refunded_minor'] ) && (int) $r['total_refunded_minor'] > 0 ? (int) $r['total_refunded_minor'] : (int) $payment['amount_refunded_minor'] + (int) ( $r['amount_minor'] ?? $amount );
+		$meta  = $payment['meta'];
+		$meta['refunds']   = array_values( (array) ( $meta['refunds'] ?? array() ) );
+		$meta['refunds'][] = array( 'id' => (string) ( $r['refund_id'] ?? '' ), 'amount_minor' => (int) ( $r['amount_minor'] ?? $amount ), 'status' => (string) ( $r['status'] ?? 'succeeded' ), 'reason' => $reason, 'by' => $user_id, 'at' => gmdate( 'Y-m-d H:i:s' ) );
+		PaymentRepository::update( $payment_id, array( 'meta' => $meta ) );
+		$row_id = PaymentRepository::record_event( (string) $payment['provider'], 'refund:' . ( $r['refund_id'] ?: $payment_id . ':' . time() ), 'refund.issued', ! empty( $payment['livemode'] ) );
+		$fresh  = PaymentRepository::get( $payment_id );
+		$out    = self::apply( $fresh, array( 'kind' => 'refunded', 'amount_refunded_minor' => $total, 'livemode' => $payment['livemode'], 'raw_type' => 'refund.issued' ), $row_id );
+		EntryActivity::record( (int) $payment['entry_id'], 'payment.refund_issued', sprintf( __( 'Refund of %1$s issued via %2$s%3$s', 'neural-forms-lite' ), Money::format( (int) ( $r['amount_minor'] ?? $amount ), (string) $payment['currency'] ), $provider->label(), $reason !== '' ? ' — ' . $reason : '' ), array( 'payment_id' => $payment_id, 'refund_id' => (string) ( $r['refund_id'] ?? '' ), 'by' => $user_id ) );
+		unset( $out );
+		return array( 'payment' => self::expose( PaymentRepository::get( $payment_id ) ), 'refunded_minor' => (int) ( $r['amount_minor'] ?? $amount ) );
 	}
 
 	/** Recompute and store the entry's aggregate status. */
@@ -421,6 +614,8 @@ final class PaymentService {
 		$provider                    = PaymentProviderRegistry::get( (string) $payment['provider'] );
 		$payment['provider_label']   = $provider ? $provider->label() : ucfirst( (string) $payment['provider'] );
 		$payment['dashboard_url']    = $provider && method_exists( $provider, 'dashboard_url' ) ? (string) $provider->dashboard_url( $payment ) : '';
+		$payment['refundable_minor'] = in_array( $payment['status'], PaymentStatus::SETTLED, true ) ? max( 0, (int) $payment['amount_paid_minor'] - (int) $payment['amount_refunded_minor'] ) : 0;
+		$payment['invoice']          = in_array( $payment['status'], PaymentStatus::SETTLED, true ) ? array( 'number' => (string) ( $meta['invoice_number'] ?? '' ), 'sent_at' => $meta['invoice_sent_at'] ?? null, 'sent_to' => $meta['invoice_sent_to'] ?? null ) : null;
 		return $payment;
 	}
 

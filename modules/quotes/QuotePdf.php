@@ -34,6 +34,22 @@ final class QuotePdf {
 	}
 
 	/**
+	 * Generic: any escaped HTML document (invoices, receipts) → PDF bytes
+	 * through the same Pro renderer, or null when unavailable.
+	 */
+	public static function from_html( string $html, array $context = array() ): ?string {
+		if ( ! self::available() ) {
+			return null;
+		}
+		try {
+			$pdf = apply_filters( 'neural_forms_quote_pdf', null, $html, $context );
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+		return is_string( $pdf ) && strncmp( $pdf, '%PDF', 4 ) === 0 ? $pdf : null;
+	}
+
+	/**
 	 * The logo as a data URI so the PDF renderer never needs network or
 	 * filesystem access. Only images inside this site's uploads folder
 	 * (or any http(s) image up to 2 MB via the HTTP API) are embedded.

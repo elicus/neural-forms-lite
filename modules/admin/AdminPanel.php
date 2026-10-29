@@ -36,6 +36,7 @@ class AdminPanel {
 		'neural-forms-integrations' => 'integrations',
 		// 1.2.0 part B: quote branding / numbering (own page, not Settings).
 		'neural-forms-quotes'       => 'quotes',
+		'neural-forms-payments'     => 'payments',
 	);
 
 	public static function boot(): void {
@@ -215,6 +216,16 @@ class AdminPanel {
 			__( 'Quotes', 'neural-forms-lite' ),
 			NEURAL_FORMS_CAP_MANAGE_FORMS,
 			'neural-forms-quotes',
+			array( self::class, 'render_page' )
+		);
+
+		// 6c. Payments (1.2.0 part B): every payment, invoices, refunds.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Payments - Neural Forms', 'neural-forms-lite' ),
+			__( 'Payments', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-payments',
 			array( self::class, 'render_page' )
 		);
 
@@ -734,6 +745,27 @@ class AdminPanel {
 				wp_enqueue_style( 'neural-forms-admin', $build_url . 'quotes.css', array( 'wp-components' ), (string) filemtime( $build_dir . 'quotes.css' ) );
 			}
 			wp_enqueue_media();
+		}
+
+		// Payments page (1.2.0 part B) — build/payments.js + build/payments.css.
+		if (
+			self::get_current_screen() === 'payments'
+			&& file_exists( $build_dir . 'payments.js' )
+		) {
+			$asset_file = $build_dir . 'payments.asset.php';
+			$asset      = file_exists( $asset_file ) ? require $asset_file : array();
+			if ( ! is_array( $asset ) ) {
+				$asset = array();
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'payments.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script( 'neural-forms-admin', $build_url . 'payments.js', $deps, $version, true );
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+			if ( file_exists( $build_dir . 'payments.css' ) ) {
+				wp_enqueue_style( 'neural-forms-admin', $build_url . 'payments.css', array( 'wp-components' ), (string) filemtime( $build_dir . 'payments.css' ) );
+			}
 		}
 
 		// Page-header unifier — applies the canonical Templates-style

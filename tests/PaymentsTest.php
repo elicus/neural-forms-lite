@@ -35,7 +35,7 @@ namespace {
 	class NF_Pay_WPDB_Stub { public $prefix = 'wp_'; public $options = 'wp_options'; }
 	$GLOBALS['wpdb'] = new NF_Pay_WPDB_Stub();
 	$plugin_root = dirname( __DIR__ );
-	foreach ( array( '/modules/core/Capabilities.php', '/modules/forms/ConditionEngine.php', '/modules/forms/SchemaHelper.php', '/modules/pricing/Money.php', '/modules/pricing/Expression.php', '/modules/pricing/PriceEngine.php', '/modules/forms/FormSettingsSanitizer.php', '/modules/forms/FormValidator.php', '/modules/payments/PaymentStatus.php', '/modules/payments/PaymentTokens.php', '/includes/class-database.php' ) as $f ) {
+	foreach ( array( '/modules/core/Capabilities.php', '/modules/forms/ConditionEngine.php', '/modules/forms/SchemaHelper.php', '/modules/pricing/Money.php', '/modules/pricing/Expression.php', '/modules/pricing/PriceEngine.php', '/modules/forms/FormSettingsSanitizer.php', '/modules/forms/FormValidator.php', '/modules/payments/PaymentStatus.php', '/modules/payments/PaymentTokens.php', '/modules/payments/PaymentProviderInterface.php', '/modules/payments/PaymentProviderRegistry.php', '/modules/quotes/QuoteRenderer.php', '/modules/payments/InvoiceRenderer.php', '/includes/class-database.php' ) as $f ) {
 		require_once $plugin_root . $f;
 	}
 }
@@ -46,6 +46,7 @@ namespace NeuralForms\Tests {
 	use NeuralForms\Forms\FormValidator;
 	use NeuralForms\Payments\PaymentStatus;
 	use NeuralForms\Payments\PaymentTokens;
+	use NeuralForms\Payments\InvoiceRenderer;
 
 	$passed = 0; $failed = 0;
 	function check( string $label, $actual, $expected ): void {
@@ -133,6 +134,32 @@ namespace NeuralForms\Tests {
 	check( 'validate: disabled always ok', FormValidator::validate_settings_payment( array( 'payment' => array( 'enabled' => false ) ), $schema_np ), true );
 	$v = FormValidator::validate_settings_payment( array( 'payment' => array( 'enabled' => true, 'success_url' => 'javascript:alert(1)' ) ), $schema_p );
 	check( 'validate: bad success url → 422', is_wp_error( $v ) ? $v->get_error_data()['status'] : null, 422 );
+
+	// ── invoice document ───────────────────────────────────────────
+	$ipay = array_merge( $paid, array( 'id' => 77, 'entry_id' => 42, 'created_at' => '2026-10-29 10:00:00', 'paid_at' => '2026-10-29 10:05:00', 'provider_payment_id' => 'pi_77', 'meta' => array( 'invoice_number' => 'INV-2026-0003', 'customer_name' => 'Ada Lovelace', 'customer_email' => 'ada@example.com', 'description' => 'Website project' ) ) );
+	$ientry = array( 'id' => 42, 'pricing' => array( 'currency' => 'USD', 'line_items' => array( array( 'field' => 'service', 'label' => 'Service', 'choice_label' => 'Starter website', 'unit' => 100000, 'qty' => 1, 'total' => 100000 ), array( 'field' => 'addons', 'label' => 'Add-ons', 'choice_label' => 'SEO', 'unit' => 15000, 'qty' => 2, 'total' => 30000 ) ), 'subtotal' => 130000, 'discount' => array( 'label' => 'Launch offer', 'amount' => 13000 ), 'total' => 117000 ) );
+	$isettings = array( 'business_name' => 'Elicus Studio', 'email' => 'hello@elicus.com', 'tax_id' => 'GB123', 'accent_color' => '#aa00ff', 'footer' => 'Thanks!' );
+	$ihtml = InvoiceRenderer::html( $ipay, $ientry, array( 'name' => 'Website project quote' ), null, $isettings, array( 'mode' => 'html', 'toolbar' => true, 'pdf_url' => 'https://x.test/pdf' ) );
+	foreach ( array( 'INV-2026-0003', 'Elicus Studio', 'hello@elicus.com', 'Tax ID: GB123', 'Ada Lovelace', 'ada@example.com', 'Starter website', 'SEO', '$1,300.00', 'Launch offer', '$1,170.00', '>PAID<', 'Deposit paid', '$351.00', 'Remaining balance', '$819.00', 'pi_77', '#42-77', 'Download PDF', 'Thanks!', '#aa00ff' ) as $n ) {
+		check( "invoice: contains $n", strpos( $ihtml, $n ) !== false, true );
+	}
+	check( 'invoice: never says tax invoice', stripos( $ihtml, 'tax invoice' ), false );
+	$ipay2 = $ipay; $ipay2['amount_refunded_minor'] = 10000; $ipay2['status'] = 'partially_refunded';
+	check( 'invoice: partly refunded stamp + refunded row', strpos( InvoiceRenderer::html( $ipay2, $ientry, array(), null, $isettings ), '>PARTLY REFUNDED<' ) !== false && strpos( InvoiceRenderer::html( $ipay2, $ientry, array(), null, $isettings ), '$100.00' ) !== false, true );
+	$ipay3 = $ipay; $ipay3['amount_refunded_minor'] = 35100; $ipay3['status'] = 'refunded';
+	check( 'invoice: refunded stamp', strpos( InvoiceRenderer::html( $ipay3, $ientry, array(), null, $isettings ), '>REFUNDED<' ) !== false, true );
+	$ipay4 = $ipay; $ipay4['meta']['customer_name'] = 'Eve <script>x</script>';
+	check( 'invoice: escaped', strpos( InvoiceRenderer::html( $ipay4, $ientry, array(), null, $isettings ), '<script>' ) === false, true );
+	check( 'invoice: pdf mode has no toolbar', strpos( InvoiceRenderer::html( $ipay, $ientry, array(), null, $isettings, array( 'mode' => 'pdf', 'toolbar' => true ) ), '<div class="nf-inv__toolbar">' ), false );
+	$quote = array( 'number' => 'Q-2026-0009', 'snapshot' => array( 'currency' => 'USD', 'customer' => array( 'name' => 'Quote Customer', 'email' => 'q@example.com' ), 'line_items' => array( array( 'label' => 'Design', 'description' => 'Homepage', 'qty' => 1, 'unit' => 50000, 'total' => 50000 ) ), 'subtotal' => 50000, 'discount' => null, 'total' => 50000 ) );
+	$qpay  = array_merge( $ipay, array( 'kind' => 'full', 'amount_due_minor' => 50000, 'amount_paid_minor' => 50000 ) );
+	$qhtml = InvoiceRenderer::html( $qpay, $ientry, array(), $quote, $isettings );
+	check( 'invoice from quote: quote lines + number, customer from quote, no remaining balance', strpos( $qhtml, 'Design' ) !== false && strpos( $qhtml, 'Homepage' ) !== false && strpos( $qhtml, 'Q-2026-0009' ) !== false && strpos( $qhtml, 'Quote Customer' ) !== false && strpos( $qhtml, 'Remaining balance' ) === false, true );
+	check( 'invoice: filename', InvoiceRenderer::filename( $ipay ), 'inv-2026-0003.pdf' );
+	check( 'invoice: no snapshot → single line from description', strpos( InvoiceRenderer::html( array_merge( $ipay, array( 'amount_due_minor' => 35100 ) ), array(), array(), null, $isettings ), 'Website project' ) !== false, true );
+	check( 'sanitize: send_invoice defaults to true when enabled', FormSettingsSanitizer::sanitize_payment( array( 'enabled' => true ) )['send_invoice'], true );
+	check( 'sanitize: send_invoice off is kept', FormSettingsSanitizer::sanitize_payment( array( 'enabled' => true, 'send_invoice' => false ) )['send_invoice'], false );
+	check( 'sanitize: disabled + invoice off still stored (not default)', FormSettingsSanitizer::sanitize_payment( array( 'enabled' => false, 'send_invoice' => false ) ) !== array(), true );
 
 	// ── schema ─────────────────────────────────────────────────────
 	foreach ( array( 'sql_payments' => array( 'wp_neural_forms_payments', 'UNIQUE KEY idempotency_key', 'amount_paid_minor', 'amount_refunded_minor', 'livemode', 'token_seed', 'KEY session_id' ), 'sql_payment_events' => array( 'wp_neural_forms_payment_events', 'UNIQUE KEY provider_event (provider,event_id)', 'processed_at' ) ) as $method => $needles ) {

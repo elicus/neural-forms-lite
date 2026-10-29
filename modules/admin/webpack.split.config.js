@@ -77,6 +77,7 @@ const SCREENS = {
 	// side — the capability gates the UX while providers are built.
 	integrations:  'src/integrations-entry.js',
 	quotes:        'src/quotes-entry.js',
+	payments:      'src/payments-entry.js',
 	// 1.1.0 (Templates): local template library page. Reads bundled
 	// templates from the plugin's templates/ directory via GET
 	// /templates, renders a card grid, and imports a chosen template

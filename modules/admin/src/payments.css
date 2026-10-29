@@ -1,0 +1,40 @@
+/* Payments page (1.2.0 part B). Hero + cards come from settings.css. */
+.nf-pay-totals { display: grid; grid-template-columns: repeat( auto-fill, minmax( 240px, 1fr ) ); gap: 16px; margin-bottom: 24px; }
+.nf-pay-totals__card { background: #fff; border: 1px solid var( --f-gray-200 ); border-radius: var( --f-radius-xl ); padding: 16px 18px; }
+.nf-pay-totals__card.is-test { border-style: dashed; }
+.nf-pay-totals__head { font-weight: 700; color: var( --f-gray-900 ); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.nf-pay-totals__row { display: flex; justify-content: space-between; font-size: 13px; color: var( --f-gray-600 ); padding: 2px 0; }
+.nf-pay-totals__row.is-net { border-top: 1px solid var( --f-gray-100 ); margin-top: 4px; padding-top: 6px; color: var( --f-gray-900 ); font-size: 15px; }
+.nf-pay-totals__meta { margin-top: 8px; font-size: 11px; color: var( --f-gray-400 ); }
+.nf-pay-test-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #fef3c7; color: #92400e; vertical-align: middle; }
+.nf-pay-hint { margin: 0 0 16px; }
+.nf-pay-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var( --f-gray-100 ); }
+.nf-pay-filters select, .nf-pay-filters input { font-size: 13px; padding: 7px 10px; border: 1px solid var( --f-gray-300 ); border-radius: 8px; background: #fff; }
+.nf-pay-filters input[type="search"] { flex: 1 1 220px; }
+.nf-pay-msg { margin: 10px 24px 0; }
+.nf-pay-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.nf-pay-table th { text-align: left; font-weight: 600; color: var( --f-gray-500 ); font-size: 12px; padding: 10px 12px; border-bottom: 1px solid var( --f-gray-100 ); }
+.nf-pay-table th:first-child, .nf-pay-table td:first-child { padding-left: 24px; }
+.nf-pay-table td { padding: 10px 12px; border-bottom: 1px solid var( --f-gray-100 ); vertical-align: top; }
+.nf-pay-table td small { display: block; color: var( --f-gray-400 ); font-size: 11px; margin-top: 2px; }
+.nf-pay-table .is-num { text-align: right; white-space: nowrap; font-weight: 600; color: var( --f-gray-900 ); }
+.nf-pay-table tr.is-failed td, .nf-pay-table tr.is-expired td, .nf-pay-table tr.is-replaced td { color: var( --f-gray-400 ); }
+.nf-pay-empty { text-align: center; color: var( --f-gray-400 ); padding: 32px !important; }
+.nf-pay-actions { white-space: nowrap; display: flex; flex-wrap: wrap; gap: 4px; }
+.nf-pay-actions .neural-forms-settings__btn { padding: 5px 9px; font-size: 12px; text-decoration: none; }
+.neural-forms-settings__btn.is-danger { color: #b91c1c; border-color: #fca5a5; }
+.neural-forms-settings__btn.is-primary.is-danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+.nf-pay-more { padding: 12px 24px; text-align: center; }
+.nf-pay-dialog { position: fixed; inset: 0; background: rgba( 17, 24, 39, .45 ); display: flex; align-items: center; justify-content: center; z-index: 100000; }
+.nf-pay-dialog__box { background: #fff; border-radius: 12px; padding: 22px 24px; width: min( 480px, calc( 100vw - 32px ) ); box-shadow: 0 20px 50px rgba( 0, 0, 0, .25 ); }
+.nf-pay-dialog__box h3 { margin: 0 0 8px; font-size: 16px; }
+.nf-pay-dialog__field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; font-size: 13px; }
+.nf-pay-dialog__field > span { color: var( --f-gray-600 ); font-weight: 500; }
+.nf-pay-dialog__field input, .nf-pay-dialog__field textarea { font-size: 14px; padding: 9px 11px; border: 1px solid var( --f-gray-300 ); border-radius: 8px; }
+.nf-pay-dialog__actions { display: flex; gap: 8px; margin-top: 18px; }
+.neural-forms-entries-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #e5e7eb; color: #374151; }
+.neural-forms-entries-pill--pay-paid, .neural-forms-entries-pill--pay-deposit_paid { background: #d1fae5; color: #065f46; }
+.neural-forms-entries-pill--pay-processing, .neural-forms-entries-pill--pay-pending { background: #fef3c7; color: #92400e; }
+.neural-forms-entries-pill--pay-failed, .neural-forms-entries-pill--pay-cancelled { background: #fee2e2; color: #991b1b; }
+.neural-forms-entries-pill--pay-partially_refunded { background: #ede9fe; color: #5b21b6; }
+@media (max-width: 900px) { .nf-pay-table thead { display: none; } .nf-pay-table tr { display: block; padding: 8px 0; } .nf-pay-table td { display: block; border: 0; padding: 4px 24px; } }
