@@ -79,7 +79,7 @@ namespace {
 
 	$bodies = [];
 	foreach ( [ 'resolve_ip', 'ip_in_list', 'default_rate_limit' ] as $name ) {
-		if ( ! preg_match( '/private (?:static )?function ' . $name . '\(.+?\n\t\}/s', $method_src, $m ) ) {
+		if ( ! preg_match( '/(?:private|public) (?:static )?function ' . $name . '\(.+?\n\t\}/s', $method_src, $m ) ) {
 			fwrite( STDERR, "Could not extract {$name}() source.\n" );
 			exit( 2 );
 		}

@@ -234,6 +234,12 @@ class BlockHandler {
 		$attributes = isset( $base['attributes'] ) && is_array( $base['attributes'] ) ? $base['attributes'] : [];
 		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
 
+		// 1.2.0 part B: Buy button block — own schema in its block.json, own renderer.
+		register_block_type(
+			__DIR__ . '/blocks/buy-button',
+			[ 'render_callback' => [ static::class, 'render_buy_button' ] ]
+		);
+
 		foreach ( [ 'quiz', 'multi-step', 'poll' ] as $slug ) {
 			register_block_type(
 				__DIR__ . '/blocks/' . $slug,
@@ -244,6 +250,23 @@ class BlockHandler {
 				]
 			);
 		}
+	}
+
+	/** Render callback for neural-forms/buy-button. */
+	public static function render_buy_button( array $attributes ): string {
+		$preview = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
+		$html    = \NeuralForms\Payments\BuyButton::render( $attributes, [ 'preview' => $preview ] );
+		if ( $html === '' ) {
+			return '';
+		}
+		if ( $preview ) {
+			// Editor preview: inline the stylesheet so the ServerSideRender iframe shows the card.
+			$css = NEURAL_FORMS_PATH . 'modules/frontend/assets/css/form.css';
+			if ( is_readable( $css ) ) {
+				$html = '<style>' . file_get_contents( $css ) . '</style>' . $html; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			}
+		}
+		return '<div ' . get_block_wrapper_attributes() . '>' . $html . '</div>';
 	}
 
 	// Render callback

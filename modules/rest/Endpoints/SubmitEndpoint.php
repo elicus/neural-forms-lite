@@ -2261,7 +2261,7 @@ class SubmitEndpoint {
 	 *
 	 * @return string  IPv4 or IPv6 address, or empty string if REMOTE_ADDR is unavailable.
 	 */
-	private function resolve_ip(): string {
+	public function resolve_ip(): string {
 		$remote = isset( $_SERVER['REMOTE_ADDR'] )
 			? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )
 			: '';
@@ -2382,7 +2382,7 @@ class SubmitEndpoint {
 	 * @param int    $form_id  Form being submitted; keys the bucket per form.
 	 * @return bool  True if the request should be blocked.
 	 */
-	private static function default_rate_limit( string $ip, int $form_id ): bool {
+	public static function default_rate_limit( string $ip, int $form_id ): bool {
 		$bucket = $ip === '' ? 'unknown' : $ip;
 
 		$key   = self::RATE_LIMIT_TRANSIENT_PREFIX . md5( $form_id . '|' . $bucket );

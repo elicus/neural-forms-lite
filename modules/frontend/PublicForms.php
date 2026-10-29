@@ -111,6 +111,15 @@ class PublicForms {
 			true
 		);
 
+		// 1.2.0 part B: Buy button card (block / shortcode / Divi). Enqueued by BuyButton::render().
+		wp_register_script(
+			'neural-forms-buy',
+			NEURAL_FORMS_URL . 'modules/frontend/assets/js/buy-button.js',
+			array(),
+			NEURAL_FORMS_VERSION,
+			true
+		);
+
 		// ' Inline config '
 		// Output as a <script> block immediately before form-submit.js so
 		// window.neuralFormsPublic is defined when the script executes.

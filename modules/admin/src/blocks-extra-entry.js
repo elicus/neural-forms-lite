@@ -42,6 +42,8 @@ import FormDesignExtras      from './blocks/form/FormDesignExtras';
 import PollDesignExtras      from './blocks/poll/PollDesignExtras';
 import QuizDesignExtras      from './blocks/quiz/QuizDesignExtras';
 import MultiStepDesignExtras from './blocks/multistep/MultiStepDesignExtras';
+import BuyButtonEdit         from './blocks/buy/BuyButtonEdit';
+import buyMetadata           from '../../frontend/blocks/buy-button/block.json';
 
 // Inject Inspector-sidebar CSS into the main admin document.
 // form.css is loaded as editor_style → it reaches the canvas iframe only
@@ -286,6 +288,16 @@ NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, Settin
 		// Dynamic block — server renders via BlockHandler::render.
 		save: () => null,
 	} );
+} );
+
+// 1.2.0 part B: Buy button — its own attribute schema (block.json) and
+// its own server render (BuyButton::render), unrelated to the form block.
+registerBlockType( buyMetadata.name, {
+	...buyMetadata,
+	title:       __( 'Neural Buy Button', 'neural-forms-lite' ),
+	description: __( 'Sell one priced item from a Neural Forms form: price, quantity, email and a Buy now button that goes straight to checkout.', 'neural-forms-lite' ),
+	edit: BuyButtonEdit,
+	save: () => null,
 } );
 
 /**

@@ -1,0 +1,32 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "neural-forms/buy-button",
+    "version": "1.2.0",
+    "title": "Neural Buy Button",
+    "category": "embed",
+    "icon": "cart",
+    "description": "Sell one priced item from a Neural Forms form: price, quantity, email and a Buy now button that goes straight to checkout.",
+    "keywords": [ "buy", "purchase", "checkout", "payment", "product" ],
+    "textdomain": "neural-forms-lite",
+    "editorScript": "neural-forms-blocks-extra",
+    "editorStyle": "neural-forms-block-editor",
+    "attributes": {
+        "formId":        { "type": "integer", "default": 0 },
+        "fieldId":       { "type": "string",  "default": "" },
+        "choice":        { "type": "string",  "default": "" },
+        "quantity":      { "type": "integer", "default": 1 },
+        "allowQuantity": { "type": "boolean", "default": true },
+        "collectName":   { "type": "boolean", "default": true },
+        "label":         { "type": "string",  "default": "" },
+        "showPrice":     { "type": "boolean", "default": true },
+        "showTitle":     { "type": "boolean", "default": true },
+        "title":         { "type": "string",  "default": "" },
+        "description":   { "type": "string",  "default": "" },
+        "buttonColor":   { "type": "string",  "default": "" },
+        "buttonText":    { "type": "string",  "default": "" },
+        "width":         { "type": "string",  "default": "auto" },
+        "align":         { "type": "string",  "default": "left" }
+    },
+    "supports": { "html": false, "align": [ "wide", "full" ], "spacing": { "margin": true } }
+}

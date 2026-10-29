@@ -2116,3 +2116,29 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 .neural-forms-form__totals-row--remaining { opacity: 0.75; font-size: 0.9em; }
 .neural-forms-form__totals-row[hidden] { display: none; }
 .neural-forms-product__notice { font-size: 0.85em; opacity: 0.7; }
+
+/* ── Buy button card (1.2.0, part B) ─────────────────────────────── */
+.neural-forms-buy { --nf-buy-btn: #1e1b4b; --nf-buy-btn-text: #fff; box-sizing: border-box; max-width: 420px; margin: 0; padding: 20px 22px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; font: inherit; color: #111827; }
+.neural-forms-buy--full { max-width: none; }
+.neural-forms-buy--align-center { margin-left: auto; margin-right: auto; }
+.neural-forms-buy--align-right { margin-left: auto; }
+.neural-forms-buy--notice { color: #92400e; background: #fef3c7; border-color: #fcd34d; font-size: 14px; }
+.neural-forms-buy__hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; opacity: 0; }
+.neural-forms-buy__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.neural-forms-buy__title { font-size: 17px; font-weight: 600; line-height: 1.3; }
+.neural-forms-buy__price { font-size: 20px; font-weight: 700; white-space: nowrap; }
+.neural-forms-buy__price small { display: block; font-size: 11px; font-weight: 400; color: #6b7280; text-align: right; }
+.neural-forms-buy__desc { margin: 0 0 12px; color: #4b5563; font-size: 14px; line-height: 1.5; }
+.neural-forms-buy__fields { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0 14px; }
+.neural-forms-buy__field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #374151; }
+.neural-forms-buy__field--qty input { max-width: 110px; }
+.neural-forms-buy__field input { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; }
+.neural-forms-buy__field input:focus { outline: 2px solid var( --nf-buy-btn ); outline-offset: 1px; border-color: var( --nf-buy-btn ); }
+.neural-forms-buy__btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; font: inherit; font-size: 16px; font-weight: 600; padding: 13px 18px; border: 0; border-radius: 10px; background: var( --nf-buy-btn ); color: var( --nf-buy-btn-text ); cursor: pointer; transition: filter .15s ease; }
+.neural-forms-buy__btn:hover:not(:disabled) { filter: brightness( 1.1 ); }
+.neural-forms-buy__btn:disabled { opacity: .7; cursor: default; }
+.neural-forms-buy__btn-total { font-weight: 500; opacity: .9; }
+.neural-forms-buy__msg { min-height: 0; margin-top: 8px; font-size: 13px; }
+.neural-forms-buy__msg.is-error { color: #b91c1c; }
+.neural-forms-buy__msg.is-ok { color: #065f46; }
+.neural-forms-buy__secure { margin: 10px 0 0; font-size: 11.5px; color: #9ca3af; text-align: center; }

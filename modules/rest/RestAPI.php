@@ -35,5 +35,6 @@ class RestAPI {
 		( new Endpoints\WorkflowsEndpoint() )->register_routes();
 		( new Endpoints\QuotesEndpoint() )->register_routes();
 		( new Endpoints\PaymentsEndpoint() )->register_routes();
+		( new Endpoints\BuyEndpoint() )->register_routes();
 	}
 }
