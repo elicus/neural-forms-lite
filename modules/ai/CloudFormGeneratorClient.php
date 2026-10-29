@@ -156,12 +156,6 @@ final class CloudFormGeneratorClient {
 		);
 	}
 
-	/** Hash-prefixed origin used by the Cloud's rate-limit scope. */
-	private static function origin_tag(): string {
-		$origin = home_url( '/' );
-		return substr( hash( 'sha256', (string) $origin ), 0, 16 );
-	}
-
 	/**
 	 * @param string $prompt Sanitised user prompt.
 	 * @param array  $opts   Extra envelope keys (limits, locale).

@@ -359,7 +359,7 @@ Base: `/wp-json/neural-forms/v1`
 | POST | `/settings/test-email` | Send test email |
 | POST | `/ai/process-queue` | Trigger queue run (admin) |
 | POST | `/entries/{id}/reply` | Send reply |
-| POST | `/entries/{id}/retry-ai` | Re-queue AI analysis |
+| POST | `/entries/{id}/reanalyze` | Re-queue AI analysis |
 | GET | `/entries/{id}/messages` | Entry message thread |
 | GET | `/stats` | Dashboard stats |
 
@@ -431,7 +431,7 @@ removed as dead code. Keep `__meter-cta`, `__meter-msg`, `__meter-btn`.
 
 | Hook | Schedule | Handler | Purpose |
 |---|---|---|---|
-| `neural_forms_process_queue` | 5 min + 10s single-event after submission | `AIQueueProcessor::process_queue()` | Drain `neural_forms_queue` (AI analysis jobs) |
+| `neural_forms_process_ai_queue` | 5 min + 10s single-event after submission | `AIQueueProcessor::run()` | Drain `neural_forms_queue` (AI analysis jobs) |
 | `neural_forms_ai_draft_purge` | daily | `AIResponseRepository::purge_older_than( DRAFT_TTL_DAYS )` | Garbage-collect stale (non-finalized) carousel drafts older than 30 days |
 | `neural_forms_follow_up_sweep` | hourly | `WorkflowEngine::sweep_overdue_follow_ups()` | Fire the `follow_up_overdue` workflow trigger once per overdue, open follow-up (1.2.0) |
 | `neural_forms_quote_expire` | daily | `QuoteService::expire_due()` | Move issued quotes past `valid_until` to `expired` (1.2.0 part B) |
@@ -505,14 +505,14 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | Capability | Filter | Unlocks |
 |---|---|---|
 | `ai_spam_detect` | `neural_forms_can_ai_spam_detect` | Spam settings UI, `ai_spam_enabled` save, queue spam classification |
-| `ai_reanalyze` | `neural_forms_can_ai_reanalyze` | `POST /entries/{id}/retry-ai`, regenerate reply |
+| `ai_reanalyze` | `neural_forms_can_ai_reanalyze` | `POST /entries/{id}/reanalyze`, regenerate reply |
 | `ai_refine_reply` | `neural_forms_can_ai_refine_reply` | Polish/refine reply endpoint |
 | `ai_process_entries` | `neural_forms_can_ai_process_entries` | Per-form "Process with AI" mode (auto/manual) actually enqueueing/running entry analysis — Lite stores the setting but never calls the cloud without this cap |
 | `page_performance_analytics` | `neural_forms_can_page_performance_analytics` | Page Performance section of the Analytics screen (entries grouped by source page); source-page capture itself is unconditional in Lite, only the aggregation endpoint + UI are gated |
 | `poll_quiz_unlimited_submissions` | `neural_forms_can_poll_quiz_unlimited_submissions` | Lifts the 200 non-trash submission cap per poll/quiz form (`neural_forms_poll_quiz_submission_limit` filter sets the limit; `<= 0` also means unlimited). Local product limit, not a security boundary — see `SubmitEndpoint::check_poll_quiz_submission_limit()` |
 | `field_matrix` | `neural_forms_can_field_matrix` | Matrix field type (survey rows/columns, radio or checkbox selection) — Lite ships the full engine; locked installs show it as a Pro-upsell in the builder palette and the frontend renderer skips it |
 | `field_repeater` | `neural_forms_can_field_repeater` | Repeater field type (repeatable child-field groups) — Lite ships the full engine; locked installs show it as a Pro-upsell in the builder palette and the frontend renderer skips it |
-| `integrations` | `neural_forms_can_integrations` | Integrations admin page (HubSpot, WhatsApp, Mailchimp, Google Forms, Zapier tabs). Lite ships the page shell/menu/React screen as a locked upsell; no provider config is wired up on either side yet — each tab is a "Coming soon" card |
+| `integrations` | `neural_forms_can_integrations` | Integrations admin page (HubSpot, WhatsApp, Mailchimp, Google Forms, Zapier, Stripe, PayPal tabs). Lite ships the page shell/menu/React screen as a locked upsell; Pro wires every provider's config, test and delivery |
 | `conditional_logic_advanced` | `neural_forms_can_conditional_logic_advanced` | Nested condition groups ("A and (B or C)"), conditions on sections and steps, ordered conditional confirmations. Gates the editor and SAVING advanced structures only — `SubmitEndpoint` always evaluates stored rules, so a lapsed Pro install never leaks a hidden field (decision D1 in `docs/RELEASE-1.2-PLAN.md`) |
 | `workflows` | `neural_forms_can_workflows` | Workflow editor, runs/history, lead stage / assignee / follow-up controls in the inbox (engine lands in milestone A3/A4) |
 | `ai_business_context` | `neural_forms_can_ai_business_context` | Per-form AI behaviour (tone, language, knowledge picker) and sending `ai_behaviour` to the cloud (milestone A5) |
@@ -573,16 +573,13 @@ is a breaking change for Pro.
 | `neural_forms_can_ai_business_context` filter | `Capabilities::can()` | `__return_true` to unlock business knowledge / voice / language for AI drafts (1.2.0) |
 | `window.neuralForms.slots.registerFill` JS registry | Admin bundle at mount | Pro bundle registers SlotFills for premium UI regions |
 
-React SlotFill names exposed by Lite (via `@wordpress/components createSlotFill`):
+Slot names exposed by Lite through its own registry `window.neuralForms.slots` (`modules/admin/src/slot-registry.js`, bare names, `registerFill( name, component )`; the same file installs the live plan store `window.neuralForms.plan` with `get / set / subscribe`, fed by Settings after Test connection so Pro fills re-render without a reload):
 
-- `NeuralForms.EntryReplyActions` — slot above reply box in entry detail
-- `NeuralForms.EntryAiActions` — slot for AI actions (reanalyze, regenerate)
-- `NeuralForms.SettingsSpamPanel` — spam settings panel (Lite renders upsell fallback)
-- `NeuralForms.SettingsSiteProfile` — business-context card (Pro-owned feature; Lite only renders the upsell fallback)
-- `NeuralForms.SettingsIntegrations` — integrations tab (Divi status, etc.) —
-  **not yet registered** in `modules/admin/src/slot-registry.js` as of
-  1.1.0 (only `EntryAiActions`, `EntryReplyActions`, `SettingsSpamPanel`,
-  `SettingsSiteProfile` are). Register it there before Pro can fill it.
+- `EntryReplyActions` — slot above reply box in entry detail (Pro `RefineWithAiFill.js`)
+- `EntryAiActions` — slot for AI actions (Pro `ReanalyzeRegenerateFill.js`)
+- `SettingsSpamPanel` — spam settings panel (Lite renders upsell fallback)
+- `SettingsSiteProfile` — business-context card (Pro-owned feature; Lite only renders the upsell fallback)
+- `SettingsLicense` — registered but no `<ProSlot>` renders it and Pro has no fill: Pro's `/license*` REST routes have no UI. Decide whether the cloud key IS the license (then delete Pro's licensing module) or build the panel.
 
 ------------------------------------------------------------------------
 
@@ -661,7 +658,7 @@ npm run build
 Per-screen scripts (use one when you only changed a single screen):
 `build:builder`, `build:results`, `build:blocks-extra`, `build:forms`,
 `build:entries`, `build:settings`, `build:stats`, `build:import`,
-`build:integrations`, `build:templates`, `build:block`. Each emits
+`build:integrations`, `build:quotes`, `build:payments`, `build:block`. Each emits
 exactly one JS + one CSS + one asset.php without touching sibling
 bundles (CleanWebpackPlugin is dropped from the split config).
 
@@ -822,6 +819,58 @@ on `/v1/ai/forms/generate` was removed the same day, so Lite plans
 generate and pay with credits like any other AI call. Tests:
 `tests/FormGeneratorTest.php` (167 checks, ported from Pro).
 
+### Security + integrity audit (2026-10-30)
+
+Six parallel reviews (PHP escaping, JS XSS, payments/REST, duplication,
+dead code, wiring) over Lite + Pro. Rules that came out of it:
+
+- **Every CSS value from block / module attributes goes through a guard.**
+  Lite: `BlockHandler::css_text()` (border *width* was the one gap). Pro
+  Divi: `RenderCallbackTrait::css_val()` wraps all 229 former
+  `sanitize_text_field()` sites; `sanitize_css_color()` only accepts
+  numeric `rgb()/hsl()`. `sanitize_text_field()` leaves `{ } ;`, which
+  closes the scoped rule for any Author-level editor.
+- **Checkout URLs**: `PaymentService::safe_checkout_url()` (http/https,
+  plain host, no DNS lookup — `wp_http_validate_url()` resolves the host
+  and broke offline/harness runs); the frontend only navigates to
+  `https?://` or relative URLs. Return-page "Back" link goes through
+  `wp_validate_redirect()`.
+- **Payments**: buyer-cancel is a guarded `update_if_status()`; a crashed
+  `apply()` deletes its dedupe event row so the gateway retry is processed;
+  refunds hold a 60 s transient lock and reject gateway `failed/canceled`
+  results; refund totals never move backwards (`stale_refund_total`);
+  idempotency keys are site-scoped (`nf-{site8}-{entry}-{quote}-{attempt}`);
+  `start_checkout` only accepts the form's own providers; superseding /
+  expiring a quote calls `PaymentService::expire_open_for_quote()`;
+  deleting an entry with a settled attempt is refused (409
+  `entry_has_payments`), open attempts are closed first. PayPal events
+  carry payee + environment from the event itself; refund events match the
+  capture via the `up` link; Stripe ignores `charge.refund.updated`.
+- **Buy endpoint** runs the `neural_forms_rate_limit` filter and the form's
+  CAPTCHA (`FormRenderer::captcha_widget_html()` is shared with the card;
+  buy-button.js also serialises textareas for the reCAPTCHA token).
+- **424, never 5xx passthrough**: integration clients and Settings test
+  connection map upstream 5xx to 424 (the guard test only sees literals).
+- **Cron**: the activation hook attaches the `five_minutes` interval before
+  scheduling (plugins_loaded has already fired there) and `boot()`
+  self-heals `AIQueueProcessor::schedule()`.
+- **Mail**: `NotificationService::reply_headers()` is the one source of
+  From / Reply-To for inbox replies and retries.
+- **Dead code removed**: templates bundle + legacy `webpack.config.js`,
+  PRO-badge paths of the AI dropdown / AI panel, unused methods
+  (`StatsEndpoint::ai_insights/system_status`, `EntriesEndpoint::
+  update_entry_status`, PlanManager subscription helpers, SchemaHelper
+  row/quiz defaults, `CloudFormGeneratorClient::origin_tag`), unused JS
+  exports in `schemaHelper.js` / `FieldTypes.js` / `dndHelpers.js` /
+  `hubspotAutoMap.js`, the buy block's colour attributes, the form block's
+  `*MsgBorderColor`. CLI note: `php -d memory_limit=256M` for diviplus.
+- **Known duplication left for a later pass** (see the audit): Pro's
+  Divi VB `buildDesignCss` mirrors the PHP builder (~4.7k lines), the three
+  Divi design-tab field kits, Stripe/PayPal settings+endpoints, the four
+  integration dispatchers, Pro's `DeactivationPage`, Lite REST boilerplate,
+  the captcha verifiers, quote/payment token helpers, JS money / API-error
+  helpers. Each is a mechanical extraction with a named home in the report.
+
 ### Payment form ("Neural Payment Form"): block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
 
 User-facing name **Neural Payment Form** (renamed from Buy Button the same day; internal names `neural-forms/buy-button`, `[neural-forms-buy]`, `BuyButton`, `neural-forms/divi-buy` stay).
@@ -860,8 +909,8 @@ User-facing name **Neural Payment Form** (renamed from Buy Button the same day; 
   label="Buy now" title="" description="" name="1" price="1" width="auto|full"
   align="left|center|right"]`.
 - **Frontend** `assets/js/buy-button.js` (no deps): live total, JSON POST,
-  follows the redirect; styles `.neural-forms-buy*` in form.css with
-  `--nf-buy-btn` / `--nf-buy-btn-text` custom properties.
+  follows the redirect; styles `.neural-forms-buy*` in form.css (button
+  colours come from the Style tab, the old colour attributes are gone).
 - **Divi 5** (Pro): `modules/divi/Modules/NeuralBuy/NeuralBuy.php`
   (`neural-forms/divi-buy`, subclass of NeuralForm, `render_buy()` →
   `BuyButton::render()`), VB `src/modules/neural-buy/*` (content tab reads
@@ -1512,7 +1561,6 @@ you rebuild a single bundle in isolation without touching siblings
 | `build/payments.js` | `src/payments-entry.js` | `npm run build:payments` | Payments page (`?page=neural-forms-payments`) — `src/screens/Payments.js` + `src/payments.css` (imports `settings.css`); list, totals, invoice, refund (1.2.0 part B). |
 | `build/quotes.js` | `src/quotes-entry.js` | `npm run build:quotes` | Business Details page (`?page=neural-forms-quotes`, label renamed 2026-10-30) — `src/screens/Quotes.js`; imports `settings.css` so it looks like Settings (1.2.0 part B). |
 | `build/integrations.js` | `src/integrations-entry.js` | `npm run build:integrations` | Integrations screen — `src/screens/Integrations.js` + `src/integrations.css` (Pro-ready provider config surfaces; also `src/forms/IntegrationsSection.js` in the builder). |
-| `build/templates.js` | `src/templates-entry.js` | `npm run build:templates` | Template library modal — `src/templates/TemplateLibrary.js` + `TemplateLibraryModal.js`. |
 | `build/block.js` | `src/block-index.js` | `npm run build:block` | Gutenberg form-rendering block (registered via `frontend/block/block.json`). |
 | `build/blocks-extra.js` | `src/blocks-extra-entry.js` | `npm run build:blocks-extra` | After editing the Quiz / Multi-step / Poll Gutenberg blocks. Each of the 3 registers via its own `modules/frontend/blocks/{quiz,multi-step,poll}/block.json` (metadata only — name/title/description/keywords/category/textdomain/editorScript/editorStyle), added 2026-07-01 so WordPress.org's directory scanner detects all 4 blocks (it counts `block.json` files; the 3 extras were previously registered with inline PHP args and were invisible to the scanner). The attribute schema still comes from the form block's `frontend/block/block.json` at runtime and is passed as the `register_block_type()` args override in `BlockHandler::register_extra_blocks()` — one source of truth for the ~600-line attribute list, not duplicated across the 3 new files. |
 
@@ -1534,7 +1582,7 @@ Use Node 18 (or newer) for any `npm run build*` invocation:
 - **Stats / Settings / Entries / Import / Integrations** — edit the
   matching `src/screens/` or `src/entries/` source + `src/<screen>.css`,
   run the corresponding `build:<screen>`.
-- **Template library modal** — edit `src/templates/`, run `build:templates`.
+- **Template library modal** — edit `src/templates/`, run `build:forms` (the modal ships inside the forms bundle; the separate templates bundle was dead and removed 2026-10-30).
 - **Inline CSS/JS in PHP** — no build at all; ships the moment PHP
   is deployed.
 

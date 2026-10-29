@@ -498,66 +498,7 @@ class FormRenderer {
 
 		$html .= '<p class="neural-forms-form__global-error" role="alert" hidden></p>';
 
-		// ' CAPTCHA widget '
-		// Rendered only when the form has captcha_enabled = true AND a provider
-		// with a site key is globally configured. The provider JS SDK (Turnstile
-		// or reCAPTCHA) auto-initialises widgets by CSS class name, so no custom
-		// init code is required. The SDK also injects a hidden input that
-		// form-submit.js reads to collect the token.
-		//
-		// data-neural-forms-captcha is a provider identifier read by form-submit.js
-		// to know which input name to look for and which reset API to call.
-		$captcha_provider = (string) Config::get( 'captcha_provider', 'none' );
-		$captcha_site_key = (string) Config::get( 'captcha_site_key', '' );
-		$captcha_enabled  = ! empty( $settings['captcha_enabled'] );
-
-		if ( $captcha_enabled && $captcha_provider !== 'none' && $captcha_site_key !== '' ) {
-			// Map provider slug to the auto-render CSS class expected by the SDK.
-			$provider_class_map = [
-				'turnstile'    => 'cf-turnstile',
-				'recaptcha_v2' => 'g-recaptcha',
-			];
-
-			$provider_class = $provider_class_map[ $captcha_provider ] ?? '';
-
-			if ( $provider_class !== '' ) {
-				$html .= '<div'
-					. ' class="neural-forms-form__captcha ' . esc_attr( $provider_class ) . '"'
-					. ' data-sitekey="' . esc_attr( $captcha_site_key ) . '"'
-					. ' data-neural-forms-captcha="' . esc_attr( $captcha_provider ) . '"'
-					. '></div>';
-
-				// Enqueue the provider script once per page (WP deduplicates).
-				//
-				// These two URLs MUST be loaded from the upstream service -
-				// CAPTCHA verification depends on the same origin server-side
-				// (challenges.cloudflare.com / www.google.com) issuing the
-				// challenge token that the plugin then verifies via siteverify.
-				// Self-hosting the SDK is not supported by either provider.
-				// Both services are disclosed under "External services" in
-				// readme.txt as required for WordPress.org submission.
-				//
-				// phpcs:disable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
-				if ( $captcha_provider === 'turnstile' ) {
-					wp_enqueue_script(
-						'neural-forms-cf-turnstile',
-						'https://challenges.cloudflare.com/turnstile/v0/api.js',
-						[],
-						NEURAL_FORMS_VERSION,
-						true
-					);
-				} elseif ( $captcha_provider === 'recaptcha_v2' ) {
-					wp_enqueue_script(
-						'neural-forms-recaptcha-v2',
-						'https://www.google.com/recaptcha/api.js',
-						[],
-						NEURAL_FORMS_VERSION,
-						true
-					);
-				}
-				// phpcs:enable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
-			}
-		}
+		$html .= self::captcha_widget_html( $settings );
 		// ' end CAPTCHA '
 
 		// Multi-step navigation: emitted only when 2+ top-level step
@@ -929,6 +870,75 @@ class FormRenderer {
 	 * exports, AI analysis, or notifications — it's a display element,
 	 * not a field.
 	 */
+
+	/**
+	 * CAPTCHA widget + SDK enqueue for a form that has captcha_enabled and a
+	 * configured provider (shared by the form renderer and the payment form).
+	 */
+	public static function captcha_widget_html( array $settings ): string {
+		$out = '';
+	// Rendered only when the form has captcha_enabled = true AND a provider
+	// with a site key is globally configured. The provider JS SDK (Turnstile
+	// or reCAPTCHA) auto-initialises widgets by CSS class name, so no custom
+	// init code is required. The SDK also injects a hidden input that
+	// form-submit.js reads to collect the token.
+	//
+	// data-neural-forms-captcha is a provider identifier read by form-submit.js
+	// to know which input name to look for and which reset API to call.
+	$captcha_provider = (string) Config::get( 'captcha_provider', 'none' );
+	$captcha_site_key = (string) Config::get( 'captcha_site_key', '' );
+	$captcha_enabled  = ! empty( $settings['captcha_enabled'] );
+
+	if ( $captcha_enabled && $captcha_provider !== 'none' && $captcha_site_key !== '' ) {
+		// Map provider slug to the auto-render CSS class expected by the SDK.
+		$provider_class_map = [
+			'turnstile'    => 'cf-turnstile',
+			'recaptcha_v2' => 'g-recaptcha',
+		];
+
+		$provider_class = $provider_class_map[ $captcha_provider ] ?? '';
+
+		if ( $provider_class !== '' ) {
+			$out = '<div'
+				. ' class="neural-forms-form__captcha ' . esc_attr( $provider_class ) . '"'
+				. ' data-sitekey="' . esc_attr( $captcha_site_key ) . '"'
+				. ' data-neural-forms-captcha="' . esc_attr( $captcha_provider ) . '"'
+				. '></div>';
+
+			// Enqueue the provider script once per page (WP deduplicates).
+			//
+			// These two URLs MUST be loaded from the upstream service -
+			// CAPTCHA verification depends on the same origin server-side
+			// (challenges.cloudflare.com / www.google.com) issuing the
+			// challenge token that the plugin then verifies via siteverify.
+			// Self-hosting the SDK is not supported by either provider.
+			// Both services are disclosed under "External services" in
+			// readme.txt as required for WordPress.org submission.
+			//
+			// phpcs:disable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
+			if ( $captcha_provider === 'turnstile' ) {
+				wp_enqueue_script(
+					'neural-forms-cf-turnstile',
+					'https://challenges.cloudflare.com/turnstile/v0/api.js',
+					[],
+					NEURAL_FORMS_VERSION,
+					true
+				);
+			} elseif ( $captcha_provider === 'recaptcha_v2' ) {
+				wp_enqueue_script(
+					'neural-forms-recaptcha-v2',
+					'https://www.google.com/recaptcha/api.js',
+					[],
+					NEURAL_FORMS_VERSION,
+					true
+				);
+			}
+			// phpcs:enable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
+		}
+	}
+		return $out;
+	}
+
 	private static function render_welcome_screen( array $node, int $form_id, array $options = [] ): string {
 		$node_id     = (string) ( $node['id'] ?? '' );
 		$title       = (string) ( $node['title'] ?? '' );

@@ -35,12 +35,13 @@
 			var email = form.querySelector( 'input[name="email"]' );
 			if ( email && ! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( email.value.trim() ) ) {
 				msg.textContent = form.getAttribute( 'data-msg-email' ) || 'Please enter a valid email address.';
-				msg.className = 'neural-forms-buy__msg neural-forms-form__global-error is-error';
+				msg.className = 'neural-forms-buy__msg neural-forms-form__global-error';
 				email.focus();
 				return;
 			}
 			var payload = {};
-			Array.prototype.forEach.call( form.querySelectorAll( 'input' ), function ( i ) { if ( i.name ) { payload[ i.name ] = i.value; } } );
+			// textarea: reCAPTCHA injects its token as <textarea name="g-recaptcha-response">.
+			Array.prototype.forEach.call( form.querySelectorAll( 'input, textarea' ), function ( i ) { if ( i.name ) { payload[ i.name ] = i.value; } } );
 			payload.qty = qty();
 			form.classList.add( 'is-busy' );
 			btn.disabled = true;
@@ -51,18 +52,20 @@
 				.then( function ( res ) {
 					if ( res.ok && res.json && res.json.outcome && res.json.outcome.mode === 'redirect' && res.json.outcome.url ) {
 						msg.textContent = form.getAttribute( 'data-msg-redirect' ) || 'Taking you to the secure checkout…';
-						window.location.assign( res.json.outcome.url );
+						if ( /^(https?:\/\/|\/)/i.test( String( res.json.outcome.url ) ) ) {
+							window.location.assign( res.json.outcome.url );
+						}
 						return;
 					}
 					var text = ( res.json && ( res.json.payment_error || res.json.message ) ) || ( res.json && res.json.message ) || 'Something went wrong. Please try again.';
 					msg.textContent = text;
-					msg.className = 'neural-forms-buy__msg ' + ( res.ok ? 'neural-forms-form__success is-ok' : 'neural-forms-form__global-error is-error' );
+					msg.className = 'neural-forms-buy__msg ' + ( res.ok ? 'neural-forms-form__success' : 'neural-forms-form__global-error' );
 					form.classList.remove( 'is-busy' );
 					btn.disabled = false;
 				} )
 				.catch( function () {
 					msg.textContent = 'Network error. Please try again.';
-					msg.className = 'neural-forms-buy__msg neural-forms-form__global-error is-error';
+					msg.className = 'neural-forms-buy__msg neural-forms-form__global-error';
 					form.classList.remove( 'is-busy' );
 					btn.disabled = false;
 				} );

@@ -105,7 +105,7 @@ try {
 	$entry_id = (int) $b['entry_id']; $created['entries'][] = $entry_id;
 	$pid      = (int) $b['payment']['id'];
 	$p        = PaymentRepository::get( $pid );
-	check( 'attempt: deposit 351.00 pending with session + idempotency key', array( $p['kind'], $p['amount_due_minor'], $p['status'], $p['session_id'], $p['idempotency_key'] ), array( 'deposit', 35100, 'pending', 'fs_' . $pid, 'nf-' . $entry_id . '-0-1' ) );
+	check( 'attempt: deposit 351.00 pending with session + idempotency key', array( $p['kind'], $p['amount_due_minor'], $p['status'], $p['session_id'], $p['idempotency_key'] ), array( 'deposit', 35100, 'pending', 'fs_' . $pid, 'nf-' . substr( hash( 'sha256', home_url( '/' ) . wp_salt( 'auth' ) ), 0, 8 ) . '-' . $entry_id . '-0-1' ) );
 	check( 'entry aggregate pending', EntryRepository::get( $entry_id )['payment_status'], 'pending' );
 	$urls = $gw->calls[0][3];
 	check( 'urls: return + cancel carry a token, webhook route is Lite-owned', strpos( $urls['success'], '/payments/' . $pid . '/return' ) !== false && strpos( $urls['success'], 'token=' ) !== false && strpos( $urls['cancel'], 'result=cancel' ) !== false && strpos( $urls['webhook'], '/neural-forms/v1/payments/webhook/fakepay' ) !== false, true );

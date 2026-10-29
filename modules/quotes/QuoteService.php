@@ -126,6 +126,9 @@ final class QuoteService {
 			$prev = QuoteRepository::get( (int) $quote['supersedes_id'] );
 			if ( $prev && in_array( $prev['status'], array( 'issued', 'expired' ), true ) ) {
 				QuoteRepository::update( (int) $prev['id'], array( 'status' => 'superseded' ) );
+				if ( class_exists( '\\NeuralForms\\Payments\\PaymentService' ) ) {
+					\NeuralForms\Payments\PaymentService::expire_open_for_quote( $prev ); // old-price checkouts die with the revision
+				}
 			}
 		}
 		EntryActivity::record(
@@ -316,6 +319,9 @@ final class QuoteService {
 		foreach ( QuoteRepository::issued_past_validity( gmdate( 'Y-m-d H:i:s' ) ) as $id ) {
 			if ( QuoteRepository::transition( $id, 'issued', 'expired' ) ) {
 				$q = QuoteRepository::get( $id );
+				if ( $q && class_exists( '\\NeuralForms\\Payments\\PaymentService' ) ) {
+					\NeuralForms\Payments\PaymentService::expire_open_for_quote( $q );
+				}
 				if ( $q ) {
 					EntryActivity::record( (int) $q['entry_id'], 'quote.expired', sprintf( __( 'Quote %s expired', 'neural-forms-lite' ), (string) $q['number'] ), array( 'quote_id' => $id, 'by' => 0 ) );
 				}

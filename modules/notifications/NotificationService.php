@@ -890,6 +890,20 @@ class NotificationService {
 	 *
 	 * @param string|string[] $to
 	 */
+	/**
+	 * Headers for a human reply sent from the inbox (plain text, configured
+	 * From, Reply-To = the business). Shared by the reply and retry endpoints.
+	 */
+	public static function reply_headers( ?array $settings = null ): array {
+		$settings = is_array( $settings ) ? $settings : Config::all();
+		$sender   = self::resolve_sender( $settings );
+		$headers  = array_merge( array( 'Content-Type: text/plain; charset=UTF-8' ), self::build_from_headers( $settings ) );
+		if ( $sender['email'] !== '' ) {
+			$headers[] = 'Reply-To: ' . ( $sender['name'] !== '' ? $sender['name'] . ' <' . $sender['email'] . '>' : $sender['email'] );
+		}
+		return $headers;
+	}
+
 	public static function send_mail( $to, string $subject, string $body, array $extra_headers = array(), array $attachments = array() ): bool {
 		$headers = array_merge( self::build_from_headers( Config::all() ), $extra_headers );
 		return self::send_with_retry( $to, $subject, $body, $headers, $attachments );

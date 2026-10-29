@@ -97,6 +97,10 @@ final class PaymentStatus {
 				if ( $paid <= 0 || $refunded <= 0 ) {
 					return array( 'fields' => array(), 'changed' => false, 'newly_paid' => false, 'reason' => 'refund_without_payment' );
 				}
+				// Cumulative totals only move up: an out-of-order older event must not lower the figure.
+				if ( $refunded < (int) ( $payment['amount_refunded_minor'] ?? 0 ) ) {
+					return array( 'fields' => array(), 'changed' => false, 'newly_paid' => false, 'reason' => 'stale_refund_total' );
+				}
 				$fields['amount_refunded_minor'] = min( $paid, $refunded );
 				$next                            = $fields['amount_refunded_minor'] >= $paid ? 'refunded' : 'partially_refunded';
 				break;

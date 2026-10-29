@@ -9,7 +9,7 @@
 import { useEffect, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import api from '../api';
-import { formatDate } from './helpers';
+import { formatDate, exponentFor } from './helpers';
 
 const TONE = { paid: 'ok', partially_refunded: 'ok', refunded: 'muted', processing: 'wait', pending: 'wait', failed: 'bad', expired: 'muted', replaced: 'muted' };
 
@@ -45,7 +45,7 @@ export default function PaymentCard( { entry, capabilities } ) {
 			.finally( () => setBusy( '' ) );
 	};
 	const refund = ( a ) => {
-		const c = a.currency; const exp = { JPY: 0, KRW: 0, BHD: 3, KWD: 3 }[ c ] ?? 2; const max = a.refundable_minor || 0;
+		const c = a.currency; const exp = exponentFor( c ); const max = a.refundable_minor || 0;
 		const def = ( max / Math.pow( 10, exp ) ).toFixed( exp );
 		// eslint-disable-next-line no-alert
 		const raw = window.prompt( sprintf( __( 'Refund amount in %1$s (up to %2$s). This goes back through %3$s and cannot be undone.', 'neural-forms-lite' ), c, def, a.provider_label ), def );

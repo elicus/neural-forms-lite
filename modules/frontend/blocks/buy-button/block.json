@@ -23,8 +23,6 @@
         "showTitle":     { "type": "boolean", "default": true },
         "title":         { "type": "string",  "default": "" },
         "description":   { "type": "string",  "default": "" },
-        "buttonColor":   { "type": "string",  "default": "" },
-        "buttonText":    { "type": "string",  "default": "" },
         "width":         { "type": "string",  "default": "auto" },
         "align":         { "type": "string",  "default": "left" }
     },

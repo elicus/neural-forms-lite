@@ -30,34 +30,6 @@ export const FIELD_TYPES = [
 	{ value: 'hidden',        label: 'Hidden'        },
 ];
 
-export const TYPES_THAT_PAIR = FIELD_TYPES
-	.filter( ( t ) => t.value !== 'hidden' )
-	.map( ( t ) => t.value );
-
-/**
- * Legacy label-derived id generator. Kept exported for back-compat
- * with any external caller that imports it directly, but is NO
- * LONGER USED by `newField()` — that path now routes through
- * `makeFieldId(type, existing)` from schemaHelper.js which uses a
- * monotonic-counter token, guaranteeing uniqueness without relying
- * on a possibly-stale `existingIds` snapshot.
- *
- * The old behaviour ("rating" → "rating_2" → "rating_3") was the
- * source of the duplicate-id save error that this 0.2.0 change
- * fixes: two paths could both miss the second add and both emit
- * `id: "rating"`. See FormValidator's "Duplicate field id" guard.
- */
-export function defaultIdForType( type, existingIds = [] ) {
-	const base = type === 'tel' ? 'phone' : type;
-	let candidate = base;
-	let n = 2;
-	while ( existingIds.includes( candidate ) ) {
-		candidate = `${ base }_${ n }`;
-		n += 1;
-	}
-	return candidate;
-}
-
 import { makeFieldId } from './schemaHelper';
 
 /** Default skeleton for a newly-added field of a given type. */

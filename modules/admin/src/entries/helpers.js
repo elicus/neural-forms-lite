@@ -220,9 +220,14 @@ export function formatProductValue( value, field ) {
 	return text ? text + suffix : '';
 }
 
+/** Minor-unit exponent per ISO currency (mirrors PHP Money::exponent). */
+export function exponentFor( currency ) {
+	return { BIF: 0, CLP: 0, DJF: 0, GNF: 0, JPY: 0, KMF: 0, KRW: 0, MGA: 0, PYG: 0, RWF: 0, UGX: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0, BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3 }[ currency ] ?? 2;
+}
+
 /** Minor units → "$1,250.50" (mirrors PHP Money::format for the inbox). */
 export function formatMinor( minor, currency ) {
-	const exp = { BIF: 0, CLP: 0, DJF: 0, GNF: 0, JPY: 0, KMF: 0, KRW: 0, MGA: 0, PYG: 0, RWF: 0, UGX: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0, BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3 }[ currency ] ?? 2;
+	const exp = exponentFor( currency );
 	const sym = { USD: '$', EUR: '€', GBP: '£', INR: '₹', AUD: 'A$', CAD: 'C$', NZD: 'NZ$', SGD: 'S$', JPY: '¥', ZAR: 'R', BRL: 'R$', MXN: 'MX$' }[ currency ] ?? ( currency + ' ' );
 	const n = Number( minor ) || 0;
 	const neg = n < 0;

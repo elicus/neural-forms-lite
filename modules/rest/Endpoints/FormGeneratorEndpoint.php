@@ -32,11 +32,6 @@ class FormGeneratorEndpoint {
 							'required' => true,
 							'type'     => 'string',
 						),
-						'mode'   => array(
-							'required'          => false,
-							'type'              => 'string',
-							'sanitize_callback' => 'sanitize_key',
-						),
 					),
 				),
 			)

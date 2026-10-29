@@ -488,75 +488,6 @@ class StatsEndpoint {
 	}
 
 	/**
-	 * Category distribution + priority/sales/support/spam counts from completed analyses.
-	 *
-	 * Returns:
-	 *   analyzed_count      - total entries where ai_status = 'complete'
-	 *   top_category        - highest-count non-generic category, or null
-	 *   categories          - up to 4 category/count pairs (for future category list)
-	 *   high_priority_count - entries where ai_priority = 'high'
-	 *   sales_count         - entries where ai_category = 'sales'
-	 *   support_count       - entries where ai_category = 'support'
-	 *   spam_detected_count - entries where ai_is_spam = 1 (among completed)
-	 */
-	private function ai_insights(): array {
-		global $wpdb;
-		$table = $wpdb->prefix . 'neural_forms_entries';
-
-		// Top non-generic categories - drives the top_category field and
-		// the categories array for any future breakdown UI.
-		$categories = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT ai_category AS category, COUNT(*) AS count
-				 FROM %i
-				 WHERE ai_status = 'complete'
-				   AND ai_category IS NOT NULL
-				   AND ai_category != ''
-				   AND ai_category != 'general'
-				 GROUP BY ai_category
-				 ORDER BY count DESC
-				 LIMIT 4",
-				$table
-			),
-			ARRAY_A
-		);
-
-		// Single conditional-aggregation pass over completed entries.
-		$agg = $wpdb->get_row(
-			$wpdb->prepare(
-				"SELECT
-				   COUNT(*)                          AS analyzed_count,
-				   SUM( ai_priority = 'high' )       AS high_priority_count,
-				   SUM( ai_category = 'sales' )      AS sales_count,
-				   SUM( ai_category = 'support' )    AS support_count,
-				   SUM( ai_is_spam = 1 )             AS spam_detected_count
-				 FROM %i
-				 WHERE ai_status = 'complete'",
-				$table
-			),
-			ARRAY_A
-		);
-
-		return array(
-			'top_category'        => ! empty( $categories ) ? $categories[0]['category'] : null,
-			'categories'          => array_map(
-				static function ( array $r ): array {
-					return array(
-						'category' => $r['category'],
-						'count'    => (int) $r['count'],
-					);
-				},
-				$categories ?: array()
-			),
-			'analyzed_count'      => $agg ? (int) $agg['analyzed_count'] : 0,
-			'high_priority_count' => $agg ? (int) $agg['high_priority_count'] : 0,
-			'sales_count'         => $agg ? (int) $agg['sales_count'] : 0,
-			'support_count'       => $agg ? (int) $agg['support_count'] : 0,
-			'spam_detected_count' => $agg ? (int) $agg['spam_detected_count'] : 0,
-		);
-	}
-
-	/**
 	 * Last 10 actionable log events - reply, notification, and AI outcomes.
 	 * Generic/noisy events (queued, status updates) are excluded.
 	 */
@@ -592,44 +523,6 @@ class StatsEndpoint {
 				);
 			},
 			$rows ?: array()
-		);
-	}
-
-	/**
-	 * AI on/off, pending queue depth, email failure count in last 24 hours.
-	 */
-	private function system_status(): array {
-		global $wpdb;
-
-		$pending_jobs = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(*) FROM %i
-				 WHERE job_type = 'analyze_entry'
-				   AND status IN ('pending','failed')
-				   AND attempts < %d",
-				$wpdb->prefix . 'neural_forms_queue',
-				\NeuralForms\AI\AIQueueProcessor::MAX_ATTEMPTS
-			)
-		);
-
-		$email_failures = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(*) FROM %i
-				 WHERE event_type IN (
-				     'reply_send_failed',
-				     'admin_notification_failed',
-				     'autoresponder_failed'
-				 )
-				 AND created_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 24 HOUR )",
-				$wpdb->prefix . 'neural_forms_logs'
-			)
-		);
-
-		return array(
-			'ai_enabled'      => (bool) Config::get( 'ai_enabled' ),
-			'ai_spam_enabled' => (bool) Config::get( 'ai_spam_enabled' ),
-			'pending_jobs'    => $pending_jobs,
-			'email_failures'  => $email_failures,
 		);
 	}
 

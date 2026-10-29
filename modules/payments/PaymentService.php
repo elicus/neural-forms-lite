@@ -123,10 +123,10 @@ final class PaymentService {
 		$available = self::providers_for( $form );
 		$wanted    = isset( $opts['provider'] ) && is_string( $opts['provider'] ) ? $opts['provider'] : '';
 		if ( $wanted !== '' ) {
-			if ( ! isset( $available[ $wanted ] ) && ! isset( PaymentProviderRegistry::configured()[ $wanted ] ) ) {
+			if ( ! isset( $available[ $wanted ] ) ) {
 				return new WP_Error( 'provider_unavailable', __( 'That payment method is not available.', 'neural-forms-lite' ), array( 'status' => 422 ) );
 			}
-			$provider = $available[ $wanted ] ?? PaymentProviderRegistry::configured()[ $wanted ];
+			$provider = $available[ $wanted ];
 		} else {
 			$provider = reset( $available );
 		}
@@ -157,7 +157,8 @@ final class PaymentService {
 			}
 		}
 		$attempt = count( $attempts ) + 1;
-		$key     = 'nf-' . $entry_id . '-' . (int) ( $quote['id'] ?? 0 ) . '-' . $attempt;
+		// Site-scoped: two sites sharing gateway credentials (staging/prod) must never collide.
+		$key     = 'nf-' . substr( hash( 'sha256', home_url( '/' ) . wp_salt( 'auth' ) ), 0, 8 ) . '-' . $entry_id . '-' . (int) ( $quote['id'] ?? 0 ) . '-' . $attempt;
 		$id      = PaymentRepository::create(
 			array(
 				'entry_id'         => $entry_id,
@@ -206,11 +207,14 @@ final class PaymentService {
 			Logger::log( 'payment_start_failed', 'error', $result->get_error_message(), array( 'payment_id' => $id, 'provider' => $provider->id() ), $entry_id );
 			return $result;
 		}
+		// Only a real http(s) URL may be stored and handed to the browser (the
+		// JS navigates to it): a gateway bug or tampered row must not yield javascript:.
+		$checkout_url = self::safe_checkout_url( (string) ( $result['url'] ?? '' ) );
 		PaymentRepository::update(
 			$id,
 			array(
 				'session_id'          => (string) ( $result['session_id'] ?? '' ),
-				'checkout_url'        => (string) ( $result['url'] ?? '' ),
+				'checkout_url'        => $checkout_url,
 				'account_id'          => (string) ( $result['account_id'] ?? '' ),
 				'livemode'            => ! empty( $result['livemode'] ),
 				'provider_payment_id' => (string) ( $result['provider_payment_id'] ?? '' ),
@@ -220,7 +224,10 @@ final class PaymentService {
 		$payment = PaymentRepository::get( $id );
 		self::sync_entry( $entry_id );
 		EntryActivity::record( $entry_id, 'payment.started', sprintf( __( '%1$s checkout started for %2$s (%3$s)', 'neural-forms-lite' ), $provider->label(), Money::format( $due, $currency ), $kind === 'deposit' ? __( 'deposit', 'neural-forms-lite' ) : __( 'full amount', 'neural-forms-lite' ) ), array( 'payment_id' => $id, 'by' => 0 ) );
-		return array( 'url' => (string) $result['url'], 'payment' => $payment, 'reused' => false );
+		if ( $checkout_url === '' ) {
+			return new WP_Error( 'checkout_invalid_url', __( 'The payment provider returned an invalid checkout link.', 'neural-forms-lite' ), array( 'status' => 424 ) );
+		}
+		return array( 'url' => $checkout_url, 'payment' => $payment, 'reused' => false );
 	}
 
 	/**
@@ -281,7 +288,13 @@ final class PaymentService {
 			PaymentRepository::finish_event( $row_id, null, 'unmatched' );
 			return array( 'result' => 'unmatched' );
 		}
-		$outcome = self::apply( $payment, $event, $row_id );
+		try {
+			$outcome = self::apply( $payment, $event, $row_id );
+		} catch ( \Throwable $e ) {
+			// Release the dedupe row so the gateway's retry is processed, not answered "duplicate".
+			PaymentRepository::delete_event( $row_id );
+			throw $e;
+		}
 		return array_merge( array( 'payment_id' => (int) $payment['id'] ), $outcome );
 	}
 
@@ -555,8 +568,18 @@ final class PaymentService {
 			return new WP_Error( 'no_provider', __( 'The payment provider is not available.', 'neural-forms-lite' ), array( 'status' => 424 ) );
 		}
 		$reason = mb_substr( sanitize_text_field( $reason ), 0, 200 );
-		$r      = $provider->refund( $payment, $amount, $reason );
+		// One refund at a time per attempt: two admins clicking together would both pass the cap check.
+		$lock = 'nf_refund_lock_' . $payment_id;
+		if ( get_transient( $lock ) ) {
+			return new WP_Error( 'refund_in_progress', __( 'A refund for this payment is already in progress.', 'neural-forms-lite' ), array( 'status' => 409 ) );
+		}
+		set_transient( $lock, 1, 60 );
+		$r = $provider->refund( $payment, $amount, $reason );
+		if ( ! is_wp_error( $r ) && in_array( strtolower( (string) ( $r['status'] ?? 'succeeded' ) ), array( 'failed', 'canceled', 'cancelled', 'declined' ), true ) ) {
+			$r = new WP_Error( 'refund_rejected', sprintf( __( 'The gateway did not complete the refund (status: %s).', 'neural-forms-lite' ), (string) $r['status'] ), array( 'status' => 424 ) );
+		}
 		if ( is_wp_error( $r ) ) {
+			delete_transient( $lock );
 			EntryActivity::record( (int) $payment['entry_id'], 'payment.refund_failed', sprintf( __( 'Refund of %1$s failed: %2$s', 'neural-forms-lite' ), Money::format( $amount, (string) $payment['currency'] ), $r->get_error_message() ), array( 'payment_id' => $payment_id, 'by' => $user_id ), 'error' );
 			return $r;
 		}
@@ -568,6 +591,7 @@ final class PaymentService {
 		$row_id = PaymentRepository::record_event( (string) $payment['provider'], 'refund:' . ( $r['refund_id'] ?: $payment_id . ':' . time() ), 'refund.issued', ! empty( $payment['livemode'] ) );
 		$fresh  = PaymentRepository::get( $payment_id );
 		$out    = self::apply( $fresh, array( 'kind' => 'refunded', 'amount_refunded_minor' => $total, 'livemode' => $payment['livemode'], 'raw_type' => 'refund.issued' ), $row_id );
+		delete_transient( $lock );
 		EntryActivity::record( (int) $payment['entry_id'], 'payment.refund_issued', sprintf( __( 'Refund of %1$s issued via %2$s%3$s', 'neural-forms-lite' ), Money::format( (int) ( $r['amount_minor'] ?? $amount ), (string) $payment['currency'] ), $provider->label(), $reason !== '' ? ' — ' . $reason : '' ), array( 'payment_id' => $payment_id, 'refund_id' => (string) ( $r['refund_id'] ?? '' ), 'by' => $user_id ) );
 		unset( $out );
 		return array( 'payment' => self::expose( PaymentRepository::get( $payment_id ) ), 'refunded_minor' => (int) ( $r['amount_minor'] ?? $amount ) );
@@ -664,12 +688,54 @@ final class PaymentService {
 		return $n;
 	}
 
+	/** http(s) absolute URL with a plain host, else '' (no DNS lookup — gateways must not depend on resolver hiccups). */
+	public static function safe_checkout_url( string $url ): string {
+		$url = trim( $url );
+		if ( $url === '' || strlen( $url ) > 2048 || preg_match( '/[\s<>"\'\\\\]/', $url ) ) {
+			return '';
+		}
+		$p = wp_parse_url( $url );
+		if ( ! is_array( $p ) || ! in_array( strtolower( (string) ( $p['scheme'] ?? '' ) ), array( 'http', 'https' ), true ) || empty( $p['host'] ) || isset( $p['user'] ) || isset( $p['pass'] ) ) {
+			return '';
+		}
+		if ( ! preg_match( '/^[a-z0-9.-]+$/i', (string) $p['host'] ) ) {
+			return '';
+		}
+		return $url;
+	}
+
+	/**
+	 * A quote was superseded or expired: its open checkouts must not stay payable
+	 * at the old price. Pending attempts for that quote are marked replaced and
+	 * expired at the gateway (best effort).
+	 */
+	public static function expire_open_for_quote( array $quote ): int {
+		$n = 0;
+		foreach ( PaymentRepository::list_for_entry( (int) ( $quote['entry_id'] ?? 0 ) ) as $a ) {
+			if ( $a['status'] !== 'pending' || (int) ( $a['quote_id'] ?? 0 ) !== (int) ( $quote['id'] ?? 0 ) ) {
+				continue;
+			}
+			if ( ! PaymentRepository::update_if_status( (int) $a['id'], 'pending', array( 'status' => 'replaced' ) ) ) {
+				continue;
+			}
+			$p = PaymentProviderRegistry::get( (string) $a['provider'] );
+			if ( $p && $a['session_id'] ) {
+				$p->expire_checkout( $a );
+			}
+			$n++;
+		}
+		if ( $n > 0 ) {
+			self::sync_entry( (int) $quote['entry_id'] );
+		}
+		return $n;
+	}
+
 	/** Buyer cancelled at the gateway: close the attempt unless it was in fact paid. */
 	public static function buyer_cancelled( array $payment ): array {
 		$r = self::reconcile( $payment );
 		$p = PaymentRepository::get( (int) $payment['id'] );
-		if ( $p && $p['status'] === 'pending' ) {
-			PaymentRepository::update( (int) $p['id'], array( 'status' => 'expired' ) );
+		// Guarded: a webhook may have confirmed the payment between the read and this write.
+		if ( $p && $p['status'] === 'pending' && PaymentRepository::update_if_status( (int) $p['id'], 'pending', array( 'status' => 'expired' ) ) ) {
 			EntryActivity::record( (int) $p['entry_id'], 'payment.expired', __( 'Checkout cancelled by the visitor', 'neural-forms-lite' ), array( 'payment_id' => (int) $p['id'], 'by' => 0 ) );
 			self::sync_entry( (int) $p['entry_id'] );
 			$p = PaymentRepository::get( (int) $p['id'] );
@@ -748,6 +814,8 @@ final class PaymentService {
 		$status   = (string) $fresh['status'];
 		$e        = static function ( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); };
 		$back     = (string) ( $entry['page_url'] ?? '' );
+		// Referer-derived: only same-site (or allowed-host) URLs may be offered as "Back".
+		$back = $back !== '' ? (string) wp_validate_redirect( $back, '' ) : '';
 		if ( $back === '' || ! wp_http_validate_url( $back ) ) {
 			$back = home_url( '/' );
 		}

@@ -2118,7 +2118,7 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 .neural-forms-product__notice { font-size: 0.85em; opacity: 0.7; }
 
 /* ── Buy button card (1.2.0, part B) ─────────────────────────────── */
-.neural-forms-buy { --nf-buy-btn: #1e1b4b; --nf-buy-btn-text: #fff; box-sizing: border-box; max-width: 420px; margin: 0; padding: 20px 22px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; font: inherit; color: #111827; }
+.neural-forms-buy { box-sizing: border-box; max-width: 420px; margin: 0; padding: 20px 22px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; font: inherit; color: #111827; }
 .neural-forms-buy--full { max-width: none; }
 .neural-forms-buy--align-center { margin-left: auto; margin-right: auto; }
 .neural-forms-buy--align-right { margin-left: auto; }
@@ -2134,8 +2134,6 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 .neural-forms-buy__field--qty input { max-width: 110px; }
 .neural-forms-buy__field .neural-forms-form__input { width: 100%; box-sizing: border-box; }
 .neural-forms-buy__btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; cursor: pointer; }
-.neural-forms-buy[style*="--nf-buy-btn:"] .neural-forms-buy__btn { background: var( --nf-buy-btn ); border-color: var( --nf-buy-btn ); }
-.neural-forms-buy[style*="--nf-buy-btn-text:"] .neural-forms-buy__btn { color: var( --nf-buy-btn-text ); }
 .neural-forms-buy__btn:hover:not(:disabled) { filter: brightness( 1.1 ); }
 .neural-forms-buy__btn:disabled { opacity: .7; cursor: default; }
 .neural-forms-buy__btn-total { font-weight: 500; opacity: .9; }

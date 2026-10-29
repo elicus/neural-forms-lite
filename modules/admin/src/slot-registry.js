@@ -43,6 +43,17 @@ const SLOTS = {
 export function initSlotRegistry() {
 	if ( typeof window === 'undefined' ) return;
 	window.neuralForms = window.neuralForms || {};
+	// Live Cloud-plan store (Pro's plan.js reads get()/subscribe()); seeded from
+	// the localized snapshot and updated by Settings after Test connection.
+	if ( ! window.neuralForms.plan || typeof window.neuralForms.plan.get !== 'function' ) {
+		let snapshot = ( window.neuralFormsAdmin && window.neuralFormsAdmin.plan ) || {};
+		const listeners = new Set();
+		window.neuralForms.plan = {
+			get: () => snapshot,
+			set: ( next ) => { snapshot = next && typeof next === 'object' ? next : {}; listeners.forEach( ( fn ) => { try { fn( snapshot ); } catch ( e ) { /* a listener error must not break the page */ } } ); },
+			subscribe: ( fn ) => { listeners.add( fn ); return () => listeners.delete( fn ); },
+		};
+	}
 	if (
 		window.neuralForms.slots
 		&& typeof window.neuralForms.slots.registerFill === 'function'

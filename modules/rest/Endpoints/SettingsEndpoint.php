@@ -567,7 +567,7 @@ class SettingsEndpoint {
 		return new WP_Error(
 			'api_error',
 			$body['message'] ?? "API returned HTTP {$code}",
-			array( 'status' => $code >= 400 && $code < 600 ? $code : 502 )
+			array( 'status' => $code >= 400 && $code < 500 ? $code : 424 ) // upstream 5xx → 424 (CDNs swallow 502/504 bodies)
 		);
 	}
 

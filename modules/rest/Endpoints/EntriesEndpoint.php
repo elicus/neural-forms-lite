@@ -1101,13 +1101,6 @@ class EntriesEndpoint {
 	}
 
 	/**
-	 * Kept for backward compatibility - delegates to update_entry.
-	 */
-	public function update_entry_status( WP_REST_Request $request ) {
-		return $this->update_entry( $request );
-	}
-
-	/**
 	 * DELETE /entries/{id}
 	 *
 	 * Permanently removes an entry from the database.
@@ -1127,6 +1120,25 @@ class EntriesEndpoint {
 				__( 'Entry not found.', 'neural-forms-lite' ),
 				array( 'status' => 404 )
 			);
+		}
+
+		// Financial records are never deleted: a settled attempt blocks deletion
+		// (refund / trash it first), open checkouts are closed so a later payment
+		// cannot arrive for an entry that no longer exists.
+		if ( class_exists( '\\NeuralForms\\Payments\\PaymentRepository' ) ) {
+			foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( $id ) as $attempt ) {
+				if ( in_array( $attempt['status'], \NeuralForms\Payments\PaymentStatus::SETTLED, true ) ) {
+					return new WP_Error( 'entry_has_payments', __( 'This entry has a confirmed payment and cannot be deleted. Move it to trash instead.', 'neural-forms-lite' ), array( 'status' => 409 ) );
+				}
+			}
+			foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( $id ) as $attempt ) {
+				if ( $attempt['status'] === 'pending' && \NeuralForms\Payments\PaymentRepository::update_if_status( (int) $attempt['id'], 'pending', array( 'status' => 'replaced' ) ) ) {
+					$prov = \NeuralForms\Payments\PaymentProviderRegistry::get( (string) $attempt['provider'] );
+					if ( $prov && $attempt['session_id'] ) {
+						$prov->expire_checkout( $attempt );
+					}
+				}
+			}
 		}
 
 		$ok = EntryRepository::delete( $id );

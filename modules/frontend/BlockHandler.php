@@ -558,7 +558,7 @@ class BlockHandler {
 	/** Validate & format one { color, style, width } side into a CSS shorthand value. */
 	private static function single_border_rule( array $side, string $fallback = '' ): string {
 		$color = self::sanitize_color( (string) ( $side['color'] ?? '' ) );
-		$width = sanitize_text_field( (string) ( $side['width'] ?? '' ) );
+		$width = self::css_text( $side['width'] ?? '' );
 		$style_raw = (string) ( $side['style'] ?? 'solid' );
 		$style = in_array( $style_raw, [ 'solid', 'dashed', 'dotted', 'double', 'none' ], true )
 			? $style_raw : 'solid';

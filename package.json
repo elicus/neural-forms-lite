@@ -7,7 +7,6 @@
   "author": "Elicus",
   "scripts": {
     "build": "npm --prefix modules/admin run build",
-    "start": "npm --prefix modules/admin run start",
     "lint:js": "npm --prefix modules/admin run lint:js",
     "lint:css": "npm --prefix modules/admin run lint:css",
     "format": "npm --prefix modules/admin run format",

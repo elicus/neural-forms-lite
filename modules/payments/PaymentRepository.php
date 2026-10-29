@@ -288,6 +288,13 @@ final class PaymentRepository {
 		return $ok ? (int) $wpdb->insert_id : 0;
 	}
 
+	/** Drop a dedupe row whose processing crashed, so the gateway retry is handled. */
+	public static function delete_event( int $event_row_id ): void {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		$wpdb->delete( self::events_table(), array( 'id' => $event_row_id ) );
+	}
+
 	public static function finish_event( int $event_row_id, ?int $payment_id, string $result, string $detail = '' ): void {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery

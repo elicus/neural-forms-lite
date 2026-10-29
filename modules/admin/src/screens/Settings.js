@@ -904,6 +904,10 @@ export default function Settings() {
 				api( '/settings' ).then( ( settings ) => {
 					setInitial( settings );
 					setForm( settings );
+					// Pro's gated fills subscribe to this store and re-render without a reload.
+					if ( window.neuralForms?.plan?.set ) {
+						window.neuralForms.plan.set( settings?.cloud_plan || {} );
+					}
 				} );
 				setConnectionState( {
 					testing: false, revoking: false, error: false,

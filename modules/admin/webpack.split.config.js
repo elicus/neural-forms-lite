@@ -78,13 +78,6 @@ const SCREENS = {
 	integrations:  'src/integrations-entry.js',
 	quotes:        'src/quotes-entry.js',
 	payments:      'src/payments-entry.js',
-	// 1.1.0 (Templates): local template library page. Reads bundled
-	// templates from the plugin's templates/ directory via GET
-	// /templates, renders a card grid, and imports a chosen template
-	// (form-only or page + forms) via POST /templates/import. Same
-	// per-screen pattern as the other split bundles — its handle
-	// aliases `neural-forms-admin` and mounts under #neural-forms-app.
-	templates:     'src/templates-entry.js',
 	// Gutenberg form-rendering block — registered via block.json,
 	// enqueued by frontend/BlockHandler.php as build/block.js.
 	// Carved out of the legacy `wp-scripts build` flow so the block

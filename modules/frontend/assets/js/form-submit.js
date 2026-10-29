@@ -804,7 +804,7 @@
 						// 1.2.0: a conditional confirmation chosen by the
 						// server overrides the form's default outcome.
 						var outcome = ( payload && payload.outcome && typeof payload.outcome === 'object' ) ? payload.outcome : null;
-						if ( outcome && outcome.mode === 'redirect' && outcome.url ) {
+						if ( outcome && outcome.mode === 'redirect' && outcome.url && /^(https?:\/\/|\/)/i.test( String( outcome.url ) ) ) {
 							try { window.location.assign( outcome.url ); } catch ( navErr ) { window.location.href = outcome.url; }
 							break;
 						}

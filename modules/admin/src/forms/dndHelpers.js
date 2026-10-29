@@ -441,25 +441,6 @@ export function enumerateDestinations( nodes, sourceType ) {
 }
 
 /**
- * Identify the container that currently HOLDS a given node. Used by
- * the Move menu to mark / disable the entry that matches "this is
- * where you are now".
- *
- * Returns one of the same `key` strings produced by
- * enumerateDestinations(), or null if the node lives at root level
- * (where the matching key is 'root').
- */
-export function locateContainerKey( nodes, id ) {
-	const loc = findLocation( nodes, id );
-	if ( ! loc ) return null;
-	if ( loc.kind === 'root' )     return 'root';
-	if ( loc.kind === 'step' )     return 'step:' + loc.stepId;
-	if ( loc.kind === 'col' )      return `col:${ loc.rowId }:${ loc.colIndex }`;
-	if ( loc.kind === 'step-col' ) return `step-col:${ loc.stepId }:${ loc.rowId }:${ loc.colIndex }`;
-	return null;
-}
-
-/**
  * Refine a destination location based on the source node's type.
  *
  * dnd-kit's collision detection prefers the closest droppable rect.

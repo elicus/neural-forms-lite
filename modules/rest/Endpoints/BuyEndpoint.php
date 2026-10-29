@@ -61,8 +61,20 @@ final class BuyEndpoint {
 			return new WP_REST_Response( array( 'success' => true, 'entry_id' => 0 ), 201 ); // honeypot: pretend
 		}
 		$ip = ( new SubmitEndpoint() )->resolve_ip();
-		if ( SubmitEndpoint::default_rate_limit( $ip, $form_id ) ) {
+		// Same gates as a normal submission: site-wide rate-limit filter, then the form's CAPTCHA.
+		if ( apply_filters( 'neural_forms_rate_limit', SubmitEndpoint::default_rate_limit( $ip, $form_id ), $request, $ip, $form_id ) ) {
 			return new WP_Error( 'rate_limited', __( 'Too many attempts. Please wait a minute and try again.', 'neural-forms-lite' ), array( 'status' => 429 ) );
+		}
+		$form_row = \NeuralForms\Forms\FormRepository::find( $form_id );
+		$fs       = is_array( $form_row['settings'] ?? null ) ? $form_row['settings'] : array();
+		if ( ! empty( $fs['captcha_enabled'] ) && \NeuralForms\Captcha\CaptchaManager::is_configured() ) {
+			$token = sanitize_text_field( (string) ( $body['captcha_token'] ?? $body['cf-turnstile-response'] ?? $body['g-recaptcha-response'] ?? '' ) );
+			if ( $token === '' ) {
+				return new WP_Error( 'captcha_missing', __( 'Please complete the CAPTCHA.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+			if ( is_wp_error( \NeuralForms\Captcha\CaptchaManager::verify( $token, $ip ) ) ) {
+				return new WP_Error( 'captcha_failed', __( 'CAPTCHA verification failed. Please try again.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
 		}
 		$resolved = BuyButton::resolve( array( 'formId' => $form_id, 'fieldId' => sanitize_text_field( (string) ( $body['field'] ?? '' ) ), 'choice' => sanitize_text_field( (string) ( $body['choice'] ?? '' ) ), 'quantity' => (int) ( $body['qty'] ?? 1 ), 'allowQuantity' => true ) );
 		if ( empty( $resolved['ok'] ) ) {

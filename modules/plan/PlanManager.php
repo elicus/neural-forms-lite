@@ -123,42 +123,6 @@ class PlanManager {
 	}
 
 	/**
-	 * True when the cached subscription has lapsed past any grace window.
-	 *
-	 * Scenarios:
-	 *   - status 'active' or 'trialing' '->-> false
-	 *   - graceExpiresAt in the future   '->-> false (still covered)
-	 *   - 'pending_cancel' + period_end in the future '->-> false (paid through term)
-	 *   - else '->-> true (expired / cancelled / grace-lapsed)
-	 */
-	public static function is_subscription_expired(): bool {
-		$sub    = self::get_plan()['subscription'];
-		$status = (string) ( $sub['status'] ?? 'active' );
-
-		if ( $status === 'active' || $status === 'trialing' || $status === '' ) {
-			return false;
-		}
-
-		$now   = time();
-		$grace = isset( $sub['grace_expires_at'] ) ? (int) $sub['grace_expires_at'] : 0;
-		if ( $grace > 0 && $grace > $now ) {
-			return false;
-		}
-
-		if ( $status === 'pending_cancel' ) {
-			$period_end = isset( $sub['period_end'] ) ? (string) $sub['period_end'] : '';
-			if ( $period_end !== '' ) {
-				$ts = strtotime( $period_end );
-				if ( $ts && $ts > $now ) {
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	/**
 	 * Shape emitted to the React app (neuralFormsAdmin.plan) and the GET /settings
 	 * response. Identical on both surfaces so consumers can share types.
 	 */
@@ -210,28 +174,6 @@ class PlanManager {
 	public static function mark_quota_exceeded( array $quota ): void {
 		$plan          = self::get_plan();
 		$plan['quota'] = array_merge( $plan['quota'], self::normalize_quota( $quota ) );
-		Config::set( 'cloud_plan', $plan );
-	}
-
-	/**
-	 * Merge a subscription_expired error payload into the cached subscription
-	 * block so the UI reflects the lapsed state without waiting for the next
-	 * /v1/auth/me refresh.
-	 *
-	 * @param array $payload Error body with keys: status, period_end, grace_expires_at.
-	 */
-	public static function mark_subscription_expired( array $payload ): void {
-		$plan                 = self::get_plan();
-		$plan['subscription'] = self::normalize_subscription(
-			array_merge(
-				$plan['subscription'],
-				array(
-					'status'           => $payload['status'] ?? 'expired',
-					'period_end'       => $payload['period_end'] ?? $plan['subscription']['period_end'] ?? null,
-					'grace_expires_at' => $payload['grace_expires_at'] ?? $plan['subscription']['grace_expires_at'] ?? null,
-				)
-			)
-		);
 		Config::set( 'cloud_plan', $plan );
 	}
 

@@ -51,23 +51,16 @@ function extractErrorMessage( err, fallback ) {
 	return fallback;
 }
 
-// Canonical Pro upgrade URL — matches Integrations / BuilderInspector
-// / EntryDetail / Settings / PagePerformance so a future change has one
-// place to update. Cloud responses may carry their own `upgrade_url`;
-// this is the static fallback used when no cloud-supplied URL exists.
-
 /**
  * Polished assistant-card chrome used by every state of the panel.
- * Renders the icon + title + subtitle + optional PRO badge header,
+ * Renders the icon + title + subtitle header,
  * then the description, then whatever state-specific body the caller
  * passes as `children`. Soft mint→white gradient surface, mint-tinted
  * border — see `.nf-inspector-ai-card` in builder.css.
  */
-function AssistantCard( { locked = false, subtitle, description, children } ) {
-	const className = 'nf-inspector-ai-card'
-		+ ( locked ? ' nf-inspector-ai-card--locked' : '' );
+function AssistantCard( { subtitle, description, children } ) {
 	return (
-		<section className={ className }>
+		<section className="nf-inspector-ai-card">
 			<header className="nf-inspector-ai-card__head">
 				<span className="nf-inspector-ai-card__icon" aria-hidden="true">AI</span>
 				<div className="nf-inspector-ai-card__heading">
@@ -78,11 +71,6 @@ function AssistantCard( { locked = false, subtitle, description, children } ) {
 						<p className="nf-inspector-ai-card__sub">{ subtitle }</p>
 					) }
 				</div>
-				{ locked && (
-					<span className="nf-inspector-ai-card__badge">
-						{ __( 'PRO', 'neural-forms-lite' ) }
-					</span>
-				) }
 			</header>
 			{ description && (
 				<p className="nf-inspector-ai-card__desc">{ description }</p>

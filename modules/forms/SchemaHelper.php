@@ -347,23 +347,6 @@ class SchemaHelper {
 		return $row;
 	}
 
-	/** Default settings for a freshly-created row. */
-	public static function default_row_settings( int $col_count ): array {
-		return array(
-			'columns' => self::normalize_column_count( $col_count ),
-			'gap'     => 'medium',
-		);
-	}
-
-	/**
-	 * Generate a fresh row id. Pattern matches the field id rules in
-	 * FormValidator (lowercase + digits + underscores) so row ids pass the
-	 * same validation gate as fields.
-	 */
-	public static function generate_row_id(): string {
-		return 'row_' . strtolower( wp_generate_password( 10, false, false ) );
-	}
-
 	public static function generate_column_id(): string {
 		return 'col_' . strtolower( wp_generate_password( 10, false, false ) );
 	}
@@ -494,22 +477,6 @@ class SchemaHelper {
 			$mode = self::AI_PROCESSING_DEFAULT_MODE;
 		}
 		return array( 'mode' => $mode );
-	}
-
-	/**
-	 * Default form_schema.settings.quiz — advanced score-quiz config
-	 * applied at the form level (pass/fail, result messages).
-	 *
-	 * Defaults are conservative: show_pass_fail=false leaves the
-	 * existing Phase 1/2 submit response shape unchanged for forms
-	 * that haven't opted in to advanced scoring.
-	 */
-	public static function default_quiz_form_settings(): array {
-		return array(
-			'show_pass_fail'  => self::QUIZ_DEFAULT_SHOW_PASS_FAIL,
-			'passing_score'   => self::QUIZ_DEFAULT_PASSING_SCORE,
-			'result_messages' => array(),
-		);
 	}
 
 	/**

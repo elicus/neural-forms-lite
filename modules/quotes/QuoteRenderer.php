@@ -120,7 +120,7 @@ final class QuoteRenderer {
 				$label = self::t( 'Discount' );
 			}
 			if ( ( $s['discount']['type'] ?? '' ) === 'percent' ) {
-				$label .= ' (' . $e( (string) $s['discount']['value'] ) . '%)';
+				$label .= ' (' . (string) $s['discount']['value'] . '%)'; // escaped once below
 			}
 			$h .= '<tr><th>' . $e( $label ) . '</th><td>&minus;' . $e( $fmt['discount'] ) . '</td></tr>';
 		}

@@ -60,8 +60,8 @@ try {
 	check( 'resolve: option pro 25.00, no qty', array( $r2['ok'], $r2['unit_minor'], $r2['title'], $r2['qty_on'] ), array( true, 2500, 'Pro', false ) );
 	check( 'resolve: payments off → no_payments', BuyButton::resolve( array( 'formId' => $off_id ) )['reason'], 'no_payments' );
 	check( 'resolve: unknown option → no_option', BuyButton::resolve( array( 'formId' => $form_id, 'fieldId' => 'tier', 'choice' => 'nope' ) )['reason'], 'no_option' );
-	$html = BuyButton::render( array( 'formId' => $form_id, 'quantity' => 2, 'label' => 'Grab it', 'description' => 'Ships worldwide', 'buttonColor' => '#ff0000' ) );
-	check( 'render: card with data attrs, qty 2, total 58.00, label, colour', strpos( $html, 'data-neural-forms-buy' ) !== false && strpos( $html, 'data-unit="2900"' ) !== false && strpos( $html, 'value="2"' ) !== false && strpos( $html, '$58.00' ) !== false && strpos( $html, 'Grab it' ) !== false && strpos( $html, '--nf-buy-btn:#ff0000' ) !== false && strpos( $html, 'Ships worldwide' ) !== false && strpos( $html, '/forms/' . $form_id . '/buy' ) !== false, true );
+	$html = BuyButton::render( array( 'formId' => $form_id, 'quantity' => 2, 'label' => 'Grab it', 'description' => 'Ships worldwide' ) );
+	check( 'render: card with data attrs, qty 2, total 58.00, label', strpos( $html, 'data-neural-forms-buy' ) !== false && strpos( $html, 'data-unit="2900"' ) !== false && strpos( $html, 'value="2"' ) !== false && strpos( $html, '$58.00' ) !== false && strpos( $html, 'Grab it' ) !== false && strpos( $html, 'Ships worldwide' ) !== false && strpos( $html, '/forms/' . $form_id . '/buy' ) !== false, true );
 	check( 'render: honeypot + hidden field/choice', strpos( $html, 'name="neural_forms_website"' ) !== false && strpos( $html, 'name="field" value="book"' ) !== false, true );
 	check( 'render: scripts enqueued (self-registered outside wp_enqueue_scripts)', wp_script_is( 'neural-forms-buy', 'enqueued' ) && wp_style_is( 'neural-forms-form', 'enqueued' ), true );
 	check( 'render: payments-off form → empty for visitors', BuyButton::render( array( 'formId' => $off_id ) ), '' );

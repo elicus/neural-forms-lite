@@ -1636,11 +1636,7 @@ CSS;
 		$payload = wp_json_encode(
 			array(
 				'available'      => $cloud_ai_enabled && $cloud_key_set,
-				'cloudConnected' => $cloud_ai_enabled && $cloud_key_set,
-				'cloudKeySet'    => $cloud_key_set,
-				'cloudAiEnabled' => $cloud_ai_enabled,
 				'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
-				'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
 				'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
 				'i18n'           => array(
 					'caretLabel'   => __( 'New form options', 'neural-forms-lite' ),
@@ -1721,7 +1717,8 @@ CSS;
     function safeEscape( s ) {
         var d = document.createElement( 'div' );
         d.textContent = s == null ? '' : String( s );
-        return d.innerHTML;
+        // innerHTML round-trip leaves quotes alone; this helper is also used inside attributes.
+        return d.innerHTML.replace( /"/g, '&quot;' ).replace( /'/g, '&#39;' );
     }
 
     function format( tmpl, args ) {
@@ -2070,7 +2067,7 @@ CSS;
             { id: 'template', label: data.i18n.template, enabled: true,  action: openTemplateLibrary },
         ];
 
-        // Three AI-item states, in priority order:
+        // Two AI-item states, in priority order:
         //   1. Cloud not connected  → AI badge, hint, click → Settings
         //   2. Cloud ready          → AI badge, click → AI modal
         var aiReady       = !! data.available;
@@ -2091,9 +2088,7 @@ CSS;
         items.push( {
             id: 'ai',
             label: data.i18n.ai,
-            // `enabled` is now purely a click-state concern. The
-            // locked-PRO row is still clickable (it opens the upgrade
-            // page), so we keep enabled=true and only flip false when
+            // `enabled` is purely a click-state concern: false only when
             // the action is missing entirely.
             enabled: typeof aiAction === 'function',
             badges:  aiBadges,
@@ -2125,11 +2120,7 @@ CSS;
                 for ( var bi = 0; bi < badgeList.length; bi++ ) {
                     var badgeText = badgeList[ bi ];
                     if ( ! badgeText ) continue;
-                    var badgeClass = 'nf-newform-split__badge';
-                    if ( String( badgeText ).toUpperCase() === 'PRO' ) {
-                        badgeClass += ' nf-newform-split__badge--pro';
-                    }
-                    html += '<span class="' + badgeClass + '">' + safeEscape( badgeText ) + '</span>';
+                    html += '<span class="nf-newform-split__badge">' + safeEscape( badgeText ) + '</span>';
                 }
                 html += '</span>';
             }
@@ -2337,13 +2328,6 @@ JS;
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
-}
-/* PRO variant — solid navy fill to match every other PRO pill across
- * the admin (BuilderInspector AI card, Templates Divi tab, integrations
- * locked card). Keeps the AI badge's purple gradient for the actual
- * AI-flow signal and reserves navy for the plan/capability signal. */
-#neural-forms-app .nf-newform-split__badge--pro {
-    background: #080f5b;
 }
 #neural-forms-app .nf-newform-split__hint {
     font-size: 11px;
