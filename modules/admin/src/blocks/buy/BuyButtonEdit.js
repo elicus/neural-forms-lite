@@ -77,7 +77,7 @@ export default function BuyButtonEdit( { attributes, setAttributes } ) {
 			{ attributes.formId ? (
 				<ServerSideRender block="neural-forms/buy-button" attributes={ attributes } />
 			) : (
-				<div className="neural-forms-buy neural-forms-buy--notice">{ __( 'Buy button: choose a form that takes payments in the block settings.', 'neural-forms-lite' ) }</div>
+				<div className="neural-forms-buy neural-forms-buy--notice">{ __( 'Payment form: choose a form that takes payments in the block settings.', 'neural-forms-lite' ) }</div>
 			) }
 		</div>
 	);

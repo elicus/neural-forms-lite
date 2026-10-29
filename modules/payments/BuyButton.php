@@ -121,12 +121,12 @@ final class BuyButton {
 		if ( empty( $r['ok'] ) ) {
 			if ( ! empty( $options['preview'] ) || current_user_can( 'edit_posts' ) ) {
 				$msgs = array(
-					'no_form'     => __( 'Buy button: choose a form that takes payments.', 'neural-forms-lite' ),
-					'no_payments' => __( 'Buy button: this form does not take payments. Turn payments on under Form settings › Payments (Neural Forms Pro) and connect a provider under Integrations.', 'neural-forms-lite' ),
-					'no_product'  => __( 'Buy button: the form has no Priced Item field.', 'neural-forms-lite' ),
-					'no_option'   => __( 'Buy button: choose which option to sell.', 'neural-forms-lite' ),
-					'input_mode'  => __( 'Buy button: this Priced Item lets the visitor enter an amount; use a fixed price or priced options.', 'neural-forms-lite' ),
-					'no_price'    => __( 'Buy button: the selected item has no price.', 'neural-forms-lite' ),
+					'no_form'     => __( 'Payment form: choose a form that takes payments.', 'neural-forms-lite' ),
+					'no_payments' => __( 'Payment form: this form does not take payments. Turn payments on under Form settings › Payments (Neural Forms Pro) and connect a provider under Integrations.', 'neural-forms-lite' ),
+					'no_product'  => __( 'Payment form: the form has no Priced Item field.', 'neural-forms-lite' ),
+					'no_option'   => __( 'Payment form: choose which option to sell.', 'neural-forms-lite' ),
+					'input_mode'  => __( 'Payment form: this Priced Item lets the visitor enter an amount; use a fixed price or priced options.', 'neural-forms-lite' ),
+					'no_price'    => __( 'Payment form: the selected item has no price.', 'neural-forms-lite' ),
 				);
 				return '<div class="neural-forms-buy neural-forms-buy--notice">' . $esc( $msgs[ $r['reason'] ] ?? $r['reason'] ) . '</div>';
 			}

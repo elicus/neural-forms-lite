@@ -803,7 +803,9 @@ prevents overflow without needing `overflow: hidden` anywhere.
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
 
-### Buy button: block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
+### Payment form ("Neural Payment Form"): block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
+
+User-facing name **Neural Payment Form** (renamed from Buy Button the same day; internal names `neural-forms/buy-button`, `[neural-forms-buy]`, `BuyButton`, `neural-forms/divi-buy` stay).
 
 - **Renderer** `modules/payments/BuyButton.php`: `resolve( $attrs )` picks the
   form (must be active + `PaymentService::enabled_for()`), the Priced Item

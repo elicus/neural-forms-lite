@@ -13,7 +13,7 @@
 * Added: Pro users can price their services with Priced Item fields (no WooCommerce needed), show a live total with discount rules and a deposit, and calculate values from answers; totals are always recalculated on the server.
 * Added: Pro users can turn a priced entry into a numbered, branded quote, send it as a PDF with a secure link, and keep every revision on record.
 * Added: Pro users can take a deposit or the full amount through Stripe or PayPal right after a priced form is submitted; payments are confirmed by the gateway and shown on the entry.
-* Added: A Buy Button block and shortcode that sells one priced item with a Buy now button straight to checkout (Pro).
+* Added: A Neural Payment Form block and shortcode that sells one priced item with a Buy now button straight to checkout (Pro).
 * Added: A Payments page listing every payment with totals and filters, invoices sent automatically or by hand as PDF, and full or partial refunds issued through the gateway (Pro).
 * Added: A "Payment confirmed" workflow trigger, payment details in workflow emails, a workflow action that creates a quote, a Pay button on issued quotes, and Awaiting payment / Paid inbox filters (Pro).
 * Fixed: Cloud error messages show their real code instead of a bare HTTP status.
