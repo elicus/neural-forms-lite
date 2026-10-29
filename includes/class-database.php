@@ -38,6 +38,7 @@ class Database {
 			self::sql_workflows( $charset ),
 			self::sql_workflow_runs( $charset ),
 			self::sql_workflow_actions( $charset ),
+			self::sql_quotes( $charset ),
 		);
 
 		foreach ( $tables as $sql ) {
@@ -370,6 +371,46 @@ class Database {
 	 * key on (run_id, action_key) is the idempotency guard; `status`
 	 * moves pending → running → done | failed | uncertain | skipped.
 	 */
+	/**
+	 * Quotes (1.2.0 part B). One row per quote revision; an issued row is
+	 * never edited — a correction is a new row whose `supersedes_id`
+	 * points at the previous revision. `token_seed` is the per-row
+	 * secret the public access token is derived from (see QuoteTokens);
+	 * NULL revokes every link to that revision.
+	 */
+	private static function sql_quotes( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_quotes';
+
+		return "CREATE TABLE {$table} (
+  id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  entry_id bigint(20) UNSIGNED NOT NULL,
+  form_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+  number varchar(40) DEFAULT NULL,
+  revision int(11) UNSIGNED NOT NULL DEFAULT 1,
+  supersedes_id bigint(20) UNSIGNED DEFAULT NULL,
+  status varchar(20) NOT NULL DEFAULT 'draft',
+  currency varchar(3) NOT NULL DEFAULT 'USD',
+  amount_total_minor bigint(20) NOT NULL DEFAULT 0,
+  amount_due_minor bigint(20) NOT NULL DEFAULT 0,
+  snapshot longtext NOT NULL,
+  notes text DEFAULT NULL,
+  valid_until datetime DEFAULT NULL,
+  token_seed varchar(64) DEFAULT NULL,
+  issued_by bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+  issued_at datetime DEFAULT NULL,
+  sent_at datetime DEFAULT NULL,
+  created_by bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY entry_id (entry_id),
+  KEY status (status),
+  KEY number (number),
+  KEY valid_until (valid_until)
+) {$charset};";
+	}
+
 	private static function sql_workflow_actions( string $charset ): string {
 		global $wpdb;
 		$table = $wpdb->prefix . 'neural_forms_workflow_actions';

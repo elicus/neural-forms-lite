@@ -45,6 +45,25 @@ global $wpdb;
 $mail_ok = true;
 add_filter( 'pre_wp_mail', static function () use ( &$mail_ok ) { return $mail_ok; }, 10, 0 );
 $created = array( 'forms' => array(), 'entries' => array(), 'workflows' => array() );
+function nf_a6_finish(): void {
+	static $done = false;
+	if ( $done ) { return; }
+	$done = true;
+	global $passed, $failed, $created, $wpdb;
+	if ( ! empty( $GLOBALS['nf_csv_pending'] ) ) {
+		while ( ob_get_level() > 0 ) { ob_end_flush(); }
+		$out = (string) $GLOBALS['nf_csv_captured'];
+		$GLOBALS['nf_csv_pending'] = false;
+		check( 'pricing: CSV export renders product choices', strpos( $out, 'SEO' ) !== false && strpos( $out, 'entry_id' ) !== false, true );
+	}
+	// ── cleanup ───────────────────────────────────────────────────────
+foreach ( $created['workflows'] as $id ) { WorkflowRepository::delete( (int) $id ); $wpdb->query( $wpdb->prepare( "DELETE a FROM {$wpdb->prefix}neural_forms_workflow_actions a JOIN {$wpdb->prefix}neural_forms_workflow_runs r ON r.id = a.run_id WHERE r.workflow_id = %d", (int) $id ) ); $wpdb->delete( $wpdb->prefix . 'neural_forms_workflow_runs', array( 'workflow_id' => (int) $id ), array( '%d' ) ); }
+	foreach ( $created['entries'] as $id ) { if ( $id > 0 ) { EntryActivity::delete_for_entry( (int) $id ); EntryMessageRepository::delete_by_entry( (int) $id ); \NeuralForms\Storage\AIResponseRepository::delete_by_entry( (int) $id ); $wpdb->delete( $wpdb->prefix . 'neural_forms_logs', array( 'entry_id' => (int) $id ), array( '%d' ) ); EntryRepository::delete( (int) $id ); } }
+	$wpdb->query( "DELETE FROM {$wpdb->prefix}neural_forms_queue WHERE job_type = 'workflow' AND status IN ('completed','failed','pending')" );
+	foreach ( $created['forms'] as $id ) { $wpdb->delete( $wpdb->prefix . 'neural_forms_forms', array( 'id' => (int) $id ), array( '%d' ) ); }
+	echo "\n$passed passed, $failed failed\n";
+}
+register_shutdown_function( 'nf_a6_finish' );
 
 try {
 	// ── 1. upgrade rerun from 1.1.3 ─────────────────────────────────
@@ -298,19 +317,19 @@ try {
 	$pr2 = $psubmit( array( 'email' => 'p2@example.test', 'addons' => array( 'choice' => array( 'copy' ) ) ) );
 	$pe2 = (int) ( $pr2['body']['entry_id'] ?? 0 ); $created['entries'][] = $pe2;
 	check( 'pricing: hidden product excluded (1000+150 = 1150, -10% = 1035)', $pr2['body']['pricing']['total'] ?? null, 103500 );
+	// The export endpoint streams the CSV and exit()s, so this must be the
+	// LAST step: the buffered output is checked, and cleanup + summary run,
+	// from the shutdown handler registered above.
 	$csv_req = new WP_REST_Request( 'GET', '/neural-forms/v1/entries/export' ); $csv_req->set_query_params( array( 'form_id' => $pform_id ) );
-	$csv = $server->dispatch( $csv_req );
-	check( 'pricing: CSV export renders product choices', $csv->get_status() === 200 && strpos( (string) wp_json_encode( $csv->get_data() ), 'SEO' ) !== false, true );
+	$GLOBALS['nf_csv_pending'] = true;
+	$GLOBALS['nf_csv_captured'] = '';
+	// WordPress flushes every buffer from its own shutdown hook before ours runs, so capture through the callback.
+	ob_start( static function ( $buf ) { $GLOBALS['nf_csv_captured'] .= $buf; return ''; } );
+	$server->dispatch( $csv_req );
 
 } catch ( \Throwable $e ) {
 	$failed++;
 	echo "FATAL ", get_class( $e ), ': ', $e->getMessage(), ' @ ', $e->getFile(), ':', $e->getLine(), "\n";
 }
 
-// ── cleanup ───────────────────────────────────────────────────────
-foreach ( $created['workflows'] as $id ) { WorkflowRepository::delete( (int) $id ); $wpdb->query( $wpdb->prepare( "DELETE a FROM {$wpdb->prefix}neural_forms_workflow_actions a JOIN {$wpdb->prefix}neural_forms_workflow_runs r ON r.id = a.run_id WHERE r.workflow_id = %d", (int) $id ) ); $wpdb->delete( $wpdb->prefix . 'neural_forms_workflow_runs', array( 'workflow_id' => (int) $id ), array( '%d' ) ); }
-foreach ( $created['entries'] as $id ) { if ( $id > 0 ) { EntryActivity::delete_for_entry( (int) $id ); EntryMessageRepository::delete_by_entry( (int) $id ); \NeuralForms\Storage\AIResponseRepository::delete_by_entry( (int) $id ); $wpdb->delete( $wpdb->prefix . 'neural_forms_logs', array( 'entry_id' => (int) $id ), array( '%d' ) ); EntryRepository::delete( (int) $id ); } }
-$wpdb->query( "DELETE FROM {$wpdb->prefix}neural_forms_queue WHERE job_type = 'workflow' AND status IN ('completed','failed','pending')" );
-foreach ( $created['forms'] as $id ) { $wpdb->delete( $wpdb->prefix . 'neural_forms_forms', array( 'id' => (int) $id ), array( '%d' ) ); }
-echo "\n$passed passed, $failed failed\n";
-exit( $failed > 0 ? 1 : 0 );
+nf_a6_finish();

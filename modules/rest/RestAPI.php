@@ -33,5 +33,6 @@ class RestAPI {
 		( new Endpoints\PollsEndpoint() )->register_routes();
 		( new Endpoints\TemplatesEndpoint() )->register_routes();
 		( new Endpoints\WorkflowsEndpoint() )->register_routes();
+		( new Endpoints\QuotesEndpoint() )->register_routes();
 	}
 }

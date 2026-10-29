@@ -60,10 +60,12 @@ final class EntryActivity {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT id, event_type, status, message, payload, created_at FROM %i WHERE entry_id = %d AND ( event_type LIKE %s OR event_type LIKE %s ) ORDER BY id DESC LIMIT %d',
+				'SELECT id, event_type, status, message, payload, created_at FROM %i WHERE entry_id = %d AND ( event_type LIKE %s OR event_type LIKE %s OR event_type LIKE %s OR event_type LIKE %s ) ORDER BY id DESC LIMIT %d',
 				$table,
 				$entry_id,
 				$wpdb->esc_like( 'entry.' ) . '%',
+				$wpdb->esc_like( 'quote.' ) . '%',
+				$wpdb->esc_like( 'payment.' ) . '%',
 				$wpdb->esc_like( 'workflow.' ) . '%',
 				$limit
 			),
@@ -105,10 +107,12 @@ final class EntryActivity {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->query(
 			$wpdb->prepare(
-				'DELETE FROM %i WHERE entry_id = %d AND ( event_type LIKE %s OR event_type LIKE %s )',
+				'DELETE FROM %i WHERE entry_id = %d AND ( event_type LIKE %s OR event_type LIKE %s OR event_type LIKE %s OR event_type LIKE %s )',
 				$wpdb->prefix . 'neural_forms_logs',
 				$entry_id,
 				$wpdb->esc_like( 'entry.' ) . '%',
+				$wpdb->esc_like( 'quote.' ) . '%',
+				$wpdb->esc_like( 'payment.' ) . '%',
 				$wpdb->esc_like( 'workflow.' ) . '%'
 			)
 		);

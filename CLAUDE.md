@@ -434,6 +434,7 @@ removed as dead code. Keep `__meter-cta`, `__meter-msg`, `__meter-btn`.
 | `neural_forms_process_queue` | 5 min + 10s single-event after submission | `AIQueueProcessor::process_queue()` | Drain `neural_forms_queue` (AI analysis jobs) |
 | `neural_forms_ai_draft_purge` | daily | `AIResponseRepository::purge_older_than( DRAFT_TTL_DAYS )` | Garbage-collect stale (non-finalized) carousel drafts older than 30 days |
 | `neural_forms_follow_up_sweep` | hourly | `WorkflowEngine::sweep_overdue_follow_ups()` | Fire the `follow_up_overdue` workflow trigger once per overdue, open follow-up (1.2.0) |
+| `neural_forms_quote_expire` | daily | `QuoteService::expire_due()` | Move issued quotes past `valid_until` to `expired` (1.2.0 part B) |
 
 Both hooks are scheduled in `Activator::activate()`, cleared in
 `Deactivator::deactivate()`, and self-scheduled in `NeuralForms::boot()`
@@ -516,6 +517,9 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `conditional_logic_advanced` | `neural_forms_can_conditional_logic_advanced` | Nested condition groups ("A and (B or C)"), conditions on sections and steps, ordered conditional confirmations. Gates the editor and SAVING advanced structures only — `SubmitEndpoint` always evaluates stored rules, so a lapsed Pro install never leaks a hidden field (decision D1 in `docs/RELEASE-1.2-PLAN.md`) |
 | `workflows` | `neural_forms_can_workflows` | Workflow editor, runs/history, lead stage / assignee / follow-up controls in the inbox (engine lands in milestone A3/A4) |
 | `ai_business_context` | `neural_forms_can_ai_business_context` | Per-form AI behaviour (tone, language, knowledge picker) and sending `ai_behaviour` to the cloud (milestone A5) |
+| `calculations` | `neural_forms_can_calculations` | Priced Item + Calculated fields, Form settings › Pricing, server-side pricing snapshot (part B, B1) |
+| `quotes` | `neural_forms_can_quotes` | Quote writes (create / edit / issue / revise / send / settings) and the inbox Quote card actions; stored quotes stay readable when locked (part B, B2) |
+| `payments` | `neural_forms_can_payments` | Stripe / PayPal checkout (part B, B3) |
 
 ### Where the checks are applied
 
@@ -797,6 +801,57 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Quotes (1.2.0 part B, B2)
+
+`modules/quotes/` — Lite owns the whole lifecycle; Pro flips `quotes`
+and supplies the PDF renderer (dompdf vendored in Pro under
+`vendor-elicus/dompdf`, `modules/quotes/QuotePdfProvider.php`, hooked
+on `neural_forms_quote_pdf_available` / `neural_forms_quote_pdf`).
+
+- **Table** `neural_forms_quotes` (DB 1.2.2): one row per revision —
+  `number` (assigned at ISSUE from the atomic per-year counter option
+  `neural_forms_quote_seq_<year>`, format `PREFIX-YYYY-0001`),
+  `revision`, `supersedes_id`, `status draft|issued|expired|superseded`,
+  `snapshot` (JSON: business block, customer, line_items in minor units,
+  discount, deposit, totals, intro/terms/footer/notes, source,
+  validity_days), `valid_until`, `token_seed`, `issued_*`, `sent_at`.
+  Deleted with the entry (`EntriesEndpoint::delete_entry`).
+- **Immutability (CQ8):** `QuoteService::update_draft()` refuses anything
+  but drafts (409); `issue()` is one guarded `WHERE status = 'draft'`
+  transition; a correction is `revise()` → new draft row (revision + 1,
+  same number) and issuing it marks the previous row `superseded`.
+- **Public links (CQ9/CQ10):** `QuoteTokens::derive( id, revision, seed )`
+  = HMAC-SHA256 with `wp_salt('auth')`, base64url — nothing stored but
+  the seed, so links can be rebuilt (copy / resend) and a NULL seed
+  revokes them. `check()` also enforces status + `valid_until`. Routes
+  `GET /quotes/{id}/view|pdf?token=…` answer raw HTML / PDF through
+  `QuotesBoot::serve_raw()` (`X-Neural-Forms-Raw` header on the
+  `WP_REST_Response`); expired / superseded → 410, anything else → 404.
+  `QuoteService::can_start_payment()` is the gate B3 must use.
+- **Rendering (CQ7):** `QuoteRenderer::html()` — one escaped, table-only,
+  inline-CSS document for the admin preview (`/quotes/{id}/preview`,
+  cookie auth + `_wpnonce`), the public view (print stylesheet) and the
+  PDF (`mode => 'pdf'`, logo as a data URI via `QuotePdf::logo_data_uri()`).
+  No PDF renderer → the public `/pdf` link falls back to the HTML view.
+- **Send:** `QuoteService::send()` = plain-text email with the link (+ PDF
+  attachment through `NotificationService::send_mail( …, $attachments )`),
+  recorded as an outgoing `EntryMessageRepository` row (`meta.quote_id`)
+  and `quote.sent` activity. Nothing is ever sent automatically.
+  Activity types `quote.*` (and `payment.*`) are now listed/deleted by
+  `EntryActivity` next to `entry.*` / `workflow.*`.
+- **Settings:** option `neural_forms_quote_settings` (`QuoteSettings`),
+  `GET|PUT /quotes/settings`; Settings › Quotes (`QuoteSettingsSection`,
+  settings bundle, self-saving). Inbox: `entries/QuoteCard.js` under the
+  Pricing card (draft editor, issue, send, copy link, revise; upsell when
+  locked).
+- Tests: `tests/QuotesTest.php` (pure parts), `tests/live/B2QuotesHarness.php`
+  (DB + REST + PDF, 70 checks, same bootstrap as the A6 harness). Pro:
+  `tests/QuotePdfProviderTest.php`.
+- **Harness note:** `ExportEndpoint` streams and `exit()`s, so the A6
+  harness runs its CSV check + cleanup from a shutdown handler and
+  captures the CSV through an `ob_start()` callback (WordPress flushes
+  all buffers from its own shutdown hook first).
 
 ### Calculations: Product + Calculated fields, pricing (1.2.0 part B, B1)
 

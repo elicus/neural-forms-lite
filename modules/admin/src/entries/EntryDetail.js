@@ -43,6 +43,7 @@ import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
 import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines, formatProductValue, formatMinor } from './helpers';
 import LeadPanel, { ActivityTimeline } from './LeadPanel';
+import QuoteCard from './QuoteCard';
 
 function StatusPill( { entry } ) {
 	if ( entry.status === 'spam' )  return <span className="neural-forms-entries-pill neural-forms-entries-pill--spam">{ __( 'Spam', 'neural-forms-lite' ) }</span>;
@@ -641,6 +642,7 @@ export default function EntryDetail( {
 			{ entry.pricing && typeof entry.pricing === 'object' && (
 				<PricingCard pricing={ entry.pricing } paymentStatus={ entry.payment_status } />
 			) }
+			<QuoteCard entry={ entry } capabilities={ capabilities } />
 
 			<section className="neural-forms-entry-detail__data-card">
 				<h4 className="neural-forms-entry-detail__data-card-title">{ __( 'Submitted fields', 'neural-forms-lite' ) }</h4>

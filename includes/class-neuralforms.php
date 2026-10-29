@@ -117,6 +117,8 @@ final class NeuralForms {
 		\NeuralForms\AI\QueueListener::boot();
 		// 1.2.0 workflows: event dispatch + queue drain on the same cron hook.
 		\NeuralForms\Workflows\WorkflowEngine::boot();
+		// 1.2.0 part B: quotes (expiry cron + raw HTML / PDF serving).
+		\NeuralForms\Quotes\QuotesBoot::boot();
 
 		// Log cleanup: daily cron to prune old DB rows and log files.
 		add_action( 'neural_forms_log_cleanup', array( \NeuralForms\Core\Logger::class, 'cleanup' ) );

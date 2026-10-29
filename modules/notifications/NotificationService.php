@@ -890,9 +890,17 @@ class NotificationService {
 	 *
 	 * @param string|string[] $to
 	 */
-	public static function send_mail( $to, string $subject, string $body, array $extra_headers = array() ): bool {
+	public static function send_mail( $to, string $subject, string $body, array $extra_headers = array(), array $attachments = array() ): bool {
 		$headers = array_merge( self::build_from_headers( Config::all() ), $extra_headers );
-		return self::send_with_retry( $to, $subject, $body, $headers );
+		return self::send_with_retry( $to, $subject, $body, $headers, $attachments );
+	}
+
+	/**
+	 * The submitter's name for an entry (best-effort field detection), or ''.
+	 */
+	public static function submitter_name( array $form, array $data ): string {
+		$fields = \NeuralForms\Forms\SchemaHelper::flatten_fields( is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array() );
+		return self::find_submitter_name( $fields, $data );
 	}
 
 	/**
@@ -904,14 +912,14 @@ class NotificationService {
 		return self::find_submitter_email( $fields, $data );
 	}
 
-	private static function send_with_retry( $to, string $subject, string $body, array $headers ): bool {
-		if ( wp_mail( $to, $subject, $body, $headers ) ) {
+	private static function send_with_retry( $to, string $subject, string $body, array $headers, array $attachments = array() ): bool {
+		if ( wp_mail( $to, $subject, $body, $headers, $attachments ) ) {
 			return true;
 		}
 
 		// One retry after a brief pause.
 		sleep( 1 );
-		return wp_mail( $to, $subject, $body, $headers );
+		return wp_mail( $to, $subject, $body, $headers, $attachments );
 	}
 
 	/**

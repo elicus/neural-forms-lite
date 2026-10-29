@@ -1130,6 +1130,9 @@ class EntriesEndpoint {
 
 		if ( $ok ) {
 			EntryActivity::delete_for_entry( $id );
+			if ( class_exists( '\\NeuralForms\\Quotes\\QuoteRepository' ) ) {
+				\NeuralForms\Quotes\QuoteRepository::delete_for_entry( $id );
+			}
 		}
 
 		if ( ! $ok ) {
