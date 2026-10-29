@@ -141,6 +141,35 @@ final class Capabilities {
 	const INTEGRATIONS = 'integrations';
 
 	/**
+	 * CONDITIONAL_LOGIC_ADVANCED (added 1.2.0): nested condition groups
+	 * ("A and (B or C)"), conditions on sections and steps, and ordered
+	 * conditional confirmations / redirects. Lite ships the whole
+	 * engine (ConditionEngine) and always EVALUATES stored rules on
+	 * submit — the capability only gates the editor and saving new
+	 * advanced structures, so a lapsed Pro install can never leak a
+	 * hidden field. Flat All / Any rule lists stay free.
+	 */
+	const CONDITIONAL_LOGIC_ADVANCED = 'conditional_logic_advanced';
+
+	/**
+	 * WORKFLOWS (added 1.2.0): the When → If → Then workflow editor,
+	 * runs and history, plus the lead stage / assignee / follow-up
+	 * controls in the inbox. Lite owns the engine (tables, queue
+	 * processor, actions); Pro flips the filter and registers its
+	 * integration actions through `neural_forms_workflow_actions`.
+	 */
+	const WORKFLOWS = 'workflows';
+
+	/**
+	 * AI_BUSINESS_CONTEXT (added 1.2.0): business knowledge, brand
+	 * voice and language policy for AI drafts. Gates sending the
+	 * per-form `ai_behaviour` settings to the cloud and the per-form
+	 * AI section in the builder. The Business context card itself is
+	 * Pro-owned (site-profile sidecar).
+	 */
+	const AI_BUSINESS_CONTEXT = 'ai_business_context';
+
+	/**
 	 * True when the given premium capability is unlocked in this install.
 	 *
 	 * @param string $cap One of the AI_* constants on this class.
@@ -174,6 +203,9 @@ final class Capabilities {
 			self::FIELD_MATRIX                    => self::can( self::FIELD_MATRIX ),
 			self::FIELD_REPEATER                  => self::can( self::FIELD_REPEATER ),
 			self::INTEGRATIONS                    => self::can( self::INTEGRATIONS ),
+			self::CONDITIONAL_LOGIC_ADVANCED      => self::can( self::CONDITIONAL_LOGIC_ADVANCED ),
+			self::WORKFLOWS                       => self::can( self::WORKFLOWS ),
+			self::AI_BUSINESS_CONTEXT             => self::can( self::AI_BUSINESS_CONTEXT ),
 		);
 	}
 

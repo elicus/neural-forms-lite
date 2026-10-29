@@ -3,6 +3,7 @@ namespace NeuralForms\Frontend;
 
 use NeuralForms\Core\Capabilities;
 use NeuralForms\Core\Config;
+use NeuralForms\Forms\ConditionEngine;
 use NeuralForms\Forms\FieldRegistry;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\SchemaHelper;
@@ -1132,26 +1133,15 @@ class FormRenderer {
 		}
 
 		// ' Conditional logic data attribute '
-		// When a field has conditional_logic.enabled = true and references another
-		// field, emit data-conditional so form-submit.js can evaluate visibility
-		// client-side without knowing the full schema.
-		//
-		// Only emit the keys the frontend actually needs: field, operator, value.
-		// Ignore all other keys so the attribute stays small.
+		// When a field has active conditional logic, emit the normalised
+		// v2 tree (ConditionEngine::for_attribute) so form-submit.js can
+		// evaluate visibility client-side without knowing the full schema.
+		// Legacy single-rule objects are normalised here, so the frontend
+		// only ever sees the v2 shape.
 		$conditional_attr = '';
 		$cl = $field['conditional_logic'] ?? null;
-		if (
-			is_array( $cl )
-			&& ! empty( $cl['enabled'] )
-			&& isset( $cl['field'] )
-			&& (string) $cl['field'] !== ''
-		) {
-			$cl_data = [
-				'field'    => (string) ( $cl['field']    ?? '' ),
-				'operator' => (string) ( $cl['operator'] ?? 'equals' ),
-				'value'    => (string) ( $cl['value']    ?? '' ),
-			];
-			$conditional_attr = ' data-conditional="' . esc_attr( (string) wp_json_encode( $cl_data ) ) . '"';
+		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+			$conditional_attr = ' data-conditional="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
 		}
 
 		// Scoped IDs: neural-forms-{form_id}-{field_id}

@@ -43,6 +43,7 @@ namespace {
 	}
 
 	$plugin_root = dirname( __DIR__ );
+	require_once $plugin_root . '/modules/forms/ConditionEngine.php';
 	require_once $plugin_root . '/modules/rest/Endpoints/SubmitEndpoint.php';
 }
 

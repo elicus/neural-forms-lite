@@ -931,33 +931,176 @@
 	/**
 	 * Evaluate all conditional fields and show/hide their wrappers.
 	 *
+	 * Mirrors SubmitEndpoint::resolve_hidden_field_ids(): every rule is
+	 * re-evaluated from scratch, iterating to a fixed point so a field
+	 * whose controller was hidden in an earlier pass is hidden too (the
+	 * engine treats a hidden controller as unavailable → rule fails).
+	 *
 	 * @param {HTMLFormElement} form
 	 */
 	function updateConditionalFields( form ) {
-		var conditionalFields = form.querySelectorAll( '[data-conditional]' );
-		for ( var i = 0; i < conditionalFields.length; i++ ) {
-			var wrapper = conditionalFields[ i ];
-			var rule;
+		var wrappers = form.querySelectorAll( '[data-conditional]' );
+		if ( wrappers.length === 0 ) {
+			return;
+		}
+
+		var entries = [];
+		for ( var i = 0; i < wrappers.length; i++ ) {
+			var wrapper = wrappers[ i ];
+			var raw;
 			try {
-				rule = JSON.parse( wrapper.getAttribute( 'data-conditional' ) );
+				raw = JSON.parse( wrapper.getAttribute( 'data-conditional' ) );
 			} catch ( parseErr ) {
 				continue;
 			}
-
-			if ( ! rule || ! rule.field || ! rule.operator ) {
+			var tree = normalizeConditional( raw );
+			if ( ! tree ) {
 				continue;
 			}
+			entries.push( {
+				wrapper: wrapper,
+				id:      wrapper.getAttribute( 'data-neural-forms-field-id' ) || '',
+				tree:    tree
+			} );
+		}
 
-			var controlValue = getFieldValue( form, rule.field );
-			var visible      = evaluateCondition( rule.operator, controlValue, rule.value || '' );
+		var hidden = {};
+		var getValue = function ( fieldId ) { return getFieldValue( form, fieldId ); };
+		var isUnavailable = function ( fieldId ) { return !! hidden[ fieldId ]; };
 
-			if ( visible ) {
-				wrapper.style.display = '';
+		var guard = 0;
+		var changed;
+		do {
+			changed = false;
+			for ( var j = 0; j < entries.length; j++ ) {
+				var e = entries[ j ];
+				if ( e.id && hidden[ e.id ] ) {
+					continue;
+				}
+				if ( ! evaluateConditionTree( e.tree, getValue, isUnavailable ) ) {
+					if ( e.id ) {
+						hidden[ e.id ] = true;
+					} else {
+						e.forceHidden = true;
+					}
+					changed = true;
+				}
+			}
+		} while ( changed && ++guard < 50 );
+
+		for ( var k = 0; k < entries.length; k++ ) {
+			var en = entries[ k ];
+			var isHidden = en.forceHidden || ( en.id && hidden[ en.id ] );
+			if ( isHidden ) {
+				en.wrapper.style.display = 'none';
+				clearFieldValues( en.wrapper );
 			} else {
-				wrapper.style.display = 'none';
-				clearFieldValues( wrapper );
+				en.wrapper.style.display = '';
 			}
 		}
+	}
+
+	/**
+	 * Normalise a data-conditional payload (v2, or the legacy single
+	 * rule {field, operator, value}) to one tree:
+	 *
+	 *   { action: 'show'|'hide', match: 'all'|'any',
+	 *     rules: [ {field, operator, value} ], groups: [ {match, rules} ] }
+	 *
+	 * Mirrors ConditionEngine::normalize() in PHP. Returns null when
+	 * the payload carries no usable rule.
+	 *
+	 * @param  {Object} raw
+	 * @return {Object|null}
+	 */
+	function normalizeConditional( raw ) {
+		if ( ! raw || typeof raw !== 'object' ) {
+			return null;
+		}
+		var normRule = function ( r ) {
+			if ( ! r || typeof r !== 'object' ) return null;
+			var field = r.field === undefined || r.field === null ? '' : String( r.field );
+			if ( field === '' ) return null;
+			var value = r.value;
+			if ( value === undefined || value === null || typeof value === 'object' ) value = '';
+			return {
+				field:    field,
+				operator: r.operator === undefined || r.operator === null ? 'equals' : String( r.operator ),
+				value:    String( value )
+			};
+		};
+		var tree = {
+			action: raw.action === 'hide' ? 'hide' : 'show',
+			match:  raw.match === 'any' ? 'any' : 'all',
+			rules:  [],
+			groups: []
+		};
+		var i, r;
+		if ( Array.isArray( raw.rules ) ) {
+			for ( i = 0; i < raw.rules.length; i++ ) {
+				r = normRule( raw.rules[ i ] );
+				if ( r ) tree.rules.push( r );
+			}
+		} else if ( raw.field !== undefined ) {
+			r = normRule( raw );
+			if ( r ) tree.rules.push( r );
+		}
+		if ( Array.isArray( raw.groups ) ) {
+			for ( i = 0; i < raw.groups.length; i++ ) {
+				var g = raw.groups[ i ];
+				if ( ! g || typeof g !== 'object' || ! Array.isArray( g.rules ) ) continue;
+				var ng = { match: g.match === 'any' ? 'any' : 'all', rules: [] };
+				for ( var j = 0; j < g.rules.length; j++ ) {
+					r = normRule( g.rules[ j ] );
+					if ( r ) ng.rules.push( r );
+				}
+				if ( ng.rules.length ) tree.groups.push( ng );
+			}
+		}
+		if ( ! tree.rules.length && ! tree.groups.length ) {
+			return null;
+		}
+		return tree;
+	}
+
+	/**
+	 * Evaluate a normalised condition tree. Returns true when the owner
+	 * should be VISIBLE. Mirrors ConditionEngine::evaluate() in PHP.
+	 *
+	 * @param  {Object}   tree           From normalizeConditional().
+	 * @param  {Function} getValue       fieldId → current string value.
+	 * @param  {Function} isUnavailable  fieldId → true when that controller
+	 *                                   is itself hidden (rule then fails).
+	 * @return {boolean}
+	 */
+	function evaluateConditionTree( tree, getValue, isUnavailable ) {
+		if ( ! tree ) {
+			return true;
+		}
+		var evalGroup = function ( match, rules, groups ) {
+			var results = [];
+			var i;
+			for ( i = 0; i < rules.length; i++ ) {
+				var rule = rules[ i ];
+				if ( isUnavailable && isUnavailable( rule.field ) ) {
+					results.push( false );
+				} else {
+					results.push( evaluateCondition( rule.operator, getValue( rule.field ), rule.value ) );
+				}
+			}
+			for ( i = 0; i < groups.length; i++ ) {
+				results.push( evalGroup( groups[ i ].match, groups[ i ].rules, [] ) );
+			}
+			if ( ! results.length ) {
+				return true;
+			}
+			if ( match === 'any' ) {
+				return results.indexOf( true ) !== -1;
+			}
+			return results.indexOf( false ) === -1;
+		};
+		var matched = evalGroup( tree.match, tree.rules, tree.groups );
+		return tree.action === 'hide' ? ! matched : matched;
 	}
 
 	/**
@@ -1013,7 +1156,8 @@
 	 * sides must behave identically so hidden fields stay hidden on the server.
 	 *
 	 * Operators:
-	 *   equals / not_equals / contains / empty / not_empty
+	 *   equals / not_equals / contains (empty rule value never matches,
+	 *     mirroring PHP) / empty / not_empty
 	 *   gte / lte — numeric comparison; if either side does not parse as
 	 *     a finite number, returns false (rule not satisfied → field
 	 *     stays hidden). Safer than treating the comparison as true
@@ -1031,7 +1175,7 @@
 		switch ( operator ) {
 			case 'equals':     return v === r;
 			case 'not_equals': return v !== r;
-			case 'contains':   return v.indexOf( r ) !== -1;
+			case 'contains':   return r !== '' && v.indexOf( r ) !== -1; // empty needle never matches (same as PHP)
 			case 'empty':      return v.trim() === '';
 			case 'not_empty':  return v.trim() !== '';
 			case 'gte':

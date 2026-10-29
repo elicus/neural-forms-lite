@@ -49,6 +49,7 @@ if ( ! function_exists( '__' ) ) { function __( $s, $domain = null ) { return $s
 $plugin_root = dirname( __DIR__ );
 require_once $plugin_root . '/modules/forms/FieldRegistry.php';
 require_once $plugin_root . '/modules/forms/SchemaHelper.php';
+require_once $plugin_root . '/modules/forms/ConditionEngine.php';
 require_once $plugin_root . '/modules/forms/FormValidator.php';
 
 use NeuralForms\Forms\SchemaHelper;

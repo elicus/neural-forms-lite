@@ -5,6 +5,7 @@ use NeuralForms\Captcha\CaptchaManager;
 use NeuralForms\Core\Capabilities;
 use NeuralForms\Core\Config;
 use NeuralForms\Core\Logger;
+use NeuralForms\Forms\ConditionEngine;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Forms\SubmissionValidator;
@@ -1980,82 +1981,10 @@ class SubmitEndpoint {
 	 * @return bool
 	 */
 	private function evaluate_conditional( array $logic, array $data, array $field_types = array() ): bool {
-		$control_id = (string) ( $logic['field'] ?? '' );
-		$operator   = (string) ( $logic['operator'] ?? '' );
-		$rule_value = (string) ( $logic['value'] ?? '' );
-
-		if ( $control_id === '' || $operator === '' ) {
-			return true;
-		}
-
-		$control_type = (string) ( $field_types[ $control_id ] ?? '' );
-		$is_choice    = in_array( $control_type, array( 'checkbox', 'acceptance', 'radio', 'checkboxes' ), true );
-
-		if ( ! array_key_exists( $control_id, $data ) ) {
-			// Unticked / unchecked choice controls are not posted at all —
-			// that IS their empty state. Anything else: safe fallback, show.
-			if ( ! $is_choice ) {
-				return true;
-			}
-			$control_raw = '';
-		} else {
-			$control_raw = $data[ $control_id ];
-		}
-
-		if ( $control_type === 'checkbox' || $control_type === 'acceptance' ) {
-			// Same set as SubmissionValidator::CHECKED_CHECKBOX_VALUES.
-			$control_raw = in_array( $control_raw, array( 1, '1', true ), true ) ? '1' : '';
-		}
-
-		if ( is_array( $control_raw ) ) {
-			// File fields store associative metadata (filename, url, ...) - there
-			// is no useful scalar to compare against, so collapse to a presence
-			// sentinel.  Multi-checkbox values are a numeric list of selected
-			// options; join them with commas to mirror the frontend's
-			// getFieldValue() so server- and client-side rules agree.
-			if ( isset( $control_raw['filename'] ) ) {
-				$control_val = 'file_uploaded';
-			} else {
-				$control_val = implode( ',', array_map( 'strval', array_filter( $control_raw, 'is_scalar' ) ) );
-			}
-		} else {
-			$control_val = trim( (string) $control_raw );
-		}
-
-		switch ( $operator ) {
-			case 'equals':
-				return $control_val === $rule_value;
-
-			case 'not_equals':
-				return $control_val !== $rule_value;
-
-			case 'contains':
-				return $rule_value !== '' && strpos( $control_val, $rule_value ) !== false;
-
-			case 'empty':
-				return $control_val === '';
-
-			case 'not_empty':
-				return $control_val !== '';
-
-			case 'gte':
-			case 'lte':
-				// Numeric comparison. If either side isn't a finite
-				// number, fail closed — the field stays hidden on the
-				// server too, matching the JS evaluator's safe default
-				// for unexpected data shapes.
-				if ( ! is_numeric( $control_val ) || ! is_numeric( $rule_value ) ) {
-					return false;
-				}
-				$control_num = (float) $control_val;
-				$rule_num    = (float) $rule_value;
-				return $operator === 'gte'
-					? $control_num >= $rule_num
-					: $control_num <= $rule_num;
-
-			default:
-				return true;
-		}
+		// 1.2.0: delegates to the shared engine. Kept so existing callers
+		// and tests keep working; the engine's evaluate_rule() is the
+		// verbatim port of the body that used to live here.
+		return ConditionEngine::evaluate( $logic, $data, $field_types );
 	}
 
 	/**
@@ -2079,12 +2008,15 @@ class SubmitEndpoint {
 				continue;
 			}
 			$types[ $id ] = (string) ( $f['type'] ?? 'text' );
-			$cl = is_array( $f['conditional_logic'] ?? null ) ? $f['conditional_logic'] : null;
-			if ( $cl && ! empty( $cl['enabled'] ) && (string) ( $cl['field'] ?? '' ) !== '' ) {
-				$rules[ $id ] = $cl;
+			$cl = $f['conditional_logic'] ?? null;
+			if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
+				$rules[ $id ] = ConditionEngine::normalize( $cl );
 			}
 		}
 
+		// Iterate to a fixed point: a rule that depends on a controller
+		// hidden in an earlier pass fails (the engine treats hidden
+		// controllers as unavailable), which can hide further fields.
 		$hidden = array();
 		$guard  = 0;
 		do {
@@ -2093,8 +2025,7 @@ class SubmitEndpoint {
 				if ( isset( $hidden[ $id ] ) ) {
 					continue;
 				}
-				$controller = (string) $cl['field'];
-				if ( isset( $hidden[ $controller ] ) || ! $this->evaluate_conditional( $cl, $raw_data, $types ) ) {
+				if ( ! ConditionEngine::evaluate( $cl, $raw_data, $types, array_keys( $hidden ) ) ) {
 					$hidden[ $id ] = true;
 					$changed       = true;
 				}

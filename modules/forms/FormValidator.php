@@ -61,7 +61,55 @@ class FormValidator {
 
 		$seen_ids = array();
 
-		return self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
+		$result = self::validate_nodes( $schema['fields'], $seen_ids, 'fields' );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return self::validate_conditional_logic( $schema['fields'] );
+	}
+
+	/**
+	 * Second pass (1.2.0): validate every field's conditional_logic
+	 * against the full id set, so a rule cannot reference a field that
+	 * is not in the form, itself, or use an unknown operator. Nested
+	 * groups require the advanced-logic capability (Pro).
+	 *
+	 * Runs only when at least one field has enabled logic, so schemas
+	 * without conditions never load the engine.
+	 *
+	 * @param array $nodes Top-level schema nodes.
+	 * @return true|\WP_Error
+	 */
+	private static function validate_conditional_logic( array $nodes ) {
+		$fields     = SchemaHelper::flatten_fields( $nodes );
+		$ids        = array();
+		$with_logic = array();
+		foreach ( $fields as $f ) {
+			$f  = (array) $f;
+			$id = (string) ( $f['id'] ?? '' );
+			if ( $id === '' ) {
+				continue;
+			}
+			$ids[] = $id;
+			$cl    = $f['conditional_logic'] ?? null;
+			if ( is_array( $cl ) && ! empty( $cl['enabled'] ) ) {
+				$with_logic[] = $f;
+			}
+		}
+		if ( ! $with_logic ) {
+			return true;
+		}
+
+		$advanced = (bool) apply_filters( 'neural_forms_can_conditional_logic_advanced', false );
+		foreach ( $with_logic as $f ) {
+			$label  = isset( $f['label'] ) && is_string( $f['label'] ) && $f['label'] !== '' ? $f['label'] : (string) $f['id'];
+			$result = ConditionEngine::validate( $f['conditional_logic'], $ids, $advanced, (string) $f['id'], $label );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+		}
+		return true;
 	}
 
 	/**

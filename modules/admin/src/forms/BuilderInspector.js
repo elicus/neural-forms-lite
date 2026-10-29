@@ -23,6 +23,11 @@ import { FIELD_TYPES } from './FieldTypes';
 import PollResultsPanel from './PollResultsPanel';
 import AiPromptPanel from './AiPromptPanel';
 import {
+	CONDITION_OPERATORS,
+	CONDITION_MAX_RULES,
+	toEditableConditional,
+} from './schemaHelper';
+import {
 	isRow,
 	isStep,
 	isSection,
@@ -1444,38 +1449,35 @@ function MatrixSettingsBlock( { field, onChange } ) {
 }
 
 /**
- * Conditional Logic editor.
+ * Conditional Logic editor (v2, 1.2.0).
  *
- * Writes the v1.0.0 canonical schema verbatim:
+ * Writes the shared v2 shape:
  *
  *   field.conditional_logic = {
  *     enabled:  true,
- *     field:    'source_field_id',
- *     operator: 'equals' | 'not_equals' | 'contains' | 'empty' | 'not_empty',
- *     value:    'comparison'
+ *     version:  2,
+ *     action:   'show' | 'hide',
+ *     match:    'all' | 'any',
+ *     rules:    [ { field, operator, value }, ... ],   // flat, free
+ *     groups:   [ { match, rules } ]                   // Pro (edited in
+ *                                                       // the advanced
+ *                                                       // editor)
  *   }
  *
- * Frontend support already exists: FormRenderer.php emits a
- * data-conditional attribute when enabled is true, and form-submit.js
- * (in the rich admin bundle) plus SubmitEndpoint.php both honour the
- * rule. This editor only writes; it does not modify the rendering or
- * submission pipeline.
+ * The 1.0.0 single-rule shape is read transparently
+ * (toEditableConditional) and rewritten as v2 the next time the user
+ * touches this panel. FormRenderer emits the normalised tree as
+ * data-conditional, form-submit.js and SubmitEndpoint evaluate it.
  *
  * Source field list: walks the FULL schema (root + every column) via
  * flattenFields, so a root-level field can depend on a field nested
  * inside a column. Excludes the current field, hidden fields, and
- * fields without an id.
+ * fields without an id. A rule whose source no longer exists is shown
+ * as "(missing field)" so the user can repair it — the server rejects
+ * saving a form with dangling references.
  */
 
-const CL_OPERATORS = [
-	{ value: 'equals',     label: 'equals',                          needsValue: true  },
-	{ value: 'not_equals', label: 'does not equal',                  needsValue: true  },
-	{ value: 'contains',   label: 'contains',                        needsValue: true  },
-	{ value: 'empty',      label: 'is empty',                        needsValue: false },
-	{ value: 'not_empty',  label: 'is not empty',                    needsValue: false },
-	{ value: 'gte',        label: 'is greater than or equal to',     needsValue: true, numericOnly: true },
-	{ value: 'lte',        label: 'is less than or equal to',        needsValue: true, numericOnly: true },
-];
+const CL_OPERATORS = CONDITION_OPERATORS;
 
 /**
  * Field types whose values are numeric — the only types where
@@ -1483,53 +1485,182 @@ const CL_OPERATORS = [
  */
 const CL_NUMERIC_SOURCE_TYPES = [ 'number', 'range', 'rating' ];
 
+function readCapabilities() {
+	if ( typeof window === 'undefined' ) return {};
+	return ( window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+}
+
+/**
+ * Human summary of a rule list, e.g. "Service equals Web and Budget
+ * is greater than or equal to 5000".
+ */
+function describeRules( rules, match, sources ) {
+	const parts = rules.map( ( r ) => {
+		const src = sources.find( ( s ) => s.id === r.field );
+		const op  = CL_OPERATORS.find( ( o ) => o.value === r.operator );
+		const name = src ? ( src.label || src.id ) : sprintf( __( '(missing field %s)', 'neural-forms-lite' ), r.field );
+		const opLabel = op ? __( op.label, 'neural-forms-lite' ) : r.operator;
+		return op && op.needsValue ? `${ name } ${ opLabel } “${ r.value }”` : `${ name } ${ opLabel }`;
+	} );
+	const joiner = match === 'any' ? __( ' or ', 'neural-forms-lite' ) : __( ' and ', 'neural-forms-lite' );
+	return parts.join( joiner );
+}
+
 function ConditionalLogicPanel( { field, onChange, nodes } ) {
-	const cl = field && typeof field.conditional_logic === 'object' && field.conditional_logic !== null
-		? field.conditional_logic
-		: {};
-	const enabled  = !! cl.enabled;
-	const operator = CL_OPERATORS.find( ( o ) => o.value === cl.operator ) ? cl.operator : 'equals';
-	const opMeta   = CL_OPERATORS.find( ( o ) => o.value === operator );
+	const cl      = toEditableConditional( field && field.conditional_logic );
+	const enabled = cl.enabled;
+	const caps    = readCapabilities();
+	const advancedUnlocked = !! caps.conditional_logic_advanced;
 
 	// All real fields, minus the current field. flattenFields already
 	// skips rows + columns and only emits leaf input nodes.
 	const allLeaves = flattenFields( Array.isArray( nodes ) ? nodes : [] );
 	const sources = allLeaves.filter( ( n ) => n && n.id && n.id !== field.id && n.type !== 'hidden' );
 
-	const sourceId = ( typeof cl.field === 'string' && cl.field ) ? cl.field : '';
-	const sourceField = sources.find( ( s ) => s.id === sourceId ) || null;
-
-	const setCL = ( patch ) => {
+	const write = ( patch ) => {
 		onChange( { conditional_logic: { ...cl, ...patch } } );
 	};
 
 	const toggle = ( on ) => {
 		if ( ! on ) {
-			// Disabled: keep the rule on the field but flip enabled off.
-			// We could remove the key entirely, but keeping it preserves
-			// the user's settings if they re-enable.
-			onChange( { conditional_logic: { ...cl, enabled: false } } );
+			// Disabled: keep the rules on the field but flip enabled off,
+			// so re-enabling restores the user's settings.
+			write( { enabled: false } );
 			return;
 		}
-		onChange( {
-			conditional_logic: {
-				enabled:  true,
-				field:    cl.field    || ( sources[ 0 ] && sources[ 0 ].id ) || '',
-				operator: cl.operator || 'equals',
-				value:    cl.value    !== undefined ? cl.value : '',
-			},
-		} );
+		const rules = cl.rules.length
+			? cl.rules
+			: [ { field: ( sources[ 0 ] && sources[ 0 ].id ) || '', operator: 'equals', value: '' } ];
+		write( { enabled: true, rules } );
 	};
 
-	const sourceOptions = Array.isArray( sourceField?.options ) ? sourceField.options : [];
-	const sourceIsChoice  = sourceField && [ 'select', 'radio' ].includes( sourceField.type ) && sourceOptions.length > 0;
-	const sourceIsNumeric = !! ( sourceField && CL_NUMERIC_SOURCE_TYPES.includes( sourceField.type ) );
+	const updateRule = ( index, patch ) => {
+		const rules = cl.rules.map( ( r, i ) => ( i === index ? { ...r, ...patch } : r ) );
+		write( { rules } );
+	};
 
-	// Operators visible in the dropdown — numericOnly ones hide when
-	// the source field can't be compared numerically (text, email, etc.).
-	const visibleOperators = CL_OPERATORS.filter(
-		( op ) => ! op.numericOnly || sourceIsNumeric
-	);
+	const removeRule = ( index ) => {
+		write( { rules: cl.rules.filter( ( _, i ) => i !== index ) } );
+	};
+
+	const addRule = () => {
+		if ( cl.rules.length >= CONDITION_MAX_RULES ) return;
+		write( { rules: [ ...cl.rules, { field: ( sources[ 0 ] && sources[ 0 ].id ) || '', operator: 'equals', value: '' } ] } );
+	};
+
+	const renderRule = ( rule, index ) => {
+		const sourceField     = sources.find( ( s ) => s.id === rule.field ) || null;
+		const sourceMissing   = rule.field !== '' && ! sourceField;
+		const operator        = CL_OPERATORS.find( ( o ) => o.value === rule.operator ) ? rule.operator : 'equals';
+		const opMeta          = CL_OPERATORS.find( ( o ) => o.value === operator );
+		const sourceOptions   = Array.isArray( sourceField?.options ) ? sourceField.options : [];
+		const sourceIsChoice  = sourceField && [ 'select', 'radio' ].includes( sourceField.type ) && sourceOptions.length > 0;
+		const sourceIsNumeric = !! ( sourceField && CL_NUMERIC_SOURCE_TYPES.includes( sourceField.type ) );
+		const visibleOperators = CL_OPERATORS.filter( ( op ) => ! op.numericOnly || sourceIsNumeric );
+
+		return (
+			<div className="nf-inspector__cl-rule" key={ index }>
+				<div className="nf-inspector__cl-rule-head">
+					<span className="nf-inspector__cl-prefix">
+						{ index === 0
+							? __( 'If', 'neural-forms-lite' )
+							: ( cl.match === 'any' ? __( 'Or', 'neural-forms-lite' ) : __( 'And', 'neural-forms-lite' ) ) }
+					</span>
+					{ cl.rules.length > 1 && (
+						<button
+							type="button"
+							className="nf-inspector__cl-remove"
+							onClick={ () => removeRule( index ) }
+							aria-label={ __( 'Remove condition', 'neural-forms-lite' ) }
+							title={ __( 'Remove condition', 'neural-forms-lite' ) }
+						>
+							×
+						</button>
+					) }
+				</div>
+
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Field', 'neural-forms-lite' ) }</span>
+					<select
+						value={ rule.field }
+						onChange={ ( e ) => {
+							const nextSourceId  = e.target.value;
+							const nextSource    = sources.find( ( s ) => s.id === nextSourceId );
+							const nextIsNumeric = !! ( nextSource && CL_NUMERIC_SOURCE_TYPES.includes( nextSource.type ) );
+							// If the current operator is numeric-only and the
+							// new source isn't numeric, drop back to 'equals'
+							// so the rule stays representable in the dropdown.
+							const nextOperator = ( opMeta && opMeta.numericOnly && ! nextIsNumeric ) ? 'equals' : operator;
+							updateRule( index, { field: nextSourceId, value: '', operator: nextOperator } );
+						} }
+					>
+						{ sourceMissing && (
+							<option value={ rule.field }>
+								{ sprintf( __( '(missing field %s)', 'neural-forms-lite' ), rule.field ) }
+							</option>
+						) }
+						{ rule.field === '' && <option value="">{ __( 'Select a field…', 'neural-forms-lite' ) }</option> }
+						{ sources.map( ( s ) => (
+							<option key={ s.id } value={ s.id }>{ s.label || s.id }</option>
+						) ) }
+					</select>
+				</label>
+
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Operator', 'neural-forms-lite' ) }</span>
+					<select
+						value={ operator }
+						onChange={ ( e ) => {
+							const next     = e.target.value;
+							const nextMeta = CL_OPERATORS.find( ( o ) => o.value === next );
+							// Drop value when switching to an operator that doesn't use it.
+							updateRule( index, { operator: next, value: nextMeta && nextMeta.needsValue ? ( rule.value ?? '' ) : '' } );
+						} }
+					>
+						{ visibleOperators.map( ( o ) => (
+							<option key={ o.value } value={ o.value }>{ __( o.label, 'neural-forms-lite' ) }</option>
+						) ) }
+					</select>
+				</label>
+
+				{ opMeta && opMeta.needsValue && (
+					<label className="nf-inspector__field">
+						<span className="nf-inspector__label">{ __( 'Value', 'neural-forms-lite' ) }</span>
+						{ sourceIsChoice ? (
+							<select
+								value={ typeof rule.value === 'string' ? rule.value : '' }
+								onChange={ ( e ) => updateRule( index, { value: e.target.value } ) }
+							>
+								<option value="">{ __( 'Select value...', 'neural-forms-lite' ) }</option>
+								{ sourceOptions.map( ( opt, i ) => {
+									const v = ( opt && opt.value ) || ( opt && opt.label ) || '';
+									return v ? (
+										<option key={ i } value={ v }>{ ( opt && opt.label ) || v }</option>
+									) : null;
+								} ) }
+							</select>
+						) : (
+							<input
+								type={ opMeta && opMeta.numericOnly ? 'number' : 'text' }
+								step={ opMeta && opMeta.numericOnly ? 'any' : undefined }
+								value={ typeof rule.value === 'string' ? rule.value : '' }
+								onChange={ ( e ) => updateRule( index, { value: e.target.value } ) }
+							/>
+						) }
+					</label>
+				) }
+			</div>
+		);
+	};
+
+	const summary = enabled && cl.rules.length
+		? sprintf(
+			/* translators: 1: "Shown"/"Hidden", 2: rule summary */
+			__( '%1$s when %2$s.', 'neural-forms-lite' ),
+			cl.action === 'hide' ? __( 'Hidden', 'neural-forms-lite' ) : __( 'Shown', 'neural-forms-lite' ),
+			describeRules( cl.rules, cl.match, sources )
+		)
+		: '';
 
 	return (
 		<div className="nf-inspector__cl">
@@ -1551,85 +1682,61 @@ function ConditionalLogicPanel( { field, onChange, nodes } ) {
 			) }
 
 			{ enabled && sources.length > 0 && (
-				<div className="nf-inspector__cl-rule">
-					<p className="nf-inspector__cl-prefix">
-						{ __( 'Show this field if', 'neural-forms-lite' ) }
-					</p>
-
-					<label className="nf-inspector__field">
-						<span className="nf-inspector__label">{ __( 'Field', 'neural-forms-lite' ) }</span>
+				<>
+					<div className="nf-inspector__cl-head">
 						<select
-							value={ sourceId }
-							onChange={ ( e ) => {
-								const nextSourceId = e.target.value;
-								const nextSource   = sources.find( ( s ) => s.id === nextSourceId );
-								const nextIsNumeric = !! ( nextSource && CL_NUMERIC_SOURCE_TYPES.includes( nextSource.type ) );
-								// If the current operator is numeric-only
-								// and the new source isn't numeric, drop
-								// back to 'equals' so the rule stays
-								// representable in the dropdown.
-								const opMetaCurrent = CL_OPERATORS.find( ( o ) => o.value === cl.operator );
-								const nextOperator = ( opMetaCurrent && opMetaCurrent.numericOnly && ! nextIsNumeric )
-									? 'equals'
-									: ( cl.operator || 'equals' );
-								setCL( { field: nextSourceId, value: '', operator: nextOperator } );
-							} }
+							value={ cl.action }
+							onChange={ ( e ) => write( { action: e.target.value === 'hide' ? 'hide' : 'show' } ) }
+							aria-label={ __( 'Action', 'neural-forms-lite' ) }
 						>
-							{ sources.map( ( s ) => (
-								<option key={ s.id } value={ s.id }>
-									{ s.label || s.id }
-								</option>
-							) ) }
+							<option value="show">{ __( 'Show this field', 'neural-forms-lite' ) }</option>
+							<option value="hide">{ __( 'Hide this field', 'neural-forms-lite' ) }</option>
 						</select>
-					</label>
-
-					<label className="nf-inspector__field">
-						<span className="nf-inspector__label">{ __( 'Operator', 'neural-forms-lite' ) }</span>
+						<span className="nf-inspector__cl-head-text">{ __( 'when', 'neural-forms-lite' ) }</span>
 						<select
-							value={ operator }
-							onChange={ ( e ) => {
-								const next = e.target.value;
-								const nextMeta = CL_OPERATORS.find( ( o ) => o.value === next );
-								// Drop value when switching to an operator that doesn't use it.
-								setCL( {
-									operator: next,
-									value: nextMeta && nextMeta.needsValue ? ( cl.value ?? '' ) : '',
-								} );
-							} }
+							value={ cl.match }
+							onChange={ ( e ) => write( { match: e.target.value === 'any' ? 'any' : 'all' } ) }
+							aria-label={ __( 'Match', 'neural-forms-lite' ) }
+							disabled={ cl.rules.length < 2 }
 						>
-							{ visibleOperators.map( ( o ) => (
-								<option key={ o.value } value={ o.value }>{ __( o.label, 'neural-forms-lite' ) }</option>
-							) ) }
+							<option value="all">{ __( 'all conditions match', 'neural-forms-lite' ) }</option>
+							<option value="any">{ __( 'any condition matches', 'neural-forms-lite' ) }</option>
 						</select>
-					</label>
+					</div>
 
-					{ opMeta && opMeta.needsValue && (
-						<label className="nf-inspector__field">
-							<span className="nf-inspector__label">{ __( 'Value', 'neural-forms-lite' ) }</span>
-							{ sourceIsChoice ? (
-								<select
-									value={ typeof cl.value === 'string' ? cl.value : '' }
-									onChange={ ( e ) => setCL( { value: e.target.value } ) }
-								>
-									<option value="">{ __( 'Select value...', 'neural-forms-lite' ) }</option>
-									{ sourceOptions.map( ( opt, i ) => {
-										const v = ( opt && opt.value ) || ( opt && opt.label ) || '';
-										return v ? (
-											<option key={ i } value={ v }>{ ( opt && opt.label ) || v }</option>
-										) : null;
-									} ) }
-								</select>
-							) : (
-								<input
-									type={ opMeta && opMeta.numericOnly ? 'number' : 'text' }
-									step={ opMeta && opMeta.numericOnly ? 'any' : undefined }
-									value={ typeof cl.value === 'string' ? cl.value : '' }
-									onChange={ ( e ) => setCL( { value: e.target.value } ) }
-								/>
+					<div className="nf-inspector__cl-rules">
+						{ cl.rules.map( renderRule ) }
+					</div>
+
+					<button
+						type="button"
+						className="nf-inspector__cl-add"
+						onClick={ addRule }
+						disabled={ cl.rules.length >= CONDITION_MAX_RULES }
+					>
+						{ __( '+ Add condition', 'neural-forms-lite' ) }
+					</button>
+
+					{ cl.groups.length > 0 && (
+						<p className="nf-inspector__cl-hint">
+							{ sprintf(
+								/* translators: %d: number of condition groups */
+								__( 'This field also has %d condition group(s) from the advanced editor.', 'neural-forms-lite' ),
+								cl.groups.length
 							) }
-						</label>
+						</p>
 					) }
-				</div>
+
+					{ ! advancedUnlocked && (
+						<p className="nf-inspector__cl-hint nf-inspector__cl-hint--pro">
+							{ __( 'Condition groups such as “A and (B or C)”, conditional sections and step skipping are available in Neural Forms Pro.', 'neural-forms-lite' ) }
+						</p>
+					) }
+
+					{ summary && (
+						<p className="nf-inspector__cl-summary">{ summary }</p>
+					) }
+				</>
 			) }
 		</div>
 	);

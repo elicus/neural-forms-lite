@@ -78,7 +78,7 @@ Versions: Lite `1.2.0` (DB version `1.2.0`), Pro `1.1.0` with
 
 ### 3.3 Sections, steps, confirmations (Pro)
 
-- Section and Step nodes accept the same `conditional_logic` object. A field is applicable only if its own tree and every ancestor's tree pass. `FormValidator` rejects a rule that references a field inside its own subtree or a later step, and rejects cycles (CL8).
+- Section and Step nodes accept the same `conditional_logic` object. (Discovery, A1: a Section is a heading node with title and description only, no child fields, so a section condition hides the heading block; the "applies to descendants" rule is for Steps.) A field is applicable only if its own tree and every ancestor's tree pass. `FormValidator` rejects a rule that references a field inside its own subtree or a later step, and rejects cycles (CL8).
 - Frontend: `updateConditionalFields()` evaluates sections and steps too. `initMultiStep()` navigates over eligible steps only, recomputes eligibility on every input and change event, keeps the progress bar honest, and clears values of steps that became ineligible on the way back (CL6). The server recomputes everything on submit (CL5).
 - Confirmations: `on_success.rules[] = [{ id, conditions, mode, message, url }]`, evaluated after validation against the effective payload; first match wins, else the existing default. `FormSettingsSanitizer` validates URLs with `esc_url_raw` and rejects visitor-controlled tokens in URLs. The builder warns when two rules can both match.
 - Lite rendering of a form that already contains Pro structures (Pro deactivated or lapsed): the submit path **still evaluates the stored rules** so hidden fields cannot leak, but `FormsEndpoint` refuses to save new or changed advanced structures with `pro_feature_locked`. Decision D1.
@@ -190,7 +190,7 @@ Pro `Unlocker.php` adds three `__return_true` lines. Cloud plan gating stays ind
 | Milestone | Deliverable | Exit gate |
 |---|---|---|
 | A0 (this document) | code map, contracts, decisions, version bump on dev | owner sign-off on §1 and §9 |
-| A1 | `ConditionEngine` (PHP + JS), v2 normaliser, flat All/Any + show/hide editor, fixtures, Lite capability stubs | CL1 to CL4 pass on PHP 7.4 and 8.2 and Node |
+| A1 ✅ 2026-10-29 | `ConditionEngine` (PHP + JS), v2 normaliser, flat All/Any + show/hide editor, fixtures, Lite capability stubs, Pro unlock lines | CL1 to CL4 pass on PHP 7.4 and 8.2 and Node |
 | A2 | sections, step eligibility, conditional confirmations, builder validation, Pro unlock | all CL criteria; manual CL9 pass; shortcode / block / Divi smoke |
 | A3 | DB 1.2.0 migration, entry columns, activity log, entry PATCH/list additions, inbox controls, Overdue view | migration rerun-safe; privacy export/erase cover new columns |
 | A4 | WorkflowEngine, queue processor, six Lite actions, Pro actions filter, REST, editor, test run, history, processing health | WF1 to WF12 |

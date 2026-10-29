@@ -486,6 +486,9 @@ Capabilities::POLL_QUIZ_UNLIMITED_SUBMISSIONS // 'poll_quiz_unlimited_submission
 Capabilities::FIELD_MATRIX                    // 'field_matrix' (added 1.1.0)
 Capabilities::FIELD_REPEATER                  // 'field_repeater' (added 1.1.0)
 Capabilities::INTEGRATIONS                    // 'integrations' (added 1.1.0)
+Capabilities::CONDITIONAL_LOGIC_ADVANCED      // 'conditional_logic_advanced' (added 1.2.0)
+Capabilities::WORKFLOWS                       // 'workflows' (added 1.2.0)
+Capabilities::AI_BUSINESS_CONTEXT             // 'ai_business_context' (added 1.2.0)
 
 Capabilities::can( $cap )      // apply_filters("neural_forms_can_{$cap}", false)
 Capabilities::all()            // snapshot of every cap (localized to React)
@@ -506,6 +509,9 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `field_matrix` | `neural_forms_can_field_matrix` | Matrix field type (survey rows/columns, radio or checkbox selection) — Lite ships the full engine; locked installs show it as a Pro-upsell in the builder palette and the frontend renderer skips it |
 | `field_repeater` | `neural_forms_can_field_repeater` | Repeater field type (repeatable child-field groups) — Lite ships the full engine; locked installs show it as a Pro-upsell in the builder palette and the frontend renderer skips it |
 | `integrations` | `neural_forms_can_integrations` | Integrations admin page (HubSpot, WhatsApp, Mailchimp, Google Forms, Zapier tabs). Lite ships the page shell/menu/React screen as a locked upsell; no provider config is wired up on either side yet — each tab is a "Coming soon" card |
+| `conditional_logic_advanced` | `neural_forms_can_conditional_logic_advanced` | Nested condition groups ("A and (B or C)"), conditions on sections and steps, ordered conditional confirmations. Gates the editor and SAVING advanced structures only — `SubmitEndpoint` always evaluates stored rules, so a lapsed Pro install never leaks a hidden field (decision D1 in `docs/RELEASE-1.2-PLAN.md`) |
+| `workflows` | `neural_forms_can_workflows` | Workflow editor, runs/history, lead stage / assignee / follow-up controls in the inbox (engine lands in milestone A3/A4) |
+| `ai_business_context` | `neural_forms_can_ai_business_context` | Per-form AI behaviour (tone, language, knowledge picker) and sending `ai_behaviour` to the cloud (milestone A5) |
 
 ### Where the checks are applied
 
@@ -557,6 +563,9 @@ is a breaking change for Pro.
 | `neural_forms_can_field_matrix` filter | `Capabilities::can()` | `__return_true` to unlock the Matrix field type |
 | `neural_forms_can_field_repeater` filter | `Capabilities::can()` | `__return_true` to unlock the Repeater field type |
 | `neural_forms_can_integrations` filter | `Capabilities::can()` | `__return_true` to unlock the Integrations admin page |
+| `neural_forms_can_conditional_logic_advanced` filter | `Capabilities::can()` | `__return_true` to unlock condition groups / section + step conditions / conditional confirmations (1.2.0) |
+| `neural_forms_can_workflows` filter | `Capabilities::can()` | `__return_true` to unlock workflows + lead management (1.2.0) |
+| `neural_forms_can_ai_business_context` filter | `Capabilities::can()` | `__return_true` to unlock business knowledge / voice / language for AI drafts (1.2.0) |
 | `window.neuralForms.slots.registerFill` JS registry | Admin bundle at mount | Pro bundle registers SlotFills for premium UI regions |
 
 React SlotFill names exposed by Lite (via `@wordpress/components createSlotFill`):
@@ -784,6 +793,44 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Conditional logic — one engine, v2 format (1.2.0)
+
+`modules/forms/ConditionEngine.php` is the only evaluator. v2 shape:
+`{ enabled, version: 2, action: show|hide, match: all|any, rules: [{field,
+operator, value}], groups: [{match, rules}] }`. The 1.0.0 single-rule
+object (`{enabled, field, operator, value}`) is still read everywhere via
+`ConditionEngine::normalize()` and is never rewritten in stored schemas;
+the builder writes v2 when the user next saves that field's logic.
+
+- `SubmitEndpoint::evaluate_conditional()` is a one-line delegate kept
+  for the old tests; `resolve_hidden_field_ids()` iterates to a fixed
+  point and passes already-hidden ids as *unavailable* so a rule on a
+  hidden controller fails (legacy "controller hidden → dependent
+  hidden" behaviour, generalised to many rules).
+- `FormRenderer` emits `ConditionEngine::for_attribute()` as
+  `data-conditional` (`{v, action, match, rules[, groups]}`).
+  form-submit.js `normalizeConditional()` + `evaluateConditionTree()`
+  mirror the PHP; `evaluateCondition()` is the per-rule port.
+  `contains` with an empty rule value never matches on either side.
+- `FormValidator::validate_conditional_logic()` is a second pass over
+  the flattened fields: unknown operator, unknown/self field reference,
+  bad action/match, > 10 rules → 422 `invalid_form_data`; groups
+  without the `conditional_logic_advanced` cap → 403 `pro_feature_locked`.
+- Builder: `ConditionalLogicPanel` in `BuilderInspector.js` (flat
+  All/Any list, show/hide, summary line); shared helpers
+  `normalizeConditional()` / `toEditableConditional()` /
+  `CONDITION_OPERATORS` in `schemaHelper.js`. The builder copy of
+  `normalizeConditional()` must stay equivalent to the frontend one.
+- Fixtures: `tests/fixtures/conditions.json`, run by
+  `tests/ConditionEngineTest.php` and (Node 18)
+  `tests/ConditionEngineTest.js`. Add a case there, not ad-hoc asserts,
+  when touching any evaluator.
+- Sections are heading nodes (title + description, no children), so a
+  "conditional section" (A2) hides the heading only.
+- Standalone test files that load `FormValidator.php`, `FormRenderer.php`
+  or `SubmitEndpoint.php` and exercise logic must also require
+  `modules/forms/ConditionEngine.php` (no autoloader in tests).
 
 ### Never answer a REST request with 502 or 504 (fixed 2026-10-29, 1.2.0)
 
