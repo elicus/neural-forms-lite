@@ -36,6 +36,8 @@ final class WorkflowEngine {
 		add_action( 'neural_forms_entry_analysis_completed', array( self::class, 'on_analysis_completed' ), 50, 3 );
 		add_action( 'neural_forms_lead_stage_changed', array( self::class, 'on_stage_changed' ), 10, 4 );
 		add_action( self::SWEEP_HOOK, array( self::class, 'sweep_overdue_follow_ups' ) );
+		// 1.2.0 part B: fired by PaymentService once per verified, recorded payment.
+		add_action( 'neural_forms_payment_confirmed', array( self::class, 'on_payment_confirmed' ), 50, 3 );
 
 		WorkflowQueueProcessor::boot();
 
@@ -61,6 +63,47 @@ final class WorkflowEngine {
 			return;
 		}
 		self::dispatch( WorkflowDefinition::TRIGGER_SUBMISSION, $form_id, $entry_id, array() );
+	}
+
+	/**
+	 * `payment_confirmed` — only PaymentService fires the action, only after
+	 * a signature-verified webhook or a server-to-server fetch said "paid".
+	 * The event id is unique per payment attempt, so a redelivered event
+	 * can never start a second run.
+	 */
+	public static function on_payment_confirmed( $entry_id, $payment, $aggregate ): void {
+		$entry_id = (int) $entry_id;
+		if ( $entry_id <= 0 || ! is_array( $payment ) || ! self::enabled() ) {
+			return;
+		}
+		$form_id = (int) ( $payment['form_id'] ?? 0 );
+		if ( $form_id <= 0 ) {
+			$entry   = EntryRepository::get( $entry_id );
+			$form_id = $entry ? (int) $entry['form_id'] : 0;
+		}
+		if ( $form_id <= 0 ) {
+			return;
+		}
+		$aggregate = is_array( $aggregate ) ? $aggregate : array();
+		self::dispatch(
+			WorkflowDefinition::TRIGGER_PAYMENT,
+			$form_id,
+			$entry_id,
+			array(
+				'payment_id' => (int) ( $payment['id'] ?? 0 ),
+				'payment'    => array(
+					'id'                => (int) ( $payment['id'] ?? 0 ),
+					'provider'          => (string) ( $payment['provider'] ?? '' ),
+					'kind'              => (string) ( $payment['kind'] ?? 'full' ),
+					'currency'          => (string) ( $payment['currency'] ?? 'USD' ),
+					'amount_paid_minor' => (int) ( $payment['amount_paid_minor'] ?? 0 ),
+					'remaining_minor'   => (int) ( $aggregate['remaining_minor'] ?? 0 ),
+					'status'            => (string) ( $aggregate['status'] ?? '' ),
+					'paid_at'           => (string) ( $payment['paid_at'] ?? '' ),
+					'livemode'          => ! empty( $payment['livemode'] ),
+				),
+			)
+		);
 	}
 
 	public static function on_analysis_completed( $entry_id, $form_id, $result ): void {

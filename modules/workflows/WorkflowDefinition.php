@@ -36,8 +36,9 @@ final class WorkflowDefinition {
 	const TRIGGER_ANALYSIS   = 'analysis_completed';
 	const TRIGGER_STAGE      = 'stage_changed';
 	const TRIGGER_OVERDUE    = 'follow_up_overdue';
+	const TRIGGER_PAYMENT    = 'payment_confirmed'; // 1.2.0 part B (B4)
 
-	const TRIGGERS = array( self::TRIGGER_SUBMISSION, self::TRIGGER_ANALYSIS, self::TRIGGER_STAGE, self::TRIGGER_OVERDUE );
+	const TRIGGERS = array( self::TRIGGER_SUBMISSION, self::TRIGGER_ANALYSIS, self::TRIGGER_STAGE, self::TRIGGER_OVERDUE, self::TRIGGER_PAYMENT );
 
 	const MAX_ACTIONS = 10;
 
@@ -80,6 +81,20 @@ final class WorkflowDefinition {
 			'ai_is_spam'  => array( 'label' => __( 'AI flagged as spam', 'neural-forms-lite' ), 'type' => 'checkbox' ),
 			'lead_stage'  => array( 'label' => __( 'Lead stage', 'neural-forms-lite' ), 'type' => 'select', 'options' => $stage_options ),
 			'assigned_to' => array( 'label' => __( 'Assigned user id (0 = unassigned)', 'neural-forms-lite' ), 'type' => 'number' ),
+			// 1.2.0 part B: payment aggregate (entry) + the confirmed payment's kind (payment_confirmed trigger only).
+			'payment_status' => array(
+				'label'   => __( 'Payment status', 'neural-forms-lite' ),
+				'type'    => 'select',
+				'options' => array_map(
+					static function ( $s ) { return array( 'value' => $s, 'label' => class_exists( '\\NeuralForms\\Payments\\PaymentStatus' ) ? \NeuralForms\Payments\PaymentStatus::label( $s ) : $s ); },
+					array( 'none', 'pending', 'processing', 'failed', 'cancelled', 'deposit_paid', 'paid', 'partially_refunded', 'refunded' )
+				),
+			),
+			'payment_kind'   => array(
+				'label'   => __( 'Confirmed payment was a', 'neural-forms-lite' ),
+				'type'    => 'select',
+				'options' => array( array( 'value' => 'deposit', 'label' => __( 'Deposit', 'neural-forms-lite' ) ), array( 'value' => 'full', 'label' => __( 'Full payment', 'neural-forms-lite' ) ) ),
+			),
 			'status'      => array(
 				'label'   => __( 'Inbox status', 'neural-forms-lite' ),
 				'type'    => 'select',
@@ -100,7 +115,7 @@ final class WorkflowDefinition {
 	 * @param array $form  Form row (for field types).
 	 * @return array { data: array, types: array }
 	 */
-	public static function evaluation_context( array $entry, array $form ): array {
+	public static function evaluation_context( array $entry, array $form, array $trigger_context = array() ): array {
 		$data  = is_array( $entry['data'] ?? null ) ? $entry['data'] : array();
 		$types = array();
 		$fields = SchemaHelper::flatten_fields( is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array() );
@@ -120,6 +135,8 @@ final class WorkflowDefinition {
 		$data['lead_stage']  = (string) ( $entry['lead_stage'] ?? LeadStages::DEFAULT_STAGE );
 		$data['assigned_to'] = (string) (int) ( $entry['assigned_to'] ?? 0 );
 		$data['status']      = (string) ( $entry['status'] ?? '' );
+		$data['payment_status'] = (string) ( $entry['payment_status'] ?? 'none' );
+		$data['payment_kind']   = (string) ( $trigger_context['payment']['kind'] ?? '' );
 		return array( 'data' => $data, 'types' => $types );
 	}
 
@@ -270,6 +287,8 @@ final class WorkflowDefinition {
 				return 'stage:' . $entry_id . ':' . (string) ( $context['from'] ?? '' ) . '>' . (string) ( $context['to'] ?? '' ) . ':' . (string) ( $context['at'] ?? time() );
 			case self::TRIGGER_OVERDUE:
 				return 'overdue:' . $entry_id . ':' . (string) ( $context['due'] ?? '' );
+			case self::TRIGGER_PAYMENT:
+				return 'payment:' . $entry_id . ':' . (int) ( $context['payment_id'] ?? 0 );
 		}
 		return $trigger . ':' . $entry_id;
 	}

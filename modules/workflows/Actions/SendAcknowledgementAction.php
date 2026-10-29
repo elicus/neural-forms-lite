@@ -34,7 +34,7 @@ final class SendAcknowledgementAction extends AbstractAction {
 
 	public function execute( array $settings, array $ctx ): ActionResult {
 		$form  = $ctx['form'];
-		$data  = is_array( $ctx['entry']['data'] ?? null ) ? $ctx['entry']['data'] : array();
+		$data  = $this->token_data( $ctx );
 		$email = NotificationService::submitter_email( $form, $data );
 		if ( $email === '' ) {
 			return ActionResult::skipped( __( 'The entry has no email address.', 'neural-forms-lite' ) );

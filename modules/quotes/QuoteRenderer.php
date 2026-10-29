@@ -39,6 +39,9 @@ final class QuoteRenderer {
 			if ( ! empty( $options['pdf_url'] ) ) {
 				$h .= ' <a class="nf-quote__toolbar-btn" href="' . $e( (string) $options['pdf_url'] ) . '">' . $e( self::t( 'Download PDF' ) ) . '</a>';
 			}
+			if ( ! empty( $options['pay_url'] ) ) {
+				$h .= ' <a class="nf-quote__toolbar-btn nf-quote__toolbar-btn--pay" href="' . $e( (string) $options['pay_url'] ) . '">' . $e( sprintf( self::t( 'Pay %s now' ), $fmt['due_now'] ) ) . '</a>';
+			}
 			$h .= '</div>';
 		}
 		$h .= '<div class="nf-quote__page">';
@@ -130,6 +133,9 @@ final class QuoteRenderer {
 			$h .= '<tr><th>' . $e( self::t( 'Remaining balance' ) ) . '</th><td>' . $e( $fmt['remaining'] ) . '</td></tr>';
 		}
 		$h .= '</table></td></tr></table>';
+		if ( $mode === 'html' && ! empty( $options['pay_url'] ) ) {
+			$h .= '<div class="nf-quote__pay"><a class="nf-quote__pay-btn" href="' . $e( (string) $options['pay_url'] ) . '">' . $e( sprintf( self::t( 'Pay %s securely now' ), $fmt['due_now'] ) ) . '</a><div class="nf-quote__pay-note">' . $e( self::t( 'You will be taken to a secure checkout page. No card details are entered on this site.' ) ) . '</div></div>';
+		}
 
 		if ( (string) ( $s['notes'] ?? '' ) !== '' ) {
 			$h .= '<div class="nf-quote__section"><div class="nf-quote__label">' . $e( self::t( 'Notes' ) ) . '</div><div class="nf-quote__text">' . nl2br( $e( (string) $s['notes'] ) ) . '</div></div>';
@@ -185,6 +191,7 @@ final class QuoteRenderer {
 		$css .= ".nf-quote__lines{border-collapse:collapse;margin-bottom:14px}.nf-quote__lines th{background:{$accent};color:#fff;text-align:left;padding:7px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.4px}.nf-quote__lines th.is-num,.nf-quote__lines td.is-num{text-align:right;white-space:nowrap}.nf-quote__lines td{padding:7px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}.nf-quote__line-desc{color:#6b7280;font-size:11px}.nf-quote__empty{color:#9ca3af;text-align:center}";
 		$css .= '.nf-quote__totals{border-collapse:collapse;min-width:260px}.nf-quote__totals th{text-align:left;font-weight:normal;color:#4b5563;padding:3px 16px 3px 0}.nf-quote__totals td{text-align:right;padding:3px 0;white-space:nowrap}';
 		$css .= ".nf-quote__totals tr.is-total th,.nf-quote__totals tr.is-total td{font-weight:bold;font-size:14px;color:{$accent};border-top:2px solid {$accent};padding-top:6px}.nf-quote__totals tr.is-due th,.nf-quote__totals tr.is-due td{font-weight:bold}";
+		$css .= '.nf-quote__pay{text-align:right;margin:6px 0 4px}.nf-quote__pay-btn{display:inline-block;padding:11px 20px;border-radius:8px;background:' . $accent . ';color:#fff;font-weight:bold;text-decoration:none}.nf-quote__pay-note{font-size:11px;color:#6b7280;margin-top:6px}.nf-quote__toolbar-btn--pay{background:' . $accent . ';color:#fff;border-color:' . $accent . '}';
 		$css .= '.nf-quote__section{margin-top:18px}.nf-quote__text{color:#374151;white-space:normal}';
 		$css .= '.nf-quote__footer{margin-top:28px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:10.5px}.nf-quote__disclaimer{margin-top:6px;color:#9ca3af}';
 		if ( $mode === 'pdf' ) {

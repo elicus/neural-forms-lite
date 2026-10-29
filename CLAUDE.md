@@ -803,6 +803,44 @@ prevents overflow without needing `overflow: hidden` anywhere.
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
 
+### Payment workflows, quote pay links, inbox payment views (1.2.0 part B, B4)
+
+- **Trigger `payment_confirmed`** (`WorkflowDefinition::TRIGGER_PAYMENT`):
+  `WorkflowEngine::on_payment_confirmed()` listens to
+  `neural_forms_payment_confirmed` (fired only by `PaymentService` after a
+  verified webhook / server fetch) and dispatches with `trigger_context
+  { payment_id, payment { id, provider, kind, currency, amount_paid_minor,
+  remaining_minor, status, paid_at, livemode } }`. Event id
+  `payment:{entry}:{payment_id}` → one run per attempt, redeliveries are
+  no-ops. `submission_received` runs never carry paid context.
+- **Conditions**: meta sources `payment_status` (entry aggregate) and
+  `payment_kind` (deposit | full, set only on a payment run);
+  `evaluation_context( $entry, $form, $trigger_context )` /
+  `WorkflowRunner::evaluate( …, $trigger_context )`.
+- **Tokens**: `AbstractAction::token_data( $ctx )` adds `{payment_status}`,
+  `{payment_amount}`, `{payment_remaining}`, `{payment_kind}`,
+  `{payment_currency}`, `{payment_provider}` to the entry data used by
+  `notify_internal` / `send_acknowledgement` (from the trigger context on a
+  payment run, otherwise from the stored aggregate). `$ctx['trigger_context']`
+  is available to every action.
+- **Action `create_quote_draft`** (`Actions/CreateQuoteDraftAction.php`,
+  Lite): draft by default; settings `issue` (number assigned) and `send`
+  (emails the issued quote; validation requires `issue`). Skips when the
+  entry has no pricing or already has a draft / issued quote; cap `quotes`.
+- **Quote pay links**: `QuoteService::is_payable()` (issued + valid +
+  due > 0 + form takes payments + provider connected + nothing settled for
+  that quote) adds `links.pay` → `GET /quotes/{id}/pay?token=` (QuotesEndpoint
+  `public_pay`) which calls `PaymentService::start_checkout( …, [ 'quote' ] )`
+  and 302s to the gateway; already paid → 409 page. The public quote page
+  and the quote email show the "Pay … now" button / link.
+- **Inbox**: views `awaiting_payment` / `paid` (`EntryRepository::VALID_VIEWS`,
+  `AWAITING_PAYMENT_WHERE` / `PAID_WHERE`, also in `/entries/counts`), smart
+  filters gated by the `payments` capability, `PaymentPill` on list rows.
+- Tests: `tests/live/B4WorkflowPaymentsHarness.php` (34 checks: trigger
+  once per attempt, condition on payment_kind, tokens in mail, draft vs
+  issue+send, pay link 302 / reuse / bad token / already paid / expired,
+  views + counts, dry run).
+
 ### Payments: Stripe + PayPal (1.2.0 part B, B3)
 
 `modules/payments/` — Lite owns the engine; Pro ships the two gateways

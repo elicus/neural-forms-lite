@@ -76,6 +76,7 @@ final class WorkflowsEndpoint {
 				array( 'id' => WorkflowDefinition::TRIGGER_ANALYSIS, 'label' => __( 'AI analysis completed', 'neural-forms-lite' ), 'description' => __( 'The first successful AI analysis of an entry finished (optionally also on re-analysis).', 'neural-forms-lite' ) ),
 				array( 'id' => WorkflowDefinition::TRIGGER_STAGE, 'label' => __( 'Lead stage changed', 'neural-forms-lite' ), 'description' => __( 'The lead moved from one stage to another, by a person or a workflow.', 'neural-forms-lite' ) ),
 				array( 'id' => WorkflowDefinition::TRIGGER_OVERDUE, 'label' => __( 'Follow-up overdue', 'neural-forms-lite' ), 'description' => __( 'An open follow-up passed its due time (checked hourly, fires once per due date).', 'neural-forms-lite' ) ),
+				array( 'id' => WorkflowDefinition::TRIGGER_PAYMENT, 'label' => __( 'Payment confirmed', 'neural-forms-lite' ), 'description' => __( 'The gateway confirmed a payment (deposit or full). Fires once per payment, never from a return URL. Templates may use {payment_amount}, {payment_remaining}, {payment_kind}, {payment_status}.', 'neural-forms-lite' ) ),
 			),
 			'actions'      => ActionRegistry::for_script(),
 			'stages'       => LeadStages::for_script(),

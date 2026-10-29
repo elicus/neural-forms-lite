@@ -2204,3 +2204,6 @@
 .neural-forms-entries-pill--pay-processing, .neural-forms-entries-pill--pay-pending { background: #fef3c7; color: #92400e; }
 .neural-forms-entries-pill--pay-expired, .neural-forms-entries-pill--pay-replaced, .neural-forms-entries-pill--pay-refunded { background: #e5e7eb; color: #374151; }
 .neural-forms-entries-pill--pay-partially_refunded { background: #ede9fe; color: #5b21b6; }
+
+/* list row payment pill sits after the status pill */
+.neural-forms-entries-row .neural-forms-entries-pill--pay { margin-left: 6px; }

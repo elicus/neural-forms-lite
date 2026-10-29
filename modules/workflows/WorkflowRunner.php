@@ -52,13 +52,14 @@ final class WorkflowRunner {
 			'entry'         => $entry,
 			'form'          => $form,
 			'trigger'       => (string) $run['trigger_type'],
+			'trigger_context' => is_array( $run['context']['trigger_context'] ?? null ) ? $run['context']['trigger_context'] : array(),
 			'dry_run'       => false,
 		);
 
 		// Conditions — evaluated once, on the first attempt of the run.
 		$already_started = (bool) WorkflowRunRepository::actions_for_run( $run_id );
 		if ( ! $already_started ) {
-			$evaluation = self::evaluate( $def, $entry, $form );
+			$evaluation = self::evaluate( $def, $entry, $form, is_array( $run['context']['trigger_context'] ?? null ) ? $run['context']['trigger_context'] : array() );
 			EntryActivity::record(
 				(int) $entry['id'],
 				$evaluation['matched'] ? 'workflow.started' : 'workflow.skipped',
@@ -222,11 +223,11 @@ final class WorkflowRunner {
 	 *
 	 * @return array { matched: bool, rules: [ { field, operator, value, actual, result } ] }
 	 */
-	public static function evaluate( array $def, array $entry, array $form ): array {
+	public static function evaluate( array $def, array $entry, array $form, array $trigger_context = array() ): array {
 		if ( ! $def['conditions'] ) {
 			return array( 'matched' => true, 'rules' => array() );
 		}
-		$ctx     = WorkflowDefinition::evaluation_context( $entry, $form );
+		$ctx     = WorkflowDefinition::evaluation_context( $entry, $form, $trigger_context );
 		$matched = ConditionEngine::evaluate( $def['conditions'], $ctx['data'], $ctx['types'] );
 		$rules   = array();
 		$n       = ConditionEngine::normalize( $def['conditions'] );
@@ -264,6 +265,7 @@ final class WorkflowRunner {
 			'entry'         => $entry,
 			'form'          => $form,
 			'trigger'       => $def['trigger'],
+			'trigger_context' => array(),
 			'dry_run'       => true,
 		);
 		$planned = array();

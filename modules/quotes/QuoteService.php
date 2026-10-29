@@ -234,6 +234,11 @@ final class QuoteService {
 		$lines[] = '';
 		$lines[] = __( 'View the quote online:', 'neural-forms-lite' );
 		$lines[] = $links['view'];
+		if ( ! empty( $links['pay'] ) ) {
+			$lines[] = '';
+			$lines[] = sprintf( __( 'Pay %s securely online:', 'neural-forms-lite' ), $fmt['due_now'] );
+			$lines[] = $links['pay'];
+		}
 		$lines[] = '';
 		$lines[] = $biz;
 		if ( (string) ( $settings['email'] ?? '' ) !== '' ) {
@@ -299,6 +304,9 @@ final class QuoteService {
 		if ( QuotePdf::available() ) {
 			$out['pdf'] = add_query_arg( 'token', $token, $base . '/pdf' );
 		}
+		if ( self::is_payable( $quote ) ) {
+			$out['pay'] = add_query_arg( 'token', $token, $base . '/pay' );
+		}
 		return $out;
 	}
 
@@ -315,6 +323,30 @@ final class QuoteService {
 			}
 		}
 		return $n;
+	}
+
+	/**
+	 * B4: the quote can be paid online right now — issued + valid (CQ9),
+	 * something due, the form takes payments, a provider is connected and
+	 * no settled payment exists for this quote yet.
+	 */
+	public static function is_payable( array $quote ): bool {
+		if ( ! self::can_start_payment( $quote ) || (int) ( $quote['snapshot']['due_now'] ?? 0 ) <= 0 ) {
+			return false;
+		}
+		if ( ! class_exists( '\\NeuralForms\\Payments\\PaymentService' ) ) {
+			return false;
+		}
+		$form = FormRepository::find( (int) $quote['form_id'] );
+		if ( ! $form || ! \NeuralForms\Payments\PaymentService::enabled_for( $form ) ) {
+			return false;
+		}
+		foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( (int) $quote['entry_id'] ) as $p ) {
+			if ( (int) ( $p['quote_id'] ?? 0 ) === (int) $quote['id'] && in_array( $p['status'], \NeuralForms\Payments\PaymentStatus::SETTLED, true ) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** CQ9: only an issued, unexpired quote may start a payment. */

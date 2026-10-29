@@ -9,7 +9,7 @@ final class NotifyInternalAction extends AbstractAction {
 
 	public function type(): string { return 'notify_internal'; }
 	public function label(): string { return __( 'Notify your team', 'neural-forms-lite' ); }
-	public function description(): string { return __( 'Emails fixed addresses. Tokens: {form_name}, {site_name}, {entry_url}, {field_id}.', 'neural-forms-lite' ); }
+	public function description(): string { return __( 'Emails fixed addresses. Tokens: {form_name}, {site_name}, {entry_url}, {field_id}, {payment_status}, {payment_amount}, {payment_remaining}, {payment_kind}.', 'neural-forms-lite' ); }
 
 	public function settings_schema(): array {
 		return array(
@@ -43,7 +43,7 @@ final class NotifyInternalAction extends AbstractAction {
 			return ActionResult::failed( __( 'No valid recipients.', 'neural-forms-lite' ) );
 		}
 		$form    = $ctx['form'];
-		$data    = is_array( $ctx['entry']['data'] ?? null ) ? $ctx['entry']['data'] : array();
+		$data    = $this->token_data( $ctx );
 		$subject = NotificationService::render_tokens( (string) ( $settings['subject'] ?? '' ), $form, $data, (int) $ctx['entry']['id'] );
 		$body    = NotificationService::render_tokens( (string) ( $settings['body'] ?? '' ), $form, $data, (int) $ctx['entry']['id'] );
 		$sent    = NotificationService::send_mail( $to, $subject, $body );

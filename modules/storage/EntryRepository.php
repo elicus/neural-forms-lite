@@ -451,6 +451,8 @@ class EntryRepository {
 			'high_priority'  => $count( "ai_priority = 'high' AND status IN ('new','read')" ),
 			'spam_suspected' => $count( "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')" ),
 			'overdue'        => $count( self::OVERDUE_WHERE ),
+			'awaiting_payment' => $count( self::AWAITING_PAYMENT_WHERE ),
+			'paid'             => $count( self::PAID_WHERE ),
 			'stages'         => self::count_by_stage( $scope_clause ),
 		);
 	}
@@ -781,9 +783,12 @@ class EntryRepository {
 	 * System view identifiers and the WHERE clauses they expand to.
 	 * Used by list() and count_by_view().
 	 */
-	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue' );
+	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue', 'awaiting_payment', 'paid' );
 
 	/** SQL predicate for an open, overdue follow-up on a live entry (1.2.0). */
+	/** 1.2.0 part B smart views (single-column predicates; the aliased form prefixes `e.`). */
+	public const AWAITING_PAYMENT_WHERE = "payment_status IN ('pending','processing','failed','cancelled') AND status IN ('new','read')";
+	public const PAID_WHERE             = "payment_status IN ('deposit_paid','paid','partially_refunded') AND status IN ('new','read')";
 	public const OVERDUE_WHERE = "follow_up_due IS NOT NULL AND follow_up_done = 0 AND follow_up_due < UTC_TIMESTAMP() AND status IN ('new','read')";
 
 	/**
@@ -1107,6 +1112,14 @@ class EntryRepository {
 				case 'spam_suspected':
 					$plain_parts[]   = "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')";
 					$aliased_parts[] = "e.ai_is_spam = 1 AND e.ai_auto_spam_applied = 0 AND e.status NOT IN ('spam','trash')";
+					break;
+				case 'awaiting_payment':
+					$plain_parts[]   = self::AWAITING_PAYMENT_WHERE;
+					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::AWAITING_PAYMENT_WHERE );
+					break;
+				case 'paid':
+					$plain_parts[]   = self::PAID_WHERE;
+					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::PAID_WHERE );
 					break;
 				case 'overdue':
 					$plain_parts[]   = self::OVERDUE_WHERE;

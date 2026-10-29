@@ -60,6 +60,7 @@ final class QuotesEndpoint {
 		register_rest_route( $ns, '/quotes/(?P<id>[\d]+)/preview', array( 'methods' => 'GET', 'callback' => array( $this, 'preview' ), 'permission_callback' => array( $this, 'check_admin' ) ) );
 		register_rest_route( $ns, '/quotes/(?P<id>[\d]+)/view', array( 'methods' => 'GET', 'callback' => array( $this, 'public_view' ), 'permission_callback' => '__return_true' ) );
 		register_rest_route( $ns, '/quotes/(?P<id>[\d]+)/pdf', array( 'methods' => 'GET', 'callback' => array( $this, 'public_pdf' ), 'permission_callback' => '__return_true' ) );
+		register_rest_route( $ns, '/quotes/(?P<id>[\d]+)/pay', array( 'methods' => 'GET', 'callback' => array( $this, 'public_pay' ), 'permission_callback' => '__return_true' ) );
 	}
 
 	public function check_admin() {
@@ -163,7 +164,7 @@ final class QuotesEndpoint {
 			return $this->not_found();
 		}
 		$links = QuoteService::links( $quote );
-		$html  = QuoteRenderer::html( $quote, array( 'mode' => 'html', 'toolbar' => true, 'pdf_url' => $links['pdf'] ?? '' ) );
+		$html  = QuoteRenderer::html( $quote, array( 'mode' => 'html', 'toolbar' => true, 'pdf_url' => $links['pdf'] ?? '', 'pay_url' => $links['pay'] ?? '' ) );
 		return QuotesBoot::raw_response( $html, 'text/html; charset=UTF-8' );
 	}
 
@@ -176,8 +177,41 @@ final class QuotesEndpoint {
 			return $this->public_error( $reason );
 		}
 		$links = QuoteService::links( $quote );
-		$html  = QuoteRenderer::html( $quote, array( 'mode' => 'html', 'toolbar' => true, 'pdf_url' => $links['pdf'] ?? '' ) );
+		$html  = QuoteRenderer::html( $quote, array( 'mode' => 'html', 'toolbar' => true, 'pdf_url' => $links['pdf'] ?? '', 'pay_url' => $links['pay'] ?? '' ) );
 		return QuotesBoot::raw_response( $html, 'text/html; charset=UTF-8' );
+	}
+
+	/**
+	 * B4: pay an issued quote. Starts (or reuses) a checkout for the quote's
+	 * amount due and redirects to the gateway (CQ9 / CQ11 enforced by
+	 * PaymentService::start_checkout()).
+	 */
+	public function public_pay( WP_REST_Request $request ) {
+		$quote  = QuoteRepository::get( (int) $request['id'] );
+		$reason = $this->public_check( $quote, $request );
+		if ( $reason !== '' ) {
+			return $this->public_error( $reason );
+		}
+		if ( class_exists( '\\NeuralForms\\Payments\\PaymentRepository' ) ) {
+			foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( (int) $quote['entry_id'] ) as $p ) {
+				if ( (int) ( $p['quote_id'] ?? 0 ) === (int) $quote['id'] && in_array( $p['status'], \NeuralForms\Payments\PaymentStatus::SETTLED, true ) ) {
+					return $this->public_error( 'already_paid' );
+				}
+			}
+		}
+		if ( ! class_exists( '\\NeuralForms\\Payments\\PaymentService' ) || ! QuoteService::is_payable( $quote ) ) {
+			return $this->public_error( 'not_payable' );
+		}
+		$entry = \NeuralForms\Storage\EntryRepository::get( (int) $quote['entry_id'] );
+		$form  = $entry ? \NeuralForms\Forms\FormRepository::find( (int) $entry['form_id'] ) : null;
+		if ( ! $entry || ! $form ) {
+			return $this->public_error( 'invalid' );
+		}
+		$r = \NeuralForms\Payments\PaymentService::start_checkout( $entry, $form, array( 'quote' => $quote, 'provider' => sanitize_key( (string) $request->get_param( 'provider' ) ) ) );
+		if ( is_wp_error( $r ) ) {
+			return $this->public_error( $r->get_error_code() === 'already_paid' ? 'already_paid' : 'not_payable' );
+		}
+		return QuotesBoot::raw_response( '', 'text/html; charset=UTF-8', 302, array( 'Location' => (string) $r['url'] ) );
 	}
 
 	public function public_pdf( WP_REST_Request $request ) {
@@ -220,6 +254,16 @@ final class QuotesEndpoint {
 				$status = 410;
 				$title  = __( 'This quote has been replaced', 'neural-forms-lite' );
 				$text   = __( 'A newer version of this quote was issued. Please use the latest link you received.', 'neural-forms-lite' );
+				break;
+			case 'not_payable':
+				$status = 409;
+				$title  = __( 'This quote cannot be paid online', 'neural-forms-lite' );
+				$text   = __( 'Online payment is not available for this quote. Please contact us to arrange payment.', 'neural-forms-lite' );
+				break;
+			case 'already_paid':
+				$status = 409;
+				$title  = __( 'This quote has already been paid', 'neural-forms-lite' );
+				$text   = __( 'Thank you — we have your payment on record.', 'neural-forms-lite' );
 				break;
 			case 'not_issued':
 				$title = __( 'This quote is not available yet', 'neural-forms-lite' );
