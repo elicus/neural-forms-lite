@@ -7,6 +7,8 @@
 namespace NeuralForms\Rest\Endpoints;
 
 use NeuralForms\Storage\EntryRepository;
+use NeuralForms\Storage\EntryActivity;
+use NeuralForms\Storage\LeadStages;
 use NeuralForms\Storage\AIResponseRepository;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\AI\AIRepository;
@@ -152,6 +154,29 @@ class EntriesEndpoint {
 		);
 
 		// Detail - returns full entry including the data field.
+		// 1.2.0: entry activity timeline (assignments, stage changes,
+		// follow-ups, workflow actions).
+		register_rest_route(
+			$ns,
+			'/entries/(?P<id>[\d]+)/activity',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_activity' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
+
+		// 1.2.0: users an entry may be assigned to.
+		register_rest_route(
+			$ns,
+			'/entries/assignees',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_assignees' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
+
 		register_rest_route(
 			$ns,
 			'/entries/(?P<id>[\d]+)',
@@ -221,6 +246,16 @@ class EntriesEndpoint {
 			'search'     => $search,
 			'sort_order' => (string) $request->get_param( 'sort_order' ),
 		);
+		// 1.2.0 lead filters (additive, combine with any view).
+		if ( null !== $request->get_param( 'stage' ) && (string) $request->get_param( 'stage' ) !== '' ) {
+			$list_args['stage'] = (string) $request->get_param( 'stage' );
+		}
+		if ( null !== $request->get_param( 'assigned_to' ) && (string) $request->get_param( 'assigned_to' ) !== '' ) {
+			$list_args['assigned_to'] = (int) $request->get_param( 'assigned_to' );
+		}
+		if ( $request->get_param( 'overdue' ) ) {
+			$list_args['overdue'] = true;
+		}
 
 		// Resolve folder → form_ids / exclude_form_ids using the
 		// shared FormTypeDetector via FormRepository::get_form_ids_by_detected_type.
@@ -840,6 +875,20 @@ class EntriesEndpoint {
 			$fields['needs_reply'] = $request->get_param( 'needs_reply' );
 		}
 
+		// 1.2.0 lead management (stage / owner / follow-up). Writes
+		// need the workflows capability (Pro); reads are always free.
+		$lead_patch = self::extract_lead_fields( $request->get_params() );
+		if ( $lead_patch ) {
+			if ( ! Capabilities::can( Capabilities::WORKFLOWS ) ) {
+				return Capabilities::locked_error( Capabilities::WORKFLOWS );
+			}
+			$lead_check = self::validate_lead_fields( $lead_patch );
+			if ( is_wp_error( $lead_check ) ) {
+				return $lead_check;
+			}
+			$fields = array_merge( $fields, $lead_patch );
+		}
+
 		// When an entry is being restored out of spam, clear the auto-spam flag
 		// so the "AI filtered" badge disappears and does not re-appear erroneously.
 		if (
@@ -871,14 +920,175 @@ class EntriesEndpoint {
 		// Return fresh row so the client applies confirmed values.
 		$entry = EntryRepository::get( $id );
 
+		if ( $lead_patch ) {
+			self::record_lead_activity( $id, $existing, $entry, $lead_patch );
+		}
+
 		return rest_ensure_response(
 			array(
-				'id'          => $entry['id'],
-				'status'      => $entry['status'],
-				'is_starred'  => $entry['is_starred'],
-				'needs_reply' => $entry['needs_reply'],
+				'id'                => $entry['id'],
+				'status'            => $entry['status'],
+				'is_starred'        => $entry['is_starred'],
+				'needs_reply'       => $entry['needs_reply'],
+				'assigned_to'       => $entry['assigned_to'],
+				'lead_stage'        => $entry['lead_stage'],
+				'follow_up_due'     => $entry['follow_up_due'],
+				'follow_up_done'    => $entry['follow_up_done'],
+				'follow_up_overdue' => $entry['follow_up_overdue'],
 			)
 		);
+	}
+
+	/**
+	 * GET /entries/{id}/activity — timeline rows, newest first.
+	 */
+	public function get_activity( WP_REST_Request $request ) {
+		$id = (int) $request['id'];
+		if ( ! EntryRepository::get( $id ) ) {
+			return new WP_Error( 'entry_not_found', __( 'Entry not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+		return rest_ensure_response( EntryActivity::list( $id, 100 ) );
+	}
+
+	/**
+	 * GET /entries/assignees — users an entry can be assigned to.
+	 *
+	 * 1.2.0 keeps the existing single permission model: everyone who
+	 * can manage entries (manage_options) is assignable. A per-form
+	 * access model is a separate feature.
+	 */
+	public function get_assignees( WP_REST_Request $request ) {
+		return rest_ensure_response( self::assignable_users() );
+	}
+
+	/**
+	 * @return array[] [ { id, name, email, avatar }, ... ] sorted by name.
+	 */
+	public static function assignable_users(): array {
+		$users = get_users(
+			array(
+				'capability' => 'manage_options',
+				'orderby'    => 'display_name',
+				'order'      => 'ASC',
+				'number'     => 200,
+				'fields'     => array( 'ID', 'display_name', 'user_email' ),
+			)
+		);
+		$out = array();
+		foreach ( (array) $users as $u ) {
+			$out[] = array(
+				'id'     => (int) $u->ID,
+				'name'   => (string) $u->display_name,
+				'email'  => (string) $u->user_email,
+				'avatar' => function_exists( 'get_avatar_url' ) ? (string) get_avatar_url( (int) $u->ID, array( 'size' => 48 ) ) : '',
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Pick the lead-management keys out of a PATCH body (1.2.0).
+	 * Pure, so it is unit-testable without WordPress.
+	 *
+	 * @param array $params Request params.
+	 * @return array Subset with only assigned_to / lead_stage / follow_up_due / follow_up_done.
+	 */
+	public static function extract_lead_fields( array $params ): array {
+		$out = array();
+		foreach ( array( 'assigned_to', 'lead_stage', 'follow_up_due', 'follow_up_done' ) as $key ) {
+			if ( array_key_exists( $key, $params ) ) {
+				$out[ $key ] = $params[ $key ];
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Validate the VALUES of a lead patch (1.2.0).
+	 *
+	 *   assigned_to     0 / null (unassign) or the id of a user who can manage entries
+	 *   lead_stage      a registered stage id (LeadStages)
+	 *   follow_up_due   null / '' (clear) or a parseable date-time
+	 *   follow_up_done  0 / 1
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function validate_lead_fields( array $patch ) {
+		if ( array_key_exists( 'lead_stage', $patch ) ) {
+			$stage = LeadStages::sanitize_id( (string) $patch['lead_stage'] );
+			if ( $stage === '' || ! LeadStages::is_valid( $stage ) ) {
+				return new WP_Error( 'invalid_lead_stage', __( 'Unknown lead stage.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+		}
+		if ( array_key_exists( 'assigned_to', $patch ) ) {
+			$uid = (int) $patch['assigned_to'];
+			if ( $uid < 0 ) {
+				return new WP_Error( 'invalid_assignee', __( 'Invalid assignee.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+			if ( $uid > 0 && function_exists( 'user_can' ) && ! user_can( $uid, 'manage_options' ) ) {
+				return new WP_Error( 'invalid_assignee', __( 'That user cannot manage entries and cannot be assigned.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+		}
+		if ( array_key_exists( 'follow_up_due', $patch ) ) {
+			$raw = $patch['follow_up_due'];
+			if ( null !== $raw && $raw !== '' && null === EntryRepository::normalize_datetime( $raw ) ) {
+				return new WP_Error( 'invalid_follow_up', __( 'Follow-up date is not a valid date.', 'neural-forms-lite' ), array( 'status' => 400 ) );
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Write timeline rows for what a lead patch actually changed.
+	 */
+	private static function record_lead_activity( int $id, array $before, array $after, array $patch ): void {
+		if ( array_key_exists( 'assigned_to', $patch ) && ( $before['assigned_to'] ?? null ) !== ( $after['assigned_to'] ?? null ) ) {
+			$to   = $after['assigned_to'] ? get_userdata( (int) $after['assigned_to'] ) : null;
+			$name = $to && isset( $to->display_name ) ? (string) $to->display_name : '';
+			EntryActivity::record(
+				$id,
+				'entry.assigned',
+				$name !== ''
+					/* translators: %s: user display name */
+					? sprintf( __( 'Assigned to %s', 'neural-forms-lite' ), $name )
+					: __( 'Unassigned', 'neural-forms-lite' ),
+				array( 'from' => $before['assigned_to'] ?? null, 'to' => $after['assigned_to'] ?? null, 'to_name' => $name )
+			);
+		}
+		if ( array_key_exists( 'lead_stage', $patch ) && ( $before['lead_stage'] ?? '' ) !== ( $after['lead_stage'] ?? '' ) ) {
+			EntryActivity::record(
+				$id,
+				'entry.stage_changed',
+				sprintf(
+					/* translators: 1: previous stage, 2: new stage */
+					__( 'Stage changed from %1$s to %2$s', 'neural-forms-lite' ),
+					LeadStages::label( (string) ( $before['lead_stage'] ?? '' ) ),
+					LeadStages::label( (string) ( $after['lead_stage'] ?? '' ) )
+				),
+				array( 'from' => $before['lead_stage'] ?? null, 'to' => $after['lead_stage'] ?? null, 'source' => 'user' )
+			);
+		}
+		if ( array_key_exists( 'follow_up_due', $patch ) && ( $before['follow_up_due'] ?? null ) !== ( $after['follow_up_due'] ?? null ) ) {
+			if ( $after['follow_up_due'] ) {
+				EntryActivity::record(
+					$id,
+					'entry.follow_up_set',
+					/* translators: %s: date-time */
+					sprintf( __( 'Follow-up due %s', 'neural-forms-lite' ), (string) $after['follow_up_due'] ),
+					array( 'due' => $after['follow_up_due'] )
+				);
+			} else {
+				EntryActivity::record( $id, 'entry.follow_up_cleared', __( 'Follow-up cleared', 'neural-forms-lite' ) );
+			}
+		}
+		if ( array_key_exists( 'follow_up_done', $patch ) && (int) ( $before['follow_up_done'] ?? 0 ) !== (int) ( $after['follow_up_done'] ?? 0 ) ) {
+			EntryActivity::record(
+				$id,
+				'entry.follow_up_done',
+				$after['follow_up_done'] ? __( 'Follow-up marked done', 'neural-forms-lite' ) : __( 'Follow-up reopened', 'neural-forms-lite' ),
+				array( 'done' => (int) $after['follow_up_done'] )
+			);
+		}
 	}
 
 	/**
@@ -911,6 +1121,10 @@ class EntriesEndpoint {
 		}
 
 		$ok = EntryRepository::delete( $id );
+
+		if ( $ok ) {
+			EntryActivity::delete_for_entry( $id );
+		}
 
 		if ( ! $ok ) {
 			return new WP_Error(
@@ -1237,6 +1451,12 @@ class EntriesEndpoint {
 					return in_array( (int) $value, array( 0, 1 ), true );
 				},
 			),
+			// 1.2.0 lead management — values validated in update_entry()
+			// via validate_lead_fields() so the error messages are specific.
+			'assigned_to'    => array( 'required' => false ),
+			'lead_stage'     => array( 'required' => false, 'sanitize_callback' => 'sanitize_text_field' ),
+			'follow_up_due'  => array( 'required' => false ),
+			'follow_up_done' => array( 'required' => false ),
 		);
 	}
 

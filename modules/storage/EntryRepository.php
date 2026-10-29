@@ -161,6 +161,46 @@ class EntryRepository {
 			$format[]                     = '%d';
 		}
 
+		// 1.2.0 lead-management columns. Validation of the VALUES
+		// (stage exists, assignee may handle entries) is the caller's
+		// job (EntriesEndpoint / workflow actions); this layer only
+		// coerces types.
+		$previous_stage = null;
+		if ( array_key_exists( 'assigned_to', $fields ) ) {
+			$uid                 = (int) $fields['assigned_to'];
+			$data['assigned_to'] = $uid > 0 ? $uid : null;
+			$format[]            = $uid > 0 ? '%d' : null;
+		}
+		if ( array_key_exists( 'lead_stage', $fields ) ) {
+			$stage = LeadStages::sanitize_id( (string) $fields['lead_stage'] );
+			if ( $stage === '' ) {
+				$stage = LeadStages::DEFAULT_STAGE;
+			}
+			$data['lead_stage'] = $stage;
+			$format[]           = '%s';
+			$previous_stage     = self::current_stage( $id );
+		}
+		if ( array_key_exists( 'follow_up_due', $fields ) ) {
+			$due = self::normalize_datetime( $fields['follow_up_due'] );
+			$data['follow_up_due'] = $due;
+			$format[]              = null === $due ? null : '%s';
+			if ( null !== $due && ! array_key_exists( 'follow_up_done', $fields ) ) {
+				// A (re)scheduled follow-up is open again and may alert again.
+				$data['follow_up_done']         = 0;
+				$format[]                       = '%d';
+				$data['follow_up_overdue_sent'] = 0;
+				$format[]                       = '%d';
+			}
+		}
+		if ( array_key_exists( 'follow_up_done', $fields ) ) {
+			$data['follow_up_done'] = (int) (bool) $fields['follow_up_done'];
+			$format[]               = '%d';
+		}
+		if ( array_key_exists( 'follow_up_overdue_sent', $fields ) ) {
+			$data['follow_up_overdue_sent'] = (int) (bool) $fields['follow_up_overdue_sent'];
+			$format[]                       = '%d';
+		}
+
 		if ( empty( $data ) ) {
 			return false;
 		}
@@ -173,7 +213,47 @@ class EntryRepository {
 			array( '%d' )
 		);
 
+		if ( false !== $result && null !== $previous_stage && $previous_stage !== $data['lead_stage'] ) {
+			/**
+			 * Fires when an entry's lead stage actually changed.
+			 *
+			 * @param int    $id       Entry id.
+			 * @param string $from     Previous stage id.
+			 * @param string $to       New stage id.
+			 * @param array  $context  { source: 'user'|'workflow'|..., lineage?: string, run_id?: int }
+			 */
+			do_action( 'neural_forms_lead_stage_changed', $id, $previous_stage, $data['lead_stage'], is_array( $fields['_context'] ?? null ) ? $fields['_context'] : array( 'source' => 'user' ) );
+		}
+
 		return false !== $result;
+	}
+
+	/**
+	 * Current lead stage of an entry (DEFAULT_STAGE when unknown).
+	 */
+	public static function current_stage( int $id ): string {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$stage = $wpdb->get_var( $wpdb->prepare( 'SELECT lead_stage FROM %i WHERE id = %d', self::table(), $id ) );
+		return is_string( $stage ) && $stage !== '' ? $stage : LeadStages::DEFAULT_STAGE;
+	}
+
+	/**
+	 * Coerce a follow-up datetime: null / '' / 0 → null; otherwise a
+	 * parseable date → 'Y-m-d H:i:s' (UTC, matching created_at).
+	 *
+	 * @param mixed $value
+	 * @return string|null
+	 */
+	public static function normalize_datetime( $value ) {
+		if ( null === $value || $value === '' || $value === 0 || $value === '0' || $value === false ) {
+			return null;
+		}
+		if ( is_numeric( $value ) ) {
+			return gmdate( 'Y-m-d H:i:s', (int) $value );
+		}
+		$ts = strtotime( (string) $value );
+		return false === $ts ? null : gmdate( 'Y-m-d H:i:s', $ts );
 	}
 
 	/**
@@ -341,7 +421,33 @@ class EntryRepository {
 			'trash'          => $count( "status = 'trash'" ),
 			'high_priority'  => $count( "ai_priority = 'high' AND status IN ('new','read')" ),
 			'spam_suspected' => $count( "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')" ),
+			'overdue'        => $count( self::OVERDUE_WHERE ),
+			'stages'         => self::count_by_stage( $scope_clause ),
 		);
+	}
+
+	/**
+	 * Live (new/read) entries per lead stage for the given scope.
+	 *
+	 * @param string $scope_clause Already-prepared " AND …" fragment.
+	 * @return array<string,int> stage id => count (every known stage present).
+	 */
+	private static function count_by_stage( string $scope_clause ): array {
+		global $wpdb;
+		$out = array();
+		foreach ( LeadStages::ids() as $id ) {
+			$out[ $id ] = 0;
+		}
+		// $scope_clause is already prepared; the table flows through %i.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT lead_stage, COUNT(*) AS n FROM %i WHERE status IN ('new','read'){$scope_clause} GROUP BY lead_stage", self::table() ), ARRAY_A );
+		foreach ( (array) $rows as $row ) {
+			$stage = (string) ( $row['lead_stage'] ?? '' );
+			if ( $stage !== '' ) {
+				$out[ $stage ] = (int) ( $row['n'] ?? 0 );
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -646,7 +752,10 @@ class EntryRepository {
 	 * System view identifiers and the WHERE clauses they expand to.
 	 * Used by list() and count_by_view().
 	 */
-	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected' );
+	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue' );
+
+	/** SQL predicate for an open, overdue follow-up on a live entry (1.2.0). */
+	public const OVERDUE_WHERE = "follow_up_due IS NOT NULL AND follow_up_done = 0 AND follow_up_due < UTC_TIMESTAMP() AND status IN ('new','read')";
 
 	/**
 	 * Return a paginated list of entries.
@@ -970,11 +1079,39 @@ class EntryRepository {
 					$plain_parts[]   = "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')";
 					$aliased_parts[] = "e.ai_is_spam = 1 AND e.ai_auto_spam_applied = 0 AND e.status NOT IN ('spam','trash')";
 					break;
+				case 'overdue':
+					$plain_parts[]   = self::OVERDUE_WHERE;
+					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::OVERDUE_WHERE );
+					break;
 			}
 		} elseif ( ( $args['status'] ?? 'any' ) !== 'any' ) {
 			$plain_parts[]   = 'status = %s';
 			$aliased_parts[] = 'e.status = %s';
 			$values[]        = $args['status'];
+		}
+
+		// 1.2.0 lead filters. Combine with any view (e.g. Inbox + stage).
+		$stage = isset( $args['stage'] ) ? LeadStages::sanitize_id( (string) $args['stage'] ) : '';
+		if ( $stage !== '' ) {
+			$plain_parts[]   = 'lead_stage = %s';
+			$aliased_parts[] = 'e.lead_stage = %s';
+			$values[]        = $stage;
+		}
+		if ( isset( $args['assigned_to'] ) && $args['assigned_to'] !== '' && null !== $args['assigned_to'] ) {
+			$assignee = (int) $args['assigned_to'];
+			if ( $assignee > 0 ) {
+				$plain_parts[]   = 'assigned_to = %d';
+				$aliased_parts[] = 'e.assigned_to = %d';
+				$values[]        = $assignee;
+			} else {
+				// 0 / "none" → unassigned.
+				$plain_parts[]   = 'assigned_to IS NULL';
+				$aliased_parts[] = 'e.assigned_to IS NULL';
+			}
+		}
+		if ( ! empty( $args['overdue'] ) && $view !== 'overdue' ) {
+			$plain_parts[]   = self::OVERDUE_WHERE;
+			$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::OVERDUE_WHERE );
 		}
 
 		// Search - LIKE on the JSON data blob and form name.
@@ -1064,6 +1201,17 @@ class EntryRepository {
 		// so the JS can use a single truthy check. Absent on get() — there's
 		// a separate path that loads the full message thread for detail view.
 		$row['has_reply'] = isset( $row['has_reply'] ) ? (int) $row['has_reply'] : 0;
+
+		// 1.2.0 lead-management columns (absent on rows read before the
+		// 1.2.0 schema upgrade ran — defaults keep the shape stable).
+		$row['assigned_to']            = isset( $row['assigned_to'] ) && null !== $row['assigned_to'] ? (int) $row['assigned_to'] : null;
+		$row['lead_stage']             = isset( $row['lead_stage'] ) && $row['lead_stage'] !== '' ? (string) $row['lead_stage'] : LeadStages::DEFAULT_STAGE;
+		$row['follow_up_due']          = isset( $row['follow_up_due'] ) && $row['follow_up_due'] ? (string) $row['follow_up_due'] : null;
+		$row['follow_up_done']         = isset( $row['follow_up_done'] ) ? (int) $row['follow_up_done'] : 0;
+		$row['follow_up_overdue_sent'] = isset( $row['follow_up_overdue_sent'] ) ? (int) $row['follow_up_overdue_sent'] : 0;
+		$row['follow_up_overdue']      = ( null !== $row['follow_up_due'] && ! $row['follow_up_done']
+			&& strtotime( $row['follow_up_due'] . ' UTC' ) < time()
+			&& in_array( $row['status'] ?? '', array( 'new', 'read' ), true ) ) ? 1 : 0;
 
 		// form_name is present when called from list() (LEFT JOIN).
 		// Absent when called from get() (no JOIN) - normalise to null either way

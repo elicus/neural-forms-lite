@@ -22,7 +22,16 @@ export const SYSTEM_VIEWS = [
 export const SMART_FILTERS = [
 	{ id: 'high_priority',  label: 'High Priority'  },
 	{ id: 'spam_suspected', label: 'Spam Suspected' },
+	// 1.2.0: open follow-ups past their due time. Only listed when the
+	// `workflows` capability is unlocked (Pro) — see visibleSmartFilters().
+	{ id: 'overdue',        label: 'Overdue follow-ups', cap: 'workflows' },
 ];
+
+/** Smart filters the current install may show (capability-gated ones hidden when locked). */
+export function visibleSmartFilters( capabilities ) {
+	const caps = capabilities || {};
+	return SMART_FILTERS.filter( ( f ) => ! f.cap || !! caps[ f.cap ] );
+}
 
 // AI response carousel kinds — match AIResponseRepository constants.
 export const KIND_ANALYZE    = 'analyze';

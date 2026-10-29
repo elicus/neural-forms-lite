@@ -174,7 +174,11 @@ namespace {
 	check( '6c. upgrade runs scrub only when privacy_mode is on', (bool) preg_match( "/privacy_mode'\\] \\) \\) \\{\\s*self::scrub_visitor_metadata\\(\\);/", $db_src ), true, $passed, $failed );
 
 	// ── 7. DB version ──
-	check( '7. NEURAL_FORMS_DB_VERSION bumped to 1.1.3', strpos( file_get_contents( $plugin_root . '/neural-forms-lite.php' ), "define( 'NEURAL_FORMS_DB_VERSION', '1.1.3' );" ) !== false, true, $passed, $failed );
+	// The privacy scrub shipped with DB version 1.1.3; later releases keep
+	// bumping the version (1.2.0 adds the lead/workflow schema), so assert
+	// "at least 1.1.3" rather than the literal.
+	preg_match( "/define\( 'NEURAL_FORMS_DB_VERSION', '([0-9.]+)' \);/", file_get_contents( $plugin_root . '/neural-forms-lite.php' ), $db_ver_m );
+	check( '7. NEURAL_FORMS_DB_VERSION is at least 1.1.3', version_compare( $db_ver_m[1] ?? '0', '1.1.3', '>=' ), true, $passed, $failed );
 
 	echo "\n{$passed} passed, {$failed} failed\n";
 	exit( $failed === 0 ? 0 : 1 );

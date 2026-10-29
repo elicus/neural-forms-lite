@@ -111,6 +111,9 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			$wpdb->prefix . 'neural_forms_queue',
 			$wpdb->prefix . 'neural_forms_entry_messages',
 			$wpdb->prefix . 'neural_forms_entry_ai_responses',
+			$wpdb->prefix . 'neural_forms_workflows',
+			$wpdb->prefix . 'neural_forms_workflow_runs',
+			$wpdb->prefix . 'neural_forms_workflow_actions',
 		);
 		foreach ( $tables as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange

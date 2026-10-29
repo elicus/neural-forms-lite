@@ -3126,6 +3126,10 @@ CSS;
 				// React bundle consults this to pick the right upsell vs.
 				// unlocked UI. Cloud-plan gating remains on the `plan` key.
 				'capabilities'   => \NeuralForms\Core\Capabilities::all(),
+				// 1.2.0 lead stages (id/label, display order) for the inbox
+				// stage select + sidebar counts. Filterable via
+				// `neural_forms_lead_stages`.
+				'leadStages'     => \NeuralForms\Storage\LeadStages::for_script(),
 				// True when Pro is active. When the user's cloud plan already
 				// includes Pro features but the Pro plugin isn't installed,
 				// the upsell modal swaps "Upgrade plan" for "Download Pro".

@@ -35,6 +35,9 @@ class Database {
 			self::sql_queue( $charset ),
 			self::sql_entry_messages( $charset ),
 			self::sql_ai_responses( $charset ),
+			self::sql_workflows( $charset ),
+			self::sql_workflow_runs( $charset ),
+			self::sql_workflow_actions( $charset ),
 		);
 
 		foreach ( $tables as $sql ) {
@@ -174,13 +177,21 @@ class Database {
   ai_error_reason text DEFAULT NULL,
   ai_tier varchar(16) NOT NULL DEFAULT 'fast',
   ai_selected_response_id bigint(20) UNSIGNED DEFAULT NULL,
+  assigned_to bigint(20) UNSIGNED DEFAULT NULL,
+  lead_stage varchar(32) NOT NULL DEFAULT 'new',
+  follow_up_due datetime DEFAULT NULL,
+  follow_up_done tinyint(1) NOT NULL DEFAULT 0,
+  follow_up_overdue_sent tinyint(1) NOT NULL DEFAULT 0,
   submitted_at datetime NOT NULL,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   KEY form_id (form_id),
   KEY status (status),
   KEY is_starred (is_starred),
-  KEY ai_status (ai_status)
+  KEY ai_status (ai_status),
+  KEY lead_stage (lead_stage),
+  KEY assigned_to (assigned_to),
+  KEY follow_up_due (follow_up_due)
 ) {$charset};";
 	}
 
@@ -221,6 +232,7 @@ class Database {
   score tinyint(3) UNSIGNED DEFAULT NULL,
   tokens_used int(11) NOT NULL DEFAULT 0,
   finalized tinyint(1) NOT NULL DEFAULT 0,
+  meta longtext DEFAULT NULL,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   KEY entry_id (entry_id),
@@ -283,6 +295,95 @@ class Database {
   PRIMARY KEY  (id),
   KEY entry_id (entry_id),
   KEY type (type)
+) {$charset};";
+	}
+
+	/**
+	 * Workflows (1.2.0). One row per workflow definition; `conditions`
+	 * and `actions` are JSON. `revision` increments on every save so a
+	 * queued run keeps executing the definition it started with.
+	 */
+	private static function sql_workflows( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_workflows';
+
+		return "CREATE TABLE {$table} (
+  id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  form_id bigint(20) UNSIGNED NOT NULL,
+  name varchar(190) NOT NULL,
+  description text DEFAULT NULL,
+  trigger_type varchar(40) NOT NULL,
+  conditions longtext DEFAULT NULL,
+  actions longtext NOT NULL,
+  settings text DEFAULT NULL,
+  enabled tinyint(1) NOT NULL DEFAULT 1,
+  revision int(11) UNSIGNED NOT NULL DEFAULT 1,
+  created_by bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY form_id (form_id),
+  KEY enabled (enabled),
+  KEY trigger_type (trigger_type)
+) {$charset};";
+	}
+
+	/**
+	 * Workflow runs (1.2.0). One row per (workflow, event). The unique
+	 * key on (workflow_id, event_id) makes duplicate events a no-op.
+	 * `lineage` is the chain of run ids that caused this event (loop
+	 * guard), `revision` pins the definition used.
+	 */
+	private static function sql_workflow_runs( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_workflow_runs';
+
+		return "CREATE TABLE {$table} (
+  id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  workflow_id bigint(20) UNSIGNED NOT NULL,
+  revision int(11) UNSIGNED NOT NULL DEFAULT 1,
+  entry_id bigint(20) UNSIGNED DEFAULT NULL,
+  trigger_type varchar(40) NOT NULL,
+  event_id varchar(80) NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  lineage varchar(255) DEFAULT NULL,
+  context longtext DEFAULT NULL,
+  result text DEFAULT NULL,
+  created_at datetime NOT NULL,
+  started_at datetime DEFAULT NULL,
+  finished_at datetime DEFAULT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY workflow_event (workflow_id,event_id),
+  KEY entry_id (entry_id),
+  KEY status (status)
+) {$charset};";
+	}
+
+	/**
+	 * Workflow actions (1.2.0). One row per action of a run. The unique
+	 * key on (run_id, action_key) is the idempotency guard; `status`
+	 * moves pending → running → done | failed | uncertain | skipped.
+	 */
+	private static function sql_workflow_actions( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_workflow_actions';
+
+		return "CREATE TABLE {$table} (
+  id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  run_id bigint(20) UNSIGNED NOT NULL,
+  action_key varchar(80) NOT NULL,
+  action_type varchar(40) NOT NULL,
+  position smallint(5) UNSIGNED NOT NULL DEFAULT 0,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  attempts tinyint(3) UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at datetime DEFAULT NULL,
+  external_ref varchar(191) DEFAULT NULL,
+  result text DEFAULT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime DEFAULT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY run_action (run_id,action_key),
+  KEY status_next (status,next_attempt_at)
 ) {$charset};";
 	}
 }

@@ -1914,3 +1914,208 @@
 	box-shadow: 0 0 0 3px rgba( 21, 219, 149, 0.32 );
 	animation: nfPulseMint 2500ms ease-out;
 }
+
+/* ── Lead management (1.2.0) ─────────────────────────────────────── */
+
+.neural-forms-entry-detail__lead {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 20px;
+	align-items: flex-end;
+	margin: 12px 0 0;
+	padding: 12px 16px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+}
+
+.neural-forms-entry-detail__lead--locked {
+	display: block;
+	background: #fffbeb;
+	border-color: #fde68a;
+}
+
+.neural-forms-entry-detail__lead-values {
+	margin: 0 0 6px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 16px;
+	font-size: 12px;
+	color: #374151;
+}
+
+.neural-forms-entry-detail__lead-upsell {
+	margin: 0;
+	font-size: 12px;
+	color: #92400e;
+}
+
+.neural-forms-entry-detail__lead-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 160px;
+}
+
+.neural-forms-entry-detail__lead-label {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #6b7280;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.neural-forms-entry-detail__lead-field select,
+.neural-forms-entry-detail__lead-field input[type="datetime-local"] {
+	font-size: 13px;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	padding: 6px 8px;
+	background: #fff;
+	min-height: 34px;
+}
+
+.neural-forms-entry-detail__lead-stage--won  { border-color: #86efac; background: #f0fdf4; }
+.neural-forms-entry-detail__lead-stage--lost { border-color: #fca5a5; background: #fef2f2; }
+.neural-forms-entry-detail__lead-stage--quote_sent { border-color: #c4b5fd; background: #f5f3ff; }
+.neural-forms-entry-detail__lead-stage--contacted  { border-color: #93c5fd; background: #eff6ff; }
+
+.neural-forms-entry-detail__lead-followup {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.neural-forms-entry-detail__lead-done {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	color: #374151;
+}
+
+.neural-forms-entry-detail__lead-clear {
+	appearance: none;
+	border: 0;
+	background: transparent;
+	color: #9ca3af;
+	font-size: 16px;
+	cursor: pointer;
+	padding: 0 4px;
+	line-height: 1;
+}
+
+.neural-forms-entry-detail__lead-clear:hover { color: #b91c1c; }
+
+.neural-forms-entry-detail__lead-field--overdue input[type="datetime-local"] {
+	border-color: #f87171;
+	background: #fef2f2;
+}
+
+.neural-forms-entry-detail__lead-overdue {
+	background: #fee2e2;
+	color: #991b1b;
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 10px;
+	letter-spacing: 0.04em;
+}
+
+.neural-forms-entry-detail__lead-error {
+	flex-basis: 100%;
+	margin: 0;
+	font-size: 12px;
+	color: #b91c1c;
+}
+
+/* ── Activity timeline (1.2.0) ───────────────────────────────────── */
+
+.neural-forms-entry-detail__activity {
+	margin: 16px 0 0;
+	padding: 0 0 4px;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	background: #fff;
+}
+
+.neural-forms-entry-detail__activity-toggle {
+	appearance: none;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	background: transparent;
+	border: 0;
+	padding: 12px 16px;
+	cursor: pointer;
+	text-align: left;
+}
+
+.neural-forms-entry-detail__activity-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: #111827;
+	flex: 1 1 auto;
+}
+
+.neural-forms-entry-detail__activity-count {
+	background: #f3f4f6;
+	color: #374151;
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.neural-forms-entry-detail__activity-chevron { color: #9ca3af; }
+
+.neural-forms-entry-detail__activity-empty {
+	margin: 0;
+	padding: 0 16px 12px;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+.neural-forms-entry-detail__activity-list {
+	list-style: none;
+	margin: 0;
+	padding: 0 16px 8px;
+}
+
+.neural-forms-entry-detail__activity-item {
+	display: grid;
+	grid-template-columns: 90px 1fr auto;
+	gap: 8px 12px;
+	align-items: baseline;
+	padding: 8px 0;
+	border-top: 1px solid #f3f4f6;
+	font-size: 12px;
+}
+
+.neural-forms-entry-detail__activity-kind {
+	font-weight: 600;
+	color: #6b7280;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-size: 10px;
+}
+
+.neural-forms-entry-detail__activity-message { color: #111827; }
+
+.neural-forms-entry-detail__activity-meta {
+	color: #9ca3af;
+	white-space: nowrap;
+}
+
+.neural-forms-entry-detail__activity-item--error .neural-forms-entry-detail__activity-message { color: #b91c1c; }
+.neural-forms-entry-detail__activity-item--warning .neural-forms-entry-detail__activity-message { color: #92400e; }
+
+@media (max-width: 720px) {
+	.neural-forms-entry-detail__activity-item {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+}

@@ -34,7 +34,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Version constants:**
   - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.0` on dev (1.1.3 is on `release/1.1.3`; 1.1.4 was renumbered to 1.2.0 on 2026-10-29 for the conditional-logic + workflows + business-context release, see `docs/RELEASE-1.2-PLAN.md`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
-  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.1.3`. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
+  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.0` (adds the lead-management columns on entries, `meta` on `neural_forms_entry_ai_responses`, and the three `neural_forms_workflow*` tables). Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
 **Identifiers deliberately NOT renamed** (changing these would break installs):
 
@@ -793,6 +793,46 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Lead management + activity timeline (1.2.0, A3)
+
+- **Columns** on `neural_forms_entries`: `assigned_to` (WP user id,
+  NULL = unassigned), `lead_stage` (default `new`), `follow_up_due`
+  (UTC datetime), `follow_up_done`, `follow_up_overdue_sent` (set once
+  the overdue alert fired; A4). `EntryRepository::decode()` always
+  returns them plus a computed `follow_up_overdue` flag. Lead stage is
+  independent of `status` (new/read/spam/trash).
+- **Stages**: `Storage\LeadStages` — `new, contacted, quote_sent, won,
+  lost`, filter `neural_forms_lead_stages` (id => label); `new` is
+  always re-added. Localised as `neuralFormsAdmin.plugin.leadStages`.
+- **Writes**: `PATCH /entries/{id}` accepts `assigned_to` (0 = unassign,
+  else a user with `manage_options`), `lead_stage`, `follow_up_due`
+  (null clears; a new date reopens the follow-up), `follow_up_done`.
+  Requires `Capabilities::WORKFLOWS` → `pro_feature_locked` otherwise.
+  Validation lives in the pure static
+  `EntriesEndpoint::validate_lead_fields()` / `extract_lead_fields()`.
+  `EntryRepository::update()` fires
+  `neural_forms_lead_stage_changed( $id, $from, $to, $context )` only
+  when the stage really changed (`$fields['_context']` lets workflows
+  pass `source` / `lineage`).
+- **Reads**: `GET /entries` takes `stage`, `assigned_to` (0 = unassigned),
+  `overdue=1`; view `overdue` (= `EntryRepository::OVERDUE_WHERE`);
+  `/entries/counts` adds `overdue` and `stages{}`;
+  `GET /entries/{id}/activity`; `GET /entries/assignees` (users with
+  `manage_options`).
+- **Activity**: `Storage\EntryActivity` writes/reads
+  `neural_forms_logs` rows with `event_type` `entry.*` / `workflow.*`
+  (payload `by` = user id). Deleted with the entry
+  (`EntriesEndpoint::delete_entry`). Keep the `entry.` / `workflow.`
+  prefixes — `list()` filters on them.
+- **UI** (`build/entries.js`): `entries/LeadPanel.js` (stage / owner /
+  follow-up controls under the hero; locked → read-only values +
+  upsell) and `ActivityTimeline` (collapsible, above the conversation);
+  `constants.js` `visibleSmartFilters()` hides the Overdue smart filter
+  unless `workflows` is unlocked.
+- Tests: `tests/LeadFieldsTest.php` (schema fragments incl. the
+  idempotency unique keys, filter clauses, datetime coercion, stages,
+  endpoint validation).
 
 ### Conditional logic — one engine, v2 format (1.2.0)
 

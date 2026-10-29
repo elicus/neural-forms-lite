@@ -363,6 +363,19 @@ export default function EntriesScreen() {
 	// /entries/{id}/messages without waiting for an entry refetch race.
 	const [ messagesRefreshSignal, setMessagesRefreshSignal ] = useState( 0 );
 
+	// 1.2.0 lead management: assignable users (fetched once, Pro only)
+	// and a bump signal so the Activity timeline refreshes after a change.
+	const [ assignees, setAssignees ] = useState( [] );
+	const [ activityRefreshSignal, setActivityRefreshSignal ] = useState( 0 );
+	const leadStages = Array.isArray( adminData.plugin?.leadStages ) ? adminData.plugin.leadStages : [];
+	const workflowsUnlocked = !! capabilities.workflows;
+	useEffect( () => {
+		if ( ! workflowsUnlocked ) return;
+		api( '/entries/assignees' ).then( ( list ) => {
+			setAssignees( Array.isArray( list ) ? list : [] );
+		} ).catch( () => { /* assignee list is non-critical */ } );
+	}, [ workflowsUnlocked ] );
+
 	useEffect( () => {
 		const t = setTimeout( () => setDebouncedSearch( search.trim() ), 250 );
 		return () => clearTimeout( t );
@@ -589,6 +602,15 @@ export default function EntriesScreen() {
 			return res;
 		} );
 	}, [ openEntryId, refetchCounts ] );
+
+	// Lead fields (stage / owner / follow-up). Same PATCH as the rest of
+	// the entry; bumps the activity signal so the timeline reloads.
+	const updateLead = useCallback( ( entry, fields ) => {
+		return patchEntry( entry.id, fields ).then( ( res ) => {
+			setActivityRefreshSignal( ( n ) => n + 1 );
+			return res;
+		} );
+	}, [ patchEntry ] );
 
 	const toggleStar = useCallback( ( entry ) => {
 		const next = ( entry.is_starred === 1 || entry.is_starred === true ) ? 0 : 1;
@@ -1000,6 +1022,10 @@ export default function EntriesScreen() {
 									)
 									: {}
 							}
+							leadStages={ leadStages }
+							assignees={ assignees }
+							onUpdateLead={ updateLead }
+							activityRefreshSignal={ activityRefreshSignal }
 							onReanalyze={ reanalyze }
 							reanalyzing={ reanalyzing }
 							reanalyzeError={ reanalyzeError }
