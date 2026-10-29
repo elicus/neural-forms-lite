@@ -1,21 +1,15 @@
 /**
  * "Generate with AI" panel — sidebar entry point in the form builder.
  *
- * Three-state UX gated on two server-supplied flags:
+ * Lite-owned since 2026-10-30 (was a Pro feature). The working state only
+ * needs plugin.aiFormGenerate (localized by AdminPanel from
+ * FormGeneratorService::status()): cloud connected + Cloud AI enabled +
+ * credits available. Everything else (plan, quota, safety) is decided by
+ * Neural Forms Cloud and surfaced through the endpoint's error codes.
  *
- *   1. capabilities.ai_form_generate (Lite cap, flipped by Pro)
- *      → false: render upsell-style placeholder; CTA disabled.
- *      → true:  Pro is installed; render the working panel below.
- *
- *   2. plugin.pro.aiFormGenerate.configured (Pro localizes this)
- *      → false: Pro is installed but no provider key. Show a
- *               "configure in Pro settings" hint and disable Generate.
- *      → true:  full working flow (textarea → REST → preview modal →
- *               insert/append/replace).
- *
- * Backend lives in Pro:
- *   POST /wp-json/neural-forms-pro/v1/ai/generate-form
- *   GET  /wp-json/neural-forms-pro/v1/ai/generate-form/status
+ * Backend (Lite):
+ *   POST /wp-json/neural-forms/v1/ai/generate-form
+ *   GET  /wp-json/neural-forms/v1/ai/generate-form/status
  *
  * Builder integration:
  *   - currentFieldCount  : number  (drives Insert vs Append/Replace)
@@ -61,7 +55,6 @@ function extractErrorMessage( err, fallback ) {
 // / EntryDetail / Settings / PagePerformance so a future change has one
 // place to update. Cloud responses may carry their own `upgrade_url`;
 // this is the static fallback used when no cloud-supplied URL exists.
-const UPGRADE_URL = 'https://neuralforms.ai/pricing';
 
 /**
  * Polished assistant-card chrome used by every state of the panel.
@@ -107,19 +100,15 @@ const PROMPT_EXAMPLES = [
 
 function readBootData() {
 	const root = ( typeof window !== 'undefined' && window.neuralFormsAdmin ) || {};
-	const caps = ( root.plugin && root.plugin.capabilities ) || {};
-	const proAi = ( root.pro && root.pro.aiFormGenerate ) || {};
+	const ai = ( root.plugin && root.plugin.aiFormGenerate ) || {};
 	const settingsUrl = ( root.captcha && root.captcha.settingsUrl ) || ''; // Lite-localized — Settings page anchor.
 	return {
-		canGenerate:      !! caps.ai_form_generate,
-		cloudConnected:   !! proAi.cloudConnected,
-		aiEnabled:        proAi.aiEnabled !== false,
-		licenseActive:    !! proAi.licenseActive,
-		plan:             String( proAi.plan || '' ),
-		normalizedPlan:   String( proAi.normalizedPlan || '' ),
-		eligible:         !! proAi.eligible,
-		creditsAvailable: proAi.creditsAvailable !== false,
-		maxPromptChars:   Number( proAi.maxPromptChars ) || 1500,
+		cloudConnected:   !! ai.cloudConnected,
+		aiEnabled:        ai.aiEnabled !== false,
+		plan:             String( ai.plan || '' ),
+		eligible:         !! ai.eligible,
+		creditsAvailable: ai.creditsAvailable !== false,
+		maxPromptChars:   Number( ai.maxPromptChars ) || 1500,
 		settingsUrl,
 	};
 }
@@ -273,8 +262,8 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 		switch ( code ) {
 			case 'cloud_not_connected':
 				return { label: __( 'Open Settings',     'neural-forms-lite' ), href: settings };
-			case 'license_inactive':
-				return { label: __( 'Activate license',  'neural-forms-lite' ), href: settings };
+			case 'cloud_unauthorized':
+				return { label: __( 'Check API key',     'neural-forms-lite' ), href: settings };
 			case 'plan_not_allowed':
 				return { label: __( 'Upgrade plan',      'neural-forms-lite' ), href: 'https://neuralforms.ai/pricing' };
 			case 'insufficient_credits':
@@ -321,16 +310,14 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	}, [ prompt ] );
 
 	const promptOk = prompt.trim().length > 0 && prompt.length <= boot.maxPromptChars;
-	const ready = boot.canGenerate && boot.eligible;
+	const ready = boot.eligible;
 
 	// Compute the rendered state name for diagnostics + button data attrs.
 	// MUST stay in sync with the early-return branches below.
-	const computedState = ! boot.canGenerate     ? 'upsell'
-		: ! boot.cloudConnected                 ? 'connect-pro'
+	const computedState = ! boot.cloudConnected ? 'connect-cloud'
 		: ! boot.aiEnabled                      ? 'enable-ai'
-		: ! boot.licenseActive                  ? 'activate-license'
-		: ( ! boot.eligible && boot.creditsAvailable ) ? 'plan-not-allowed'
 		: ! boot.creditsAvailable               ? 'out-of-credits'
+		: ! boot.eligible                       ? 'not-eligible'
 		: 'working';
 
 	// Diagnostic — one render log per mount, plus state-change logs on
@@ -340,21 +327,16 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 	useEffect( () => {
 		nfDebug( 'AiPromptPanel render', {
 			hasAdmin: !! ( typeof window !== 'undefined' && window.neuralFormsAdmin ),
-			capabilities: ( typeof window !== 'undefined' && window.neuralFormsAdmin && window.neuralFormsAdmin.plugin )
-				? window.neuralFormsAdmin.plugin.capabilities : null,
-			proAi: ( typeof window !== 'undefined' && window.neuralFormsAdmin && window.neuralFormsAdmin.pro )
-				? window.neuralFormsAdmin.pro.aiFormGenerate : null,
+			aiFormGenerate: ( typeof window !== 'undefined' && window.neuralFormsAdmin && window.neuralFormsAdmin.plugin )
+				? window.neuralFormsAdmin.plugin.aiFormGenerate : null,
 			state: computedState,
 		} );
 		nfDebug( 'computed state', {
-			capability:       boot.canGenerate,
 			cloudConnected:   boot.cloudConnected,
-			licenseActive:    boot.licenseActive,
 			aiEnabled:        boot.aiEnabled,
 			creditsAvailable: boot.creditsAvailable,
 			eligible:         boot.eligible,
 			plan:             boot.plan,
-			normalizedPlan:   boot.normalizedPlan,
 		} );
 	}, [ computedState ] );
 
@@ -400,13 +382,8 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 			return;
 		}
 		if ( ! ready ) {
-			const reason = ! boot.canGenerate
-				? __( 'Generate with Neural AI requires Neural Forms Pro.', 'neural-forms-lite' )
-				: __( 'Generate with Neural AI is not enabled for this site yet. Reload the builder to refresh entitlement.', 'neural-forms-lite' );
-			nfDebug( 'Generate aborted', {
-				reason: ! boot.canGenerate ? 'no_capability' : 'not_eligible',
-				canGenerate: boot.canGenerate, eligible: boot.eligible,
-			} );
+			const reason = __( 'Generate with Neural AI is not enabled for this site yet. Reload the builder to refresh entitlement.', 'neural-forms-lite' );
+			nfDebug( 'Generate aborted', { reason: 'not_eligible', eligible: boot.eligible } );
 			setError( reason );
 			return;
 		}
@@ -427,11 +404,11 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 		setLastUsage( null );
 
 		nfDebug( 'calling WP generate endpoint', {
-			path: '/neural-forms-pro/v1/ai/generate-form',
+			path: '/neural-forms/v1/ai/generate-form',
 			promptLength: prompt.trim().length,
 		} );
 
-		api( '/neural-forms-pro/v1/ai/generate-form', {
+		api( '/neural-forms/v1/ai/generate-form', {
 			method: 'POST',
 			data: { prompt },
 		} )
@@ -516,34 +493,8 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 		setPrompt( '' );
 	};
 
-	// State 1: Pro not installed → compact locked card. Header carries
-	// the PRO badge inline (no longer a floating right-pinned chip).
-	// Single CTA links to the canonical Pro pricing URL.
-	if ( ! boot.canGenerate ) {
-		return (
-			<AssistantCard
-				locked
-				subtitle={ __( 'Neural Forms Pro', 'neural-forms-lite' ) }
-				description={ __( 'Create complete forms from a short prompt using Neural Forms Pro.', 'neural-forms-lite' ) }
-			>
-				<a
-					className="nf-inspector-ai-card__cta neural-forms-btn neural-forms-btn--primary"
-					href={ UPGRADE_URL }
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
-				</a>
-				<p className="nf-inspector-ai-card__note">
-					{ __( 'Available in Neural Forms Pro.', 'neural-forms-lite' ) }
-				</p>
-			</AssistantCard>
-		);
-	}
-
-	// Pro-side setup notices. Each one renders the same assistant card
-	// chrome with a state-specific notice + Open Settings (or pricing)
-	// CTA — no silent failures, no dead disabled buttons.
+	// Setup notices. Each one renders the same assistant card chrome with
+	// a state-specific notice + Open Settings CTA — no silent failures.
 	const setupCardFor = ( notice, ctaLabel, ctaHref ) => (
 		<AssistantCard
 			subtitle={ __( 'Powered by Neural Forms Neural AI', 'neural-forms-lite' ) }
@@ -572,21 +523,6 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 			boot.settingsUrl
 		);
 	}
-	if ( ! boot.licenseActive ) {
-		return setupCardFor(
-			__( 'Activate your Pro license to enable Neural AI generation.', 'neural-forms-lite' ),
-			__( 'Open Settings', 'neural-forms-lite' ),
-			boot.settingsUrl
-		);
-	}
-	// Eligibility check — server-truth flag, see boot.eligible note above.
-	if ( ! boot.eligible && boot.creditsAvailable ) {
-		return setupCardFor(
-			__( 'Generate with Neural AI requires an active Pro, Yearly, or Enterprise plan.', 'neural-forms-lite' ),
-			__( 'Upgrade plan', 'neural-forms-lite' ),
-			UPGRADE_URL
-		);
-	}
 	if ( ! boot.creditsAvailable ) {
 		return setupCardFor(
 			__( "You're out of Neural AI credits.", 'neural-forms-lite' ),
@@ -594,9 +530,17 @@ export default function AiPromptPanel( { currentFieldCount = 0, onApplyForm } ) 
 			boot.settingsUrl
 		);
 	}
+	// Server-truth flag — see boot.eligible note above.
+	if ( ! boot.eligible ) {
+		return setupCardFor(
+			__( 'Neural AI generation is not available for this site right now. Check your Neural Forms Cloud connection in Settings.', 'neural-forms-lite' ),
+			__( 'Open Settings', 'neural-forms-lite' ),
+			boot.settingsUrl
+		);
+	}
 
-	// State 5: Pro + cloud connected + license active + plan eligible +
-	// credits available — full working assistant card. Textarea is inline
+	// Working state: cloud connected + Cloud AI on + credits available —
+	// full working assistant card. Textarea is inline
 	// (no card→expanded indirection); the existing handleGenerate +
 	// PreviewModal flow is unchanged.
 	return (

@@ -37,7 +37,6 @@ final class Capabilities {
 	const AI_SPAM_DETECT   = 'ai_spam_detect';
 	const AI_REANALYZE     = 'ai_reanalyze';
 	const AI_REFINE_REPLY  = 'ai_refine_reply';
-	const AI_FORM_GENERATE = 'ai_form_generate';
 	/**
 	 * AI_PROCESS_ENTRIES (added 0.2.0): unlocks per-form "Process with AI"
 	 * processing, both auto and manual. Lite stores the per-form mode but
@@ -218,7 +217,6 @@ final class Capabilities {
 			self::AI_SPAM_DETECT                  => self::can( self::AI_SPAM_DETECT ),
 			self::AI_REANALYZE                    => self::can( self::AI_REANALYZE ),
 			self::AI_REFINE_REPLY                 => self::can( self::AI_REFINE_REPLY ),
-			self::AI_FORM_GENERATE                => self::can( self::AI_FORM_GENERATE ),
 			self::AI_PROCESS_ENTRIES              => self::can( self::AI_PROCESS_ENTRIES ),
 			self::PAGE_PERFORMANCE_ANALYTICS      => self::can( self::PAGE_PERFORMANCE_ANALYTICS ),
 			self::POLL_QUIZ_UNLIMITED_SUBMISSIONS => self::can( self::POLL_QUIZ_UNLIMITED_SUBMISSIONS ),

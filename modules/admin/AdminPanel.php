@@ -1617,8 +1617,8 @@ CSS;
 	 *
 	 * The "Create with AI" flow opens its own modal (rendered into a
 	 * portal under document.body so it isn't constrained by the rich
-	 * bundle's container CSS). The modal POSTs the prompt to Pro's
-	 * /neural-forms-pro/v1/ai/generate-form endpoint, then on Create
+	 * bundle's container CSS). The modal POSTs the prompt to Lite's
+	 * /neural-forms/v1/ai/generate-form endpoint, then on Create
 	 * persists the returned schema via /neural-forms/v1/forms with
 	 * status=draft and redirects to ?page=neural-forms&edit=N so the
 	 * builder split-bundle picks up where the user left off.
@@ -1626,38 +1626,28 @@ CSS;
 	private static function enqueue_new_form_dropdown_injector(): void {
 		$cloud_ai_enabled = (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' );
 		$cloud_key_set    = \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '';
-		$can_generate     = \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::AI_FORM_GENERATE );
-		$pro_installed    = class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' );
 
 		// The dropdown ships on every install — Lite users still need
 		// access to Blank Form + Use Template (the Template Library
-		// hosts the Block Editor catalog Lite ships). The "Create Form
-		// with AI" item is gated separately below: enabled = full AI
-		// flow, locked = PRO badge + click routes to the pricing page.
+		// hosts the Block Editor catalog Lite ships). "Create form with
+		// Neural AI" ships in Lite (since 2026-10-30): it only needs the
+		// cloud connection, otherwise the click routes to Settings.
 
 		$payload = wp_json_encode(
 			array(
-				'available'      => $can_generate && $cloud_ai_enabled && $cloud_key_set,
-				'proInstalled'   => $pro_installed,
-				'canGenerate'    => $can_generate,
+				'available'      => $cloud_ai_enabled && $cloud_key_set,
 				'cloudConnected' => $cloud_ai_enabled && $cloud_key_set,
 				'cloudKeySet'    => $cloud_key_set,
 				'cloudAiEnabled' => $cloud_ai_enabled,
 				'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
 				'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
 				'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
-				// Canonical upgrade URL — matches every other "Upgrade
-				// to Pro" call-to-action across the admin (Integrations,
-				// EntryDetail, BuilderInspector's AI card, Settings).
-				'upgradeUrl'     => esc_url_raw( 'https://neuralforms.ai/pricing' ),
 				'i18n'           => array(
 					'caretLabel'   => __( 'New form options', 'neural-forms-lite' ),
 					'blank'        => __( 'Blank Form', 'neural-forms-lite' ),
 					'template'     => __( 'Use Template', 'neural-forms-lite' ),
 					'ai'           => __( 'Create form with Neural AI', 'neural-forms-lite' ),
 					'aiBadge'      => __( 'AI', 'neural-forms-lite' ),
-					'proBadge'     => __( 'PRO', 'neural-forms-lite' ),
-					'aiLocked'     => __( 'Available in Neural Forms Pro', 'neural-forms-lite' ),
 					'aiSetup'      => __( 'Connect Neural Forms Cloud to use Neural AI', 'neural-forms-lite' ),
 					'modalTitle'   => __( 'Create form with Neural AI', 'neural-forms-lite' ),
 					'modalDesc'    => __( 'Describe the form you want. Neural Forms will draft the fields for you.', 'neural-forms-lite' ),
@@ -1903,7 +1893,7 @@ CSS;
             var rootUrl = apiSettings.root || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.root ) || '/wp-json/';
             var nonce   = apiSettings.nonce || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.nonce ) || '';
 
-            var url = ( rootUrl.replace( /\/$/, '' ) ) + '/neural-forms-pro/v1/ai/generate-form';
+            var url = ( rootUrl.replace( /\/$/, '' ) ) + '/neural-forms/v1/ai/generate-form';
 
             fetch( url, {
                 method: 'POST',
@@ -2081,29 +2071,15 @@ CSS;
         ];
 
         // Three AI-item states, in priority order:
-        //   1. Lite install (no capability)        → PRO badge, click → upgrade page
-        //   2. Pro installed but cloud not set up  → AI badge, hint, click → Settings
-        //   3. Pro + cloud ready                   → AI badge, click → AI modal
-        // The item is always visible so Lite users discover the Pro
-        // feature; the locked state is communicated via the PRO pill
-        // + secondary hint rather than hiding the row entirely.
-        var aiCanGenerate = !! data.canGenerate;
+        //   1. Cloud not connected  → AI badge, hint, click → Settings
+        //   2. Cloud ready          → AI badge, click → AI modal
         var aiReady       = !! data.available;
         var aiBadges      = [];
         var aiHint        = '';
         var aiAction;
 
-        if ( ! aiCanGenerate ) {
-            // Lite — no Pro. Surface PRO + AI pills so the user sees
-            // both that this is the AI flow and that it's gated.
-            aiBadges.push( data.i18n.proBadge || 'PRO' );
-            aiBadges.push( data.i18n.aiBadge  || 'AI' );
-            aiHint   = data.i18n.aiLocked || 'Available in Neural Forms Pro';
-            aiAction = function () {
-                window.open( data.upgradeUrl || 'https://neuralforms.ai/pricing', '_blank', 'noopener' );
-            };
-        } else if ( ! aiReady ) {
-            // Pro installed but Cloud not connected — route to Settings.
+        if ( ! aiReady ) {
+            // Cloud not connected — route to Settings.
             aiBadges.push( data.i18n.aiBadge || 'AI' );
             aiHint   = data.i18n.aiSetup || '';
             aiAction = function () { window.location.href = data.settingsUrl; };
@@ -3150,6 +3126,20 @@ CSS;
 	 * Grouped by concern so each consumer (middleware, router, UI) reads
 	 * only its own namespace without touching unrelated values.
 	 */
+	/** Boot flags for AiPromptPanel (builder) — see FormGeneratorService::status(). */
+	private static function ai_form_generate_boot(): array {
+		$snap = \NeuralForms\AI\FormGeneratorService::status();
+		return array(
+			'configured'       => (bool) $snap['configured'],
+			'cloudConnected'   => (bool) $snap['cloud_connected'],
+			'aiEnabled'        => (bool) $snap['ai_enabled'],
+			'plan'             => (string) $snap['plan'],
+			'eligible'         => (bool) $snap['eligible'],
+			'creditsAvailable' => (bool) $snap['credits']['available'],
+			'maxPromptChars'   => (int) $snap['limits']['max_prompt_chars'],
+		);
+	}
+
 	private static function script_data(): array {
 		$data = array(
 			'screen'    => self::get_current_screen(),
@@ -3186,6 +3176,9 @@ CSS;
 				'features'       => \NeuralForms\Core\Config::features(),
 				'cloudAiEnabled' => (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' ),
 				'cloudApiKeySet' => \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '',
+				// "Create form with Neural AI" boot flags (Lite-owned since
+				// 2026-10-30). Flags only — never a key or model name.
+				'aiFormGenerate' => self::ai_form_generate_boot(),
 				// Email Settings > "Default reply subject" — the reply
 				// composer pre-fills its Subject field from this (tokens
 				// {site_name} / {form_name} resolved client-side).

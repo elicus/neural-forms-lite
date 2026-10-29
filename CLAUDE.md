@@ -482,7 +482,6 @@ Distinct error codes so the frontend can route to the right upgrade flow:
 Capabilities::AI_SPAM_DETECT                  // 'ai_spam_detect'
 Capabilities::AI_REANALYZE                    // 'ai_reanalyze'
 Capabilities::AI_REFINE_REPLY                 // 'ai_refine_reply'
-Capabilities::AI_FORM_GENERATE                // 'ai_form_generate'
 Capabilities::AI_PROCESS_ENTRIES              // 'ai_process_entries' (added 0.2.0)
 Capabilities::PAGE_PERFORMANCE_ANALYTICS      // 'page_performance_analytics' (added 1.1.0)
 Capabilities::POLL_QUIZ_UNLIMITED_SUBMISSIONS // 'poll_quiz_unlimited_submissions' (added 1.1.0)
@@ -508,7 +507,6 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `ai_spam_detect` | `neural_forms_can_ai_spam_detect` | Spam settings UI, `ai_spam_enabled` save, queue spam classification |
 | `ai_reanalyze` | `neural_forms_can_ai_reanalyze` | `POST /entries/{id}/retry-ai`, regenerate reply |
 | `ai_refine_reply` | `neural_forms_can_ai_refine_reply` | Polish/refine reply endpoint |
-| `ai_form_generate` | `neural_forms_can_ai_form_generate` | "Create with AI" option in the +New Form dropdown, which opens a prompt modal that POSTs to Pro's `/neural-forms-pro/v1/ai/generate-form` endpoint |
 | `ai_process_entries` | `neural_forms_can_ai_process_entries` | Per-form "Process with AI" mode (auto/manual) actually enqueueing/running entry analysis — Lite stores the setting but never calls the cloud without this cap |
 | `page_performance_analytics` | `neural_forms_can_page_performance_analytics` | Page Performance section of the Analytics screen (entries grouped by source page); source-page capture itself is unconditional in Lite, only the aggregation endpoint + UI are gated |
 | `poll_quiz_unlimited_submissions` | `neural_forms_can_poll_quiz_unlimited_submissions` | Lifts the 200 non-trash submission cap per poll/quiz form (`neural_forms_poll_quiz_submission_limit` filter sets the limit; `<= 0` also means unlimited). Local product limit, not a security boundary — see `SubmitEndpoint::check_poll_quiz_submission_limit()` |
@@ -531,7 +529,6 @@ Capabilities::locked_error()   // WP_Error with pro_feature_locked, status 403
 | `modules/rest/endpoints/EntriesEndpoint.php` | `polish_reply()` | `AI_REFINE_REPLY` |
 | `modules/ai/AIQueueProcessor.php` | `maybe_apply_spam()` | `AI_SPAM_DETECT` |
 | `modules/rest/endpoints/SettingsEndpoint.php` | Save validation + defensive coercion | `AI_SPAM_DETECT` |
-| `modules/admin/AdminPanel.php` | `enqueue_new_form_dropdown_injector()` | `AI_FORM_GENERATE` |
 | `modules/ai/AiProcessingResolver.php` | resolver entry point | `AI_PROCESS_ENTRIES` |
 | `modules/rest/Endpoints/StatsEndpoint.php` | Page Performance aggregation | `PAGE_PERFORMANCE_ANALYTICS` |
 | `modules/rest/Endpoints/SubmitEndpoint.php` | `check_poll_quiz_submission_limit()` | `POLL_QUIZ_UNLIMITED_SUBMISSIONS` |
@@ -565,7 +562,6 @@ is a breaking change for Pro.
 | `neural_forms_can_ai_spam_detect` filter | `Capabilities::can()` | `__return_true` to unlock spam detection |
 | `neural_forms_can_ai_reanalyze` filter | `Capabilities::can()` | `__return_true` to unlock reanalyze / regenerate reply |
 | `neural_forms_can_ai_refine_reply` filter | `Capabilities::can()` | `__return_true` to unlock polish reply |
-| `neural_forms_can_ai_form_generate` filter | `Capabilities::can()` | `__return_true` to unlock "Create with AI" form generation |
 | `neural_forms_can_ai_process_entries` filter | `Capabilities::can()` | `__return_true` to let the AI queue actually process entries |
 | `neural_forms_can_page_performance_analytics` filter | `Capabilities::can()` | `__return_true` to unlock Page Performance analytics |
 | `neural_forms_can_poll_quiz_unlimited_submissions` filter | `Capabilities::can()` | `__return_true` to lift the 200/form poll & quiz submission cap |
@@ -802,6 +798,29 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Create form with Neural AI — Lite-owned (moved from Pro 2026-10-30)
+
+The owner asked for form generation in Lite too, without duplicated
+logic, so the whole engine MOVED (not copied) from Pro:
+`modules/ai/SchemaNormalizer.php` (AI shape → builder schema, aliases,
+container cleanup, matrix / repeater gated by their field caps, final
+`FormValidator` pass), `modules/ai/CloudFormGeneratorClient.php`
+(`POST {cloud}/v1/ai/forms/generate`, same headers / base-URL resolver as
+`NeuralFormsCloudProvider`, cloud error → plugin code map; cloud 5xx →
+424), `modules/ai/FormGeneratorService.php` (prompt limits, `status()`
+= cloud connected + Cloud AI on + credits, `generate()`), REST
+`POST|GET /neural-forms/v1/ai/generate-form[/status]`
+(`FormGeneratorEndpoint`, manage-forms cap only). Entry points: the
+"+ New Form ▾ Create form with Neural AI" modal (inline JS in
+`AdminPanel::new_form_dropdown_injector_js()`) and the builder's
+`forms/AiPromptPanel.js` (boot flags from
+`neuralFormsAdmin.plugin.aiFormGenerate`). The `ai_form_generate`
+capability, Pro's Unlocker filter, `PlanNormalizer` and the Pro-license
+gate were deleted (pre-launch, no shims); the cloud's Pro-only plan gate
+on `/v1/ai/forms/generate` was removed the same day, so Lite plans
+generate and pay with credits like any other AI call. Tests:
+`tests/FormGeneratorTest.php` (167 checks, ported from Pro).
 
 ### Payment form ("Neural Payment Form"): block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
 

@@ -131,7 +131,7 @@ nf_test( 'capabilities: snapshot includes the field_matrix key', function () {
 
 nf_test( 'capabilities: snapshot also still carries the legacy caps (no accidental removal)', function () {
 	$snap = Capabilities::all();
-	foreach ( [ 'ai_spam_detect', 'ai_reanalyze', 'ai_refine_reply', 'ai_form_generate' ] as $cap ) {
+	foreach ( [ 'ai_spam_detect', 'ai_reanalyze', 'ai_refine_reply' ] as $cap ) {
 		nf_assert_true( array_key_exists( $cap, $snap ), "snapshot must still include {$cap}" );
 	}
 } );
