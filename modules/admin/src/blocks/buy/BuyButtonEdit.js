@@ -76,7 +76,7 @@ export default function BuyButtonEdit( { attributes, setAttributes } ) {
 				<AdvancedPanel     a={ attributes } set={ setAttributes } />
 			</InspectorControls>
 			{ attributes.formId ? (
-				<ServerSideRender block="neural-forms/buy-button" attributes={ attributes } />
+				<ServerSideRender block="neural-forms/buy-button" attributes={ attributes } httpMethod="POST" />
 			) : (
 				<div className="neural-forms-buy neural-forms-buy--notice">{ __( 'Payment form: choose a form that takes payments in the block settings.', 'neural-forms-lite' ) }</div>
 			) }
