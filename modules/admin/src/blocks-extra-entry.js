@@ -294,6 +294,7 @@ NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, Settin
 // its own server render (BuyButton::render), unrelated to the form block.
 registerBlockType( buyMetadata.name, {
 	...buyMetadata,
+	attributes: { ...baseAttrs, ...buyMetadata.attributes },
 	title:       __( 'Neural Payment Form', 'neural-forms-lite' ),
 	description: __( 'A compact payment form for one priced item: price, quantity, name, email and a Buy now button that goes straight to checkout.', 'neural-forms-lite' ),
 	edit: BuyButtonEdit,

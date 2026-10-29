@@ -827,10 +827,16 @@ User-facing name **Neural Payment Form** (renamed from Buy Button the same day; 
   `outcome.redirect`. Other required form fields are deliberately NOT
   collected (quick buy). `GET /buy-catalogue` and `GET /buy-preview`
   (edit_posts) serve the editors.
-- **Gutenberg** `neural-forms/buy-button` (`frontend/blocks/buy-button/
-  block.json` owns its attribute schema; `BlockHandler::render_buy_button`;
-  editor `src/blocks/buy/BuyButtonEdit.js` in the blocks-extra bundle,
-  ServerSideRender preview with form.css inlined).
+- **Gutenberg** `neural-forms/buy-button`: `frontend/blocks/buy-button/
+  block.json` holds its own attributes, MERGED at registration (PHP + JS)
+  with the form block's design schema. The card uses the form block's BEM
+  classes (`neural-forms-form`, `__label`, `__input`, `__submit`,
+  `__success` / `__global-error`) so the Style tab reuses `ContainerPanel`,
+  `LabelsPanel`, `InputFieldsPanel`, `SubmitButtonPanel`, `MessagesPanel`,
+  `AdvancedPanel` from `DesignPanels.js` and `BlockHandler::render_buy_button`
+  wraps the card exactly like `render()` (uid, `build_scoped_css()`,
+  `build_wrap_style()`, `extraClass`; form.css + pointer-events inlined in
+  the editor preview). Editor: `src/blocks/buy/BuyButtonEdit.js` (blocks-extra bundle).
 - **Shortcode** `[neural-forms-buy form="68" field="book" choice="" quantity="1"
   label="Buy now" title="" description="" name="1" price="1" width="auto|full"
   align="left|center|right"]`.

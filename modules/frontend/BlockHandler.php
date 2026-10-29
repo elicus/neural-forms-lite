@@ -235,9 +235,17 @@ class BlockHandler {
 		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
 
 		// 1.2.0 part B: Buy button block — own schema in its block.json, own renderer.
+		$buy_json = @file_get_contents( __DIR__ . '/blocks/buy-button/block.json' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$buy_meta = $buy_json ? json_decode( $buy_json, true ) : null;
+		$buy_attrs = is_array( $buy_meta ) && is_array( $buy_meta['attributes'] ?? null ) ? $buy_meta['attributes'] : [];
 		register_block_type(
 			__DIR__ . '/blocks/buy-button',
-			[ 'render_callback' => [ static::class, 'render_buy_button' ] ]
+			[
+				// Own attributes + the form block's design schema, so the same Style tab
+				// panels and build_scoped_css() work on the payment card.
+				'attributes'      => array_merge( $attributes, $buy_attrs ),
+				'render_callback' => [ static::class, 'render_buy_button' ],
+			]
 		);
 
 		foreach ( [ 'quiz', 'multi-step', 'poll' ] as $slug ) {
@@ -259,14 +267,27 @@ class BlockHandler {
 		if ( $html === '' ) {
 			return '';
 		}
+		// Same scoped-CSS wrapper as the form block: the card uses the form's
+		// BEM classes, so Container / Labels / Input Fields / Submit Button /
+		// Messages / Advanced panels style it through build_scoped_css().
+		$uid        = substr( md5( (string) wp_json_encode( $attributes ) ), 0, 8 );
+		$scoped_css = static::build_scoped_css( $uid, $attributes );
+		$wrap_style = static::build_wrap_style( $attributes );
+		$wrap_class = 'neural-forms-block-wrap neural-forms-block-' . esc_attr( $uid );
+		$extra      = trim( (string) ( $attributes['extraClass'] ?? '' ) );
+		if ( $extra !== '' ) {
+			$wrap_class .= ' ' . esc_attr( $extra );
+		}
+		$inline = $scoped_css;
 		if ( $preview ) {
-			// Editor preview: inline the stylesheet so the ServerSideRender iframe shows the card.
 			$css = NEURAL_FORMS_PATH . 'modules/frontend/assets/css/form.css';
 			if ( is_readable( $css ) ) {
-				$html = '<style>' . file_get_contents( $css ) . '</style>' . $html; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+				$inline = file_get_contents( $css ) . $inline; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 			}
+			$inline .= '.neural-forms-block-' . esc_attr( $uid ) . ' .neural-forms-form{pointer-events:none;}';
 		}
-		return '<div ' . get_block_wrapper_attributes() . '>' . $html . '</div>';
+		$out = '<div class="' . $wrap_class . '"' . ( $wrap_style ? ' style="' . esc_attr( $wrap_style ) . '"' : '' ) . '>' . $html . '</div>';
+		return ( $inline !== '' ? '<style>' . $inline . '</style>' : '' ) . '<div ' . get_block_wrapper_attributes() . '>' . $out . '</div>';
 	}
 
 	// Render callback

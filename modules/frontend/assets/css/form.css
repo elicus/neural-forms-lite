@@ -2132,13 +2132,13 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 .neural-forms-buy__fields { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0 14px; }
 .neural-forms-buy__field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #374151; }
 .neural-forms-buy__field--qty input { max-width: 110px; }
-.neural-forms-buy__field input { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; }
-.neural-forms-buy__field input:focus { outline: 2px solid var( --nf-buy-btn ); outline-offset: 1px; border-color: var( --nf-buy-btn ); }
-.neural-forms-buy__btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; font: inherit; font-size: 16px; font-weight: 600; padding: 13px 18px; border: 0; border-radius: 10px; background: var( --nf-buy-btn ); color: var( --nf-buy-btn-text ); cursor: pointer; transition: filter .15s ease; }
+.neural-forms-buy__field .neural-forms-form__input { width: 100%; box-sizing: border-box; }
+.neural-forms-buy__btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; cursor: pointer; }
+.neural-forms-buy[style*="--nf-buy-btn:"] .neural-forms-buy__btn { background: var( --nf-buy-btn ); border-color: var( --nf-buy-btn ); }
+.neural-forms-buy[style*="--nf-buy-btn-text:"] .neural-forms-buy__btn { color: var( --nf-buy-btn-text ); }
 .neural-forms-buy__btn:hover:not(:disabled) { filter: brightness( 1.1 ); }
 .neural-forms-buy__btn:disabled { opacity: .7; cursor: default; }
 .neural-forms-buy__btn-total { font-weight: 500; opacity: .9; }
 .neural-forms-buy__msg { min-height: 0; margin-top: 8px; font-size: 13px; }
-.neural-forms-buy__msg.is-error { color: #b91c1c; }
-.neural-forms-buy__msg.is-ok { color: #065f46; }
+.neural-forms-buy__msg:empty { display: none; }
 .neural-forms-buy__secure { margin: 10px 0 0; font-size: 11.5px; color: #9ca3af; text-align: center; }

@@ -6,7 +6,8 @@
 
 import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { InspectorControls, useBlockProps, PanelColorSettings } from '@wordpress/block-editor';
+import { InspectorControls, useBlockProps } from '@wordpress/block-editor';
+import { ContainerPanel, LabelsPanel, InputFieldsPanel, SubmitButtonPanel, MessagesPanel, AdvancedPanel } from '../shared/DesignPanels';
 import { PanelBody, SelectControl, TextControl, TextareaControl, ToggleControl, RangeControl, Notice, Spinner } from '@wordpress/components';
 import ServerSideRender from '@wordpress/server-side-render';
 import api from '../../api';
@@ -65,14 +66,14 @@ export default function BuyButtonEdit( { attributes, setAttributes } ) {
 					<SelectControl label={ __( 'Width', 'neural-forms-lite' ) } value={ attributes.width || 'auto' } options={ [ { label: __( 'Card (max 420px)', 'neural-forms-lite' ), value: 'auto' }, { label: __( 'Full width', 'neural-forms-lite' ), value: 'full' } ] } onChange={ ( v ) => set( { width: v } ) } />
 					<SelectControl label={ __( 'Alignment', 'neural-forms-lite' ) } value={ attributes.align || 'left' } options={ [ { label: __( 'Left', 'neural-forms-lite' ), value: 'left' }, { label: __( 'Center', 'neural-forms-lite' ), value: 'center' }, { label: __( 'Right', 'neural-forms-lite' ), value: 'right' } ] } onChange={ ( v ) => set( { align: v } ) } />
 				</PanelBody>
-				<PanelColorSettings
-					title={ __( 'Button colours', 'neural-forms-lite' ) }
-					initialOpen={ false }
-					colorSettings={ [
-						{ value: attributes.buttonColor, onChange: ( v ) => set( { buttonColor: v || '' } ), label: __( 'Button background', 'neural-forms-lite' ) },
-						{ value: attributes.buttonText, onChange: ( v ) => set( { buttonText: v || '' } ), label: __( 'Button text', 'neural-forms-lite' ) },
-					] }
-				/>
+			</InspectorControls>
+			<InspectorControls group="styles">
+				<ContainerPanel    a={ attributes } set={ setAttributes } />
+				<LabelsPanel       a={ attributes } set={ setAttributes } />
+				<InputFieldsPanel  a={ attributes } set={ setAttributes } />
+				<SubmitButtonPanel a={ attributes } set={ setAttributes } />
+				<MessagesPanel     a={ attributes } set={ setAttributes } />
+				<AdvancedPanel     a={ attributes } set={ setAttributes } />
 			</InspectorControls>
 			{ attributes.formId ? (
 				<ServerSideRender block="neural-forms/buy-button" attributes={ attributes } />
