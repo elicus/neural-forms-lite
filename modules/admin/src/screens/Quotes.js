@@ -53,23 +53,10 @@ function ProLockCard( { title, description, upgradeUrl } ) {
 }
 /**
  * Quotes (1.2.0 part B): business identity, numbering and text blocks
- * printed on every quote. Self-contained — reads and writes
- * /quotes/settings on its own (separate option from the main settings)
- * so the page-level save bar is untouched. Locked → ProLockCard.
+ * printed on every quote (option neural_forms_quote_settings, REST
+ * /quotes/settings). Locked → ProLockCard.
  */
-function QuoteSettingsForm( { unlocked } ) {
-	const [ form,   setForm   ] = useState( null );
-	const [ saved,  setSaved  ] = useState( null );
-	const [ busy,   setBusy   ] = useState( false );
-	const [ msg,    setMsg    ] = useState( { text: '', error: false } );
-
-	useEffect( () => {
-		if ( ! unlocked ) return;
-		let cancelled = false;
-		api( '/quotes/settings' ).then( ( res ) => { if ( ! cancelled ) { setForm( res ); setSaved( res ); } } ).catch( ( e ) => { if ( ! cancelled ) setMsg( { text: e?.message || __( 'Could not load quote settings.', 'neural-forms-lite' ), error: true } ); } );
-		return () => { cancelled = true; };
-	}, [ unlocked ] );
-
+function QuoteSettingsForm( { unlocked, form, set, pickLogo, loadError } ) {
 	if ( ! unlocked ) {
 		return (
 			<Section title={ __( 'Branding', 'neural-forms-lite' ) } description={ __( 'Branding, numbering and terms for the quotes you send from the inbox.', 'neural-forms-lite' ) }>
@@ -77,27 +64,10 @@ function QuoteSettingsForm( { unlocked } ) {
 			</Section>
 		);
 	}
-
-	const set = ( key ) => ( e ) => { const v = e && e.target ? e.target.value : e; setForm( ( f ) => ( { ...f, [ key ]: v } ) ); setMsg( { text: '', error: false } ); };
-	const dirty = form && saved && JSON.stringify( form ) !== JSON.stringify( saved );
-	const save = () => {
-		setBusy( true );
-		api( '/quotes/settings', { method: 'PUT', data: form } )
-			.then( ( res ) => { setForm( res ); setSaved( res ); setMsg( { text: __( 'Quote settings saved.', 'neural-forms-lite' ), error: false } ); } )
-			.catch( ( e ) => setMsg( { text: e?.message || __( 'Could not save.', 'neural-forms-lite' ), error: true } ) )
-			.finally( () => setBusy( false ) );
-	};
-	const pickLogo = () => {
-		const media = window.wp && window.wp.media;
-		if ( ! media ) return;
-		const frame = media( { title: __( 'Choose a logo', 'neural-forms-lite' ), multiple: false, library: { type: 'image' } } );
-		frame.on( 'select', () => { const att = frame.state().get( 'selection' ).first().toJSON(); set( 'logo_url' )( att.url || '' ); } );
-		frame.open();
-	};
-
 	return (
 		<Section title={ __( 'Branding', 'neural-forms-lite' ) } description={ __( 'Business identity and text blocks printed on every quote.', 'neural-forms-lite' ) }>
-			{ ! form && ! msg.text && <p className="neural-forms-settings__hint">{ __( 'Loading…', 'neural-forms-lite' ) }</p> }
+			{ ! form && ! loadError && <p className="neural-forms-settings__hint" style={ { padding: '16px 24px' } }>{ __( 'Loading…', 'neural-forms-lite' ) }</p> }
+			{ ! form && loadError && <p className="neural-forms-settings__hint is-error" style={ { padding: '16px 24px' } }>{ loadError }</p> }
 			{ form && <>
 				<Field label={ __( 'Business name', 'neural-forms-lite' ) }><TextInput value={ form.business_name } onChange={ set( 'business_name' ) } /></Field>
 				<Field label={ __( 'Address', 'neural-forms-lite' ) }><Textarea rows={ 3 } value={ form.address } onChange={ set( 'address' ) } /></Field>
@@ -123,18 +93,68 @@ function QuoteSettingsForm( { unlocked } ) {
 				<Field label={ __( 'PDF', 'neural-forms-lite' ) }>
 					<p className="neural-forms-settings__hint" style={ { marginTop: 0 } }>{ form.pdf_available ? __( 'PDF generation is active. Quotes are emailed with a PDF attachment and a secure link.', 'neural-forms-lite' ) : __( 'PDF generation is not available on this server (it needs the PHP DOM and mbstring extensions and at least 96 MB of memory). Quotes are sent as a secure printable link instead.', 'neural-forms-lite' ) }</p>
 				</Field>
-				<div className="neural-forms-settings__inline">
-					<button type="button" className="neural-forms-settings__btn is-primary" disabled={ busy || ! dirty } onClick={ save }>{ busy ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save quote settings', 'neural-forms-lite' ) }</button>
-					{ msg.text && <span className={ 'neural-forms-settings__msg' + ( msg.error ? ' is-error' : '' ) } role="status">{ msg.text }</span> }
-				</div>
 			</> }
-			{ ! form && msg.text && <p className="neural-forms-settings__hint is-error">{ msg.text }</p> }
 		</Section>
 	);
 }
 
 export default function Quotes() {
-	const caps = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+	const caps     = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.plugin?.capabilities ) || {};
+	const unlocked = !! caps.quotes;
+	const [ form,      setForm      ] = useState( null );
+	const [ initial,   setInitial   ] = useState( null );
+	const [ saving,    setSaving    ] = useState( false );
+	const [ saved,     setSaved     ] = useState( false );
+	const [ error,     setError     ] = useState( '' );
+	const [ loadError, setLoadError ] = useState( '' );
+
+	useEffect( () => {
+		if ( ! unlocked ) return;
+		let cancelled = false;
+		api( '/quotes/settings' )
+			.then( ( res ) => { if ( ! cancelled ) { setForm( res ); setInitial( res ); } } )
+			.catch( ( e ) => { if ( ! cancelled ) setLoadError( e?.message || __( 'Could not load quote settings.', 'neural-forms-lite' ) ); } );
+		return () => { cancelled = true; };
+	}, [ unlocked ] );
+
+	const isDirty = !! ( form && initial && JSON.stringify( form ) !== JSON.stringify( initial ) );
+	const set = ( key ) => ( e ) => { const v = e && e.target ? e.target.value : e; setForm( ( f ) => ( { ...f, [ key ]: v } ) ); setSaved( false ); setError( '' ); };
+	const save = () => {
+		if ( ! form || saving ) return;
+		setSaving( true ); setError( '' );
+		api( '/quotes/settings', { method: 'PUT', data: form } )
+			.then( ( res ) => { setForm( res ); setInitial( res ); setSaved( true ); window.setTimeout( () => setSaved( false ), 4000 ); } )
+			.catch( ( e ) => setError( e?.message || __( 'Could not save.', 'neural-forms-lite' ) ) )
+			.finally( () => setSaving( false ) );
+	};
+	const pickLogo = () => {
+		const media = window.wp && window.wp.media;
+		if ( ! media ) return;
+		const frame = media( { title: __( 'Choose a logo', 'neural-forms-lite' ), multiple: false, library: { type: 'image' } } );
+		frame.on( 'select', () => { const att = frame.state().get( 'selection' ).first().toJSON(); set( 'logo_url' )( att.url || '' ); } );
+		frame.open();
+	};
+
+	// Same three-state save bar as the Settings screen (top + bottom).
+	const renderSaveBar = ( variant ) => {
+		if ( ! unlocked || ! form ) return null;
+		const cls = 'neural-forms-settings__save-bar' + ( variant === 'top' ? ' neural-forms-settings__save-bar--top' : '' );
+		return (
+			<div className={ cls }>
+				{ saved && <span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--ok">{ __( 'Saved! Your changes are live.', 'neural-forms-lite' ) }</span> }
+				{ isDirty && ! saving && ! saved && <span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--dirty">{ __( 'Unsaved changes', 'neural-forms-lite' ) }</span> }
+				{ error && <span className="neural-forms-settings__save-msg neural-forms-settings__save-msg--error">{ error }</span> }
+				{ ( isDirty || saving ) ? (
+					<button type="button" className="neural-forms-settings__save-btn" onClick={ save } disabled={ saving }>
+						{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }
+					</button>
+				) : (
+					<span className="neural-forms-settings__save-btn neural-forms-settings__save-btn--saved" aria-live="polite">{ __( 'Saved', 'neural-forms-lite' ) }</span>
+				) }
+			</div>
+		);
+	};
+
 	return (
 		<div className="neural-forms-settings neural-forms-quotes">
 			<header className="neural-forms-settings__header">
@@ -142,8 +162,10 @@ export default function Quotes() {
 					<h1 className="neural-forms-settings__page-title">{ __( 'Quotes', 'neural-forms-lite' ) }</h1>
 					<p className="neural-forms-settings__page-desc">{ __( 'Set up the business details, numbering and terms used on the quotes you create from the entries inbox. Numbers follow the pattern PREFIX-YEAR-0001 and are assigned when a quote is issued.', 'neural-forms-lite' ) }</p>
 				</div>
+				{ renderSaveBar( 'top' ) }
 			</header>
-			<QuoteSettingsForm unlocked={ !! caps.quotes } />
+			<QuoteSettingsForm unlocked={ unlocked } form={ form } set={ set } pickLogo={ pickLogo } loadError={ loadError } />
+			{ renderSaveBar( 'bottom' ) }
 		</div>
 	);
 }
