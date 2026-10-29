@@ -256,7 +256,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.2.0 - 2026-10-29 =
+= 1.2.0 - Unreleased =
 
 * Added: Conditional logic can combine several conditions with All or Any and show or hide a field.
 * Added: Pro users can group conditions, show or skip steps and sections based on answers, and pick a confirmation message or redirect per rule.

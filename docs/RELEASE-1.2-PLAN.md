@@ -1,6 +1,6 @@
 # Release plan: Neural Forms Lite 1.2.0 / Pro 1.1.0
 
-Status: approved for implementation planning (2026-10-29)
+Status: part A (this file) done 2026-10-29; the whole draft is ONE version (1.2.0 / 1.1.0), part B is in `docs/RELEASE-1.2-PLAN-B.md`; the first `release/1.2.0` cut is superseded and will be re-cut after part B
 Source: owner's draft "Neural Forms release implementation plan" (29 Oct 2026),
 scoped by the owner to the Release A features only, integrated with the
 existing engine (no parallel systems).
@@ -227,7 +227,7 @@ A5 can start as soon as A1's `ai_exclude` field setting exists; it does not wait
 - **D6 Three capabilities, not six.** Splitting later is additive and safe; merging later would break Pro.
 - **D7 Follow-up timing is elapsed hours.** Business-day scheduling is documented as not included.
 - **D8 Translation reuses polish.** No new cloud task or credit price.
-- **D9 Release B contracts kept open, not built** (planned separately in `docs/RELEASE-1.3-PLAN.md`). `ConditionEngine::evaluate()` takes a generic data array so price rules can use it; `workflow_runs.trigger` is a string so `payment_confirmed` can be added; `entry_ai_responses.meta` and `entry_messages.meta` are JSON for later fields.
+- **D9 Release B contracts kept open, not built** (part B, same version: `docs/RELEASE-1.2-PLAN-B.md`). `ConditionEngine::evaluate()` takes a generic data array so price rules can use it; `workflow_runs.trigger` is a string so `payment_confirmed` can be added; `entry_ai_responses.meta` and `entry_messages.meta` are JSON for later fields.
 
 ## 10. Owner input still useful (non-blocking)
 

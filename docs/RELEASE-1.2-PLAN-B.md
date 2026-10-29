@@ -1,11 +1,16 @@
-# Release plan: Neural Forms Lite 1.3.0 / Pro 1.2.0 — calculations, quotes, payments
+# Release plan, part B: calculations, quotes, payments (still Lite 1.2.0 / Pro 1.1.0)
 
-Status: proposed 2026-10-29 (Release B of the owner's draft). Versions are
-a proposal; dev is at 1.2.1 / 1.1.1 and is bumped once the owner confirms.
+Status: in progress from 2026-10-29. The owner clarified that the whole
+draft (Release A and Release B) is ONE version: Lite 1.2.0 / Pro 1.1.0.
+The Release-A-only cut of `release/1.2.0` / `release/1.1.0` made earlier
+that day was never published; dev was set back to 1.2.0 / 1.1.0, part B
+is built on dev, and the release branches are re-cut from dev (merge dev
+into the branch, re-run the strip script, refresh the zips) when B5 is
+done. Part A is in `docs/RELEASE-1.2-PLAN.md`.
 
 ## 1. Scope
 
-| Feature | Lite 1.3.0 | Pro 1.2.0 |
+| Feature | Lite 1.2.0 | Pro 1.1.0 |
 |---|---|---|
 | Product field (priced choices, quantity) and Calculated field (expression) | engine shipped, locked in the builder (upsell), skipped by the renderer when locked — same pattern as Matrix / Repeater | unlocked (`calculations`) |
 | Form pricing: currency, discount rules, deposit | settings stored, enforced only with the capability | unlocked |
@@ -97,12 +102,12 @@ No card data touches WordPress (hosted Checkout only). Secrets never appear in R
 
 | Milestone | Deliverable | Exit gate |
 |---|---|---|
-| B0 | this document confirmed, versions set, dev bumped | owner go |
+| B0 ✅ | this document; versions stay 1.2.0 / 1.1.0; dev reverted to those | done 2026-10-29 |
 | B1 | product + calculated fields, pricing settings, PriceEngine + Expression (PHP + JS), fixtures, entry columns, submit recompute, live totals, builder locked/unlocked states | CQ1–CQ6; fixture parity on PHP 7.4 / 8.2 / Node |
 | B2 | quotes table, numbering, branding, HTML + PDF, token routes, inbox Quote card, email send, expiry cron | CQ7–CQ11 |
 | B3 | Stripe settings + vault, Checkout creation, return pages, webhook + event store, status model, reconciliation cron + button | PAY1–PAY13 (webhook replay / out-of-order / mismatch covered by unit tests on the handler with recorded events) |
 | B4 | `payment_confirmed` trigger, `create_quote_draft` action, quote pay links, inbox filters | end-to-end deposit, full payment, failed, refund scenarios on the live harness |
-| B5 | upgrade test, docs, changelogs, release cut (Lite 1.3.0 / Pro 1.2.0) | release gates |
+| B5 | upgrade test, docs, changelogs, re-cut of release/1.2.0 and release/1.1.0 from dev | release gates |
 
 B2 can run in parallel with B3 once B1's snapshot shape is fixed.
 
@@ -117,9 +122,9 @@ B2 can run in parallel with B3 once B1's snapshot shape is fixed.
 - **D7 One capability each**: `calculations`, `quotes`, `payments`. Pro flips all three; Lite ships every engine and locks the UI.
 - **D8 Reuse the 201 `outcome.redirect`** for the Checkout hand-off rather than a new response shape.
 
-## 9. Owner input needed before B1
+## 9. Owner input (defaults applied, as the draft instructs; overrule any time)
 
-1. Confirm versions Lite 1.3.0 / Pro 1.2.0 (dev will be bumped on confirmation).
+1. Versions: Lite 1.2.0 / Pro 1.1.0 (confirmed by the owner's scope note).
 2. Default currency and the initial list to expose in the Pricing settings (proposal: USD, EUR, GBP, INR, AUD, CAD plus "other ISO code").
 3. Stripe account mode for development: test keys for the local site (needed from B3), and whether Stripe Connect is required for the 1.x line at all.
 4. Quote branding defaults and numbering format (proposal: `Q-2026-0001`, 30-day validity).
