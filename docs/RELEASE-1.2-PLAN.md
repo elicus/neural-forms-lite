@@ -227,7 +227,7 @@ A5 can start as soon as A1's `ai_exclude` field setting exists; it does not wait
 - **D6 Three capabilities, not six.** Splitting later is additive and safe; merging later would break Pro.
 - **D7 Follow-up timing is elapsed hours.** Business-day scheduling is documented as not included.
 - **D8 Translation reuses polish.** No new cloud task or credit price.
-- **D9 Release B contracts kept open, not built.** `ConditionEngine::evaluate()` takes a generic data array so price rules can use it; `workflow_runs.trigger` is a string so `payment_confirmed` can be added; `entry_ai_responses.meta` and `entry_messages.meta` are JSON for later fields.
+- **D9 Release B contracts kept open, not built** (planned separately in `docs/RELEASE-1.3-PLAN.md`). `ConditionEngine::evaluate()` takes a generic data array so price rules can use it; `workflow_runs.trigger` is a string so `payment_confirmed` can be added; `entry_ai_responses.meta` and `entry_messages.meta` are JSON for later fields.
 
 ## 10. Owner input still useful (non-blocking)
 
