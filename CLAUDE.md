@@ -803,6 +803,47 @@ prevents overflow without needing `overflow: hidden` anywhere.
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
 
+### Buy button: block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
+
+- **Renderer** `modules/payments/BuyButton.php`: `resolve( $attrs )` picks the
+  form (must be active + `PaymentService::enabled_for()`), the Priced Item
+  (`fieldId` or first product), the option (`choice`) and the unit price
+  (fixed / options; `input` mode refused); `render( $attrs, [ 'preview' ] )`
+  emits `<form data-neural-forms-buy …>` with item, live price, quantity
+  (when the field allows it), name + email, honeypot, hidden `field` /
+  `choice`, and enqueues `neural-forms-buy` + `neural-forms-form` (self-
+  registers the assets when rendered before `wp_enqueue_scripts`).
+  Visitors get nothing when the card cannot sell; editors get a notice.
+  `catalogue()` lists forms + products for the editors.
+- **Endpoint** `POST /forms/{id}/buy` (`BuyEndpoint`): honeypot → fake
+  201; `SubmitEndpoint::default_rate_limit()` + `resolve_ip()` (now
+  public); server-side price + quantity clamp; maps email / name onto
+  the form's own email / name fields; `EntryRepository::create()` with the
+  pricing snapshot; fires `neural_forms_entry_created`,
+  `neural_forms_send_notifications`, `neural_forms_queue_ai_processing`;
+  activity `entry.buy_button`; then `PaymentService::start_checkout()` →
+  `outcome.redirect`. Other required form fields are deliberately NOT
+  collected (quick buy). `GET /buy-catalogue` and `GET /buy-preview`
+  (edit_posts) serve the editors.
+- **Gutenberg** `neural-forms/buy-button` (`frontend/blocks/buy-button/
+  block.json` owns its attribute schema; `BlockHandler::render_buy_button`;
+  editor `src/blocks/buy/BuyButtonEdit.js` in the blocks-extra bundle,
+  ServerSideRender preview with form.css inlined).
+- **Shortcode** `[neural-forms-buy form="68" field="book" choice="" quantity="1"
+  label="Buy now" title="" description="" name="1" price="1" width="auto|full"
+  align="left|center|right"]`.
+- **Frontend** `assets/js/buy-button.js` (no deps): live total, JSON POST,
+  follows the redirect; styles `.neural-forms-buy*` in form.css with
+  `--nf-buy-btn` / `--nf-buy-btn-text` custom properties.
+- **Divi 5** (Pro): `modules/divi/Modules/NeuralBuy/NeuralBuy.php`
+  (`neural-forms/divi-buy`, subclass of NeuralForm, `render_buy()` →
+  `BuyButton::render()`), VB `src/modules/neural-buy/*` (content tab reads
+  `/buy-catalogue`, renderer fetches `/buy-preview`). The trait helpers
+  `adv_value()` / `module_render()` became `protected`.
+- Tests: `tests/live/B3BuyButtonHarness.php` (26 checks: resolve, render,
+  shortcode, do_blocks, catalogue, preview, buy endpoint incl. clamp,
+  honeypot, invalid email, payments-off, posted prices ignored).
+
 ### Payments page, invoices, refunds (1.2.0 part B, owner request 2026-10-29)
 
 - **Payments page** Neural Forms › Payments (`screens/Payments.js`, bundle
