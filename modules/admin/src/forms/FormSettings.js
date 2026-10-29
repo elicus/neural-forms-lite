@@ -34,9 +34,10 @@
  * nav collapses into a horizontal row of pills above the panel.
  */
 
-import { useState } from '@wordpress/element';
+import { useEffect, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import IntegrationsSection from './IntegrationsSection';
+import api from '../api';
 import ConditionEditor, { describeConditional } from './ConditionEditor';
 import WorkflowsSection from './WorkflowsSection';
 import { flattenFields, toEditableConditional } from './schemaHelper';
@@ -49,6 +50,7 @@ const BASE_SECTIONS = [
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
 	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
+	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
 ];
 
 /**
@@ -137,6 +139,88 @@ const STARTER_RESULT_MESSAGES = [
 	{ min: 50, max: 79, title: 'Good attempt',    message: 'Nice work. Review the explanations and try again.' },
 	{ min: 80, max: 100, title: 'Excellent',      message: 'Great job! You passed with a strong score.' },
 ];
+
+/**
+ * Per-form AI behaviour (1.2.0, Pro): tone, language policy and a
+ * knowledge picker. Saved as settings.ai_behaviour and sent with every
+ * AI call for this form (the cloud applies the site-level business
+ * context otherwise). Knowledge items come from Pro's business-context
+ * endpoint; without Pro the section is an upsell.
+ */
+function AiBehaviourSection( { value, onChange } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.ai_business_context;
+	const [ knowledge, setKnowledge ] = useState( null );
+	const [ loadError, setLoadError ] = useState( '' );
+	const v = value || {};
+	const set = ( patch ) => onChange( { ...v, ...patch } );
+
+	useEffect( () => {
+		if ( ! unlocked ) return;
+		api( '/neural-forms-pro/v1/business-context' )
+			.then( ( res ) => setKnowledge( Array.isArray( res?.knowledge ) ? res.knowledge : [] ) )
+			.catch( ( e ) => { setKnowledge( [] ); setLoadError( e?.message || '' ); } );
+	}, [ unlocked ] );
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Give AI drafts for this form their own tone, reply language and a curated set of business facts (opening hours, services, prices, policies). Drafts then quote your approved knowledge and flag what they cannot answer instead of inventing it. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</div>
+		);
+	}
+
+	const selected = Array.isArray( v.knowledge_ids ) ? v.knowledge_ids : [];
+	const toggleId = ( id ) => set( { knowledge_ids: selected.includes( id ) ? selected.filter( ( x ) => x !== id ) : [ ...selected, id ] } );
+
+	return (
+		<div className="nf-ai-behaviour">
+			<label className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Tone for this form', 'neural-forms-lite' ) }</span>
+				<input type="text" maxLength={ 64 } value={ v.tone || '' } placeholder={ __( 'Leave empty to use the site-wide voice', 'neural-forms-lite' ) } onChange={ ( e ) => set( { tone: e.target.value } ) } />
+			</label>
+			<label className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Reply language', 'neural-forms-lite' ) }</span>
+				<select value={ v.language_mode || '' } onChange={ ( e ) => set( { language_mode: e.target.value || undefined, language: e.target.value ? ( v.language || '' ) : undefined } ) }>
+					<option value="">{ __( 'Use the site-wide policy', 'neural-forms-lite' ) }</option>
+					<option value="fixed">{ __( 'Always reply in a fixed language', 'neural-forms-lite' ) }</option>
+					<option value="fallback">{ __( "Visitor's language, fall back to a fixed one", 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+			{ v.language_mode && (
+				<label className="nf-form-settings__field">
+					<span className="nf-form-settings__label">{ __( 'Language code', 'neural-forms-lite' ) }</span>
+					<input type="text" maxLength={ 10 } value={ v.language || '' } placeholder="en, de, fr-CA" onChange={ ( e ) => set( { language: e.target.value } ) } />
+				</label>
+			) }
+			<div className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Knowledge this form may use', 'neural-forms-lite' ) }</span>
+				{ knowledge === null && <span className="nf-form-settings__hint">{ __( 'Loading business knowledge…', 'neural-forms-lite' ) }</span> }
+				{ knowledge && knowledge.length === 0 && (
+					<span className="nf-form-settings__hint">
+						{ loadError || __( 'No business knowledge yet. Add FAQs, services and policies under Settings → Business context; all enabled items are used until you pick some here.', 'neural-forms-lite' ) }
+					</span>
+				) }
+				{ knowledge && knowledge.length > 0 && (
+					<>
+						<span className="nf-form-settings__hint">{ __( 'Nothing ticked = every enabled item. Tick items to restrict this form to them.', 'neural-forms-lite' ) }</span>
+						<ul className="nf-ai-behaviour__knowledge">
+							{ knowledge.map( ( k ) => (
+								<li key={ k.id }>
+									<label>
+										<input type="checkbox" checked={ selected.includes( k.id ) } onChange={ () => toggleId( k.id ) } disabled={ ! k.enabled } />
+										<span>{ k.title }{ ! k.enabled ? ' ' + __( '(disabled)', 'neural-forms-lite' ) : '' }</span>
+										<em>{ k.type }</em>
+									</label>
+								</li>
+							) ) }
+						</ul>
+					</>
+				) }
+			</div>
+		</div>
+	);
+}
 
 /**
  * Conditional confirmations / redirects (1.2.0, Pro).
@@ -592,6 +676,19 @@ export default function FormSettings( {
 					{ section === 'workflows' && (
 						<div className="nf-form-settings__body">
 							<WorkflowsSection formId={ formId } fields={ fields } />
+						</div>
+					) }
+
+					{ section === 'ai_behaviour' && (
+						<div className="nf-form-settings__body">
+							<AiBehaviourSection
+								value={ s.ai_behaviour && typeof s.ai_behaviour === 'object' ? s.ai_behaviour : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									if ( next && ( next.tone || next.language_mode || ( next.knowledge_ids && next.knowledge_ids.length ) ) ) copy.ai_behaviour = next; else delete copy.ai_behaviour;
+									onChange( copy );
+								} }
+							/>
 						</div>
 					) }
 

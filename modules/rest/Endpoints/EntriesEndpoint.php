@@ -659,10 +659,13 @@ class EntriesEndpoint {
 		$text    = trim( (string) $request->get_param( 'text' ) );
 		$form_id = (int) ( $entry['form_id'] ?? 0 );
 		$form    = $form_id > 0 ? ( \NeuralForms\Forms\FormRepository::find( $form_id ) ?? array() ) : array();
+		// 1.2.0: optional translation target (BCP-47). Validated again by the provider.
+		$translate_to = trim( (string) $request->get_param( 'translate_to' ) );
+		$options      = $translate_to !== '' ? array( 'translate_to' => $translate_to ) : array();
 
 		try {
 			$provider = \NeuralForms\AI\AiManager::resolve();
-			$result   = $provider->polish_reply( $text, $entry, $form );
+			$result   = $provider->polish_reply( $text, $entry, $form, $options );
 			// Mirror the cloud's authoritative `credits_remaining` into the
 			// local cache so the Settings credits widget refreshes immediately.
 			PlanManager::apply_usage( is_array( $result['usage'] ?? null ) ? $result['usage'] : array() );
@@ -688,12 +691,15 @@ class EntriesEndpoint {
 				'polished_reply' => $result['polished_reply'] ?? '',
 				'reply_draft'    => $text,
 				'ai_provider'    => $provider->provider_id(),
+				'reply_language' => $result['reply_language'] ?? '',
+				'meta'           => $translate_to !== '' ? array( 'translated_to' => $translate_to ) : array(),
 			)
 		);
 
 		return rest_ensure_response(
 			array(
 				'polished_reply' => $result['polished_reply'],
+				'reply_language' => $result['reply_language'] ?? '',
 				'usage'          => is_array( $result['usage'] ?? null ) ? $result['usage'] : array(),
 			)
 		);

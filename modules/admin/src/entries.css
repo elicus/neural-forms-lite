@@ -2119,3 +2119,11 @@
 		gap: 2px;
 	}
 }
+
+/* Business-context extras on AI drafts (1.2.0) */
+.neural-forms-entry-detail__ai-needs-info { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 12px; line-height: 1.45; }
+.neural-forms-entry-detail__ai-needs-info span { display: block; color: #a16207; margin-top: 2px; }
+.neural-forms-entry-detail__ai-sources { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px; color: #6b7280; }
+.neural-forms-entry-detail__ai-sources code { background: #f3f4f6; border-radius: 4px; padding: 1px 6px; font-size: 11px; }
+.neural-forms-entry-detail__ai-sources em { color: #9ca3af; font-style: normal; }
+.neural-forms-entry-detail__ai-carousel-footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

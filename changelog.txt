@@ -7,6 +7,9 @@
 * Added: Pro users can track each lead through stages, assign an owner, set follow-up reminders and see an activity timeline on every entry.
 * Added: Workflows for Pro users: when a submission arrives, an AI analysis finishes, a stage changes or a follow-up is overdue, assign, notify, acknowledge, set a follow-up or prepare an AI draft, with a test run and history.
 * Added: A Processing health card in Settings shows waiting jobs and how to set up a system cron.
+* Added: Pro users can give AI drafts approved business knowledge, a brand voice and a reply-language policy, site-wide and per form; drafts show which facts they used and flag what they could not answer.
+* Added: Any field can be excluded from AI so its answer never leaves your site.
+* Added: Translate an AI draft into your site language from the drafts carousel.
 * Fixed: Cloud error messages show their real code instead of a bare HTTP status.
 * Fixed: "Analyze with AI" runs immediately when a queued job was never picked up by cron.
 * Fixed: Upstream failures no longer show a Cloudflare error page on proxied sites.

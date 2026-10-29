@@ -79,6 +79,7 @@ if ( ! class_exists( 'NeuralForms\\AI\\Exceptions\\CloudSafetyException' ) ) {
 }
 
 $plugin_root = dirname( __DIR__ );
+require_once $plugin_root . '/modules/forms/SchemaHelper.php';
 require_once $plugin_root . '/modules/ai/Providers/NeuralFormsCloudProvider.php';
 
 use NeuralForms\AI\Providers\NeuralFormsCloudProvider;

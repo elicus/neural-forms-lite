@@ -795,6 +795,48 @@ prevents overflow without needing `overflow: hidden` anywhere.
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
 
+### Business-aware AI drafts (1.2.0, A5)
+
+- **Cloud-side storage.** Knowledge items, brand voice and language
+  policy live on Neural Forms Cloud per installation
+  (`SiteInstallation.businessContext` + `businessContextRevision`, legacy
+  `Site` fallback), edited through Pro (`GET|PUT
+  /neural-forms-pro/v1/business-context` → cloud `GET|PUT
+  /v1/sites/business-context`). The cloud injects them into analyze /
+  reanalyze / regenerate / polish server-side, so Lite's payloads are
+  unchanged for sites without a context.
+- **Per-form `settings.ai_behaviour`** `{ tone, language_mode
+  (fixed|fallback), language, knowledge_ids[] }` — sanitised by
+  `FormSettingsSanitizer::sanitize_ai_behaviour()` (detect / empty
+  collapses to nothing), sent by
+  `NeuralFormsCloudProvider::attach_ai_behaviour()` ONLY when
+  `Capabilities::AI_BUSINESS_CONTEXT` is unlocked. Builder: Form
+  settings › AI behaviour (upsell when locked; knowledge picker reads
+  Pro's endpoint).
+- **Per-field `ai_exclude: true`** (free): `NeuralFormsCloudProvider::
+  strip_ai_excluded()` removes the value before ANY AI request
+  (`format_entry()`). Builder: "Exclude from AI" checkbox under CSS class.
+- **Response extras** `knowledge_refs[]`, `missing_info[]`,
+  `reply_language`, `knowledge_revision` → `normalize_business_extras()`
+  → stored as JSON in `neural_forms_entry_ai_responses.meta`
+  (`AIResponseRepository::build_meta()` / `decode_row()`; NULL when
+  empty). `AiCarousel.js` shows "Sources used", a "Needs business
+  information" notice for `missing_info`, the draft language and a
+  "Translate to <site language>" button.
+- **Translation = polish with `translate_to`** (BCP-47): `polish_reply(
+  $draft, $entry, $form, $options )` (interface gained the optional 4th
+  arg), `POST /entries/{id}/polish-reply` takes `translate_to`, result
+  is a new polish draft with `meta.translated_to`. `neuralFormsAdmin.
+  siteLanguage` = `get_locale()` with `-`.
+- **Review trail**: `ReplyEndpoint` stores `meta.reviewed_by` and
+  `meta.source_response_id` (the inbox sends the selected draft id) and
+  writes an `entry.reply_sent` activity row. Nothing in 1.2.0 sends AI
+  text automatically.
+- Tests: `tests/BusinessContextPluginTest.php`; cloud:
+  `test/business-context.test.ts`.
+- **Deploy order:** cloud first (migration adds nullable columns; old
+  plugins ignore the new response keys), then plugins.
+
 ### Workflows engine (1.2.0, A4)
 
 `modules/workflows/` — Lite owns the engine, Pro flips `workflows` and

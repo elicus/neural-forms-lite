@@ -81,9 +81,10 @@ class AIResponseRepository {
 				'score'           => isset( $data['score'] ) ? (int) $data['score'] : null,
 				'tokens_used'     => (int) ( $data['tokens_used'] ?? 0 ),
 				'finalized'       => (int) (bool) ( $data['finalized'] ?? false ),
+				'meta'            => self::build_meta( $data ),
 				'created_at'      => current_time( 'mysql', true ),
 			),
-			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s' )
+			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -206,7 +207,7 @@ class AIResponseRepository {
 			ARRAY_A
 		);
 
-		return $row ?: null;
+		return $row ? self::decode_row( $row ) : null;
 	}
 
 	/**
@@ -236,7 +237,7 @@ class AIResponseRepository {
 			ARRAY_A
 		);
 
-		return is_array( $rows ) ? $rows : array();
+		return is_array( $rows ) ? array_map( array( self::class, 'decode_row' ), $rows ) : array();
 	}
 
 	// Helpers
@@ -244,5 +245,43 @@ class AIResponseRepository {
 	private static function table(): string {
 		global $wpdb;
 		return $wpdb->prefix . 'neural_forms_entry_ai_responses';
+	}
+
+	/**
+	 * Business-context extras (1.2.0) stored as JSON in `meta`:
+	 * knowledge_refs[], missing_info[], reply_language, knowledge_revision.
+	 * NULL when none — so pre-1.2 rows and rows from sites without a
+	 * business context look the same.
+	 *
+	 * @return string|null
+	 */
+	public static function build_meta( array $data ) {
+		$meta = array();
+		foreach ( array( 'knowledge_refs', 'missing_info' ) as $k ) {
+			if ( isset( $data[ $k ] ) && is_array( $data[ $k ] ) && $data[ $k ] ) {
+				$meta[ $k ] = array_values( array_map( 'strval', $data[ $k ] ) );
+			}
+		}
+		if ( isset( $data['reply_language'] ) && is_string( $data['reply_language'] ) && $data['reply_language'] !== '' ) {
+			$meta['reply_language'] = $data['reply_language'];
+		}
+		if ( isset( $data['knowledge_revision'] ) && (int) $data['knowledge_revision'] > 0 ) {
+			$meta['knowledge_revision'] = (int) $data['knowledge_revision'];
+		}
+		if ( isset( $data['meta'] ) && is_array( $data['meta'] ) ) {
+			$meta = array_merge( $data['meta'], $meta );
+		}
+		return $meta ? wp_json_encode( $meta ) : null;
+	}
+
+	/** Decode the JSON `meta` column on a row (idempotent). */
+	public static function decode_row( array $row ): array {
+		if ( isset( $row['meta'] ) && is_string( $row['meta'] ) ) {
+			$decoded     = json_decode( $row['meta'], true );
+			$row['meta'] = is_array( $decoded ) ? $decoded : array();
+		} elseif ( ! isset( $row['meta'] ) || ! is_array( $row['meta'] ) ) {
+			$row['meta'] = array();
+		}
+		return $row;
 	}
 }

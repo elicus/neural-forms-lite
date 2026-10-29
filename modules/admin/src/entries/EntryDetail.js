@@ -464,6 +464,8 @@ export default function EntryDetail( {
 	assignees,
 	onUpdateLead,
 	activityRefreshSignal,
+	onTranslate,
+	siteLanguage,
 } ) {
 	const [ needsReplyDismissed, setNeedsReplyDismissed ] = useState( false );
 
@@ -821,6 +823,8 @@ export default function EntryDetail( {
 						: __( 'Generating reply…', 'neural-forms-lite' )
 				}
 				freshKey={ draftFreshKey }
+				onTranslate={ onTranslate }
+				siteLanguage={ siteLanguage }
 			/>
 
 			<ActivityTimeline

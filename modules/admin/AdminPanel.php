@@ -3098,6 +3098,9 @@ CSS;
 				'siteName'   => (string) get_bloginfo( 'name' ),
 			),
 
+			// 1.2.0: BCP-47 site language for the "Translate to …" draft action.
+			'siteLanguage' => str_replace( '_', '-', (string) get_locale() ),
+
 			'user'      => array(
 				'id'   => get_current_user_id(),
 				'caps' => array(

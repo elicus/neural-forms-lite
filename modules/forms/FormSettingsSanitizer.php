@@ -294,6 +294,14 @@ final class FormSettingsSanitizer {
 		if ( isset( $out['on_success'] ) && is_array( $out['on_success'] ) ) {
 			$out['on_success'] = self::sanitize_on_success( $out['on_success'] );
 		}
+		if ( array_key_exists( 'ai_behaviour', $out ) ) {
+			$clean = self::sanitize_ai_behaviour( $out['ai_behaviour'] );
+			if ( $clean ) {
+				$out['ai_behaviour'] = $clean;
+			} else {
+				unset( $out['ai_behaviour'] );
+			}
+		}
 		if ( array_key_exists( 'integrations', $out ) ) {
 			$clean = self::sanitize_integrations( $out['integrations'] );
 			if ( empty( $clean ) ) {
@@ -301,6 +309,48 @@ final class FormSettingsSanitizer {
 				unset( $out['integrations'] );
 			} else {
 				$out['integrations'] = $clean;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Sanitize `settings.ai_behaviour` (1.2.0, Pro): per-form tone,
+	 * language policy and knowledge picker sent to the cloud with every
+	 * AI call for this form.
+	 *
+	 *   { tone: string<=64, language_mode: detect|fixed|fallback,
+	 *     language: BCP-47, knowledge_ids: string[] (slugs, <=50) }
+	 *
+	 * Empty / default-only input collapses to [] so the key is dropped.
+	 *
+	 * @param mixed $raw
+	 */
+	public static function sanitize_ai_behaviour( $raw ): array {
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$out  = array();
+		$tone = isset( $raw['tone'] ) && is_string( $raw['tone'] ) ? mb_substr( sanitize_text_field( $raw['tone'] ), 0, 64 ) : '';
+		if ( $tone !== '' ) {
+			$out['tone'] = $tone;
+		}
+		$mode = isset( $raw['language_mode'] ) ? (string) $raw['language_mode'] : 'detect';
+		$lang = isset( $raw['language'] ) && is_string( $raw['language'] ) && preg_match( '/^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/', trim( $raw['language'] ) ) ? trim( $raw['language'] ) : '';
+		if ( in_array( $mode, array( 'fixed', 'fallback' ), true ) && $lang !== '' ) {
+			$out['language_mode'] = $mode;
+			$out['language']      = $lang;
+		}
+		if ( isset( $raw['knowledge_ids'] ) && is_array( $raw['knowledge_ids'] ) ) {
+			$ids = array();
+			foreach ( $raw['knowledge_ids'] as $id ) {
+				$id = preg_replace( '/[^a-z0-9_-]/', '', strtolower( (string) $id ) );
+				if ( $id !== '' ) {
+					$ids[ $id ] = true;
+				}
+			}
+			if ( $ids ) {
+				$out['knowledge_ids'] = array_slice( array_keys( $ids ), 0, 50 );
 			}
 		}
 		return $out;

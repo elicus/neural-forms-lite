@@ -755,11 +755,37 @@ export default function EntriesScreen() {
 		} );
 	}, [ openEntry ] );
 
+	// 1.2.0: translate a draft into the site language. Reuses polish with
+	// translate_to; the result lands in the carousel as a new polish draft.
+	const translateDraft = useCallback( ( draft, lang ) => {
+		if ( ! openEntry || ! draft ) return Promise.reject();
+		const text = draft.kind === 'polish' ? ( draft.polished_reply || '' ) : ( draft.reply_draft || '' );
+		if ( ! text ) return Promise.reject();
+		setCarouselBusy( 'translate' );
+		setComposerError( '' );
+		return api( `/entries/${ openEntry.id }/polish-reply`, { method: 'POST', data: { text, translate_to: lang } } ).then( ( res ) => {
+			setCarouselBusy( null );
+			if ( res && res.usage ) { setLastAiUsage( res.usage ); setLastAiUsageSource( 'reply' ); }
+			setDraftFreshKey( ( k ) => k + 1 );
+			api( `/entries/${ openEntry.id }` ).then( ( fresh ) => setOpenEntry( fresh ) ).catch( () => {} );
+			return res;
+		} ).catch( ( err ) => {
+			setCarouselBusy( null );
+			const credits = creditsExhaustedPayload( err );
+			if ( credits ) setCreditsExhausted( credits );
+			setComposerError( aiErrorMessage( err, __( 'Translation failed.', 'neural-forms-lite' ) ) );
+			throw err;
+		} );
+	}, [ openEntry ] );
+
 	const sendReply = useCallback( ( payload ) => {
 		if ( ! openEntry ) return Promise.reject();
 		setComposerBusy( 'send' );
 		setComposerError( '' );
-		return api( `/entries/${ openEntry.id }/reply`, { method: 'POST', data: payload } ).then( ( res ) => {
+		const withSource = ( openEntry.ai_selected_response_id && payload && typeof payload === 'object' && ! payload.source_response_id )
+			? { ...payload, source_response_id: Number( openEntry.ai_selected_response_id ) }
+			: payload;
+		return api( `/entries/${ openEntry.id }/reply`, { method: 'POST', data: withSource } ).then( ( res ) => {
 			setComposerBusy( null );
 			setMessagesRefreshSignal( ( s ) => s + 1 );
 			// Refetch entry to pick up needs_reply=0 / status flips. Don't
@@ -1022,6 +1048,8 @@ export default function EntriesScreen() {
 									)
 									: {}
 							}
+							onTranslate={ translateDraft }
+							siteLanguage={ ( adminData.siteLanguage || ( typeof document !== 'undefined' && document.documentElement.lang ) || '' ).split( '_' ).join( '-' ) }
 							leadStages={ leadStages }
 							assignees={ assignees }
 							onUpdateLead={ updateLead }

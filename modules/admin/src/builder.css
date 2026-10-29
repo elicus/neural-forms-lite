@@ -4719,3 +4719,8 @@
 #neural-forms-app .nf-wf__pill--failed { background: #fee2e2; color: #991b1b; }
 #neural-forms-app .nf-wf__pill--partial, #neural-forms-app .nf-wf__pill--uncertain, #neural-forms-app .nf-wf__pill--waiting { background: #fef3c7; color: #92400e; }
 #neural-forms-app .nf-wf__pill--running, #neural-forms-app .nf-wf__pill--pending { background: #dbeafe; color: #1e40af; }
+
+/* AI behaviour (1.2.0) */
+#neural-forms-app .nf-ai-behaviour__knowledge { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+#neural-forms-app .nf-ai-behaviour__knowledge label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+#neural-forms-app .nf-ai-behaviour__knowledge em { color: #9ca3af; font-size: 11px; font-style: normal; }

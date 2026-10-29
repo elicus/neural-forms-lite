@@ -321,6 +321,17 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				/>
 			</label>
 
+			{ f.type !== 'hidden' && (
+				<label className="nf-inspector__field nf-inspector__field--inline" title={ __( 'When on, this field\'s answer is removed before anything is sent to Neural Forms Cloud. Use it for IDs, card numbers, health details or anything the AI should never see.', 'neural-forms-lite' ) }>
+					<input
+						type="checkbox"
+						checked={ !! f.ai_exclude }
+						onChange={ ( e ) => set( { ai_exclude: e.target.checked ? true : undefined } ) }
+					/>
+					<span>{ __( 'Exclude from AI', 'neural-forms-lite' ) }</span>
+				</label>
+			) }
+
 			{ [ 'select', 'radio', 'checkboxes', 'poll' ].includes( f.type ) && (
 				<OptionsEditor field={ f } onChange={ set } />
 			) }
