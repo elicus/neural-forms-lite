@@ -161,6 +161,8 @@ try {
 	check( 'return page: deposit received + remaining balance', strpos( (string) $res->get_data(), 'Deposit received' ) !== false && strpos( (string) $res->get_data(), '$819.00' ) !== false, true );
 
 	// ── Invoices (auto + manual) and refunds from the admin ────────
+	$adm_mail = array_values( array_filter( $mails, static function ( $m ) { return strpos( (string) $m['subject'], 'Deposit received:' ) === 0; } ) );
+	check( 'site owner emailed on confirmed payment (amount, remaining, entry link)', count( $adm_mail ) === 1 && strpos( (string) $adm_mail[0]['message'], '$351.00' ) !== false && strpos( (string) $adm_mail[0]['message'], 'Remaining balance: $819.00' ) !== false && strpos( (string) $adm_mail[0]['message'], 'entry_id=' . $entry_id ) !== false, true );
 	$inv_mail = array_values( array_filter( $mails, static function ( $m ) { return strpos( (string) $m['subject'], 'Invoice INV-' ) === 0; } ) );
 	check( 'auto invoice emailed on confirmed payment (default on)', count( $inv_mail ) === 1 && strpos( (string) $inv_mail[0]['message'], '/payments/' . $pid . '/invoice?' ) !== false && is_array( $inv_mail[0]['attachments'] ) && count( $inv_mail[0]['attachments'] ) === 1, true );
 	$pinv = PaymentRepository::get( $pid );

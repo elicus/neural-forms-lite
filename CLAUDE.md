@@ -832,6 +832,14 @@ prevents overflow without needing `overflow: hidden` anywhere.
   `neural_forms_invoice_html( $html, $payment, $entry, $form, $quote,
   $settings, $options )` / `neural_forms_quote_html( $html, $quote,
   $options )` to restyle or replace the whole document (escape everything).
+- **Emails on a confirmed payment** (both per form, default on, in
+  `settings.payment`): `send_invoice` → the customer's invoice with PDF
+  (`maybe_auto_invoice()`); `notify_admin` + optional `notify_email` list →
+  `maybe_notify_admin()` mails the site owner (amount, kind, customer,
+  remaining balance, gateway reference, entry link; falls back to the
+  plugin's admin notification address, then the WP admin email). Activity
+  `payment.admin_notified`. Workflows (`payment_confirmed`) remain the
+  way to do anything beyond that.
 - **Refunds**: `PaymentProviderInterface::refund( $payment, $amount_minor,
   $reason )` (Stripe `POST /v1/refunds` by payment_intent, PayPal
   `POST /v2/payments/captures/{id}/refund`, both with idempotency keys);

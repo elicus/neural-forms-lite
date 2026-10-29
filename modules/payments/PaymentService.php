@@ -41,6 +41,8 @@ final class PaymentService {
 			'success_url'  => isset( $raw['success_url'] ) && is_string( $raw['success_url'] ) ? $raw['success_url'] : '',
 			'cancel_url'   => isset( $raw['cancel_url'] ) && is_string( $raw['cancel_url'] ) ? $raw['cancel_url'] : '',
 			'send_invoice' => array_key_exists( 'send_invoice', $raw ) ? ! empty( $raw['send_invoice'] ) : true,
+			'notify_admin' => array_key_exists( 'notify_admin', $raw ) ? ! empty( $raw['notify_admin'] ) : true,
+			'notify_email' => isset( $raw['notify_email'] ) && is_string( $raw['notify_email'] ) ? $raw['notify_email'] : '',
 		);
 	}
 
@@ -326,6 +328,7 @@ final class PaymentService {
 			 */
 			do_action( 'neural_forms_payment_confirmed', $entry_id, $payment, $aggregate );
 			self::maybe_auto_invoice( $payment );
+			self::maybe_notify_admin( $payment, $aggregate );
 		}
 		return array( 'result' => 'applied', 'status' => (string) $payment['status'], 'newly_paid' => $r['newly_paid'] );
 	}
@@ -453,6 +456,55 @@ final class PaymentService {
 		PaymentRepository::update( (int) $payment['id'], array( 'meta' => $meta ) );
 		EntryActivity::record( (int) $payment['entry_id'], 'payment.invoice_sent', sprintf( __( 'Invoice %1$s emailed to %2$s%3$s', 'neural-forms-lite' ), $number, $to, $automatic ? ' ' . __( '(automatically)', 'neural-forms-lite' ) : '' ), array( 'payment_id' => (int) $payment['id'], 'to' => $to, 'by' => $user_id ) );
 		return array( 'sent' => true, 'number' => $number, 'payment' => PaymentRepository::get( (int) $payment['id'] ) );
+	}
+
+	/**
+	 * Built-in "payment received" email to the site owner (per form, default
+	 * on). Recipients: the form's own list, else the plugin's admin
+	 * notification address, else the WordPress admin email. Workflows can do
+	 * richer things on the `payment_confirmed` trigger; this is the baseline.
+	 */
+	private static function maybe_notify_admin( array $payment, array $aggregate ): void {
+		$entry = EntryRepository::get( (int) $payment['entry_id'] );
+		$form  = $entry ? FormRepository::find( (int) $entry['form_id'] ) : null;
+		if ( ! $form ) {
+			return;
+		}
+		$s = self::settings( $form );
+		if ( ! $s['notify_admin'] ) {
+			return;
+		}
+		$to = NotificationService::parse_recipient_list( $s['notify_email'] );
+		if ( ! $to ) {
+			$configured = (string) \NeuralForms\Core\Config::get( 'admin_notification_email', '' );
+			$to         = NotificationService::parse_recipient_list( $configured !== '' ? $configured : (string) get_option( 'admin_email' ) );
+		}
+		if ( ! $to ) {
+			return;
+		}
+		$c        = (string) $payment['currency'];
+		$paid     = Money::format( (int) $payment['amount_paid_minor'], $c );
+		$kind     = $payment['kind'] === 'deposit' ? __( 'Deposit', 'neural-forms-lite' ) : __( 'Full payment', 'neural-forms-lite' );
+		$customer = trim( (string) ( $payment['meta']['customer_name'] ?? '' ) . ' <' . (string) ( $payment['meta']['customer_email'] ?? '' ) . '>', ' <>' );
+		$provider = PaymentProviderRegistry::get( (string) $payment['provider'] );
+		$subject  = sprintf( __( '%1$s received: %2$s for %3$s', 'neural-forms-lite' ), $kind, $paid, (string) ( $form['name'] ?? '' ) );
+		$lines    = array(
+			sprintf( __( '%1$s of %2$s was confirmed by %3$s.', 'neural-forms-lite' ), $kind, $paid, $provider ? $provider->label() : ucfirst( (string) $payment['provider'] ) ),
+			'',
+			sprintf( __( 'Form: %s', 'neural-forms-lite' ), (string) ( $form['name'] ?? '' ) ),
+			sprintf( __( 'Entry: #%d', 'neural-forms-lite' ), (int) $payment['entry_id'] ),
+			$customer !== '' ? sprintf( __( 'Customer: %s', 'neural-forms-lite' ), $customer ) : '',
+			sprintf( __( 'Total: %s', 'neural-forms-lite' ), Money::format( (int) ( $entry['amount_total_minor'] ?? 0 ), $c ) ),
+			sprintf( __( 'Remaining balance: %s', 'neural-forms-lite' ), Money::format( (int) ( $aggregate['remaining_minor'] ?? 0 ), $c ) ),
+			! empty( $payment['provider_payment_id'] ) ? sprintf( __( 'Gateway reference: %s', 'neural-forms-lite' ), (string) $payment['provider_payment_id'] ) : '',
+			! empty( $payment['livemode'] ) ? '' : __( 'Test mode payment.', 'neural-forms-lite' ),
+			'',
+			__( 'Open the entry:', 'neural-forms-lite' ),
+			admin_url( 'admin.php?page=neural-forms-entries&form_id=' . (int) $form['id'] . '&view=inbox&entry_id=' . (int) $payment['entry_id'] ),
+		);
+		$body = implode( "\n", array_filter( $lines, static function ( $l ) { return $l !== ''; } ) );
+		$sent = NotificationService::send_mail( $to, $subject, $body, array( 'Content-Type: text/plain; charset=UTF-8' ) );
+		EntryActivity::record( (int) $payment['entry_id'], $sent ? 'payment.admin_notified' : 'payment.admin_notify_failed', $sent ? sprintf( __( 'Payment notification emailed to %s', 'neural-forms-lite' ), implode( ', ', $to ) ) : __( 'Payment notification could not be emailed', 'neural-forms-lite' ), array( 'payment_id' => (int) $payment['id'], 'by' => 0 ), $sent ? 'info' : 'error' );
 	}
 
 	/** Automatic invoice after a confirmed payment when the form has it on (default on). */
