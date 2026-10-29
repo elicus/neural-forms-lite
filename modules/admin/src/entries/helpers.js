@@ -1,3 +1,4 @@
+import { __ } from '@wordpress/i18n';
 /**
  * Pure formatting + parsing helpers shared across the Entries screen.
  * No React, no API calls — anything stateful belongs in a hook.
