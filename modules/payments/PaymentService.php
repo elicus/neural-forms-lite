@@ -221,15 +221,35 @@ final class PaymentService {
 		return array( 'url' => (string) $result['url'], 'payment' => $payment, 'reused' => false );
 	}
 
+	/**
+	 * Public REST root the gateways may call back to. Gateways reject or
+	 * cannot reach private hosts (`.local`, `localhost`, plain http), so a
+	 * site behind a tunnel can point this at the tunnel:
+	 * `define( 'NEURAL_FORMS_PAYMENT_PUBLIC_URL', 'https://abc.ngrok.app' )`
+	 * or the `neural_forms_payment_public_url` filter. Paths stay the same.
+	 */
+	public static function public_rest_url( string $path ): string {
+		$url  = rest_url( $path );
+		$base = defined( 'NEURAL_FORMS_PAYMENT_PUBLIC_URL' ) ? (string) NEURAL_FORMS_PAYMENT_PUBLIC_URL : '';
+		$base = (string) apply_filters( 'neural_forms_payment_public_url', $base );
+		if ( $base !== '' && preg_match( '#^https?://#i', $base ) ) {
+			$home = untrailingslashit( home_url() );
+			if ( strpos( $url, $home ) === 0 ) {
+				$url = untrailingslashit( $base ) . substr( $url, strlen( $home ) );
+			}
+		}
+		return $url;
+	}
+
 	/** Absolute URLs handed to the gateway. */
 	public static function urls( array $payment, array $form ): array {
 		$token = PaymentTokens::derive( (int) $payment['id'], (string) $payment['token_seed'] );
-		$base  = rest_url( 'neural-forms/v1/payments/' . (int) $payment['id'] . '/return' );
+		$base  = self::public_rest_url( 'neural-forms/v1/payments/' . (int) $payment['id'] . '/return' );
 		return array(
 			// `nf_token`, not `token`: PayPal appends its own `token=<order id>` to the return URL.
 			'success' => add_query_arg( array( 'nf_token' => $token, 'result' => 'success' ), $base ),
 			'cancel'  => add_query_arg( array( 'nf_token' => $token, 'result' => 'cancel' ), $base ),
-			'webhook' => rest_url( 'neural-forms/v1/payments/webhook/' . (string) $payment['provider'] ),
+			'webhook' => self::public_rest_url( 'neural-forms/v1/payments/webhook/' . (string) $payment['provider'] ),
 		);
 	}
 

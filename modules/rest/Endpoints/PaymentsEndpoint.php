@@ -58,7 +58,7 @@ final class PaymentsEndpoint {
 			array(
 				'unlocked'  => Capabilities::can( Capabilities::PAYMENTS ),
 				'providers' => PaymentProviderRegistry::for_rest(),
-				'webhooks'  => array_map( static function ( $id ) { return rest_url( 'neural-forms/v1/payments/webhook/' . $id ); }, array_combine( array_keys( PaymentProviderRegistry::all() ), array_keys( PaymentProviderRegistry::all() ) ) ?: array() ),
+				'webhooks'  => array_map( static function ( $id ) { return PaymentService::public_rest_url( 'neural-forms/v1/payments/webhook/' . $id ); }, array_combine( array_keys( PaymentProviderRegistry::all() ), array_keys( PaymentProviderRegistry::all() ) ) ?: array() ),
 			)
 		);
 	}
