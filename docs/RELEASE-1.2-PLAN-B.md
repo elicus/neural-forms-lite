@@ -19,7 +19,7 @@ done. Part A is in `docs/RELEASE-1.2-PLAN.md`.
 | Stripe Checkout: full payment or deposit, webhook-verified, reconciliation | tables + status columns present | `payments` |
 | Workflow trigger `payment_confirmed`, action `create_quote_draft` | engine | unlocked with `workflows` |
 
-Out of scope (unchanged from the draft): PayPal, subscriptions, instalments, balance collection, tax engine, multi-currency conversion, coupon campaigns, inventory, legally binding e-signature, "tax invoice" wording.
+Out of scope (unchanged from the draft, except PayPal which the owner added on 2026-10-29): subscriptions, instalments, balance collection, tax engine, multi-currency conversion, coupon campaigns, inventory, legally binding e-signature, "tax invoice" wording.
 
 ## 2. Code map: what exists, what is reused
 
@@ -63,7 +63,10 @@ Nothing payment-related exists today (no currency, price or Stripe code in eithe
 - Inbox: Quote card on the entry (create draft from the pricing snapshot, edit lines, issue, send by email with PDF, supersede), `quote.*` activity rows. A quote never changes the lead stage by itself.
 - Daily cron `neural_forms_quote_expire` moves issued quotes past `valid_until` to `expired`.
 
-## 5. Stripe payments (B3–B4, Pro)
+## 5. Payments: Stripe and PayPal (B3–B4, Pro)
+
+**Owner change 2026-10-29:** PayPal is in scope next to Stripe. Both providers are configured as tabs on the **Neural Forms › Integrations** page (HubSpot / WhatsApp / Mailchimp / Google Forms / Zapier / **Stripe** / **PayPal**), reusing the existing provider-card pattern (status pill, credentials grid, Test connection / Update credentials / Disconnect). Lite ships one `PaymentProvider` contract (`create_checkout( $entry, $amount_minor, $currency, $return_urls )`, `verify_webhook( $request )`, `fetch_payment( $id )`) and the status model; Pro ships the Stripe (Checkout Sessions + signed webhooks) and PayPal (Orders API v2, approve → capture on return, webhook signature verification via the verify-webhook-signature API) providers. The form's Payments settings pick the provider (one per form, or "let the visitor choose"). Everything below that says "Stripe" applies to both unless stated.
+
 
 ### 5.1 Connection
 
@@ -96,7 +99,7 @@ No card data touches WordPress (hosted Checkout only). Secrets never appear in R
 - Builder: Product and Calculated chips in the palette (locked upsell in Lite); Form settings › **Pricing** (currency, discount rules with the shared condition editor, deposit) and › **Payments** (enable, full or deposit, return pages).
 - Frontend: live totals block under the form (subtotal, discount, total, due now, remaining) updated with the form; "Pay securely with Stripe" as the submit label when payment is on.
 - Inbox: payment pill in the list, Payment card and Quote card in the detail, filters `payment_status`.
-- Settings (Pro): Stripe connection + Quote branding sections.
+- Integrations page: Stripe and PayPal tabs (connection + credentials). Settings: Quote branding section.
 
 ## 7. Milestones
 
@@ -105,7 +108,7 @@ No card data touches WordPress (hosted Checkout only). Secrets never appear in R
 | B0 ✅ | this document; versions stay 1.2.0 / 1.1.0; dev reverted to those | done 2026-10-29 |
 | B1 ✅ 2026-10-29 | product + calculated fields, pricing settings, PriceEngine + Expression (PHP + JS), fixtures, entry columns, submit recompute, live totals, builder locked/unlocked states | CQ1–CQ6 pass: 9 shared fixtures on PHP 7.4 / 8.2 / Node 18; live harness: tampered price / calculated / unknown option ignored, hidden product excluded, snapshot + columns stored, CSV shows choices |
 | B2 | quotes table, numbering, branding, HTML + PDF, token routes, inbox Quote card, email send, expiry cron | CQ7–CQ11 |
-| B3 | Stripe settings + vault, Checkout creation, return pages, webhook + event store, status model, reconciliation cron + button | PAY1–PAY13 (webhook replay / out-of-order / mismatch covered by unit tests on the handler with recorded events) |
+| B3 | PaymentProvider contract, Stripe + PayPal Integrations tabs (keys in the vault), Checkout / Order creation, return pages, webhook + event store (both providers), status model, reconciliation cron + button | PAY1–PAY13 (webhook replay / out-of-order / mismatch covered by unit tests on the handler with recorded events) |
 | B4 | `payment_confirmed` trigger, `create_quote_draft` action, quote pay links, inbox filters | end-to-end deposit, full payment, failed, refund scenarios on the live harness |
 | B5 | upgrade test, docs, changelogs, re-cut of release/1.2.0 and release/1.1.0 from dev | release gates |
 
@@ -115,7 +118,7 @@ B2 can run in parallel with B3 once B1's snapshot shape is fixed.
 
 - **D1 Money as integer minor units** with a built-in currency exponent table; no floats in totals. Half-up rounding per line.
 - **D2 Expression language is tiny and non-Turing**: arithmetic, three functions, `if()`. No eval.
-- **D3 Stripe via API keys first**, Connect later. Hosted Checkout only; no Elements, no raw card fields.
+- **D3 Stripe via API keys first**, Connect later. Hosted Checkout only; no Elements, no raw card fields. **D3b PayPal via REST API credentials (client id + secret, sandbox / live)**, hosted PayPal Checkout (Orders API v2); no card fields. Both configured on the Integrations page.
 - **D4 Webhook is the only path to "paid".** Return URLs and the admin "Check status" button only *read* Stripe and still go through the same verification as a webhook event.
 - **D5 dompdf vendored in Pro** for PDFs (LGPL, fonts bundled); HTML print view is the fallback when the library cannot run (memory limits).
 - **D6 Quotes are immutable once issued**; corrections create revisions. A quote is never called an invoice.
