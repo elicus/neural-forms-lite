@@ -1,7 +1,7 @@
 /**
- * Editor for neural-forms/buy-button (1.2.0 part B). Picks a form that
+ * Editor for neural-forms/payment-form (1.2.0 part B). Picks a form that
  * takes payments, the Priced Item (and option) to sell, quantity and
- * copy; previews through ServerSideRender (BuyButton::render).
+ * copy; previews through ServerSideRender (PaymentForm::render).
  */
 
 import { useEffect, useState } from '@wordpress/element';
@@ -14,12 +14,12 @@ import api from '../../api';
 
 let cache = null;
 
-export default function BuyButtonEdit( { attributes, setAttributes } ) {
+export default function PaymentFormEdit( { attributes, setAttributes } ) {
 	const [ catalogue, setCatalogue ] = useState( cache );
 	const [ error, setError ] = useState( '' );
 	useEffect( () => {
 		if ( cache ) return;
-		api( '/buy-catalogue' ).then( ( res ) => { cache = res; setCatalogue( res ); } ).catch( ( e ) => setError( e?.message || __( 'Could not load forms.', 'neural-forms-lite' ) ) );
+		api( '/payment-form/catalogue' ).then( ( res ) => { cache = res; setCatalogue( res ); } ).catch( ( e ) => setError( e?.message || __( 'Could not load forms.', 'neural-forms-lite' ) ) );
 	}, [] );
 	const forms   = catalogue?.forms || [];
 	const form    = forms.find( ( f ) => f.id === attributes.formId );
@@ -76,9 +76,9 @@ export default function BuyButtonEdit( { attributes, setAttributes } ) {
 				<AdvancedPanel     a={ attributes } set={ setAttributes } />
 			</InspectorControls>
 			{ attributes.formId ? (
-				<ServerSideRender block="neural-forms/buy-button" attributes={ attributes } httpMethod="POST" />
+				<ServerSideRender block="neural-forms/payment-form" attributes={ attributes } httpMethod="POST" />
 			) : (
-				<div className="neural-forms-buy neural-forms-buy--notice">{ __( 'Payment form: choose a form that takes payments in the block settings.', 'neural-forms-lite' ) }</div>
+				<div className="neural-forms-payment-form neural-forms-payment-form--notice">{ __( 'Payment form: choose a form that takes payments in the block settings.', 'neural-forms-lite' ) }</div>
 			) }
 		</div>
 	);

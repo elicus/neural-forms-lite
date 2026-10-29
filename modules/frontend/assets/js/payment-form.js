@@ -10,16 +10,16 @@
 		return ( minor < 0 ? '-' : '' ) + sym + String( whole ).replace( /\B(?=(\d{3})+(?!\d))/g, ',' ) + ( exp ? '.' + frac : '' );
 	}
 	function init( form ) {
-		if ( form.__nfBuy ) { return; }
-		form.__nfBuy = true;
+		if ( form.__nfPaymentForm ) { return; }
+		form.__nfPaymentForm = true;
 		var unit = parseInt( form.getAttribute( 'data-unit' ), 10 ) || 0;
 		var cur = form.getAttribute( 'data-currency' ) || 'USD';
 		var exp = parseInt( form.getAttribute( 'data-exponent' ), 10 );
 		if ( isNaN( exp ) ) { exp = 2; }
 		var qtyInput = form.querySelector( 'input[name="qty"]' );
 		var total = form.querySelector( '[data-buy-total]' );
-		var msg = form.querySelector( '.neural-forms-buy__msg' );
-		var btn = form.querySelector( '.neural-forms-buy__btn' );
+		var msg = form.querySelector( '.neural-forms-payment-form__msg' );
+		var btn = form.querySelector( '.neural-forms-payment-form__btn' );
 		function qty() {
 			var v = parseInt( qtyInput ? qtyInput.value : '1', 10 );
 			if ( isNaN( v ) || v < 1 ) { v = 1; }
@@ -35,7 +35,7 @@
 			var email = form.querySelector( 'input[name="email"]' );
 			if ( email && ! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( email.value.trim() ) ) {
 				msg.textContent = form.getAttribute( 'data-msg-email' ) || 'Please enter a valid email address.';
-				msg.className = 'neural-forms-buy__msg neural-forms-form__global-error';
+				msg.className = 'neural-forms-payment-form__msg neural-forms-form__global-error';
 				email.focus();
 				return;
 			}
@@ -46,7 +46,7 @@
 			form.classList.add( 'is-busy' );
 			btn.disabled = true;
 			msg.textContent = '';
-			msg.className = 'neural-forms-buy__msg';
+			msg.className = 'neural-forms-payment-form__msg';
 			fetch( form.getAttribute( 'data-endpoint' ), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify( payload ) } )
 				.then( function ( r ) { return r.json().then( function ( j ) { return { ok: r.ok, json: j }; } ); } )
 				.then( function ( res ) {
@@ -59,19 +59,19 @@
 					}
 					var text = ( res.json && ( res.json.payment_error || res.json.message ) ) || ( res.json && res.json.message ) || 'Something went wrong. Please try again.';
 					msg.textContent = text;
-					msg.className = 'neural-forms-buy__msg ' + ( res.ok ? 'neural-forms-form__success' : 'neural-forms-form__global-error' );
+					msg.className = 'neural-forms-payment-form__msg ' + ( res.ok ? 'neural-forms-form__success' : 'neural-forms-form__global-error' );
 					form.classList.remove( 'is-busy' );
 					btn.disabled = false;
 				} )
 				.catch( function () {
 					msg.textContent = 'Network error. Please try again.';
-					msg.className = 'neural-forms-buy__msg neural-forms-form__global-error';
+					msg.className = 'neural-forms-payment-form__msg neural-forms-form__global-error';
 					form.classList.remove( 'is-busy' );
 					btn.disabled = false;
 				} );
 		} );
 	}
-	function boot() { Array.prototype.forEach.call( document.querySelectorAll( 'form[data-neural-forms-buy]' ), init ); }
+	function boot() { Array.prototype.forEach.call( document.querySelectorAll( 'form[data-neural-forms-payment-form]' ), init ); }
 	if ( document.readyState === 'loading' ) { document.addEventListener( 'DOMContentLoaded', boot ); } else { boot(); }
-	document.addEventListener( 'neuralforms:buy:refresh', boot );
+	document.addEventListener( 'neuralforms:payment-form:refresh', boot );
 }() );

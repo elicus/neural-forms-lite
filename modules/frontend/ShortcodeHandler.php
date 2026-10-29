@@ -46,7 +46,7 @@ class ShortcodeHandler {
 	 */
 	public static function boot(): void {
 		add_shortcode( 'neural-forms', array( static::class, 'handle' ) );
-		add_shortcode( 'neural-forms-buy', array( \NeuralForms\Payments\BuyButton::class, 'shortcode' ) );
+		add_shortcode( 'neural-forms-payment-form', array( \NeuralForms\Payments\PaymentForm::class, 'shortcode' ) );
 	}
 
 	// Shortcode callback

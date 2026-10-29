@@ -235,16 +235,16 @@ class BlockHandler {
 		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
 
 		// 1.2.0 part B: Buy button block — own schema in its block.json, own renderer.
-		$buy_json = @file_get_contents( __DIR__ . '/blocks/buy-button/block.json' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		$buy_meta = $buy_json ? json_decode( $buy_json, true ) : null;
-		$buy_attrs = is_array( $buy_meta ) && is_array( $buy_meta['attributes'] ?? null ) ? $buy_meta['attributes'] : [];
+		$pf_json = @file_get_contents( __DIR__ . '/blocks/payment-form/block.json' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$pf_meta = $pf_json ? json_decode( $pf_json, true ) : null;
+		$form_attrs = is_array( $pf_meta ) && is_array( $pf_meta['attributes'] ?? null ) ? $pf_meta['attributes'] : [];
 		register_block_type(
-			__DIR__ . '/blocks/buy-button',
+			__DIR__ . '/blocks/payment-form',
 			[
 				// Own attributes + the form block's design schema, so the same Style tab
 				// panels and build_scoped_css() work on the payment card.
-				'attributes'      => array_merge( $attributes, $buy_attrs ),
-				'render_callback' => [ static::class, 'render_buy_button' ],
+				'attributes'      => array_merge( $attributes, $form_attrs ),
+				'render_callback' => [ static::class, 'render_payment_form' ],
 			]
 		);
 
@@ -260,10 +260,10 @@ class BlockHandler {
 		}
 	}
 
-	/** Render callback for neural-forms/buy-button. */
-	public static function render_buy_button( array $attributes ): string {
+	/** Render callback for neural-forms/payment-form. */
+	public static function render_payment_form( array $attributes ): string {
 		$preview = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
-		$html    = \NeuralForms\Payments\BuyButton::render( $attributes, [ 'preview' => $preview ] );
+		$html    = \NeuralForms\Payments\PaymentForm::render( $attributes, [ 'preview' => $preview ] );
 		if ( $html === '' ) {
 			return '';
 		}

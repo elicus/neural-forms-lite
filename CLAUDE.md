@@ -848,7 +848,7 @@ dead code, wiring) over Lite + Pro. Rules that came out of it:
   capture via the `up` link; Stripe ignores `charge.refund.updated`.
 - **Buy endpoint** runs the `neural_forms_rate_limit` filter and the form's
   CAPTCHA (`FormRenderer::captcha_widget_html()` is shared with the card;
-  buy-button.js also serialises textareas for the reCAPTCHA token).
+  payment-form.js also serialises textareas for the reCAPTCHA token).
 - **424, never 5xx passthrough**: integration clients and Settings test
   connection map upstream 5xx to 424 (the guard test only sees literals).
 - **Cron**: the activation hook attaches the `five_minutes` interval before
@@ -873,50 +873,50 @@ dead code, wiring) over Lite + Pro. Rules that came out of it:
 
 ### Payment form ("Neural Payment Form"): block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
 
-User-facing name **Neural Payment Form** (renamed from Buy Button the same day; internal names `neural-forms/buy-button`, `[neural-forms-buy]`, `BuyButton`, `neural-forms/divi-buy` stay).
+Built as "Buy Button" and renamed the same day; since the second rename pass every identifier is `payment-form` / `PaymentForm` (block `neural-forms/payment-form`, shortcode `[neural-forms-payment-form]`, class `PaymentForm`, endpoint `POST /forms/{id}/pay` + `GET /payment-form/catalogue|preview`, script `neural-forms-payment-form`, CSS `.neural-forms-payment-form*`, Divi `neural-forms/divi-payment-form`, activity `entry.payment_form`). Nothing answers to the old `buy` names.
 
-- **Renderer** `modules/payments/BuyButton.php`: `resolve( $attrs )` picks the
+- **Renderer** `modules/payments/PaymentForm.php`: `resolve( $attrs )` picks the
   form (must be active + `PaymentService::enabled_for()`), the Priced Item
   (`fieldId` or first product), the option (`choice`) and the unit price
   (fixed / options; `input` mode refused); `render( $attrs, [ 'preview' ] )`
-  emits `<form data-neural-forms-buy …>` with item, live price, quantity
+  emits `<form data-neural-forms-payment-form …>` with item, live price, quantity
   (when the field allows it), name + email, honeypot, hidden `field` /
-  `choice`, and enqueues `neural-forms-buy` + `neural-forms-form` (self-
+  `choice`, and enqueues `neural-forms-payment-form` + `neural-forms-form` (self-
   registers the assets when rendered before `wp_enqueue_scripts`).
   Visitors get nothing when the card cannot sell; editors get a notice.
   `catalogue()` lists forms + products for the editors.
-- **Endpoint** `POST /forms/{id}/buy` (`BuyEndpoint`): honeypot → fake
+- **Endpoint** `POST /forms/{id}/buy` (`PaymentFormEndpoint`): honeypot → fake
   201; `SubmitEndpoint::default_rate_limit()` + `resolve_ip()` (now
   public); server-side price + quantity clamp; maps email / name onto
   the form's own email / name fields; `EntryRepository::create()` with the
   pricing snapshot; fires `neural_forms_entry_created`,
   `neural_forms_send_notifications`, `neural_forms_queue_ai_processing`;
-  activity `entry.buy_button`; then `PaymentService::start_checkout()` →
+  activity `entry.payment_form`; then `PaymentService::start_checkout()` →
   `outcome.redirect`. Other required form fields are deliberately NOT
-  collected (quick buy). `GET /buy-catalogue` and `GET /buy-preview`
+  collected (quick buy). `GET /payment-form/catalogue` and `GET /payment-form/preview`
   (edit_posts) serve the editors.
-- **Gutenberg** `neural-forms/buy-button`: `frontend/blocks/buy-button/
+- **Gutenberg** `neural-forms/payment-form`: `frontend/blocks/payment-form/
   block.json` holds its own attributes, MERGED at registration (PHP + JS)
   with the form block's design schema. The card uses the form block's BEM
   classes (`neural-forms-form`, `__label`, `__input`, `__submit`,
   `__success` / `__global-error`) so the Style tab reuses `ContainerPanel`,
   `LabelsPanel`, `InputFieldsPanel`, `SubmitButtonPanel`, `MessagesPanel`,
-  `AdvancedPanel` from `DesignPanels.js` and `BlockHandler::render_buy_button`
+  `AdvancedPanel` from `DesignPanels.js` and `BlockHandler::render_payment_form`
   wraps the card exactly like `render()` (uid, `build_scoped_css()`,
   `build_wrap_style()`, `extraClass`; form.css + pointer-events inlined in
-  the editor preview). Editor: `src/blocks/buy/BuyButtonEdit.js` (blocks-extra bundle).
-- **Shortcode** `[neural-forms-buy form="68" field="book" choice="" quantity="1"
+  the editor preview). Editor: `src/blocks/payment-form/PaymentFormEdit.js` (blocks-extra bundle).
+- **Shortcode** `[neural-forms-payment-form form="68" field="book" choice="" quantity="1"
   label="Buy now" title="" description="" name="1" price="1" width="auto|full"
   align="left|center|right"]`.
-- **Frontend** `assets/js/buy-button.js` (no deps): live total, JSON POST,
-  follows the redirect; styles `.neural-forms-buy*` in form.css (button
+- **Frontend** `assets/js/payment-form.js` (no deps): live total, JSON POST,
+  follows the redirect; styles `.neural-forms-payment-form*` in form.css (button
   colours come from the Style tab, the old colour attributes are gone).
-- **Divi 5** (Pro): `modules/divi/Modules/NeuralBuy/NeuralBuy.php`
-  (`neural-forms/divi-buy`, subclass of NeuralForm, `render_buy()` →
-  `BuyButton::render()`), VB `src/modules/neural-buy/*` (content tab reads
-  `/buy-catalogue`, renderer fetches `/buy-preview`). The trait helpers
+- **Divi 5** (Pro): `modules/divi/Modules/NeuralPaymentForm/NeuralPaymentForm.php`
+  (`neural-forms/divi-payment-form`, subclass of NeuralForm, `render_payment_form()` →
+  `PaymentForm::render()`), VB `src/modules/neural-payment-form/*` (content tab reads
+  `/payment-form/catalogue`, renderer fetches `/payment-form/preview`). The trait helpers
   `adv_value()` / `module_render()` became `protected`.
-- Tests: `tests/live/B3BuyButtonHarness.php` (26 checks: resolve, render,
+- Tests: `tests/live/B3PaymentFormHarness.php` (26 checks: resolve, render,
   shortcode, do_blocks, catalogue, preview, buy endpoint incl. clamp,
   honeypot, invalid email, payments-off, posted prices ignored).
 

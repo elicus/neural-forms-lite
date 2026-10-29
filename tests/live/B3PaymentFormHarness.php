@@ -10,7 +10,7 @@ define( 'WP_USE_THEMES', false );
 require '/Users/ALI/Local Sites/diviplus/app/public/wp-load.php';
 
 use NeuralForms\Forms\FormRepository;
-use NeuralForms\Payments\BuyButton;
+use NeuralForms\Payments\PaymentForm;
 use NeuralForms\Payments\PaymentProviderInterface;
 use NeuralForms\Payments\PaymentProviderRegistry;
 use NeuralForms\Payments\PaymentRepository;
@@ -52,35 +52,35 @@ try {
 	$created['forms'][] = $off_id;
 
 	// ── renderer / resolve ──────────────────────────────────────────
-	check( 'block registered', \WP_Block_Type_Registry::get_instance()->is_registered( 'neural-forms/buy-button' ), true );
-	check( 'shortcode registered', shortcode_exists( 'neural-forms-buy' ), true );
-	$r = BuyButton::resolve( array( 'formId' => $form_id ) );
+	check( 'block registered', \WP_Block_Type_Registry::get_instance()->is_registered( 'neural-forms/payment-form' ), true );
+	check( 'shortcode registered', shortcode_exists( 'neural-forms-payment-form' ), true );
+	$r = PaymentForm::resolve( array( 'formId' => $form_id ) );
 	check( 'resolve: first product, fixed 29.00, qty 1..5', array( $r['ok'], $r['field']['id'], $r['unit_minor'], $r['qty_min'], $r['qty_max'], $r['qty_on'] ), array( true, 'book', 2900, 1, 5, true ) );
-	$r2 = BuyButton::resolve( array( 'formId' => $form_id, 'fieldId' => 'tier', 'choice' => 'pro' ) );
+	$r2 = PaymentForm::resolve( array( 'formId' => $form_id, 'fieldId' => 'tier', 'choice' => 'pro' ) );
 	check( 'resolve: option pro 25.00, no qty', array( $r2['ok'], $r2['unit_minor'], $r2['title'], $r2['qty_on'] ), array( true, 2500, 'Pro', false ) );
-	check( 'resolve: payments off → no_payments', BuyButton::resolve( array( 'formId' => $off_id ) )['reason'], 'no_payments' );
-	check( 'resolve: unknown option → no_option', BuyButton::resolve( array( 'formId' => $form_id, 'fieldId' => 'tier', 'choice' => 'nope' ) )['reason'], 'no_option' );
-	$html = BuyButton::render( array( 'formId' => $form_id, 'quantity' => 2, 'label' => 'Grab it', 'description' => 'Ships worldwide' ) );
-	check( 'render: card with data attrs, qty 2, total 58.00, label', strpos( $html, 'data-neural-forms-buy' ) !== false && strpos( $html, 'data-unit="2900"' ) !== false && strpos( $html, 'value="2"' ) !== false && strpos( $html, '$58.00' ) !== false && strpos( $html, 'Grab it' ) !== false && strpos( $html, 'Ships worldwide' ) !== false && strpos( $html, '/forms/' . $form_id . '/buy' ) !== false, true );
+	check( 'resolve: payments off → no_payments', PaymentForm::resolve( array( 'formId' => $off_id ) )['reason'], 'no_payments' );
+	check( 'resolve: unknown option → no_option', PaymentForm::resolve( array( 'formId' => $form_id, 'fieldId' => 'tier', 'choice' => 'nope' ) )['reason'], 'no_option' );
+	$html = PaymentForm::render( array( 'formId' => $form_id, 'quantity' => 2, 'label' => 'Grab it', 'description' => 'Ships worldwide' ) );
+	check( 'render: card with data attrs, qty 2, total 58.00, label', strpos( $html, 'data-neural-forms-payment-form' ) !== false && strpos( $html, 'data-unit="2900"' ) !== false && strpos( $html, 'value="2"' ) !== false && strpos( $html, '$58.00' ) !== false && strpos( $html, 'Grab it' ) !== false && strpos( $html, 'Ships worldwide' ) !== false && strpos( $html, '/forms/' . $form_id . '/pay' ) !== false, true );
 	check( 'render: honeypot + hidden field/choice', strpos( $html, 'name="neural_forms_website"' ) !== false && strpos( $html, 'name="field" value="book"' ) !== false, true );
-	check( 'render: scripts enqueued (self-registered outside wp_enqueue_scripts)', wp_script_is( 'neural-forms-buy', 'enqueued' ) && wp_style_is( 'neural-forms-form', 'enqueued' ), true );
-	check( 'render: payments-off form → empty for visitors', BuyButton::render( array( 'formId' => $off_id ) ), '' );
-	check( 'render: preview explains why', strpos( BuyButton::render( array( 'formId' => $off_id ), array( 'preview' => true ) ), 'does not take payments' ) !== false, true );
-	check( 'shortcode renders', strpos( do_shortcode( '[neural-forms-buy form="' . $form_id . '" field="tier" choice="basic" label="Subscribe"]' ), 'Subscribe' ) !== false, true );
-	$block = do_blocks( '<!-- wp:neural-forms/buy-button {"formId":' . $form_id . ',"fieldId":"book"} /-->' );
-	check( 'block renders through do_blocks', strpos( $block, 'data-neural-forms-buy' ) !== false && strpos( $block, 'wp-block-neural-forms-buy-button' ) !== false, true );
+	check( 'render: scripts enqueued (self-registered outside wp_enqueue_scripts)', wp_script_is( 'neural-forms-payment-form', 'enqueued' ) && wp_style_is( 'neural-forms-form', 'enqueued' ), true );
+	check( 'render: payments-off form → empty for visitors', PaymentForm::render( array( 'formId' => $off_id ) ), '' );
+	check( 'render: preview explains why', strpos( PaymentForm::render( array( 'formId' => $off_id ), array( 'preview' => true ) ), 'does not take payments' ) !== false, true );
+	check( 'shortcode renders', strpos( do_shortcode( '[neural-forms-payment-form form="' . $form_id . '" field="tier" choice="basic" label="Subscribe"]' ), 'Subscribe' ) !== false, true );
+	$block = do_blocks( '<!-- wp:neural-forms/payment-form {"formId":' . $form_id . ',"fieldId":"book"} /-->' );
+	check( 'block renders through do_blocks', strpos( $block, 'data-neural-forms-payment-form' ) !== false && strpos( $block, 'wp-block-neural-forms-payment-form' ) !== false, true );
 
 	// ── catalogue ──────────────────────────────────────────────────
 	$server = rest_get_server(); wp_set_current_user( (int) ( get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ) )[0] ?? 1 ) );
-	$res = $server->dispatch( new WP_REST_Request( 'GET', '/neural-forms/v1/buy-catalogue' ) ); $cat = $res->get_data();
+	$res = $server->dispatch( new WP_REST_Request( 'GET', '/neural-forms/v1/payment-form/catalogue' ) ); $cat = $res->get_data();
 	$mine = array_values( array_filter( $cat['forms'], static function ( $f ) use ( $form_id ) { return $f['id'] === $form_id; } ) );
 	check( 'catalogue lists the form with two products, options and payments flag', $res->get_status() === 200 && $mine && count( $mine[0]['products'] ) === 2 && $mine[0]['payments'] === true && count( $mine[0]['products'][1]['options'] ) === 2, true );
-	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/buy-preview' ); $req->set_query_params( array( 'formId' => (string) $form_id, 'fieldId' => 'tier', 'choice' => 'pro', 'label' => 'Go' ) ); $res = $server->dispatch( $req );
+	$req = new WP_REST_Request( 'GET', '/neural-forms/v1/payment-form/preview' ); $req->set_query_params( array( 'formId' => (string) $form_id, 'fieldId' => 'tier', 'choice' => 'pro', 'label' => 'Go' ) ); $res = $server->dispatch( $req );
 	check( 'preview endpoint returns the card html', strpos( (string) $res->get_data()['html'], 'Go' ) !== false && strpos( (string) $res->get_data()['html'], '$25.00' ) !== false, true );
 	wp_set_current_user( 0 );
 
 	// ── buy endpoint ───────────────────────────────────────────────
-	$buy = static function ( array $body, int $fid ) use ( $server ) { $req = new WP_REST_Request( 'POST', '/neural-forms/v1/forms/' . $fid . '/buy' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( wp_json_encode( $body ) ); return $server->dispatch( $req ); };
+	$buy = static function ( array $body, int $fid ) use ( $server ) { $req = new WP_REST_Request( 'POST', '/neural-forms/v1/forms/' . $fid . '/pay' ); $req->set_header( 'Content-Type', 'application/json' ); $req->set_body( wp_json_encode( $body ) ); return $server->dispatch( $req ); };
 	$res = $buy( array( 'field' => 'book', 'qty' => 3, 'email' => 'buyer@harness.test', 'full_name' => 'Grace Buyer', 'neural_forms_website' => '' ), $form_id );
 	$b = $res->get_data();
 	check( 'buy: 201 with redirect to the gateway, total 87.00', $res->get_status() === 201 && ( $b['outcome']['mode'] ?? '' ) === 'redirect' && $b['pricing']['total'] === 8700, true );
@@ -88,7 +88,7 @@ try {
 	$entry = EntryRepository::get( $eid );
 	check( 'buy: entry maps email + name onto the form fields, product value stored', $entry['data']['contact'] === 'buyer@harness.test' && $entry['data']['buyer_name'] === 'Grace Buyer' && $entry['data']['book']['qty'] === 3, true );
 	check( 'buy: pricing snapshot + pending payment attempt', $entry['amount_total_minor'] === 8700 && $entry['payment_status'] === 'pending' && count( PaymentRepository::list_for_entry( $eid ) ) === 1, true );
-	check( 'buy: activity marks the quick purchase', in_array( 'entry.buy_button', array_column( EntryActivity::list( $eid ), 'event_type' ), true ), true );
+	check( 'buy: activity marks the quick purchase', in_array( 'entry.payment_form', array_column( EntryActivity::list( $eid ), 'event_type' ), true ), true );
 	$res = $buy( array( 'field' => 'book', 'qty' => 99, 'email' => 'buyer@harness.test', 'neural_forms_website' => '' ), $form_id );
 	$created['entries'][] = (int) $res->get_data()['entry_id'];
 	check( 'buy: quantity clamped to the field max (5 × 29 = 145.00)', $res->get_data()['pricing']['total'], 14500 );

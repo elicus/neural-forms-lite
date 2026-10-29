@@ -1,7 +1,7 @@
 {
     "$schema": "https://schemas.wp.org/trunk/block.json",
     "apiVersion": 3,
-    "name": "neural-forms/buy-button",
+    "name": "neural-forms/payment-form",
     "version": "1.2.0",
     "title": "Neural Payment Form",
     "category": "embed",

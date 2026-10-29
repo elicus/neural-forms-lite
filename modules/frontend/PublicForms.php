@@ -111,10 +111,10 @@ class PublicForms {
 			true
 		);
 
-		// 1.2.0 part B: Buy button card (block / shortcode / Divi). Enqueued by BuyButton::render().
+		// 1.2.0 part B: Buy button card (block / shortcode / Divi). Enqueued by PaymentForm::render().
 		wp_register_script(
-			'neural-forms-buy',
-			NEURAL_FORMS_URL . 'modules/frontend/assets/js/buy-button.js',
+			'neural-forms-payment-form',
+			NEURAL_FORMS_URL . 'modules/frontend/assets/js/payment-form.js',
 			array(),
 			NEURAL_FORMS_VERSION,
 			true

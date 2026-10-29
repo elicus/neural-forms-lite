@@ -6,9 +6,9 @@
  * same repository and hooks as a normal submission, then starts the hosted
  * checkout. Protected like the submit route: honeypot, per-IP rate limit,
  * server-side pricing. Other required fields of the form are NOT collected
- * by design (quick buy); the entry records `buy_button` as its source.
+ * by design (quick buy); the entry records `payment_form` as its source.
  *
- * GET /neural-forms/v1/buy-catalogue (edit_posts) lists forms + items for
+ * GET /neural-forms/v1/payment-form/catalogue (edit_posts) lists forms + items for
  * the block inspector and the Divi module.
  */
 
@@ -17,7 +17,7 @@ namespace NeuralForms\Rest\Endpoints;
 use NeuralForms\Core\Capabilities;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\SchemaHelper;
-use NeuralForms\Payments\BuyButton;
+use NeuralForms\Payments\PaymentForm;
 use NeuralForms\Payments\PaymentService;
 use NeuralForms\Pricing\Money;
 use NeuralForms\Pricing\PriceEngine;
@@ -26,32 +26,32 @@ use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 
-final class BuyEndpoint {
+final class PaymentFormEndpoint {
 
 	public function register_routes(): void {
-		register_rest_route( 'neural-forms/v1', '/forms/(?P<id>[\d]+)/buy', array( 'methods' => 'POST', 'callback' => array( $this, 'buy' ), 'permission_callback' => '__return_true' ) );
-		register_rest_route( 'neural-forms/v1', '/buy-catalogue', array( 'methods' => 'GET', 'callback' => array( $this, 'catalogue' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
-		register_rest_route( 'neural-forms/v1', '/buy-preview', array( 'methods' => 'GET', 'callback' => array( $this, 'preview' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
+		register_rest_route( 'neural-forms/v1', '/forms/(?P<id>[\d]+)/pay', array( 'methods' => 'POST', 'callback' => array( $this, 'pay' ), 'permission_callback' => '__return_true' ) );
+		register_rest_route( 'neural-forms/v1', '/payment-form/catalogue', array( 'methods' => 'GET', 'callback' => array( $this, 'catalogue' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
+		register_rest_route( 'neural-forms/v1', '/payment-form/preview', array( 'methods' => 'GET', 'callback' => array( $this, 'preview' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
 	}
 
 	public function catalogue( WP_REST_Request $request ) {
-		return rest_ensure_response( array( 'unlocked' => Capabilities::can( Capabilities::PAYMENTS ), 'forms' => BuyButton::catalogue() ) );
+		return rest_ensure_response( array( 'unlocked' => Capabilities::can( Capabilities::PAYMENTS ), 'forms' => PaymentForm::catalogue() ) );
 	}
 
 	/** Editor preview for builders that cannot run a block render (Divi). */
 	public function preview( WP_REST_Request $request ) {
 		$attrs = array();
-		foreach ( BuyButton::defaults() as $k => $d ) {
+		foreach ( PaymentForm::defaults() as $k => $d ) {
 			$v = $request->get_param( $k );
 			if ( null === $v ) {
 				continue;
 			}
 			$attrs[ $k ] = is_bool( $d ) ? ( $v === '1' || $v === 'on' || $v === true || $v === 'true' ) : ( is_int( $d ) ? (int) $v : sanitize_text_field( (string) $v ) );
 		}
-		return rest_ensure_response( array( 'html' => BuyButton::render( $attrs, array( 'preview' => true ) ) ) );
+		return rest_ensure_response( array( 'html' => PaymentForm::render( $attrs, array( 'preview' => true ) ) ) );
 	}
 
-	public function buy( WP_REST_Request $request ) {
+	public function pay( WP_REST_Request $request ) {
 		$form_id = (int) $request['id'];
 		$body    = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
@@ -76,7 +76,7 @@ final class BuyEndpoint {
 				return new WP_Error( 'captcha_failed', __( 'CAPTCHA verification failed. Please try again.', 'neural-forms-lite' ), array( 'status' => 400 ) );
 			}
 		}
-		$resolved = BuyButton::resolve( array( 'formId' => $form_id, 'fieldId' => sanitize_text_field( (string) ( $body['field'] ?? '' ) ), 'choice' => sanitize_text_field( (string) ( $body['choice'] ?? '' ) ), 'quantity' => (int) ( $body['qty'] ?? 1 ), 'allowQuantity' => true ) );
+		$resolved = PaymentForm::resolve( array( 'formId' => $form_id, 'fieldId' => sanitize_text_field( (string) ( $body['field'] ?? '' ) ), 'choice' => sanitize_text_field( (string) ( $body['choice'] ?? '' ) ), 'quantity' => (int) ( $body['qty'] ?? 1 ), 'allowQuantity' => true ) );
 		if ( empty( $resolved['ok'] ) ) {
 			return new WP_Error( 'not_purchasable', __( 'This item is not available for purchase right now.', 'neural-forms-lite' ), array( 'status' => 409, 'reason' => $resolved['reason'] ) );
 		}
@@ -129,7 +129,7 @@ final class BuyEndpoint {
 			return new WP_Error( 'storage_failed', __( 'Could not save your order. Please try again.', 'neural-forms-lite' ), array( 'status' => 500 ) );
 		}
 		$entry_id = (int) $entry_id;
-		\NeuralForms\Storage\EntryActivity::record( $entry_id, 'entry.buy_button', __( 'Quick purchase from a Buy button', 'neural-forms-lite' ), array( 'by' => 0, 'field' => $product_id, 'qty' => $qty ) );
+		\NeuralForms\Storage\EntryActivity::record( $entry_id, 'entry.payment_form', __( 'Quick purchase from a Buy button', 'neural-forms-lite' ), array( 'by' => 0, 'field' => $product_id, 'qty' => $qty ) );
 		do_action( 'neural_forms_entry_created', $entry_id, $form_id, $data );
 		do_action( 'neural_forms_send_notifications', $entry_id, $form_id, $form );
 		do_action( 'neural_forms_queue_ai_processing', $entry_id, $form_id );

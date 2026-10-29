@@ -2,8 +2,8 @@
 /**
  * Buy button (1.2.0 part B): a compact buy card for ONE Priced Item of a
  * form that takes payments. Rendered by the Gutenberg block
- * `neural-forms/buy-button`, the Pro Divi module and the shortcode
- * `[neural-forms-buy form="1"]`. Submits to `POST /forms/{id}/buy`, which
+ * `neural-forms/payment-form`, the Pro Divi module and the shortcode
+ * `[neural-forms-payment-form form="1"]`. Submits to `POST /forms/{id}/buy`, which
  * stores an entry (product + email + name) and sends the visitor to the
  * hosted checkout — same engine, same authoritative totals as the form.
  */
@@ -16,7 +16,7 @@ use NeuralForms\Forms\SchemaHelper;
 use NeuralForms\Pricing\Money;
 use NeuralForms\Pricing\PriceEngine;
 
-final class BuyButton {
+final class PaymentForm {
 
 	/** Attribute defaults shared by the block, the shortcode and the Divi module. */
 	public static function defaults(): array {
@@ -126,67 +126,67 @@ final class BuyButton {
 					'input_mode'  => __( 'Payment form: this Priced Item lets the visitor enter an amount; use a fixed price or priced options.', 'neural-forms-lite' ),
 					'no_price'    => __( 'Payment form: the selected item has no price.', 'neural-forms-lite' ),
 				);
-				return '<div class="neural-forms-buy neural-forms-buy--notice">' . $esc( $msgs[ $r['reason'] ] ?? $r['reason'] ) . '</div>';
+				return '<div class="neural-forms-payment-form neural-forms-payment-form--notice">' . $esc( $msgs[ $r['reason'] ] ?? $r['reason'] ) . '</div>';
 			}
 			return '';
 		}
 		if ( empty( $options['preview'] ) ) {
-			if ( ! wp_script_is( 'neural-forms-buy', 'registered' ) && class_exists( '\\NeuralForms\\Frontend\\PublicForms' ) ) {
+			if ( ! wp_script_is( 'neural-forms-payment-form', 'registered' ) && class_exists( '\\NeuralForms\\Frontend\\PublicForms' ) ) {
 				\NeuralForms\Frontend\PublicForms::register_assets(); // rendered before wp_enqueue_scripts (widgets, REST, CLI)
 			}
 			wp_enqueue_style( 'neural-forms-form' );
-			wp_enqueue_script( 'neural-forms-buy' );
+			wp_enqueue_script( 'neural-forms-payment-form' );
 		}
 		$form     = $r['form'];
 		$qty      = max( $r['qty_min'], min( $r['qty_max'], (int) $a['quantity'] ) );
 		$total    = $r['unit_minor'] * $qty;
 		$currency = $r['currency'];
 		$label    = $a['label'] !== '' ? (string) $a['label'] : __( 'Buy now', 'neural-forms-lite' );
-		$classes = 'neural-forms-form neural-forms-buy neural-forms-buy--' . ( $a['width'] === 'full' ? 'full' : 'auto' ) . ' neural-forms-buy--align-' . ( in_array( $a['align'], array( 'left', 'center', 'right' ), true ) ? $a['align'] : 'left' );
-		$uid     = 'nf-buy-' . (int) $form['id'] . '-' . substr( md5( wp_json_encode( $a ) ), 0, 6 );
+		$classes = 'neural-forms-form neural-forms-payment-form neural-forms-payment-form--' . ( $a['width'] === 'full' ? 'full' : 'auto' ) . ' neural-forms-payment-form--align-' . ( in_array( $a['align'], array( 'left', 'center', 'right' ), true ) ? $a['align'] : 'left' );
+		$uid     = 'nf-payment-form-' . (int) $form['id'] . '-' . substr( md5( wp_json_encode( $a ) ), 0, 6 );
 		$h  = '<form class="' . esc_attr( $classes ) . '" id="' . esc_attr( $uid ) . '"'
-			. ' data-neural-forms-buy data-endpoint="' . esc_url( rest_url( 'neural-forms/v1/forms/' . (int) $form['id'] . '/buy' ) ) . '" data-unit="' . (int) $r['unit_minor'] . '" data-currency="' . esc_attr( $currency ) . '" data-exponent="' . (int) Money::exponent( $currency ) . '" data-label="' . esc_attr( $label ) . '" method="post" novalidate>';
+			. ' data-neural-forms-payment-form data-endpoint="' . esc_url( rest_url( 'neural-forms/v1/forms/' . (int) $form['id'] . '/pay' ) ) . '" data-unit="' . (int) $r['unit_minor'] . '" data-currency="' . esc_attr( $currency ) . '" data-exponent="' . (int) Money::exponent( $currency ) . '" data-label="' . esc_attr( $label ) . '" method="post" novalidate>';
 		$h .= '<input type="hidden" name="field" value="' . esc_attr( (string) $r['field']['id'] ) . '">';
 		$h .= '<input type="hidden" name="choice" value="' . esc_attr( (string) ( $r['option']['value'] ?? '' ) ) . '">';
-		$h .= '<input type="text" name="neural_forms_website" class="neural-forms-buy__hp" tabindex="-1" autocomplete="off" aria-hidden="true">';
+		$h .= '<input type="text" name="neural_forms_website" class="neural-forms-payment-form__hp" tabindex="-1" autocomplete="off" aria-hidden="true">';
 		if ( ! empty( $a['showTitle'] ) || ! empty( $a['showPrice'] ) ) {
-			$h .= '<div class="neural-forms-buy__head">';
+			$h .= '<div class="neural-forms-payment-form__head">';
 			if ( ! empty( $a['showTitle'] ) ) {
-				$h .= '<div class="neural-forms-buy__title">' . $esc( $r['title'] ) . '</div>';
+				$h .= '<div class="neural-forms-payment-form__title">' . $esc( $r['title'] ) . '</div>';
 			}
 			if ( ! empty( $a['showPrice'] ) ) {
-				$h .= '<div class="neural-forms-buy__price" data-buy-price>' . $esc( Money::format( $r['unit_minor'], $currency ) ) . ( $r['qty_on'] ? '<small>' . $esc( __( 'each', 'neural-forms-lite' ) ) . '</small>' : '' ) . '</div>';
+				$h .= '<div class="neural-forms-payment-form__price" data-buy-price>' . $esc( Money::format( $r['unit_minor'], $currency ) ) . ( $r['qty_on'] ? '<small>' . $esc( __( 'each', 'neural-forms-lite' ) ) . '</small>' : '' ) . '</div>';
 			}
 			$h .= '</div>';
 		}
 		if ( (string) $a['description'] !== '' ) {
-			$h .= '<p class="neural-forms-buy__desc">' . $esc( $a['description'] ) . '</p>';
+			$h .= '<p class="neural-forms-payment-form__desc">' . $esc( $a['description'] ) . '</p>';
 		}
-		$h .= '<div class="neural-forms-buy__fields">';
+		$h .= '<div class="neural-forms-payment-form__fields">';
 		if ( $r['qty_on'] ) {
-			$h .= '<label class="neural-forms-buy__field neural-forms-buy__field--qty"><span class="neural-forms-form__label">' . $esc( __( 'Quantity', 'neural-forms-lite' ) ) . '</span><input type="number" class="neural-forms-form__input" name="qty" inputmode="numeric" min="' . (int) $r['qty_min'] . '" max="' . (int) $r['qty_max'] . '" value="' . (int) $qty . '" required></label>';
+			$h .= '<label class="neural-forms-payment-form__field neural-forms-payment-form__field--qty"><span class="neural-forms-form__label">' . $esc( __( 'Quantity', 'neural-forms-lite' ) ) . '</span><input type="number" class="neural-forms-form__input" name="qty" inputmode="numeric" min="' . (int) $r['qty_min'] . '" max="' . (int) $r['qty_max'] . '" value="' . (int) $qty . '" required></label>';
 		} else {
 			$h .= '<input type="hidden" name="qty" value="' . (int) $qty . '">';
 		}
 		if ( ! empty( $a['collectName'] ) ) {
-			$h .= '<label class="neural-forms-buy__field"><span class="neural-forms-form__label">' . $esc( __( 'Your name', 'neural-forms-lite' ) ) . '</span><input type="text" class="neural-forms-form__input" name="full_name" autocomplete="name" required></label>';
+			$h .= '<label class="neural-forms-payment-form__field"><span class="neural-forms-form__label">' . $esc( __( 'Your name', 'neural-forms-lite' ) ) . '</span><input type="text" class="neural-forms-form__input" name="full_name" autocomplete="name" required></label>';
 		}
-		$h .= '<label class="neural-forms-buy__field"><span class="neural-forms-form__label">' . $esc( __( 'Email', 'neural-forms-lite' ) ) . '</span><input type="email" class="neural-forms-form__input" name="email" autocomplete="email" required></label>';
+		$h .= '<label class="neural-forms-payment-form__field"><span class="neural-forms-form__label">' . $esc( __( 'Email', 'neural-forms-lite' ) ) . '</span><input type="email" class="neural-forms-form__input" name="email" autocomplete="email" required></label>';
 		$h .= '</div>';
 		$h .= \NeuralForms\Frontend\FormRenderer::captcha_widget_html( is_array( $form['settings'] ?? null ) ? $form['settings'] : array() );
-		$h .= '<button type="submit" class="neural-forms-form__submit wp-element-button neural-forms-buy__btn"><span class="neural-forms-buy__btn-label">' . $esc( $label ) . '</span>' . ( ! empty( $a['showPrice'] ) ? ' <span class="neural-forms-buy__btn-total" data-buy-total>· ' . $esc( Money::format( $total, $currency ) ) . '</span>' : '' ) . '</button>';
-		$h .= '<div class="neural-forms-buy__msg" role="status" aria-live="polite"></div>';
-		$h .= '<p class="neural-forms-buy__secure">' . $esc( __( 'Secure checkout. No card details are entered on this site.', 'neural-forms-lite' ) ) . '</p>';
+		$h .= '<button type="submit" class="neural-forms-form__submit wp-element-button neural-forms-payment-form__btn"><span class="neural-forms-payment-form__btn-label">' . $esc( $label ) . '</span>' . ( ! empty( $a['showPrice'] ) ? ' <span class="neural-forms-payment-form__btn-total" data-buy-total>· ' . $esc( Money::format( $total, $currency ) ) . '</span>' : '' ) . '</button>';
+		$h .= '<div class="neural-forms-payment-form__msg" role="status" aria-live="polite"></div>';
+		$h .= '<p class="neural-forms-payment-form__secure">' . $esc( __( 'Secure checkout. No card details are entered on this site.', 'neural-forms-lite' ) ) . '</p>';
 		$h .= '</form>';
 		return $h;
 	}
 
-	/** [neural-forms-buy form="1" field="book" choice="" quantity="1" label="Buy now"] */
+	/** [neural-forms-payment-form form="1" field="book" choice="" quantity="1" label="Buy now"] */
 	public static function shortcode( $atts ): string {
 		$atts = shortcode_atts(
 			array( 'form' => 0, 'field' => '', 'choice' => '', 'quantity' => 1, 'label' => '', 'title' => '', 'description' => '', 'name' => '1', 'price' => '1', 'width' => 'auto', 'align' => 'left' ),
 			is_array( $atts ) ? $atts : array(),
-			'neural-forms-buy'
+			'neural-forms-payment-form'
 		);
 		return self::render(
 			array(
