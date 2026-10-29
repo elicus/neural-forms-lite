@@ -356,7 +356,7 @@ function PaymentsSection( { value, onChange, fields } ) {
 						<input type="checkbox" checked={ v.send_invoice !== false } onChange={ ( e ) => set( { send_invoice: e.target.checked } ) } />
 						<span>
 							<strong>{ __( 'Email an invoice automatically when a payment is confirmed', 'neural-forms-lite' ) }</strong>
-							<small>{ __( 'Uses the branding from Neural Forms › Quotes. You can also send or resend invoices by hand from the entry or the Payments page.', 'neural-forms-lite' ) }</small>
+							<small>{ __( 'Uses the details from Neural Forms › Business Details. You can also send or resend invoices by hand from the entry or the Payments page.', 'neural-forms-lite' ) }</small>
 						</span>
 					</label>
 					<label className="nf-form-settings__field nf-payments-section__toggle">

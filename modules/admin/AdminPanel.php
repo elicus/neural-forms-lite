@@ -119,7 +119,7 @@ class AdminPanel {
 		// leads and money → measure → connect and configure.
 		// 1. Forms          ← landing page (matches the parent slug)
 		// 2. Entries        ← submissions inbox (carries unread bubble)
-		// 3. Quotes         ← quote branding / numbering (1.2.0 part B)
+		// 3. Business Details ← identity, logo, numbering, terms printed on quotes + invoices (slug stays neural-forms-quotes)
 		// 4. Payments       ← every payment, invoices, refunds (1.2.0 part B)
 		// 5. Analytics      ← form-level conversion / drop-off
 		// 6. Stats          ← admin dashboard KPIs
@@ -174,8 +174,8 @@ class AdminPanel {
 		// Capabilities::QUOTES.
 		add_submenu_page(
 			'neural-forms',
-			__( 'Quotes - Neural Forms', 'neural-forms-lite' ),
-			__( 'Quotes', 'neural-forms-lite' ),
+			__( 'Business Details - Neural Forms', 'neural-forms-lite' ),
+			__( 'Business Details', 'neural-forms-lite' ),
 			NEURAL_FORMS_CAP_MANAGE_FORMS,
 			'neural-forms-quotes',
 			array( self::class, 'render_page' )

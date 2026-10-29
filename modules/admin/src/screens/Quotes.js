@@ -59,13 +59,13 @@ function ProLockCard( { title, description, upgradeUrl } ) {
 function QuoteSettingsForm( { unlocked, form, set, pickLogo, loadError } ) {
 	if ( ! unlocked ) {
 		return (
-			<Section title={ __( 'Branding', 'neural-forms-lite' ) } description={ __( 'Branding, numbering and terms for the quotes you send from the inbox.', 'neural-forms-lite' ) }>
+			<Section title={ __( 'Business details', 'neural-forms-lite' ) } description={ __( 'Identity, numbering and terms for the quotes and invoices you send.', 'neural-forms-lite' ) }>
 				<ProLockCard title={ __( 'Branded quotes with PDF', 'neural-forms-lite' ) } description={ __( 'Turn priced entries into numbered quotes with your logo and terms, send them as a PDF with a secure link, and keep every revision on record.', 'neural-forms-lite' ) } />
 			</Section>
 		);
 	}
 	return (
-		<Section title={ __( 'Branding', 'neural-forms-lite' ) } description={ __( 'Business identity and text blocks printed on every quote and invoice.', 'neural-forms-lite' ) }>
+		<Section title={ __( 'Business details', 'neural-forms-lite' ) } description={ __( 'Shown in the header of every quote and invoice.', 'neural-forms-lite' ) }>
 			{ ! form && ! loadError && <p className="neural-forms-settings__hint" style={ { padding: '16px 24px' } }>{ __( 'Loading…', 'neural-forms-lite' ) }</p> }
 			{ ! form && loadError && <p className="neural-forms-settings__hint is-error" style={ { padding: '16px 24px' } }>{ loadError }</p> }
 			{ form && <>
@@ -161,8 +161,8 @@ export default function Quotes() {
 		<div className="neural-forms-settings neural-forms-quotes">
 			<header className="neural-forms-settings__header">
 				<div className="neural-forms-settings__header-text">
-					<h1 className="neural-forms-settings__page-title">{ __( 'Quotes', 'neural-forms-lite' ) }</h1>
-					<p className="neural-forms-settings__page-desc">{ __( 'Set up the business details, numbering and terms used on the quotes you create from the entries inbox. Numbers follow the pattern PREFIX-YEAR-0001 and are assigned when a quote is issued.', 'neural-forms-lite' ) }</p>
+					<h1 className="neural-forms-settings__page-title">{ __( 'Business Details', 'neural-forms-lite' ) }</h1>
+					<p className="neural-forms-settings__page-desc">{ __( 'Printed on your quotes and invoices: identity, logo, numbering and terms. Quotes themselves are created from an entry in the inbox; payments and invoices live on the Payments page.', 'neural-forms-lite' ) }</p>
 				</div>
 				{ renderSaveBar( 'top' ) }
 			</header>

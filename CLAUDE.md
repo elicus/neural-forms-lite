@@ -1006,8 +1006,9 @@ on `neural_forms_quote_pdf_available` / `neural_forms_quote_pdf`).
   Activity types `quote.*` (and `payment.*`) are now listed/deleted by
   `EntryActivity` next to `entry.*` / `workflow.*`.
 - **Settings:** option `neural_forms_quote_settings` (`QuoteSettings`),
-  `GET|PUT /quotes/settings`; its OWN admin page Neural Forms › Quotes
-  (`screens/Quotes.js`, `build:quotes`) — the owner asked for it to be
+  `GET|PUT /quotes/settings`; its OWN admin page **Neural Forms › Business Details** (menu slug still
+  `neural-forms-quotes`, `screens/Quotes.js`, `build:quotes`; renamed from
+  "Quotes" on 2026-10-30 because the page is branding, not a list) — the owner asked for it to be
   moved out of Settings on 2026-10-29 because the long Settings page was
   confusing. Inbox: `entries/QuoteCard.js` under the
   Pricing card (draft editor, issue, send, copy link, revise; upsell when
@@ -1441,7 +1442,7 @@ you rebuild a single bundle in isolation without touching siblings
 | `build/entries.js` | `src/entries-entry.js` | `npm run build:entries` | Entries inbox — `src/entries/*` + `src/entries.css`. Pro fills `EntryAiActions` and `EntryReplyActions` slots. |
 | `build/import.js` | `src/import-entry.js` | `npm run build:import` | Import (CF7 migration) — 3-state list / preview / result flow over `/migration/cf7/*`. |
 | `build/payments.js` | `src/payments-entry.js` | `npm run build:payments` | Payments page (`?page=neural-forms-payments`) — `src/screens/Payments.js` + `src/payments.css` (imports `settings.css`); list, totals, invoice, refund (1.2.0 part B). |
-| `build/quotes.js` | `src/quotes-entry.js` | `npm run build:quotes` | Quotes page (`?page=neural-forms-quotes`) — `src/screens/Quotes.js`; imports `settings.css` so it looks like Settings (1.2.0 part B). |
+| `build/quotes.js` | `src/quotes-entry.js` | `npm run build:quotes` | Business Details page (`?page=neural-forms-quotes`, label renamed 2026-10-30) — `src/screens/Quotes.js`; imports `settings.css` so it looks like Settings (1.2.0 part B). |
 | `build/integrations.js` | `src/integrations-entry.js` | `npm run build:integrations` | Integrations screen — `src/screens/Integrations.js` + `src/integrations.css` (Pro-ready provider config surfaces; also `src/forms/IntegrationsSection.js` in the builder). |
 | `build/templates.js` | `src/templates-entry.js` | `npm run build:templates` | Template library modal — `src/templates/TemplateLibrary.js` + `TemplateLibraryModal.js`. |
 | `build/block.js` | `src/block-index.js` | `npm run build:block` | Gutenberg form-rendering block (registered via `frontend/block/block.json`). |
