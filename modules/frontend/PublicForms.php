@@ -111,14 +111,8 @@ class PublicForms {
 			true
 		);
 
-		// 1.2.0 part B: Buy button card (block / shortcode / Divi). Enqueued by PaymentForm::render().
-		wp_register_script(
-			'neural-forms-payment-form',
-			NEURAL_FORMS_URL . 'modules/frontend/assets/js/payment-form.js',
-			array(),
-			NEURAL_FORMS_VERSION,
-			true
-		);
+		// Payment Form card (block / shortcode / Divi) moved to Pro 2026-10-30 —
+		// Pro registers its own 'neural-forms-payment-form' script handle.
 
 		// ' Inline config '
 		// Output as a <script> block immediately before form-submit.js so

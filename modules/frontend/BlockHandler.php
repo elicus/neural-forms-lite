@@ -234,19 +234,10 @@ class BlockHandler {
 		$attributes = isset( $base['attributes'] ) && is_array( $base['attributes'] ) ? $base['attributes'] : [];
 		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
 
-		// 1.2.0 part B: Buy button block — own schema in its block.json, own renderer.
-		$pf_json = @file_get_contents( __DIR__ . '/blocks/payment-form/block.json' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		$pf_meta = $pf_json ? json_decode( $pf_json, true ) : null;
-		$form_attrs = is_array( $pf_meta ) && is_array( $pf_meta['attributes'] ?? null ) ? $pf_meta['attributes'] : [];
-		register_block_type(
-			__DIR__ . '/blocks/payment-form',
-			[
-				// Own attributes + the form block's design schema, so the same Style tab
-				// panels and build_scoped_css() work on the payment card.
-				'attributes'      => array_merge( $attributes, $form_attrs ),
-				'render_callback' => [ static::class, 'render_payment_form' ],
-			]
-		);
+		// neural-forms/payment-form moved to Pro 2026-10-30 — Pro registers its
+		// own block.json + render callback when active (see CLAUDE.md "Payment
+		// Form moved to Pro"). build_scoped_css() / build_wrap_style() below are
+		// public specifically so Pro's renderer can reuse this CSS pipeline.
 
 		foreach ( [ 'quiz', 'multi-step', 'poll' ] as $slug ) {
 			register_block_type(
@@ -260,35 +251,8 @@ class BlockHandler {
 		}
 	}
 
-	/** Render callback for neural-forms/payment-form. */
-	public static function render_payment_form( array $attributes ): string {
-		$preview = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
-		$html    = \NeuralForms\Payments\PaymentForm::render( $attributes, [ 'preview' => $preview ] );
-		if ( $html === '' ) {
-			return '';
-		}
-		// Same scoped-CSS wrapper as the form block: the card uses the form's
-		// BEM classes, so Container / Labels / Input Fields / Submit Button /
-		// Messages / Advanced panels style it through build_scoped_css().
-		$uid        = substr( md5( (string) wp_json_encode( $attributes ) ), 0, 8 );
-		$scoped_css = static::build_scoped_css( $uid, $attributes );
-		$wrap_style = static::build_wrap_style( $attributes );
-		$wrap_class = 'neural-forms-block-wrap neural-forms-block-' . esc_attr( $uid );
-		$extra      = trim( (string) ( $attributes['extraClass'] ?? '' ) );
-		if ( $extra !== '' ) {
-			$wrap_class .= ' ' . esc_attr( $extra );
-		}
-		$inline = $scoped_css;
-		if ( $preview ) {
-			$css = NEURAL_FORMS_PATH . 'modules/frontend/assets/css/form.css';
-			if ( is_readable( $css ) ) {
-				$inline = file_get_contents( $css ) . $inline; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-			}
-			$inline .= '.neural-forms-block-' . esc_attr( $uid ) . ' .neural-forms-form{pointer-events:none;}';
-		}
-		$out = '<div class="' . $wrap_class . '"' . ( $wrap_style ? ' style="' . esc_attr( $wrap_style ) . '"' : '' ) . '>' . $html . '</div>';
-		return ( $inline !== '' ? '<style>' . $inline . '</style>' : '' ) . '<div ' . get_block_wrapper_attributes() . '>' . $out . '</div>';
-	}
+	// render_payment_form() moved to Pro's PaymentFormBlock (2026-10-30);
+	// it calls the now-public build_scoped_css() / build_wrap_style() below.
 
 	// Render callback
 
@@ -861,7 +825,7 @@ class BlockHandler {
 	 * internally. Inline styles on the wrapper let the block editor preview
 	 * them correctly via useBlockProps({ style: wrapStyle }) in index.js.
 	 */
-	private static function build_wrap_style( array $attributes ): string {
+	public static function build_wrap_style( array $attributes ): string {
 		$parts = [];
 
 		$form_width = (string) ( $attributes['formWidth'] ?? '' );
@@ -947,7 +911,7 @@ class BlockHandler {
 	 * @param array  $attributes  Block attributes.
 	 * @return string             Raw CSS string (safe to echo inside <style>).
 	 */
-	private static function build_scoped_css( string $uid, array $attributes ): string {
+	public static function build_scoped_css( string $uid, array $attributes ): string {
 		$css = '';
 
 		// Compound the two classes that BlockHandler::render() always

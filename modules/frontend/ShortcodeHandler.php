@@ -46,7 +46,8 @@ class ShortcodeHandler {
 	 */
 	public static function boot(): void {
 		add_shortcode( 'neural-forms', array( static::class, 'handle' ) );
-		add_shortcode( 'neural-forms-payment-form', array( \NeuralForms\Payments\PaymentForm::class, 'shortcode' ) );
+		// [neural-forms-payment-form] moved to Pro 2026-10-30 — see CLAUDE.md
+		// "Payment Form moved to Pro". Pro registers it itself when active.
 	}
 
 	// Shortcode callback

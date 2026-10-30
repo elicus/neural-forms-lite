@@ -42,8 +42,9 @@ import FormDesignExtras      from './blocks/form/FormDesignExtras';
 import PollDesignExtras      from './blocks/poll/PollDesignExtras';
 import QuizDesignExtras      from './blocks/quiz/QuizDesignExtras';
 import MultiStepDesignExtras from './blocks/multistep/MultiStepDesignExtras';
-import PaymentFormEdit         from './blocks/payment-form/PaymentFormEdit';
-import buyMetadata           from '../../frontend/blocks/payment-form/block.json';
+// neural-forms/payment-form moved to Pro 2026-10-30 — Pro registers its own
+// block (own editor bundle, own block.json). See CLAUDE.md "Payment Form
+// moved to Pro".
 
 // Inject Inspector-sidebar CSS into the main admin document.
 // form.css is loaded as editor_style → it reaches the canvas iframe only
@@ -288,17 +289,6 @@ NEW_BLOCKS.forEach( ( { name, kind, title, description, keywords, Extras, Settin
 		// Dynamic block — server renders via BlockHandler::render.
 		save: () => null,
 	} );
-} );
-
-// 1.2.0 part B: Buy button — its own attribute schema (block.json) and
-// its own server render (PaymentForm::render), unrelated to the form block.
-registerBlockType( buyMetadata.name, {
-	...buyMetadata,
-	attributes: { ...baseAttrs, ...buyMetadata.attributes },
-	title:       __( 'Neural Payment Form', 'neural-forms-lite' ),
-	description: __( 'A compact payment form for one priced item: price, quantity, name, email and a Buy now button that goes straight to checkout.', 'neural-forms-lite' ),
-	edit: PaymentFormEdit,
-	save: () => null,
 } );
 
 /**

@@ -35,7 +35,8 @@ class RestAPI {
 		( new Endpoints\WorkflowsEndpoint() )->register_routes();
 		( new Endpoints\QuotesEndpoint() )->register_routes();
 		( new Endpoints\PaymentsEndpoint() )->register_routes();
-		( new Endpoints\PaymentFormEndpoint() )->register_routes();
+		// PaymentFormEndpoint moved to Pro 2026-10-30 — Pro registers it under
+		// this same 'neural-forms/v1' namespace when active (see CLAUDE.md).
 		( new Endpoints\FormGeneratorEndpoint() )->register_routes();
 	}
 }

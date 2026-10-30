@@ -871,54 +871,68 @@ dead code, wiring) over Lite + Pro. Rules that came out of it:
   the captcha verifiers, quote/payment token helpers, JS money / API-error
   helpers. Each is a mechanical extraction with a named home in the report.
 
-### Payment form ("Neural Payment Form"): block, shortcode, Divi module (1.2.0 part B, owner request 2026-10-30)
+### Payment Form moved to Pro (2026-10-30, owner request — second documented exception)
 
-Built as "Buy Button" and renamed the same day; since the second rename pass every identifier is `payment-form` / `PaymentForm` (block `neural-forms/payment-form`, shortcode `[neural-forms-payment-form]`, class `PaymentForm`, endpoint `POST /forms/{id}/pay` + `GET /payment-form/catalogue|preview`, script `neural-forms-payment-form`, CSS `.neural-forms-payment-form*`, Divi `neural-forms/divi-payment-form`, activity `entry.payment_form`). Nothing answers to the old `buy` names.
+The `neural-forms/payment-form` block, the `[neural-forms-payment-form]`
+shortcode, its renderer (`PaymentForm::render()`/`resolve()`/`catalogue()`),
+its REST endpoint (`POST /forms/{id}/pay`, `GET /payment-form/catalogue|
+preview`) and its frontend JS were built in Lite on 2026-10-30 (see git
+history / Pro's CLAUDE.md for the original build notes) and **moved
+wholesale to `neural-forms-pro/modules/payments/` the same day**, once the
+owner decided a Lite user should never see the block at all — showing it
+with its one required field (Priced Item) locked behind a PRO badge was
+judged more confusing than not showing it.
 
-- **Renderer** `modules/payments/PaymentForm.php`: `resolve( $attrs )` picks the
-  form (must be active + `PaymentService::enabled_for()`), the Priced Item
-  (`fieldId` or first product), the option (`choice`) and the unit price
-  (fixed / options; `input` mode refused); `render( $attrs, [ 'preview' ] )`
-  emits `<form data-neural-forms-payment-form …>` with item, live price, quantity
-  (when the field allows it), name + email, honeypot, hidden `field` /
-  `choice`, and enqueues `neural-forms-payment-form` + `neural-forms-form` (self-
-  registers the assets when rendered before `wp_enqueue_scripts`).
-  Visitors get nothing when the card cannot sell; editors get a notice.
-  `catalogue()` lists forms + products for the editors.
-- **Endpoint** `POST /forms/{id}/buy` (`PaymentFormEndpoint`): honeypot → fake
-  201; `SubmitEndpoint::default_rate_limit()` + `resolve_ip()` (now
-  public); server-side price + quantity clamp; maps email / name onto
-  the form's own email / name fields; `EntryRepository::create()` with the
-  pricing snapshot; fires `neural_forms_entry_created`,
-  `neural_forms_send_notifications`, `neural_forms_queue_ai_processing`;
-  activity `entry.payment_form`; then `PaymentService::start_checkout()` →
-  `outcome.redirect`. Other required form fields are deliberately NOT
-  collected (quick buy). `GET /payment-form/catalogue` and `GET /payment-form/preview`
-  (edit_posts) serve the editors.
-- **Gutenberg** `neural-forms/payment-form`: `frontend/blocks/payment-form/
-  block.json` holds its own attributes, MERGED at registration (PHP + JS)
-  with the form block's design schema. The card uses the form block's BEM
-  classes (`neural-forms-form`, `__label`, `__input`, `__submit`,
-  `__success` / `__global-error`) so the Style tab reuses `ContainerPanel`,
-  `LabelsPanel`, `InputFieldsPanel`, `SubmitButtonPanel`, `MessagesPanel`,
-  `AdvancedPanel` from `DesignPanels.js` and `BlockHandler::render_payment_form`
-  wraps the card exactly like `render()` (uid, `build_scoped_css()`,
-  `build_wrap_style()`, `extraClass`; form.css + pointer-events inlined in
-  the editor preview). Editor: `src/blocks/payment-form/PaymentFormEdit.js` (blocks-extra bundle).
-- **Shortcode** `[neural-forms-payment-form form="68" field="book" choice="" quantity="1"
-  label="Buy now" title="" description="" name="1" price="1" width="auto|full"
-  align="left|center|right"]`.
-- **Frontend** `assets/js/payment-form.js` (no deps): live total, JSON POST,
-  follows the redirect; styles `.neural-forms-payment-form*` in form.css (button
-  colours come from the Style tab, the old colour attributes are gone).
-- **Divi 5** (Pro): `modules/divi/Modules/NeuralPaymentForm/NeuralPaymentForm.php`
-  (`neural-forms/divi-payment-form`, subclass of NeuralForm, `render_payment_form()` →
-  `PaymentForm::render()`), VB `src/modules/neural-payment-form/*` (content tab reads
-  `/payment-form/catalogue`, renderer fetches `/payment-form/preview`). The trait helpers
-  `adv_value()` / `module_render()` became `protected`.
-- Tests: `tests/live/B3PaymentFormHarness.php` (26 checks: resolve, render,
-  shortcode, do_blocks, catalogue, preview, buy endpoint incl. clamp,
-  honeypot, invalid email, payments-off, posted prices ignored).
+This is a **second exception** to "Lite owns every premium feature's
+implementation; Pro only flips capability filters" (see "Capability /
+Unlock Architecture" above and Pro's CLAUDE.md "Site Profile"). Unlike
+Site Profile, Payment Form is NOT a standalone sidecar — it creates
+entries via `EntryRepository`, runs the honeypot/rate-limit/CAPTCHA gates,
+fires the AI queue and notification hooks, and calls `PriceEngine` /
+`PaymentService`. Moving it was a deliberate tradeoff (one code path,
+but now Pro reaches into Lite's submission pipeline) — do not use it as
+a template for a third exception without the owner's explicit sign-off.
+
+What stayed in Lite (shared / harmless without Pro, or too core to move):
+- `PriceEngine`, `Money`, `PaymentService`, `FormRepository`, `SchemaHelper`,
+  `EntryRepository`, `Capabilities::PAYMENTS`/`CALCULATIONS`,
+  `FormRenderer::captcha_widget_html()`, `SubmitEndpoint::resolve_ip()` /
+  `default_rate_limit()` (all public) — the payment *engine*, used by the
+  normal multi-field form checkout too, not just this card.
+- `BlockHandler::build_scoped_css()` / `build_wrap_style()` — changed from
+  `private` to `public static` specifically so Pro's renderer can reuse
+  Lite's CSS pipeline (Container/Labels/Input Fields/Submit Button/
+  Messages/Advanced panels) instead of duplicating it.
+- `.neural-forms-payment-form*` CSS rules — left in Lite's `form.css`
+  (inert without Pro's HTML; not worth a second stylesheet for ~5 rules).
+- The `POST /forms/{id}/pay` + `GET /payment-form/catalogue|preview`
+  routes stay registered under the `neural-forms/v1` namespace STRING
+  (now by Pro's `PaymentFormEndpoint`) so the Divi VB JS and any saved
+  block/shortcode output needed no URL changes — that namespace is a
+  plain prefix, not something Lite's classes own exclusively.
+
+What moved to Pro (`neural-forms-pro/modules/payments/`, see Pro's
+CLAUDE.md "Payment Form moved to Pro" for the full breakdown):
+`PaymentForm.php`, `PaymentFormBlock.php` (block registration + shortcode
++ asset registration, consolidating what Lite's `BlockHandler` /
+`ShortcodeHandler` / `PublicForms` did before), `rest/Endpoints/
+PaymentFormEndpoint.php`, `frontend/blocks/payment-form/block.json`,
+`frontend/assets/js/payment-form.js`, `admin/src/blocks/payment-form/
+PaymentFormEdit.js`. The Divi module (`NeuralPaymentForm.php`) now calls
+`\NeuralForms\Pro\Payments\PaymentForm` instead of Lite's old class.
+
+**Known gap from the move**: Pro's `PaymentFormEdit.js` only has the
+"What to sell" / "Card" settings tabs — the Style tab (Container/Labels/
+Input Fields/Submit Button/Messages/Advanced panels, previously from
+Lite's `DesignPanels.js`) was NOT re-implemented, because that 1300-line
+component tree can't be imported across the plugin boundary at build
+time without either vendoring a copy into Pro or exposing it via a
+`window.neuralForms` runtime registry. The block is fully functional
+without it, just without the visual Style tab. Tracked as a follow-up.
+
+`tests/live/B3PaymentFormHarness.php` (26 checks) still exists in Lite
+but now exercises a feature whose code has moved — it needs to either
+move to Pro or be deleted/rewritten; not yet done as part of this move.
 
 ### Payments page, invoices, refunds (1.2.0 part B, owner request 2026-10-29)
 
