@@ -189,6 +189,12 @@ class FormRenderer {
 		$fields   = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
 		$settings = is_array( $form['settings'] )    ? $form['settings']    : [];
 
+		// Currency for Priced Item price labels. The live totals read it from
+		// the pricing config; the PHP-rendered labels need it as well.
+		if ( class_exists( '\\NeuralForms\\Pricing\\PriceEngine' ) ) {
+			$options['_currency'] = (string) ( \NeuralForms\Pricing\PriceEngine::settings( $form )['currency'] ?? 'USD' );
+		}
+
 		// Mirrors the form_version hash written by SubmitEndpoint at submission
 		// time. Lets the JS layer (or future diffing logic) detect pages served
 		// from a cache after the schema was updated.
@@ -1309,7 +1315,13 @@ class FormRenderer {
 				$input_html = static::render_matrix( $field, $input_id, $error_id, $form_id );
 				break;
 			case 'product':
-				$input_html = static::render_product( $field, $input_id, $error_id );
+				$field['_currency'] = (string) ( $options['_currency'] ?? 'USD' );
+				$input_html = static::render_product(
+					$field,
+					$input_id,
+					$error_id,
+					is_array( $options['product_presets'][ $field_id ] ?? null ) ? $options['product_presets'][ $field_id ] : []
+				);
 				break;
 			case 'calculated':
 				$input_html = static::render_calculated( $field, $input_id, $error_id );
@@ -2292,8 +2304,16 @@ class FormRenderer {
 	 *   {id}[qty]         when quantity is enabled
 	 * Prices are shown in labels only; the server recomputes everything.
 	 * Locked capability → nothing renders (admin-only notice), like Matrix.
+	 *
+	 * $preset (render option `product_presets[field_id]`, used by Pro's
+	 * Payment Form, which sells ONE item of the form):
+	 *   choice     (string)  options mode: lock the field to this option —
+	 *                        rendered as a static line + hidden {id}[choice]
+	 *                        (or {id}[choice][] for the checkboxes display)
+	 *   qty        (int)     default quantity (clamped to the field's range)
+	 *   allow_qty  (bool)    false → quantity is posted as a hidden input
 	 */
-	private static function render_product( array $field, string $input_id, string $error_id ): string {
+	private static function render_product( array $field, string $input_id, string $error_id, array $preset = [] ): string {
 		if ( ! Capabilities::can( Capabilities::CALCULATIONS ) ) {
 			if ( current_user_can( 'manage_options' ) ) {
 				return '<p class="neural-forms-product__notice" role="status">'
@@ -2332,7 +2352,28 @@ class FormRenderer {
 			$html .= '<div class="neural-forms-form__product-input"><span class="neural-forms-form__product-symbol">' . esc_html( \NeuralForms\Pricing\Money::SYMBOLS[ $currency ] ?? $currency . ' ' ) . '</span><input ' . $attrs . '></div>';
 		} else {
 			$options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
-			if ( $p['display'] === 'select' ) {
+			$locked  = null;
+			if ( (string) ( $preset['choice'] ?? '' ) !== '' ) {
+				foreach ( $options as $o ) {
+					$o = (array) $o;
+					$v = (string) ( $o['value'] ?? '' );
+					if ( $v === '' ) {
+						$v = (string) ( $o['label'] ?? '' );
+					}
+					if ( $v !== '' && $v === (string) $preset['choice'] ) {
+						$locked = $o + array( '_value' => $v );
+						break;
+					}
+				}
+			}
+			if ( $locked ) {
+				$price = $fmt( $locked['price'] ?? '0' );
+				$html .= '<div class="neural-forms-form__product-fixed neural-forms-form__product-locked" id="' . esc_attr( $input_id ) . '" aria-describedby="' . esc_attr( $error_id ) . '">'
+					. '<span class="neural-forms-form__product-option-label">' . esc_html( (string) ( $locked['label'] ?? $locked['_value'] ) ) . '</span>'
+					. ( $price !== '' ? '<span class="neural-forms-form__product-price">' . esc_html( $price ) . '</span>' : '' )
+					. '</div>'
+					. '<input type="hidden" name="' . esc_attr( $id ) . ( $p['display'] === 'checkboxes' ? '[choice][]' : '[choice]' ) . '" value="' . esc_attr( $locked['_value'] ) . '" data-price="' . esc_attr( (string) ( \NeuralForms\Pricing\Money::to_minor( $locked['price'] ?? '0', $currency ) ?? 0 ) ) . '">';
+			} elseif ( $p['display'] === 'select' ) {
 				$attrs = 'id="' . esc_attr( $input_id ) . '" name="' . esc_attr( $id ) . '[choice]" class="neural-forms-form__select neural-forms-form__product-select" aria-describedby="' . esc_attr( $error_id ) . '"';
 				if ( $required ) {
 					$attrs .= ' required aria-required="true"';
@@ -2382,12 +2423,20 @@ class FormRenderer {
 		}
 
 		if ( $p['quantity']['enabled'] ) {
-			$qid   = $input_id . '-qty';
-			$html .= '<label class="neural-forms-form__product-qty" for="' . esc_attr( $qid ) . '">'
-				. '<span class="neural-forms-form__product-qty-label">' . esc_html__( 'Quantity', 'neural-forms-lite' ) . '</span>'
-				. '<input type="number" inputmode="numeric" id="' . esc_attr( $qid ) . '" name="' . esc_attr( $id ) . '[qty]" class="neural-forms-form__input neural-forms-form__input--number neural-forms-form__product-qty-input"'
-				. ' min="' . (int) $p['quantity']['min'] . '" max="' . (int) $p['quantity']['max'] . '" step="1" value="' . (int) $p['quantity']['default'] . '">'
-				. '</label>';
+			$qty_default = (int) $p['quantity']['default'];
+			if ( isset( $preset['qty'] ) && is_numeric( $preset['qty'] ) ) {
+				$qty_default = max( (int) $p['quantity']['min'], min( (int) $p['quantity']['max'], (int) $preset['qty'] ) );
+			}
+			if ( isset( $preset['allow_qty'] ) && $preset['allow_qty'] === false ) {
+				$html .= '<input type="hidden" name="' . esc_attr( $id ) . '[qty]" value="' . $qty_default . '">';
+			} else {
+				$qid   = $input_id . '-qty';
+				$html .= '<label class="neural-forms-form__product-qty" for="' . esc_attr( $qid ) . '">'
+					. '<span class="neural-forms-form__product-qty-label">' . esc_html__( 'Quantity', 'neural-forms-lite' ) . '</span>'
+					. '<input type="number" inputmode="numeric" id="' . esc_attr( $qid ) . '" name="' . esc_attr( $id ) . '[qty]" class="neural-forms-form__input neural-forms-form__input--number neural-forms-form__product-qty-input"'
+					. ' min="' . (int) $p['quantity']['min'] . '" max="' . (int) $p['quantity']['max'] . '" step="1" value="' . $qty_default . '">'
+					. '</label>';
+			}
 		}
 		$html .= '<span class="neural-forms-form__product-line" data-neural-forms-line-total="' . esc_attr( $id ) . '" aria-live="polite"></span>';
 		return $html;

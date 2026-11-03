@@ -572,6 +572,7 @@ is a breaking change for Pro.
 | `neural_forms_can_workflows` filter | `Capabilities::can()` | `__return_true` to unlock workflows + lead management (1.2.0) |
 | `neural_forms_can_ai_business_context` filter | `Capabilities::can()` | `__return_true` to unlock business knowledge / voice / language for AI drafts (1.2.0) |
 | `window.neuralForms.slots.registerFill` JS registry | Admin bundle at mount | Pro bundle registers SlotFills for premium UI regions |
+| `window.neuralForms.blockDesign` JS registry `{ version, FormDesignExtras, panels }` | `blocks-extra` bundle at load (`blocks-extra-entry.js`) | Pro's payment-form block mounts the shared Style-tab panels; its editor script depends on `neural-forms-blocks-extra` (added 2026-11-04) |
 
 Slot names exposed by Lite through its own registry `window.neuralForms.slots` (`modules/admin/src/slot-registry.js`, bare names, `registerFill( name, component )`; the same file installs the live plan store `window.neuralForms.plan` with `get / set / subscribe`, fed by Settings after Test connection so Pro fills re-render without a reload):
 
@@ -681,6 +682,25 @@ The plugin folder has been renamed twice in its history (`formora` →
 rename will see Bash commands fail with "path does not exist" once the
 rename happens mid-session. Use Read/Edit/Glob tools directly with absolute
 paths, or spawn Agent subagents for shell work.
+
+### Block Style tab — every attribute drives CSS (checked 2026-11-04)
+
+Every attribute in `modules/frontend/block/block.json` was driven through
+the editor renderer (`/wp/v2/block-renderer`) one at a time on the Pro
+Payment Form block, which uses the same `BlockHandler::build_scoped_css()`
+as Lite's four blocks. Two gaps were real and are fixed: the Submit Button
+panel's Gradient tab (`btnBgGradient` / `btnHoverBgGradient`) and the
+Matrix panel's four gradients (`matrixCell*`, `matrixRow*`, `matrixAltRow*`)
+were whitelisted but never emitted. Rule: a gradient is `background-image`
+on the element (solid colour stays on the CSS variable / `background`), a
+solid hover over a normal-state gradient adds `background-image:none`.
+Expected non-emissions, not bugs: `bgImagePosition` values are
+`top_left … bottom_right` (underscored), `shadowPosition` only matters with
+another shadow value set, `ratingHoverColor` has no control (hover mirrors
+`ratingFilledColor`), `formTitle` / `submitButtonText` / step / poll / quiz
+keys belong to other blocks. Test: `tests/BlockGradientCssTest.php` (loads
+the real `BlockHandler` with WordPress function stubs — reuse that bootstrap
+for further CSS-builder tests).
 
 ### Rating field — hover-color selector bugs (fixed 2026-07-03)
 
@@ -846,9 +866,11 @@ dead code, wiring) over Lite + Pro. Rules that came out of it:
   `entry_has_payments`), open attempts are closed first. PayPal events
   carry payee + environment from the event itself; refund events match the
   capture via the `up` link; Stripe ignores `charge.refund.updated`.
-- **Buy endpoint** runs the `neural_forms_rate_limit` filter and the form's
-  CAPTCHA (`FormRenderer::captcha_widget_html()` is shared with the card;
-  payment-form.js also serialises textareas for the reCAPTCHA token).
+- **Quick-buy endpoint** (then in Lite) gained the `neural_forms_rate_limit`
+  filter and the form's CAPTCHA. That endpoint no longer exists anywhere: the
+  Payment Form moved to Pro and now submits through `/forms/{id}/submit`,
+  which already has both. `FormRenderer::captcha_widget_html()` stays as the
+  one CAPTCHA widget helper.
 - **424, never 5xx passthrough**: integration clients and Settings test
   connection map upstream 5xx to 424 (the guard test only sees literals).
 - **Cron**: the activation hook attaches the `five_minutes` interval before
@@ -874,65 +896,40 @@ dead code, wiring) over Lite + Pro. Rules that came out of it:
 ### Payment Form moved to Pro (2026-10-30, owner request — second documented exception)
 
 The `neural-forms/payment-form` block, the `[neural-forms-payment-form]`
-shortcode, its renderer (`PaymentForm::render()`/`resolve()`/`catalogue()`),
-its REST endpoint (`POST /forms/{id}/pay`, `GET /payment-form/catalogue|
-preview`) and its frontend JS were built in Lite on 2026-10-30 (see git
-history / Pro's CLAUDE.md for the original build notes) and **moved
-wholesale to `neural-forms-pro/modules/payments/` the same day**, once the
-owner decided a Lite user should never see the block at all — showing it
-with its one required field (Priced Item) locked behind a PRO badge was
-judged more confusing than not showing it.
+shortcode, the Divi module, the renderer and the editor routes live in
+`neural-forms-pro/modules/payments/` (see Pro's CLAUDE.md "Payment Form
+moved to Pro"). **Lite ships no payment-form code at all** — no block, no
+shortcode, no endpoint, no script, no CSS (the card stylesheet moved to
+Pro on 2026-11-04). A Lite user never sees the block in the inserter.
 
-This is a **second exception** to "Lite owns every premium feature's
-implementation; Pro only flips capability filters" (see "Capability /
-Unlock Architecture" above and Pro's CLAUDE.md "Site Profile"). Unlike
-Site Profile, Payment Form is NOT a standalone sidecar — it creates
-entries via `EntryRepository`, runs the honeypot/rate-limit/CAPTCHA gates,
-fires the AI queue and notification hooks, and calls `PriceEngine` /
-`PaymentService`. Moving it was a deliberate tradeoff (one code path,
-but now Pro reaches into Lite's submission pipeline) — do not use it as
-a template for a third exception without the owner's explicit sign-off.
+This is a second exception to "Lite owns every premium feature's
+implementation; Pro only flips capability filters" (the first is Site
+Profile). It is tied to Lite's pricing / payment engine, so do not use
+it as a template for a third exception without the owner's sign-off.
 
-What stayed in Lite (shared / harmless without Pro, or too core to move):
+What Lite provides (generic engine, used by the normal form checkout too):
 - `PriceEngine`, `Money`, `PaymentService`, `FormRepository`, `SchemaHelper`,
-  `EntryRepository`, `Capabilities::PAYMENTS`/`CALCULATIONS`,
-  `FormRenderer::captcha_widget_html()`, `SubmitEndpoint::resolve_ip()` /
-  `default_rate_limit()` (all public) — the payment *engine*, used by the
-  normal multi-field form checkout too, not just this card.
-- `BlockHandler::build_scoped_css()` / `build_wrap_style()` — changed from
-  `private` to `public static` specifically so Pro's renderer can reuse
-  Lite's CSS pipeline (Container/Labels/Input Fields/Submit Button/
-  Messages/Advanced panels) instead of duplicating it.
-- `.neural-forms-payment-form*` CSS rules — left in Lite's `form.css`
-  (inert without Pro's HTML; not worth a second stylesheet for ~5 rules).
-- The `POST /forms/{id}/pay` + `GET /payment-form/catalogue|preview`
-  routes stay registered under the `neural-forms/v1` namespace STRING
-  (now by Pro's `PaymentFormEndpoint`) so the Divi VB JS and any saved
-  block/shortcode output needed no URL changes — that namespace is a
-  plain prefix, not something Lite's classes own exclusively.
+  `EntryRepository`, `Capabilities::PAYMENTS` / `CALCULATIONS`, the
+  `/forms/{id}/submit` pipeline (pricing snapshot, CAPTCHA, honeypot, rate
+  limit, hosted checkout redirect) — the card embeds the whole form, so a
+  card purchase IS a normal submission of that form.
+- `FormRenderer` render option **`product_presets[{field_id}] = { choice,
+  qty, allow_qty }`** (added 2026-11-04): a pinned `choice` renders the
+  Priced Item as a static line + hidden `{id}[choice]`
+  (`.neural-forms-form__product-locked`), `qty` is the default quantity,
+  `allow_qty: false` posts the quantity as a hidden input.
+  `render_form()` also sets `$options['_currency']` from the form's pricing
+  settings so Priced Item labels format in the right currency (they always
+  said USD before). `form-submit.js` `readProductValue()` and the
+  condition reader accept a hidden `[choice]` / `[choice][]` input.
+- `BlockHandler::build_scoped_css()` / `build_wrap_style()` are public so
+  Pro's block reuses the Style-tab CSS pipeline, and the `blocks-extra`
+  bundle publishes the Style-tab panels as `window.neuralForms.blockDesign`
+  so Pro's block editor shows the same Style tab without a copy of
+  `DesignPanels.js` (see "Pro Extension Points").
 
-What moved to Pro (`neural-forms-pro/modules/payments/`, see Pro's
-CLAUDE.md "Payment Form moved to Pro" for the full breakdown):
-`PaymentForm.php`, `PaymentFormBlock.php` (block registration + shortcode
-+ asset registration, consolidating what Lite's `BlockHandler` /
-`ShortcodeHandler` / `PublicForms` did before), `rest/Endpoints/
-PaymentFormEndpoint.php`, `frontend/blocks/payment-form/block.json`,
-`frontend/assets/js/payment-form.js`, `admin/src/blocks/payment-form/
-PaymentFormEdit.js`. The Divi module (`NeuralPaymentForm.php`) now calls
-`\NeuralForms\Pro\Payments\PaymentForm` instead of Lite's old class.
-
-**Known gap from the move**: Pro's `PaymentFormEdit.js` only has the
-"What to sell" / "Card" settings tabs — the Style tab (Container/Labels/
-Input Fields/Submit Button/Messages/Advanced panels, previously from
-Lite's `DesignPanels.js`) was NOT re-implemented, because that 1300-line
-component tree can't be imported across the plugin boundary at build
-time without either vendoring a copy into Pro or exposing it via a
-`window.neuralForms` runtime registry. The block is fully functional
-without it, just without the visual Style tab. Tracked as a follow-up.
-
-`tests/live/B3PaymentFormHarness.php` (26 checks) still exists in Lite
-but now exercises a feature whose code has moved — it needs to either
-move to Pro or be deleted/rewritten; not yet done as part of this move.
+`tests/live/B3PaymentFormHarness.php` moved to Pro with the feature;
+`tests/ProductPresetRenderTest.php` covers the presets + currency fix here.
 
 ### Payments page, invoices, refunds (1.2.0 part B, owner request 2026-10-29)
 

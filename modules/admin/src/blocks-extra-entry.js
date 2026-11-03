@@ -42,9 +42,26 @@ import FormDesignExtras      from './blocks/form/FormDesignExtras';
 import PollDesignExtras      from './blocks/poll/PollDesignExtras';
 import QuizDesignExtras      from './blocks/quiz/QuizDesignExtras';
 import MultiStepDesignExtras from './blocks/multistep/MultiStepDesignExtras';
+import * as DesignPanels     from './blocks/shared/DesignPanels';
 // neural-forms/payment-form moved to Pro 2026-10-30 — Pro registers its own
 // block (own editor bundle, own block.json). See CLAUDE.md "Payment Form
 // moved to Pro".
+
+/**
+ * Runtime registry for other editor bundles (Pro's payment-form block):
+ * the Style-tab panels every Neural Forms block uses, exposed once so
+ * they are never copied into another plugin. Pro lists this bundle's
+ * script handle (neural-forms-blocks-extra) as a dependency and renders
+ * `FormDesignExtras` inside its own <InspectorControls group="styles">;
+ * the CSS comes from Lite's BlockHandler::build_scoped_css() on the PHP
+ * side. Keep the shape stable: { version, FormDesignExtras, panels }.
+ */
+window.neuralForms = window.neuralForms || {};
+window.neuralForms.blockDesign = {
+	version:          1,
+	FormDesignExtras,
+	panels:           DesignPanels,
+};
 
 // Inject Inspector-sidebar CSS into the main admin document.
 // form.css is loaded as editor_style → it reaches the canvas iframe only

@@ -1352,11 +1352,26 @@ class BlockHandler {
 			}
 		}
 
-		$btn_hover_bg     = (string) ( $attributes['btnHoverBg']          ?? '' );
-		$btn_hover_color  = (string) ( $attributes['btnHoverColor']       ?? '' );
-		$btn_hover_border = (string) ( $attributes['btnHoverBorderColor'] ?? '' );
-		if ( $btn_hover_bg !== '' ) {
+		// Gradient tab of the Submit Button panel (BtnControls pfx "btn"): the
+		// solid colour goes through --neural-forms-btn-bg above; a gradient is a
+		// background-image on the button itself (same priority rule as the
+		// welcome / file buttons: gradient wins over colour).
+		$btn_bg_gradient = (string) ( $attributes['btnBgGradient'] ?? '' );
+		if ( $btn_bg_gradient !== '' ) {
+			$btn_rules[] = 'background-image:' . self::css_text( $btn_bg_gradient );
+		}
+
+		$btn_hover_bg          = (string) ( $attributes['btnHoverBg']          ?? '' );
+		$btn_hover_bg_gradient = (string) ( $attributes['btnHoverBgGradient']  ?? '' );
+		$btn_hover_color       = (string) ( $attributes['btnHoverColor']       ?? '' );
+		$btn_hover_border      = (string) ( $attributes['btnHoverBorderColor'] ?? '' );
+		if ( $btn_hover_bg_gradient !== '' ) {
+			$btn_hover_rules[] = 'background-image:' . self::css_text( $btn_hover_bg_gradient );
+		} elseif ( $btn_hover_bg !== '' ) {
 			$btn_hover_rules[] = 'background-color:' . self::sanitize_color( $btn_hover_bg );
+			if ( $btn_bg_gradient !== '' ) {
+				$btn_hover_rules[] = 'background-image:none'; // a normal-state gradient would hide the hover colour
+			}
 		}
 		if ( $btn_hover_color !== '' ) {
 			$btn_hover_rules[] = 'color:' . self::sanitize_color( $btn_hover_color );
@@ -3505,15 +3520,22 @@ class BlockHandler {
 		$mat_cell_pr    = (string) ( $attributes['matrixCellPaddingRight']  ?? '' );
 		$mat_cell_pb    = (string) ( $attributes['matrixCellPaddingBottom'] ?? '' );
 		$mat_cell_pl    = (string) ( $attributes['matrixCellPaddingLeft']   ?? '' );
-		if ( $mat_cell_bg ) $mat_cell_rules[] = 'background:' . $mat_cell_bg;
+		if ( $mat_cell_bg_grad !== '' ) {
+			$mat_cell_rules[] = 'background-image:' . self::css_text( $mat_cell_bg_grad );
+		} elseif ( $mat_cell_bg ) {
+			$mat_cell_rules[] = 'background:' . $mat_cell_bg;
+		}
 		$css .= self::border_css( $mat_cell_sel, $mat_cell_border );
 		if ( $mat_cell_pt || $mat_cell_pr || $mat_cell_pb || $mat_cell_pl ) {
 			$mat_cell_rules[] = 'padding:' . $spacing( $mat_cell_pt ?: '0' ) . ' ' . $spacing( $mat_cell_pr ?: '0' ) . ' ' . $spacing( $mat_cell_pb ?: '0' ) . ' ' . $spacing( $mat_cell_pl ?: '0' );
 		}
 		if ( $mat_cell_rules ) $css .= $mat_cell_sel . '{' . implode( ';', $mat_cell_rules ) . '}';
 
-		$mat_cell_hover_bg = self::sanitize_color( (string) ( $attributes['matrixCellHoverBg'] ?? '' ) );
-		if ( $mat_cell_hover_bg ) {
+		$mat_cell_hover_bg      = self::sanitize_color( (string) ( $attributes['matrixCellHoverBg'] ?? '' ) );
+		$mat_cell_hover_bg_grad = (string) ( $attributes['matrixCellHoverBgGradient'] ?? '' );
+		if ( $mat_cell_hover_bg_grad !== '' ) {
+			$css .= $mat_cell_sel . ':hover{background-image:' . self::css_text( $mat_cell_hover_bg_grad ) . '}';
+		} elseif ( $mat_cell_hover_bg ) {
 			$css .= $mat_cell_sel . ':hover{background:' . $mat_cell_hover_bg . '}';
 		}
 
@@ -3536,13 +3558,19 @@ class BlockHandler {
 		}
 
 		// Alternating row background
-		$mat_row_bg = self::sanitize_color( (string) ( $attributes['matrixRowBg'] ?? '' ) );
-		if ( $mat_row_bg ) {
+		$mat_row_bg      = self::sanitize_color( (string) ( $attributes['matrixRowBg'] ?? '' ) );
+		$mat_row_bg_grad = (string) ( $attributes['matrixRowBgGradient'] ?? '' );
+		if ( $mat_row_bg_grad !== '' ) {
+			$css .= $wrap_sel . ' .neural-forms-matrix__row .neural-forms-matrix__cell{background-image:' . self::css_text( $mat_row_bg_grad ) . '}';
+		} elseif ( $mat_row_bg ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__row .neural-forms-matrix__cell{background:' . $mat_row_bg . '}';
 		}
 
-		$mat_alt_bg = self::sanitize_color( (string) ( $attributes['matrixAltRowBg'] ?? '' ) );
-		if ( $mat_alt_bg ) {
+		$mat_alt_bg      = self::sanitize_color( (string) ( $attributes['matrixAltRowBg'] ?? '' ) );
+		$mat_alt_bg_grad = (string) ( $attributes['matrixAltRowBgGradient'] ?? '' );
+		if ( $mat_alt_bg_grad !== '' ) {
+			$css .= $wrap_sel . ' .neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell{background-image:' . self::css_text( $mat_alt_bg_grad ) . '}';
+		} elseif ( $mat_alt_bg ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell{background:' . $mat_alt_bg . '}';
 		}
 

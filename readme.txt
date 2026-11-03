@@ -270,7 +270,6 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Added: Pro users can turn a priced entry into a numbered, branded quote, send it as a PDF with a secure link, and keep every revision on record.
 * Added: Pro users can take a deposit or the full amount through Stripe or PayPal right after a priced form is submitted; payments are confirmed by the gateway and shown on the entry.
 * Security: Block design values can no longer inject site-wide styles, and checkout links are validated before use.
-* Security: The quick-buy payment form now honours the form's CAPTCHA and rate-limit settings.
 * Added: Create a form from a short description with Neural AI, now included in Lite.
 * Fixed: Cancelling at the gateway can no longer overwrite a payment confirmed moments earlier.
 * Fixed: Superseded or expired quotes close their open checkout links so the old price cannot be paid.
@@ -278,7 +277,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fixed: Retried replies now use the configured sender name and address.
 * Fixed: The recurring AI queue is scheduled correctly on activation.
 * Fixed: Refund amounts for currencies without decimals are entered correctly.
-* Added: A Neural Payment Form block and shortcode that sells one priced item with a Buy now button straight to checkout (Pro).
+* Fixed: Priced Item prices on the form are shown in the form's currency instead of always in dollars.
+* Added: A Payment Form block, shortcode and Divi module that shows one priced item with the whole form underneath and sends the visitor straight to checkout (Pro).
 * Added: A Payments page listing every payment with totals and filters, invoices sent automatically or by hand as PDF, and full or partial refunds issued through the gateway (Pro).
 * Added: A "Payment confirmed" workflow trigger, payment details in workflow emails, a workflow action that creates a quote, a Pay button on issued quotes, and Awaiting payment / Paid inbox filters (Pro).
 * Fixed: Cloud error messages show their real code instead of a bare HTTP status.

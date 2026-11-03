@@ -1160,7 +1160,13 @@
 			// Product field (1.2.0 part B): the condition sees the chosen
 			// option(s) or the typed amount — same as the PHP engine.
 			var pSel = form.querySelector( '[name="' + fieldId + '[choice]"]' );
-			if ( pSel && pSel.tagName === 'SELECT' ) return pSel.value;
+			if ( pSel && ( pSel.tagName === 'SELECT' || pSel.type === 'hidden' ) ) return pSel.value;
+			var pLocked = form.querySelectorAll( '[name="' + fieldId + '[choice][]"][type="hidden"]' );
+			if ( pLocked.length ) {
+				var lockedVals = [];
+				for ( var pl = 0; pl < pLocked.length; pl++ ) lockedVals.push( pLocked[ pl ].value );
+				return lockedVals.join( ',' );
+			}
 			var pRadios = form.querySelectorAll( '[name="' + fieldId + '[choice]"][type="radio"]' );
 			if ( pRadios.length ) {
 				for ( var pr = 0; pr < pRadios.length; pr++ ) if ( pRadios[ pr ].checked ) return pRadios[ pr ].value;
@@ -1544,13 +1550,16 @@
 	function readProductValue( form, id ) {
 		var v = {};
 		var sel = form.querySelector( '[name="' + id + '[choice]"]' );
-		if ( sel && sel.tagName === 'SELECT' ) v.choice = sel.value;
+		// A hidden [choice] is a Priced Item locked to one option (Pro's Payment Form).
+		if ( sel && ( sel.tagName === 'SELECT' || sel.type === 'hidden' ) ) v.choice = sel.value;
 		else {
 			var radios = form.querySelectorAll( '[name="' + id + '[choice]"][type="radio"]' );
 			if ( radios.length ) { v.choice = ''; for ( var r = 0; r < radios.length; r++ ) if ( radios[ r ].checked ) v.choice = radios[ r ].value; }
 		}
 		var boxes = form.querySelectorAll( '[name="' + id + '[choice][]"][type="checkbox"]' );
 		if ( boxes.length ) { v.choice = []; for ( var b = 0; b < boxes.length; b++ ) if ( boxes[ b ].checked ) v.choice.push( boxes[ b ].value ); }
+		var lockedBoxes = form.querySelectorAll( '[name="' + id + '[choice][]"][type="hidden"]' );
+		if ( lockedBoxes.length ) { v.choice = []; for ( var lb = 0; lb < lockedBoxes.length; lb++ ) v.choice.push( lockedBoxes[ lb ].value ); }
 		var qty = form.querySelector( '[name="' + id + '[qty]"]' );
 		if ( qty ) v.qty = qty.value;
 		var amount = form.querySelector( '[name="' + id + '[amount]"]' );
