@@ -942,6 +942,30 @@ What Lite provides (generic engine, used by the normal form checkout too):
 `tests/live/B3PaymentFormHarness.php` moved to Pro with the feature;
 `tests/ProductPresetRenderTest.php` covers the presets + currency fix here.
 
+### Payment analytics (1.2.0 part B, owner request 2026-11-04)
+
+- `GET /forms/{id}/analytics/payments` (`StatsEndpoint::get_payment_analytics`,
+  cap `payments` → `pro_feature_locked` 403 like Page Performance):
+  `{ form_id, form_name, currency, takes_payments, totals[] (PaymentRepository::
+  totals per currency + livemode, plus average + formatted), entries { total,
+  started, paid, deposit, awaiting, cancelled, refunded, conversion },
+  trend[30 × { date, net, count }] (settled attempts by paid_at), providers
+  { id: count }, recent[8] (latest attempts with customer meta + formatted) }`.
+  `started` = entries whose payment_status is not `none`; conversion =
+  paid / started.
+- `/stats` gains `payments`: `{ unlocked:false }` when locked, otherwise
+  `{ unlocked:true, rows (totals for the range, by attempt created_at),
+  awaiting_entries (lifetime pending/processing), top_forms[5] (net by
+  paid_at in range) }`.
+- UI: `results/sections/PaymentAnalyticsSection.js` (descriptor `payments`
+  right after the overview cards; hides itself for forms that never took a
+  payment, upsell when locked, reuses the `.nf-pp` card chrome + `.nf-pay*`
+  for trend / table / pills) and `PaymentsOverview` in `screens/Stats.js`
+  (`.neural-forms-stats__payments`, 4-card metrics row per currency, top
+  forms linking to Analytics). Builds: `build:results`, `build:stats`.
+- Test/live mode rows are shown separately with a "test mode" pill; a
+  refund in range shows the Refunded card in the danger tint.
+
 ### Payments page, invoices, refunds (1.2.0 part B, owner request 2026-10-29)
 
 - **Payments page** Neural Forms › Payments (`screens/Payments.js`, bundle

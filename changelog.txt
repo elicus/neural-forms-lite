@@ -12,6 +12,7 @@
 * Added: A Processing health card in Settings shows waiting jobs and how to set up a system cron.
 * Added: Pro users can give AI drafts approved business knowledge, a brand voice and a reply-language policy, site-wide and per form; drafts show which facts they used and flag what they could not answer.
 * Added: Any field can be excluded from AI so its answer never leaves your site.
+* Added: Payment analytics for Pro users: the Analytics page of a form that takes payments shows net revenue, number of payments, conversion, entries awaiting payment, refunds, a 30-day revenue trend and the latest payments, and the Stats dashboard shows revenue for the selected range with the top paying forms.
 * Added: Translate an AI draft into your site language from the drafts carousel.
 * Added: Pro users can price their services with Priced Item fields (no WooCommerce needed), show a live total with discount rules and a deposit, and calculate values from answers; totals are always recalculated on the server.
 * Added: Pro users can turn a priced entry into a numbered, branded quote, send it as a PDF with a secure link, and keep every revision on record.

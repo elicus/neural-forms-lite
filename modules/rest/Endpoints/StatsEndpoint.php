@@ -62,6 +62,8 @@ class StatsEndpoint {
 			)
 		);
 
+		$this->register_payment_analytics_route( $ns );
+
 		// Page Performance (1.1.0+): per-form aggregation of entries
 		// grouped by source page. Capability-gated for Pro; Lite
 		// callers receive a feature_locked error so the analytics
@@ -78,6 +80,24 @@ class StatsEndpoint {
 						'sanitize_callback' => 'absint',
 					),
 				),
+			)
+		);
+	}
+
+	/**
+	 * Payment analytics for one form (1.2.0 part B): revenue, counts,
+	 * conversion, 30-day trend and the latest attempts. Capability-gated
+	 * like Page Performance so the Analytics bundle can render an upsell.
+	 */
+	private function register_payment_analytics_route( string $ns ): void {
+		register_rest_route(
+			$ns,
+			'/forms/(?P<id>\d+)/analytics/payments',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_payment_analytics' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array( 'id' => array( 'sanitize_callback' => 'absint' ) ),
 			)
 		);
 	}
@@ -105,6 +125,218 @@ class StatsEndpoint {
 				'needs_attention'    => $this->needs_attention(),
 				'recent_activity'    => $this->recent_activity(),
 				'system'             => $this->system_status_v2(),
+				'payments'           => $this->payments_summary( $days ),
+			)
+		);
+	}
+
+	/**
+	 * Dashboard payments block (range-scoped). Locked installs get
+	 * { unlocked: false } so the Stats screen renders the Pro card; stored
+	 * attempts are never exposed there (the inbox still shows them).
+	 */
+	private function payments_summary( int $days ): array {
+		if ( ! \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::PAYMENTS ) ) {
+			return array( 'unlocked' => false );
+		}
+		global $wpdb;
+		$pay     = \NeuralForms\Payments\PaymentRepository::table();
+		$entries = $wpdb->prefix . 'neural_forms_entries';
+		$forms   = $wpdb->prefix . 'neural_forms_forms';
+		$from    = gmdate( 'Y-m-d', time() - ( max( 1, $days ) - 1 ) * DAY_IN_SECONDS );
+
+		$rows = array();
+		foreach ( \NeuralForms\Payments\PaymentRepository::totals( array( 'date_from' => $from ) ) as $r ) {
+			$c = (string) $r['currency'];
+			$r['formatted'] = array(
+				'paid'     => \NeuralForms\Pricing\Money::format( (int) $r['paid'], $c ),
+				'refunded' => \NeuralForms\Pricing\Money::format( (int) $r['refunded'], $c ),
+				'net'      => \NeuralForms\Pricing\Money::format( (int) $r['net'], $c ),
+				'open'     => \NeuralForms\Pricing\Money::format( (int) $r['open'], $c ),
+			);
+			$rows[] = $r;
+		}
+
+		$awaiting = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE status != 'trash' AND payment_status IN ('pending','processing')", $entries )
+		);
+
+		$top = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT p.form_id, f.name AS form_title, p.currency, p.livemode,
+				        SUM( p.amount_paid_minor - p.amount_refunded_minor ) AS net,
+				        COUNT(*) AS paid_count
+				 FROM %i p LEFT JOIN %i f ON p.form_id = f.id
+				 WHERE p.status IN ('paid','refunded','partially_refunded')
+				   AND p.paid_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL %d DAY )
+				 GROUP BY p.form_id, f.name, p.currency, p.livemode
+				 ORDER BY net DESC
+				 LIMIT 5",
+				$pay,
+				$forms,
+				max( 1, $days )
+			),
+			ARRAY_A
+		);
+		$top_forms = array();
+		foreach ( is_array( $top ) ? $top : array() as $t ) {
+			$top_forms[] = array(
+				'form_id'    => (int) $t['form_id'],
+				'title'      => (string) ( $t['form_title'] ?? '' ),
+				'currency'   => (string) $t['currency'],
+				'livemode'   => ! empty( $t['livemode'] ),
+				'net'        => (int) $t['net'],
+				'paid_count' => (int) $t['paid_count'],
+				'formatted'  => \NeuralForms\Pricing\Money::format( (int) $t['net'], (string) $t['currency'] ),
+			);
+		}
+
+		return array(
+			'unlocked'         => true,
+			'rows'             => $rows,
+			'awaiting_entries' => $awaiting,
+			'top_forms'        => $top_forms,
+		);
+	}
+
+	/** GET /forms/{id}/analytics/payments — see register_payment_analytics_route(). */
+	public function get_payment_analytics( WP_REST_Request $request ) {
+		if ( ! \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::PAYMENTS ) ) {
+			return new \WP_Error(
+				'pro_feature_locked',
+				__( 'Payment analytics are available in Neural Forms Pro.', 'neural-forms-lite' ),
+				array( 'status' => 403, 'feature' => \NeuralForms\Core\Capabilities::PAYMENTS )
+			);
+		}
+		$form_id = (int) $request['id'];
+		$form    = $form_id > 0 ? \NeuralForms\Forms\FormRepository::find( $form_id ) : null;
+		if ( ! $form ) {
+			return new \WP_Error( 'form_not_found', __( 'Form not found.', 'neural-forms-lite' ), array( 'status' => 404 ) );
+		}
+
+		global $wpdb;
+		$pay      = \NeuralForms\Payments\PaymentRepository::table();
+		$entries  = $wpdb->prefix . 'neural_forms_entries';
+		$currency = \NeuralForms\Pricing\Money::normalize_currency( (string) ( \NeuralForms\Pricing\PriceEngine::settings( $form )['currency'] ?? 'USD' ) );
+		$fmt      = static function ( int $minor, string $c ): string {
+			return \NeuralForms\Pricing\Money::format( $minor, $c );
+		};
+
+		// Attempts, per currency + mode (a form normally has one of each).
+		$totals = array();
+		foreach ( \NeuralForms\Payments\PaymentRepository::totals( array( 'form_id' => $form_id ) ) as $r ) {
+			$c = (string) $r['currency'];
+			$r['average'] = $r['paid_count'] > 0 ? (int) round( $r['net'] / $r['paid_count'] ) : 0;
+			$r['formatted'] = array(
+				'paid'     => $fmt( (int) $r['paid'], $c ),
+				'refunded' => $fmt( (int) $r['refunded'], $c ),
+				'net'      => $fmt( (int) $r['net'], $c ),
+				'open'     => $fmt( (int) $r['open'], $c ),
+				'average'  => $fmt( (int) $r['average'], $c ),
+			);
+			$totals[] = $r;
+		}
+
+		// Entries by payment status (what the inbox shows as the aggregate).
+		$by_status = array();
+		$rows      = $wpdb->get_results(
+			$wpdb->prepare( "SELECT payment_status, COUNT(*) AS n FROM %i WHERE form_id = %d AND status != 'trash' GROUP BY payment_status", $entries, $form_id ),
+			ARRAY_A
+		);
+		foreach ( is_array( $rows ) ? $rows : array() as $r ) {
+			$by_status[ (string) $r['payment_status'] ] = (int) $r['n'];
+		}
+		$count = static function ( array $keys ) use ( $by_status ): int {
+			$n = 0;
+			foreach ( $keys as $k ) {
+				$n += $by_status[ $k ] ?? 0;
+			}
+			return $n;
+		};
+		$started   = array_sum( $by_status ) - ( $by_status['none'] ?? 0 );
+		$paid      = $count( array( 'paid', 'deposit_paid', 'partially_refunded', 'refunded' ) );
+		$entry_sum = array(
+			'total'      => array_sum( $by_status ),
+			'started'    => $started,
+			'paid'       => $paid,
+			'deposit'    => $count( array( 'deposit_paid' ) ),
+			'awaiting'   => $count( array( 'pending', 'processing' ) ),
+			'cancelled'  => $count( array( 'cancelled', 'failed' ) ),
+			'refunded'   => $count( array( 'refunded', 'partially_refunded' ) ),
+			'conversion' => $started > 0 ? round( $paid / $started * 100, 1 ) : 0,
+		);
+
+		// 30-day trend of net revenue (settled attempts by the day they were paid).
+		$trend_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DATE(paid_at) AS day, SUM( amount_paid_minor - amount_refunded_minor ) AS net, COUNT(*) AS n
+				 FROM %i WHERE form_id = %d AND status IN ('paid','refunded','partially_refunded')
+				   AND paid_at >= DATE_SUB( UTC_TIMESTAMP(), INTERVAL 30 DAY )
+				 GROUP BY DATE(paid_at) ORDER BY day ASC",
+				$pay,
+				$form_id
+			),
+			ARRAY_A
+		);
+		$by_day = array();
+		foreach ( is_array( $trend_rows ) ? $trend_rows : array() as $r ) {
+			$by_day[ (string) $r['day'] ] = array( 'net' => (int) $r['net'], 'count' => (int) $r['n'] );
+		}
+		$trend = array();
+		for ( $i = 29; $i >= 0; $i-- ) {
+			$d       = gmdate( 'Y-m-d', time() - ( $i * DAY_IN_SECONDS ) );
+			$trend[] = array( 'date' => $d, 'net' => $by_day[ $d ]['net'] ?? 0, 'count' => $by_day[ $d ]['count'] ?? 0 );
+		}
+
+		// Providers used for settled attempts.
+		$prov_rows = $wpdb->get_results(
+			$wpdb->prepare( "SELECT provider, COUNT(*) AS n FROM %i WHERE form_id = %d AND status IN ('paid','refunded','partially_refunded') GROUP BY provider", $pay, $form_id ),
+			ARRAY_A
+		);
+		$providers = array();
+		foreach ( is_array( $prov_rows ) ? $prov_rows : array() as $r ) {
+			$providers[ (string) $r['provider'] ] = (int) $r['n'];
+		}
+
+		// Latest attempts for the table.
+		$recent = array();
+		foreach ( \NeuralForms\Payments\PaymentRepository::search( array( 'form_id' => $form_id, 'per_page' => 8 ) )['rows'] as $a ) {
+			$meta     = is_array( $a['meta'] ?? null ) ? $a['meta'] : array();
+			$c        = (string) $a['currency'];
+			$recent[] = array(
+				'payment_id'            => (int) $a['id'],
+				'entry_id'              => (int) $a['entry_id'],
+				'status'                => (string) $a['status'],
+				'kind'                  => (string) $a['kind'],
+				'provider'              => (string) $a['provider'],
+				'livemode'              => ! empty( $a['livemode'] ),
+				'currency'              => $c,
+				'amount_due_minor'      => (int) $a['amount_due_minor'],
+				'amount_paid_minor'     => (int) $a['amount_paid_minor'],
+				'amount_refunded_minor' => (int) $a['amount_refunded_minor'],
+				'customer_name'         => (string) ( $meta['customer_name'] ?? '' ),
+				'customer_email'        => (string) ( $meta['customer_email'] ?? '' ),
+				'paid_at'               => (string) ( $a['paid_at'] ?? '' ),
+				'created_at'            => (string) ( $a['created_at'] ?? '' ),
+				'formatted'             => array(
+					'due'      => $fmt( (int) $a['amount_due_minor'], $c ),
+					'paid'     => $fmt( (int) $a['amount_paid_minor'], $c ),
+					'refunded' => $fmt( (int) $a['amount_refunded_minor'], $c ),
+				),
+			);
+		}
+
+		return rest_ensure_response(
+			array(
+				'form_id'        => $form_id,
+				'form_name'      => (string) ( $form['name'] ?? '' ),
+				'currency'       => $currency,
+				'takes_payments' => \NeuralForms\Payments\PaymentService::enabled_for( $form ),
+				'totals'         => $totals,
+				'entries'        => $entry_sum,
+				'trend'          => $trend,
+				'providers'      => $providers,
+				'recent'         => $recent,
 			)
 		);
 	}
