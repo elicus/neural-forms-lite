@@ -68,5 +68,18 @@ check( 'matrix alternate row gradient', (bool) preg_match( '/nth-child\(even\) \
 $c = $css( [ 'matrixCellBg' => '#0d0e0f', 'matrixRowBg' => '#070809' ] );
 check( 'matrix solid colours unchanged', strpos( $c, '__cell{background:#0d0e0f' ) !== false && strpos( $c, '__row .neural-forms-matrix__cell{background:#070809' ) !== false );
 
+// render_options(): the switches Lite's blocks hand to FormRenderer, now
+// public so Pro's Payment Form card gets the same ones (button icon, repeater
+// add-button text, placeholders, welcome screen).
+$o = \NeuralForms\Frontend\BlockHandler::render_options( [ 'showLabels' => false, 'btnIconEnabled' => true, 'btnIcon' => 'arrow-right', 'btnIconPosition' => 'before', 'repeaterAddBtnText' => 'More', 'showPlaceholders' => false ] );
+check( 'render_options: labels / placeholders switches', $o['show_labels'] === false && $o['show_placeholders'] === false );
+check( 'render_options: submit button icon', ( $o['btn_icon'] ?? '' ) === 'arrow-right' && ( $o['btn_icon_position'] ?? '' ) === 'before' );
+check( 'render_options: repeater add-button text', ( $o['repeater_add_btn_text'] ?? '' ) === 'More' );
+check( 'render_options: no icon without the toggle', ! isset( \NeuralForms\Frontend\BlockHandler::render_options( [ 'btnIcon' => 'send' ] )['btn_icon'] ) );
+// Radio inputs: scoped border / colour rules carry appearance:none so a theme's
+// input[type="radio"] reset cannot turn them back into native controls.
+$c = $css( [ 'radioOptionBorderColor' => '#ec4899', 'radioOptionBorderWidth' => '2px' ] );
+check( 'radio scoped rule forces appearance:none', (bool) preg_match( '/__radio\{appearance:none;-webkit-appearance:none;box-sizing:border-box;border:2px solid #ec4899\}/', $c ) );
+
 echo "\nBlockGradientCssTest: $passed passed, $failed failed\n";
 exit( $failed > 0 ? 1 : 0 );

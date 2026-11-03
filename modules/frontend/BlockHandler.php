@@ -257,47 +257,12 @@ class BlockHandler {
 	// Render callback
 
 	/**
-	 * PHP render callback for the neural-forms/form block.
-	 *
-	 * When the block carries formatting attributes, wraps the form HTML in a
-	 * scoped container so the styles affect only this block instance.
-	 *
-	 * @param  array $attributes  Block attributes as saved by the editor.
-	 * @return string             Rendered HTML.
+	 * FormRenderer options derived from the block attributes (labels,
+	 * placeholders, button texts, button icons, welcome screen, steps, quiz
+	 * and poll switches). Public so Pro's Payment Form block renders the
+	 * embedded form with exactly the same switches as Lite's blocks.
 	 */
-	public static function render( array $attributes ): string {
-		$form_id   = (int) ( $attributes['formId'] ?? 0 );
-		// Detect ServerSideRender editor preview. The block editor's
-		// REST call hits /wp-json/wp/v2/block-renderer/<block> from
-		// the admin page, but the PHP handling of that REST endpoint
-		// does NOT define WP_ADMIN — so `is_admin()` returns FALSE
-		// here even though the browser is on an admin URL. The
-		// reliable signal is REST_REQUEST alone. (An over-narrow
-		// `REST_REQUEST && is_admin()` guard was tried and broke the
-		// editor preview entirely: the hybrid CSS routing below would
-		// have taken the wp_add_inline_style path, which never
-		// reaches the REST response body.)
-		// Editor preview (block-renderer / editor REST calls) is only for
-		// users who can edit posts. Without the capability check, any
-		// anonymous `GET /wp-json/wp/v2/posts/{id}` (content.rendered runs
-		// do_blocks) took this branch and render_preview() skipped the
-		// `status === active` gate — exposing draft / archived forms.
-		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
-
-		if ( $form_id < 1 ) {
-			if ( $is_editor ) {
-				// Return nothing in editor - the JS empty state handles this.
-				return '';
-			}
-			return static::admin_notice(
-				__( 'Neural Forms: no form selected. Edit the block and choose a form.', 'neural-forms-lite' )
-			);
-		}
-
-		// Build render options from block attributes that affect HTML output
-		// (not just CSS). show_labels / show_placeholders override the per-
-		// field schema settings so the block author controls label/placeholder
-		// behaviour for every field in one place.
+	public static function render_options( array $attributes ): array {
 		$render_options = [
 			'form_title'         => (string) ( $attributes['formTitle'] ?? '' ),
 			'title_level'        => (string) ( $attributes['titleLevel'] ?? 'h2' ),
@@ -407,6 +372,53 @@ class BlockHandler {
 
 		// In editor context, render the form without enqueuing the submission
 		// handler JS - the preview should be visual only, not interactive.
+		return $render_options;
+	}
+
+	/**
+	 * PHP render callback for the neural-forms/form block.
+	 *
+	 * When the block carries formatting attributes, wraps the form HTML in a
+	 * scoped container so the styles affect only this block instance.
+	 *
+	 * @param  array $attributes  Block attributes as saved by the editor.
+	 * @return string             Rendered HTML.
+	 */
+	public static function render( array $attributes ): string {
+		$form_id   = (int) ( $attributes['formId'] ?? 0 );
+		// Detect ServerSideRender editor preview. The block editor's
+		// REST call hits /wp-json/wp/v2/block-renderer/<block> from
+		// the admin page, but the PHP handling of that REST endpoint
+		// does NOT define WP_ADMIN — so `is_admin()` returns FALSE
+		// here even though the browser is on an admin URL. The
+		// reliable signal is REST_REQUEST alone. (An over-narrow
+		// `REST_REQUEST && is_admin()` guard was tried and broke the
+		// editor preview entirely: the hybrid CSS routing below would
+		// have taken the wp_add_inline_style path, which never
+		// reaches the REST response body.)
+		// Editor preview (block-renderer / editor REST calls) is only for
+		// users who can edit posts. Without the capability check, any
+		// anonymous `GET /wp-json/wp/v2/posts/{id}` (content.rendered runs
+		// do_blocks) took this branch and render_preview() skipped the
+		// `status === active` gate — exposing draft / archived forms.
+		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
+
+		if ( $form_id < 1 ) {
+			if ( $is_editor ) {
+				// Return nothing in editor - the JS empty state handles this.
+				return '';
+			}
+			return static::admin_notice(
+				__( 'Neural Forms: no form selected. Edit the block and choose a form.', 'neural-forms-lite' )
+			);
+		}
+
+		// Build render options from block attributes that affect HTML output
+		// (not just CSS). show_labels / show_placeholders override the per-
+		// field schema settings so the block author controls label/placeholder
+		// behaviour for every field in one place.
+		$render_options = static::render_options( $attributes );
+
 		$form_html = $is_editor
 			? FormRenderer::render_preview( $form_id, $render_options )
 			: FormRenderer::render( $form_id, $render_options );
@@ -2291,7 +2303,10 @@ class BlockHandler {
 			}
 		}
 		if ( $radio_opt_rules ) {
-			$css .= $radio_input_sel . '{' . implode( ';', $radio_opt_rules ) . '}';
+			// appearance:none here too (form.css already does it, but a theme's
+			// input[type="radio"] rule can win over that one): without it the
+			// browser paints the native control and ignores border / background.
+			$css .= $radio_input_sel . '{appearance:none;-webkit-appearance:none;box-sizing:border-box;' . implode( ';', $radio_opt_rules ) . '}';
 		}
 
 		$radio_hover_bg = (string) ( $attributes['radioOptionHoverBg'] ?? '' );

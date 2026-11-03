@@ -3,6 +3,8 @@
 = 1.2.0 - Unreleased =
 
 * Added: Conditional logic can combine several conditions with All or Any and show or hide a field.
+* Fixed: On phones, a Matrix field no longer pushes the form wider than the screen; the table scrolls inside the field instead.
+* Fixed: On themes that restyle radio buttons and checkboxes (Divi, WooCommerce), Neural Forms radios kept the browser's native look and ignored the colours and borders set in the Style tab.
 * Fixed: In the block editor, the Submit Button's gradient background (normal and hover) and the Matrix field's gradient backgrounds for cells, rows and alternate rows now apply; before, only the solid colour tab worked.
 * Added: Pro users can group conditions, show or skip steps and sections based on answers, and pick a confirmation message or redirect per rule.
 * Added: Pro users can track each lead through stages, assign an owner, set follow-up reminders and see an activity timeline on every entry.

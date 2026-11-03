@@ -694,6 +694,17 @@ Matrix panel's four gradients (`matrixCell*`, `matrixRow*`, `matrixAltRow*`)
 were whitelisted but never emitted. Rule: a gradient is `background-image`
 on the element (solid colour stays on the CSS variable / `background`), a
 solid hover over a normal-state gradient adds `background-image:none`.
+`BlockHandler::render()` builds its FormRenderer switches through the public
+`render_options( $attributes )` (labels, placeholders, button texts, button
+icons, welcome screen, steps, quiz, poll); Pro's Payment Form card calls it
+so the embedded form gets the same switches (the submit icon and repeater
+add-button text were silently missing before 2026-11-04).
+**Radio / checkbox inputs on themes:** Divi and WooCommerce ship
+`input[type="radio"]` / `input[type="checkbox"]` rules (0,1,1) that reset
+`appearance` and borders; `form.css` therefore prefixes those selectors with
+`.neural-forms-form` (0,2,0) and the scoped radio rule repeats
+`appearance:none`, otherwise every Style-tab radio colour / border is
+ignored while the CSS still "contains the value".
 Expected non-emissions, not bugs: `bgImagePosition` values are
 `top_left … bottom_right` (underscored), `shadowPosition` only matters with
 another shadow value set, `ratingHoverColor` has no control (hover mirrors
