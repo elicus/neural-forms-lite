@@ -647,6 +647,16 @@ class BlockHandler {
 			'cbGroupGap', 'cbGroupItemGap',
 			// Rating field
 			'ratingStarSize', 'ratingStarGap', 'ratingEmptyColor', 'ratingFilledColor', 'ratingHoverColor',
+			// Pricing: Priced Item quantity label, Calculated field, totals box (2026-11-05)
+			'qtyLabelColor', 'qtyLabelFontSize', 'qtyLabelFontWeight',
+			'calculatedColor', 'calculatedFontSize', 'calculatedFontWeight',
+			'totalsBg', 'totalsBorder', 'totalsBorderRadius',
+			'totalsPaddingTop', 'totalsPaddingRight', 'totalsPaddingBottom', 'totalsPaddingLeft',
+			'totalsRowLabelColor', 'totalsRowValueColor', 'totalsTotalColor', 'totalsTotalFontSize',
+			'productPriceColor', 'productPriceFontSize', 'productPriceFontWeight',
+			'productLineColor', 'productLineFontSize',
+			'productOptionAccentColor', 'productOptionSize',
+			'productOptionLabelColor', 'productOptionLabelFontSize', 'productOptionLabelFontWeight',
 			// File input field
 			'fileInputBg', 'fileInputBgGradient', 'fileInputBorder', 'fileInputBorderRadius',
 			'fileInputColor', 'fileInputFontSize',
@@ -2496,6 +2506,188 @@ class BlockHandler {
 					. $rating_star_sel . ':focus-within ~ .neural-forms-form__rating-star .neural-forms-form__rating-glyph'
 					. '{color:' . $hex . '}';
 			}
+		}
+
+		// ——— Pricing: Priced Item quantity label, Calculated field, totals
+		// box (2026-11-05, owner request — no shared panel covered these
+		// classes before, on any block) ———
+
+		$qty_label_rules = [];
+		$qty_label_color = (string) ( $attributes['qtyLabelColor'] ?? '' );
+		if ( $qty_label_color !== '' ) {
+			$hex = self::sanitize_color( $qty_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$qty_label_rules[] = 'color:' . $hex;
+			}
+		}
+		$qty_label_fs = (string) ( $attributes['qtyLabelFontSize'] ?? '' );
+		if ( $qty_label_fs !== '' ) {
+			$qty_label_rules[] = 'font-size:' . $len( $qty_label_fs );
+		}
+		$qty_label_fw = (string) ( $attributes['qtyLabelFontWeight'] ?? '' );
+		if ( $qty_label_fw !== '' ) {
+			$qty_label_rules[] = 'font-weight:' . self::css_text( $qty_label_fw );
+		}
+		if ( $qty_label_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-qty-label{' . implode( ';', $qty_label_rules ) . '}';
+		}
+
+		$calc_rules = [];
+		$calc_color = (string) ( $attributes['calculatedColor'] ?? '' );
+		if ( $calc_color !== '' ) {
+			$hex = self::sanitize_color( $calc_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$calc_rules[] = 'color:' . $hex;
+			}
+		}
+		$calc_fs = (string) ( $attributes['calculatedFontSize'] ?? '' );
+		if ( $calc_fs !== '' ) {
+			$calc_rules[] = 'font-size:' . $len( $calc_fs );
+		}
+		$calc_fw = (string) ( $attributes['calculatedFontWeight'] ?? '' );
+		if ( $calc_fw !== '' ) {
+			$calc_rules[] = 'font-weight:' . self::css_text( $calc_fw );
+		}
+		if ( $calc_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__calculated{' . implode( ';', $calc_rules ) . '}';
+		}
+
+		$totals_sel   = $wrap_sel . ' .neural-forms-form__totals';
+		$totals_rules = [];
+		$totals_bg    = (string) ( $attributes['totalsBg'] ?? '' );
+		if ( $totals_bg !== '' ) {
+			$hex = self::sanitize_color( $totals_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$totals_rules[] = 'background-color:' . $hex;
+			}
+		}
+		$totals_radius = (string) ( $attributes['totalsBorderRadius'] ?? '' );
+		if ( $totals_radius !== '' ) {
+			$totals_rules[] = 'border-radius:' . $len( $totals_radius );
+		}
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'totalsPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$totals_rules[] = $css_prop . ':' . $spacing( $val );
+			}
+		}
+		if ( $totals_rules ) {
+			$css .= $totals_sel . '{' . implode( ';', $totals_rules ) . '}';
+		}
+		$css .= self::border_css( $totals_sel, $attributes['totalsBorder'] ?? null );
+
+		$totals_row_label_color = (string) ( $attributes['totalsRowLabelColor'] ?? '' );
+		if ( $totals_row_label_color !== '' ) {
+			$hex = self::sanitize_color( $totals_row_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $totals_sel . '-row span:first-child{color:' . $hex . '}';
+			}
+		}
+		$totals_row_value_color = (string) ( $attributes['totalsRowValueColor'] ?? '' );
+		if ( $totals_row_value_color !== '' ) {
+			$hex = self::sanitize_color( $totals_row_value_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $totals_sel . '-row span:last-child{color:' . $hex . '}';
+			}
+		}
+		$totals_total_rules = [];
+		$totals_total_color  = (string) ( $attributes['totalsTotalColor'] ?? '' );
+		if ( $totals_total_color !== '' ) {
+			$hex = self::sanitize_color( $totals_total_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$totals_total_rules[] = 'color:' . $hex;
+			}
+		}
+		$totals_total_fs = (string) ( $attributes['totalsTotalFontSize'] ?? '' );
+		if ( $totals_total_fs !== '' ) {
+			$totals_total_rules[] = 'font-size:' . $len( $totals_total_fs );
+		}
+		if ( $totals_total_rules ) {
+			// Must match the row-label/value rules' specificity (class + a
+			// :first-child/:last-child pseudo-class each) — `-row--total span`
+			// alone is LOWER specificity (one class, no pseudo-class) than
+			// `-row span:last-child`, so without the pseudo-classes here the
+			// generic Row Value Color rule above always won regardless of
+			// source order (user report + live DevTools check, 2026-11-05).
+			$css .= $totals_sel . '-row--total span:first-child,' . $totals_sel . '-row--total span:last-child{' . implode( ';', $totals_total_rules ) . '}';
+		}
+
+		// Per-option / fixed-price display (`.product-price`) and the
+		// per-product computed running total (`.product-line`) — the two
+		// remaining pricing elements with no control anywhere, found in the
+		// same pass as the panel above (2026-11-05).
+		$product_price_rules = [];
+		$pp_color = (string) ( $attributes['productPriceColor'] ?? '' );
+		if ( $pp_color !== '' ) {
+			$hex = self::sanitize_color( $pp_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$product_price_rules[] = 'color:' . $hex;
+			}
+		}
+		$pp_fs = (string) ( $attributes['productPriceFontSize'] ?? '' );
+		if ( $pp_fs !== '' ) {
+			$product_price_rules[] = 'font-size:' . $len( $pp_fs );
+		}
+		$pp_fw = (string) ( $attributes['productPriceFontWeight'] ?? '' );
+		if ( $pp_fw !== '' ) {
+			$product_price_rules[] = 'font-weight:' . self::css_text( $pp_fw );
+		}
+		if ( $product_price_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-price{' . implode( ';', $product_price_rules ) . '}';
+		}
+
+		$product_line_rules = [];
+		$pl_color = (string) ( $attributes['productLineColor'] ?? '' );
+		if ( $pl_color !== '' ) {
+			$hex = self::sanitize_color( $pl_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$product_line_rules[] = 'color:' . $hex;
+			}
+		}
+		$pl_fs = (string) ( $attributes['productLineFontSize'] ?? '' );
+		if ( $pl_fs !== '' ) {
+			$product_line_rules[] = 'font-size:' . $len( $pl_fs );
+		}
+		if ( $product_line_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-line{' . implode( ';', $product_line_rules ) . '}';
+		}
+
+		// Priced Item rendered as radio/checkbox options — the `<input>` has
+		// NO class at all (FormRenderer::render_product()) and the label text
+		// span is `.product-option-label`, a class no other panel targets (it
+		// is NOT the same class the generic Radio/Checkbox field panels use),
+		// so this was a complete, confirmed gap (user report, 2026-11-05).
+		$po_input_sel = $wrap_sel . ' .neural-forms-form__product-options input';
+		$po_accent    = (string) ( $attributes['productOptionAccentColor'] ?? '' );
+		if ( $po_accent !== '' ) {
+			$hex = self::sanitize_color( $po_accent );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $po_input_sel . '{accent-color:' . $hex . '}';
+			}
+		}
+		$po_size = (string) ( $attributes['productOptionSize'] ?? '' );
+		if ( $po_size !== '' ) {
+			$css .= $po_input_sel . '{width:' . $len( $po_size ) . ';height:' . $len( $po_size ) . '}';
+		}
+
+		$po_label_rules = [];
+		$po_label_color = (string) ( $attributes['productOptionLabelColor'] ?? '' );
+		if ( $po_label_color !== '' ) {
+			$hex = self::sanitize_color( $po_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$po_label_rules[] = 'color:' . $hex;
+			}
+		}
+		$po_label_fs = (string) ( $attributes['productOptionLabelFontSize'] ?? '' );
+		if ( $po_label_fs !== '' ) {
+			$po_label_rules[] = 'font-size:' . $len( $po_label_fs );
+		}
+		$po_label_fw = (string) ( $attributes['productOptionLabelFontWeight'] ?? '' );
+		if ( $po_label_fw !== '' ) {
+			$po_label_rules[] = 'font-weight:' . self::css_text( $po_label_fw );
+		}
+		if ( $po_label_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-option-label{' . implode( ';', $po_label_rules ) . '}';
 		}
 
 		// ——— File input field (filename display area) ———

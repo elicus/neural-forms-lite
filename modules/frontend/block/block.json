@@ -423,6 +423,38 @@
         "ratingFilledColor": { "type": "string", "default": "" },
         "ratingHoverColor":  { "type": "string", "default": "" },
 
+        "qtyLabelColor":      { "type": "string", "default": "" },
+        "qtyLabelFontSize":   { "type": "string", "default": "" },
+        "qtyLabelFontWeight": { "type": "string", "default": "" },
+
+        "calculatedColor":      { "type": "string", "default": "" },
+        "calculatedFontSize":   { "type": "string", "default": "" },
+        "calculatedFontWeight": { "type": "string", "default": "" },
+
+        "totalsBg":             { "type": "string", "default": "" },
+        "totalsBorder":         { "type": "object", "default": {} },
+        "totalsBorderRadius":   { "type": "string", "default": "" },
+        "totalsPaddingTop":     { "type": "string", "default": "" },
+        "totalsPaddingRight":   { "type": "string", "default": "" },
+        "totalsPaddingBottom":  { "type": "string", "default": "" },
+        "totalsPaddingLeft":    { "type": "string", "default": "" },
+        "totalsRowLabelColor":  { "type": "string", "default": "" },
+        "totalsRowValueColor":  { "type": "string", "default": "" },
+        "totalsTotalColor":     { "type": "string", "default": "" },
+        "totalsTotalFontSize":  { "type": "string", "default": "" },
+
+        "productPriceColor":      { "type": "string", "default": "" },
+        "productPriceFontSize":   { "type": "string", "default": "" },
+        "productPriceFontWeight": { "type": "string", "default": "" },
+        "productLineColor":    { "type": "string", "default": "" },
+        "productLineFontSize": { "type": "string", "default": "" },
+
+        "productOptionAccentColor": { "type": "string", "default": "" },
+        "productOptionSize":        { "type": "string", "default": "" },
+        "productOptionLabelColor":      { "type": "string", "default": "" },
+        "productOptionLabelFontSize":   { "type": "string", "default": "" },
+        "productOptionLabelFontWeight": { "type": "string", "default": "" },
+
         "fileInputBg":            { "type": "string", "default": "" },
         "fileInputBgGradient":    { "type": "string", "default": "" },
         "fileInputBorder":        { "type": "object", "default": {} },
