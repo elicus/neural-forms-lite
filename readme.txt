@@ -268,6 +268,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 * Fixed: Matrix field width on phones.
 * Fixed: Radio, checkbox and gradient styling from the Style tab.
 * Fixed: AI queue scheduling and clearer Cloud error messages.
+* Fixed: Neural AI Insights numbers on the Stats page always showed zero.
 
 = 1.1.3 - 2026-10-28 =
 
