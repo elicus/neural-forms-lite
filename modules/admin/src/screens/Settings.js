@@ -678,69 +678,7 @@ function CaptchaSection( { form, set, captchaSecretKey, setCaptchaSecretKey } ) 
 	);
 }
 
-// ─── Section: Processing health (1.2.0) ──────────────────────────
-
-function ProcessingHealthSection() {
-	const [ health, setHealth ] = useState( null );
-	const [ error, setError ]   = useState( '' );
-	useEffect( () => {
-		api( '/workflows/health' ).then( setHealth ).catch( ( e ) => setError( e?.message || __( 'Could not load processing health.', 'neural-forms-lite' ) ) );
-	}, [] );
-
-	const fmt = ( s ) => {
-		if ( ! s ) return __( 'never', 'neural-forms-lite' );
-		const d = new Date( String( s ).replace( ' ', 'T' ) + 'Z' );
-		return isNaN( d.getTime() ) ? String( s ) : d.toLocaleString();
-	};
-	const total = ( type ) => {
-		const q = health?.queue?.[ type ] || {};
-		return Object.values( q ).reduce( ( a, b ) => a + b, 0 );
-	};
-
-	return (
-		<Section
-			title={ __( 'Processing health', 'neural-forms-lite' ) }
-			description={ __( 'Background jobs (AI analysis, workflows) run on WordPress cron. On a low-traffic site cron only fires when someone visits, so a real system cron keeps things moving.', 'neural-forms-lite' ) }
-		>
-			{ error && <div className="neural-forms-settings__notice neural-forms-settings__notice--warn">{ error }</div> }
-			{ ! health && ! error && (
-				<Field label={ __( 'Queue', 'neural-forms-lite' ) }>
-					<p className="neural-forms-settings__hint">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
-				</Field>
-			) }
-			{ health && (
-				<>
-					<Field label={ __( 'Queue', 'neural-forms-lite' ) }>
-						<dl className="neural-forms-settings__health">
-							<dt>{ __( 'AI jobs waiting', 'neural-forms-lite' ) }</dt><dd>{ total( 'analyze_entry' ) + total( 'regenerate_reply' ) }</dd>
-							<dt>{ __( 'Workflow jobs waiting', 'neural-forms-lite' ) }</dt><dd>{ total( 'workflow' ) }</dd>
-							<dt>{ __( 'Oldest waiting job', 'neural-forms-lite' ) }</dt><dd>{ fmt( health.oldest_pending ) }</dd>
-						</dl>
-					</Field>
-					<Field label={ __( 'Cron', 'neural-forms-lite' ) }>
-						<dl className="neural-forms-settings__health">
-							<dt>{ __( 'Last queue run', 'neural-forms-lite' ) }</dt><dd>{ fmt( health.last_run_at ) }</dd>
-							<dt>{ __( 'Next scheduled run', 'neural-forms-lite' ) }</dt><dd>{ fmt( health.next_run_at ) }</dd>
-							<dt>{ __( 'Follow-up check', 'neural-forms-lite' ) }</dt><dd>{ fmt( health.sweep_next_at ) }</dd>
-							<dt>{ __( 'WP-Cron', 'neural-forms-lite' ) }</dt><dd>{ health.wp_cron_disabled ? __( 'disabled (system cron expected)', 'neural-forms-lite' ) : __( 'enabled', 'neural-forms-lite' ) }</dd>
-						</dl>
-					</Field>
-					<Field
-						label={ __( 'System cron', 'neural-forms-lite' ) }
-						hint={ health.wp_cron_disabled
-							? __( 'WP-Cron is disabled on this site. Make sure a system cron calls wp-cron.php every few minutes, for example with the line above.', 'neural-forms-lite' )
-							: __( 'Optional. For reliable timing on quiet sites, add define( \'DISABLE_WP_CRON\', true ); to wp-config.php and run the line above from a system cron every 5 minutes.', 'neural-forms-lite' ) }
-					>
-						<pre className="neural-forms-settings__code">{ health.system_cron_hint }</pre>
-					</Field>
-				</>
-			) }
-		</Section>
-	);
-}
-
 // ─── Section: General & Privacy ──────────────────────────────────
-
 
 function GeneralPrivacySection( { form, set } ) {
 	return (
@@ -1098,7 +1036,6 @@ export default function Settings() {
 			/>
 
 			<GeneralPrivacySection form={ form } set={ set } />
-			<ProcessingHealthSection />
 
 			{ /* Bottom-right save bar — same three states as the header so
 			     a long settings page never leaves the user scrolling back
