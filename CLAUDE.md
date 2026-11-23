@@ -32,7 +32,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Plugin header name:** `Neural Forms Lite`
 - **Main class:** `NeuralForms\NeuralForms` (namespace **not** renamed)
 - **Version constants:**
-  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.0` on dev. The 2026-10-29 cut of `release/1.2.0` (Release A only) was NOT published: the owner clarified that the whole draft (Release A + B) is version 1.2.0, so Release B lands on dev first and `release/1.2.0` is re-cut from dev when it is done (see `docs/RELEASE-1.2-PLAN.md` and `docs/RELEASE-1.2-PLAN-B.md`).
+  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.1` on dev. 1.2.0 (the whole draft, Release A + B, with Pro 1.1.0) was cut on 2026-11-23: `release/1.2.0` was re-cut by merging dev into the earlier A-only branch, stripped, and merged to `main` (see `docs/RELEASE-1.2-PLAN.md` and `docs/RELEASE-1.2-PLAN-B.md`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
   - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.1` (1.2.0 added the lead-management columns, `meta` on `neural_forms_entry_ai_responses` and the three `neural_forms_workflow*` tables; 1.2.1 adds the pricing / payment columns on entries). The schema version intentionally runs ahead of the plugin version inside the 1.2.0 cycle so dev sites that already migrated pick up the part-B columns. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 

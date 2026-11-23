@@ -256,6 +256,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
+= 1.2.1 - Unreleased =
+
 = 1.2.0 - 2026-11-23 =
 
 * Security: Hardened block design values and checkout links.
