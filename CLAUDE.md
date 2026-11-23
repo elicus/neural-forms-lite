@@ -1376,9 +1376,11 @@ adds integration actions.
 - **UI**: Form settings › Workflows (`forms/WorkflowsSection.js`, builder
   bundle): list with run counts, When/If/Then editor, Test run, History
   with Retry; upsell when locked; needs a saved form id (`FormSettings`
-  now receives `formId`). Settings › Processing health
-  (`ProcessingHealthSection` in `screens/Settings.js`, settings bundle)
-  reads `/workflows/health` and shows the system-cron hint.
+  now receives `formId`). The Settings › Processing health card was
+  removed in 1.2.1 (owner, 2026-11-24: users don't need queue/cron
+  internals); `/workflows/health` stays as a support-only REST route
+  with no admin UI. Don't re-add the card; if delays need surfacing,
+  show a warning only when jobs are actually stuck.
 - Tests: `tests/WorkflowDefinitionTest.php` (registry, normalise,
   validate, evaluation context, event ids, lineage, backoff, describe).
   DB-bound code (repositories, runner, processor, REST) is covered by
