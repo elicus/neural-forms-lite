@@ -683,6 +683,67 @@ export function RatingFieldPanel( { a, set } ) {
 	);
 }
 
+// ─── Pricing: quantity label, Calculated field, totals box ──────────────────
+// Added 2026-11-05 (owner request): no panel covered the Priced Item's
+// "Quantity" label, the Calculated field's displayed value, or the
+// Subtotal/Total summary box on any block — a real gap across the whole
+// product, not just the Payment Form card. Kept as one compact panel
+// (mirrors the depth of RatingFieldPanel / AcceptanceFieldPanel, not the
+// bigger Container / Input Fields panels) since these are a handful of
+// small, display-only elements, not a full field type.
+export function PricingPanel( { a, set } ) {
+	return (
+		<PanelBody title={ __( 'Pricing & Totals', 'neural-forms-lite' ) } initialOpen={ false }>
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Quantity Label', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.qtyLabelColor } onChange={ v => set( { qtyLabelColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.qtyLabelFontSize } onChange={ v => set( { qtyLabelFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.qtyLabelFontWeight || '' } options={ FW } onChange={ v => set( { qtyLabelFontWeight: v } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Calculated Field', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.calculatedColor } onChange={ v => set( { calculatedColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.calculatedFontSize } onChange={ v => set( { calculatedFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.calculatedFontWeight || '' } options={ FW } onChange={ v => set( { calculatedFontWeight: v } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Totals Box', 'neural-forms-lite' ) }</p>
+			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 12px' } }>{ __( 'The Subtotal / Discount / Total summary shown when a form has pricing.', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Background', 'neural-forms-lite' ) } value={ a.totalsBg } onChange={ v => set( { totalsBg: v ?? '' } ) } />
+			<BorderBox label={ __( 'Border', 'neural-forms-lite' ) } value={ a.totalsBorder || {} } onChange={ v => set( { totalsBorder: v ?? {} } ) } enableAlpha />
+			<Gap />
+			<UnitControl label={ __( 'Border Radius', 'neural-forms-lite' ) } value={ a.totalsBorderRadius } onChange={ v => set( { totalsBorderRadius: v ?? '' } ) } />
+			<Gap />
+			<PaddingDimensions topKey="totalsPaddingTop" rightKey="totalsPaddingRight" bottomKey="totalsPaddingBottom" leftKey="totalsPaddingLeft" a={ a } set={ set } />
+			<Sep />
+			<Clr label={ __( 'Row Label Color', 'neural-forms-lite' ) } value={ a.totalsRowLabelColor } onChange={ v => set( { totalsRowLabelColor: v ?? '' } ) } />
+			<Clr label={ __( 'Row Value Color', 'neural-forms-lite' ) } value={ a.totalsRowValueColor } onChange={ v => set( { totalsRowValueColor: v ?? '' } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 12px' } }>{ __( '"Total" row (bold, overrides the row colors above for that row only).', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Total Row Color', 'neural-forms-lite' ) } value={ a.totalsTotalColor } onChange={ v => set( { totalsTotalColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Total Row Font Size', 'neural-forms-lite' ) } value={ a.totalsTotalFontSize } onChange={ v => set( { totalsTotalFontSize: v ?? '' } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Item Price', 'neural-forms-lite' ) }</p>
+			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 12px' } }>{ __( 'The price shown next to a fixed-price item or each option (e.g. "$9.00").', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.productPriceColor } onChange={ v => set( { productPriceColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.productPriceFontSize } onChange={ v => set( { productPriceFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.productPriceFontWeight || '' } options={ FW } onChange={ v => set( { productPriceFontWeight: v } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Item Line Total', 'neural-forms-lite' ) }</p>
+			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 12px' } }>{ __( 'The computed running total shown under a priced item (quantity × price).', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.productLineColor } onChange={ v => set( { productLineColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.productLineFontSize } onChange={ v => set( { productLineFontSize: v ?? '' } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Item Options (radio / checkboxes)', 'neural-forms-lite' ) }</p>
+			<p style={ { fontSize: 11, color: '#6b7280', margin: '0 0 12px' } }>{ __( 'When a Priced Item shows its choices as radio buttons or checkboxes instead of a dropdown.', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Accent Color (radio/checkbox)', 'neural-forms-lite' ) } value={ a.productOptionAccentColor } onChange={ v => set( { productOptionAccentColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Size', 'neural-forms-lite' ) } value={ a.productOptionSize } onChange={ v => set( { productOptionSize: v ?? '' } ) } />
+			<Sep />
+			<p style={ { fontSize: 11, fontWeight: 600, margin: '4px 0 8px', color: '#1e1e1e' } }>{ __( 'Option Label', 'neural-forms-lite' ) }</p>
+			<Clr label={ __( 'Color', 'neural-forms-lite' ) } value={ a.productOptionLabelColor } onChange={ v => set( { productOptionLabelColor: v ?? '' } ) } />
+			<UnitControl label={ __( 'Font Size', 'neural-forms-lite' ) } value={ a.productOptionLabelFontSize } onChange={ v => set( { productOptionLabelFontSize: v ?? '' } ) } />
+			<SelectControl label={ __( 'Font Weight', 'neural-forms-lite' ) } value={ a.productOptionLabelFontWeight || '' } options={ FW } onChange={ v => set( { productOptionLabelFontWeight: v } ) } />
+		</PanelBody>
+	);
+}
+
 export function FileUploadPanel( { a, set } ) {
 	return (
 		<PanelBody title={ __( 'File Upload Field', 'neural-forms-lite' ) } initialOpen={ false }>

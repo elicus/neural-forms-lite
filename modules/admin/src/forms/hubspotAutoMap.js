@@ -29,7 +29,6 @@ export const HS_RADIO    = 'radio';
 export const HS_CHECKBOX = 'checkbox';      // single boolean checkbox
 export const HS_DATE     = 'date';
 export const HS_NUMBER   = 'number';
-export const HS_FILE     = 'file';
 export const HS_PHONE    = 'phone';
 export const HS_EMAIL    = 'email';
 

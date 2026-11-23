@@ -24,37 +24,11 @@ export const FIELD_TYPES = [
 	{ value: 'poll',          label: 'Poll'          },
 	{ value: 'quiz_question', label: 'Quiz'          },
 	{ value: 'repeater',      label: 'Repeater'      },
+	{ value: 'product',       label: 'Priced Item'   },
+	{ value: 'calculated',    label: 'Calculated'    },
 	{ value: 'file',          label: 'File Upload'   },
 	{ value: 'hidden',        label: 'Hidden'        },
 ];
-
-export const TYPES_THAT_PAIR = FIELD_TYPES
-	.filter( ( t ) => t.value !== 'hidden' )
-	.map( ( t ) => t.value );
-
-/**
- * Legacy label-derived id generator. Kept exported for back-compat
- * with any external caller that imports it directly, but is NO
- * LONGER USED by `newField()` — that path now routes through
- * `makeFieldId(type, existing)` from schemaHelper.js which uses a
- * monotonic-counter token, guaranteeing uniqueness without relying
- * on a possibly-stale `existingIds` snapshot.
- *
- * The old behaviour ("rating" → "rating_2" → "rating_3") was the
- * source of the duplicate-id save error that this 0.2.0 change
- * fixes: two paths could both miss the second add and both emit
- * `id: "rating"`. See FormValidator's "Duplicate field id" guard.
- */
-export function defaultIdForType( type, existingIds = [] ) {
-	const base = type === 'tel' ? 'phone' : type;
-	let candidate = base;
-	let n = 2;
-	while ( existingIds.includes( candidate ) ) {
-		candidate = `${ base }_${ n }`;
-		n += 1;
-	}
-	return candidate;
-}
 
 import { makeFieldId } from './schemaHelper';
 
@@ -116,6 +90,31 @@ export function newField( type, existingIds = [] ) {
 		// add their first child field; the full child DnD experience
 		// lands in Commit 2.
 		base.fields = [];
+	}
+
+	if ( type === 'product' ) {
+		base.label    = 'Priced Item';
+		base.required = false;
+		base.pricing  = {
+			mode:       'options',
+			price:      '',
+			display:    'select',
+			quantity:   { enabled: false, min: 1, max: 10, default: 1 },
+			min_amount: '',
+			max_amount: '',
+		};
+		base.options = [
+			{ value: 'option_1', label: 'Option 1', price: '0' },
+			{ value: 'option_2', label: 'Option 2', price: '0' },
+		];
+	}
+
+	if ( type === 'calculated' ) {
+		base.label      = 'Total';
+		base.required   = false;
+		base.expression = '';
+		base.format     = 'currency';
+		base.decimals   = 2;
 	}
 
 	if ( type === 'matrix' ) {

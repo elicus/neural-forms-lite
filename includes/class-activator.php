@@ -11,10 +11,22 @@ class Activator {
 	public static function activate(): void {
 		Database::create_tables();
 		self::add_capabilities();
+		// plugins_loaded already fired when the activation hook runs, so the
+		// 'five_minutes' interval filter must be attached here or
+		// wp_schedule_event() refuses the unknown recurrence.
+		add_filter( 'cron_schedules', array( \NeuralForms\AI\AIQueueProcessor::class, 'add_cron_interval' ) );
 		\NeuralForms\AI\AIQueueProcessor::schedule();
 
 		if ( ! wp_next_scheduled( 'neural_forms_log_cleanup' ) ) {
 			wp_schedule_event( time(), 'daily', 'neural_forms_log_cleanup' );
+		}
+
+		if ( ! wp_next_scheduled( 'neural_forms_payment_reconcile' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_payment_reconcile' );
+		}
+
+		if ( ! wp_next_scheduled( 'neural_forms_quote_expire' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_quote_expire' );
 		}
 
 		if ( ! wp_next_scheduled( 'neural_forms_ai_draft_purge' ) ) {

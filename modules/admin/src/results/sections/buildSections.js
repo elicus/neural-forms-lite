@@ -29,6 +29,7 @@ import SubmissionAnalyticsSection from './SubmissionAnalyticsSection';
 import PollAnalyticsSection from './PollAnalyticsSection';
 import QuizAnalyticsSection from './QuizAnalyticsSection';
 import PagePerformanceSection from './PagePerformanceSection';
+import PaymentAnalyticsSection from './PaymentAnalyticsSection';
 import FutureInsightsSection from './FutureInsightsSection';
 
 /**
@@ -102,6 +103,19 @@ export default function buildSections( ctx ) {
 		chrome:      false,
 		data:        { data: ctx.data, quiz: ctx.quizData, selectedForm: ctx.selectedForm },
 		render:      ( d ) => <OverviewCards data={ d.data } quiz={ d.quiz } selectedForm={ d.selectedForm } />,
+	} );
+
+	// 1b. Payments — Pro analytics for forms that take payments. Sits
+	//     right under the KPI cards so revenue is the first thing a
+	//     seller sees. The component hides itself for forms that never
+	//     took a payment and renders the Pro upsell when locked.
+	descriptors.push( {
+		id:          'payments',
+		isAvailable: a.form.id > 0,
+		isEmpty:     false,
+		chrome:      false, // Component renders its own card chrome.
+		data:        { formId: a.form.id },
+		render:      ( d ) => <PaymentAnalyticsSection formId={ d.formId } />,
 	} );
 
 	// 2. Submission Analytics — for simple forms only, this is the

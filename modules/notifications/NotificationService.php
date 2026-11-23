@@ -566,6 +566,8 @@ class NotificationService {
 					$lines[] = $label . ":\n" . implode( "\n", $rendered );
 				}
 				continue;
+			} elseif ( $field['type'] === 'product' ) {
+				$value = \NeuralForms\Pricing\ProductFormatter::display( $raw, $field );
 			} elseif ( $field['type'] === 'matrix' ) {
 				// Matrix renders one line per configured row, indented under
 				// the field label so the visual hierarchy mirrors how a
@@ -888,9 +890,31 @@ class NotificationService {
 	 *
 	 * @param string|string[] $to
 	 */
-	public static function send_mail( $to, string $subject, string $body, array $extra_headers = array() ): bool {
+	/**
+	 * Headers for a human reply sent from the inbox (plain text, configured
+	 * From, Reply-To = the business). Shared by the reply and retry endpoints.
+	 */
+	public static function reply_headers( ?array $settings = null ): array {
+		$settings = is_array( $settings ) ? $settings : Config::all();
+		$sender   = self::resolve_sender( $settings );
+		$headers  = array_merge( array( 'Content-Type: text/plain; charset=UTF-8' ), self::build_from_headers( $settings ) );
+		if ( $sender['email'] !== '' ) {
+			$headers[] = 'Reply-To: ' . ( $sender['name'] !== '' ? $sender['name'] . ' <' . $sender['email'] . '>' : $sender['email'] );
+		}
+		return $headers;
+	}
+
+	public static function send_mail( $to, string $subject, string $body, array $extra_headers = array(), array $attachments = array() ): bool {
 		$headers = array_merge( self::build_from_headers( Config::all() ), $extra_headers );
-		return self::send_with_retry( $to, $subject, $body, $headers );
+		return self::send_with_retry( $to, $subject, $body, $headers, $attachments );
+	}
+
+	/**
+	 * The submitter's name for an entry (best-effort field detection), or ''.
+	 */
+	public static function submitter_name( array $form, array $data ): string {
+		$fields = \NeuralForms\Forms\SchemaHelper::flatten_fields( is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array() );
+		return self::find_submitter_name( $fields, $data );
 	}
 
 	/**
@@ -902,14 +926,14 @@ class NotificationService {
 		return self::find_submitter_email( $fields, $data );
 	}
 
-	private static function send_with_retry( $to, string $subject, string $body, array $headers ): bool {
-		if ( wp_mail( $to, $subject, $body, $headers ) ) {
+	private static function send_with_retry( $to, string $subject, string $body, array $headers, array $attachments = array() ): bool {
+		if ( wp_mail( $to, $subject, $body, $headers, $attachments ) ) {
 			return true;
 		}
 
 		// One retry after a brief pause.
 		sleep( 1 );
-		return wp_mail( $to, $subject, $body, $headers );
+		return wp_mail( $to, $subject, $body, $headers, $attachments );
 	}
 
 	/**

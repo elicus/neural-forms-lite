@@ -112,8 +112,9 @@ class PrivacyTools {
 	 * @return array{ items_removed: int, items_retained: int, messages: string[], done: bool }
 	 */
 	public static function erase( string $email, int $page = 1 ): array {
-		$entries = EntryRepository::find_by_email( $email, self::PER_PAGE, 1 );
-		$removed = 0;
+		$entries  = EntryRepository::find_by_email( $email, self::PER_PAGE, 1 );
+		$removed  = 0;
+		$retained = 0;
 
 		foreach ( $entries as $entry ) {
 			$id = (int) $entry['id'];
@@ -123,15 +124,22 @@ class PrivacyTools {
 			self::delete_attachments( is_array( $entry['data'] ?? null ) ? $entry['data'] : array() );
 			EntryMessageRepository::delete_by_entry( $id );
 			AIResponseRepository::delete_by_entry( $id );
+			$retained += self::erase_commerce( $id );
 			if ( EntryRepository::delete( $id ) ) {
 				$removed++;
+				// The timeline names the person (replies, invoices sent to …).
+				if ( class_exists( '\\NeuralForms\\Storage\\EntryActivity' ) ) {
+					\NeuralForms\Storage\EntryActivity::delete_for_entry( $id );
+				}
 			}
 		}
 
 		return array(
 			'items_removed'  => $removed,
-			'items_retained' => 0,
-			'messages'       => array(),
+			'items_retained' => $retained,
+			'messages'       => $retained > 0
+				? array( __( 'Payment records for this person were kept as financial records, with their name and email removed.', 'neural-forms-lite' ) )
+				: array(),
 			'done'           => count( $entries ) < self::PER_PAGE,
 		);
 	}
@@ -146,6 +154,58 @@ class PrivacyTools {
 	}
 
 	// ── helpers ──
+
+	/**
+	 * Quotes and payments of an entry that is being erased (1.2.0).
+	 *
+	 * Open checkouts are closed first so no payment can arrive for a person
+	 * who asked to be forgotten. An entry with a confirmed payment keeps its
+	 * quotes and payment attempts as the financial record, with the
+	 * customer's details blanked and the public quote links revoked;
+	 * otherwise both are deleted outright, like an admin delete.
+	 *
+	 * @return int Number of financial rows kept (anonymised).
+	 */
+	private static function erase_commerce( int $entry_id ): int {
+		$has_payments = class_exists( '\\NeuralForms\\Payments\\PaymentRepository' );
+		$has_quotes   = class_exists( '\\NeuralForms\\Quotes\\QuoteRepository' );
+		$settled      = false;
+
+		if ( $has_payments ) {
+			foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( $entry_id ) as $attempt ) {
+				if ( in_array( $attempt['status'], \NeuralForms\Payments\PaymentStatus::SETTLED, true ) ) {
+					$settled = true;
+					continue;
+				}
+				if ( $attempt['status'] === 'pending' && \NeuralForms\Payments\PaymentRepository::update_if_status( (int) $attempt['id'], 'pending', array( 'status' => 'replaced' ) ) ) {
+					$provider = class_exists( '\\NeuralForms\\Payments\\PaymentProviderRegistry' ) ? \NeuralForms\Payments\PaymentProviderRegistry::get( (string) $attempt['provider'] ) : null;
+					if ( $provider && ! empty( $attempt['session_id'] ) ) {
+						try {
+							$provider->expire_checkout( $attempt );
+						} catch ( \Throwable $e ) {
+							unset( $e ); // The gateway call is best effort; the attempt is already closed locally.
+						}
+					}
+				}
+			}
+		}
+
+		if ( ! $settled ) {
+			if ( $has_quotes ) {
+				\NeuralForms\Quotes\QuoteRepository::delete_for_entry( $entry_id );
+			}
+			if ( $has_payments ) {
+				\NeuralForms\Payments\PaymentRepository::delete_for_entry( $entry_id );
+			}
+			return 0;
+		}
+
+		$kept = \NeuralForms\Payments\PaymentRepository::anonymise_for_entry( $entry_id );
+		if ( $has_quotes ) {
+			$kept += \NeuralForms\Quotes\QuoteRepository::anonymise_for_entry( $entry_id );
+		}
+		return $kept;
+	}
 
 	/** Walk entry data and hard-delete every referenced attachment. */
 	private static function delete_attachments( array $data ): void {

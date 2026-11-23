@@ -80,6 +80,22 @@ const PROVIDERS = [
 		blurb: __( 'Send Neural Forms submissions to Zapier webhooks and connect with thousands of apps.', 'neural-forms-lite' ),
 		icon:  'Z',
 	},
+	// 1.2.0 part B: payment providers. Credentials live here; the form
+	// decides whether it takes a payment (Form settings › Payments).
+	{
+		id:    'stripe',
+		name:  'Stripe',
+		blurb: __( 'Take card and wallet payments through Stripe Checkout when a priced form is submitted. Deposits and full payments, confirmed by signed webhooks.', 'neural-forms-lite' ),
+		icon:  'S',
+		payment: true,
+	},
+	{
+		id:    'paypal',
+		name:  'PayPal',
+		blurb: __( 'Let visitors pay with PayPal when a priced form is submitted. Orders are captured server-side and confirmed by verified webhooks.', 'neural-forms-lite' ),
+		icon:  'P',
+		payment: true,
+	},
 ];
 
 // ─── Icons ──────────────────────────────────────────────────────
@@ -1512,6 +1528,239 @@ function HubSpotPanel( { provider, onStatusChange } ) {
 	);
 }
 
+// ─── Payment providers (Stripe / PayPal) ─────────────────────────
+
+/**
+ * One panel serves both payment gateways; `SPEC` lists the per-mode
+ * credential fields. Same lifecycle as HubSpotPanel: status → form →
+ * save → test → status grid. Secrets are type=password, cleared from
+ * memory after save, and only ever come back masked.
+ *
+ * REST (Pro): /neural-forms-pro/v1/integrations/{stripe|paypal}/{status|settings|test|disconnect}
+ * Webhook URL (Lite): /neural-forms/v1/payments/webhook/{provider} — shown so the admin can paste it into the gateway.
+ */
+const PAYMENT_SPEC = {
+	stripe: {
+		modes: [ { id: 'test', label: __( 'Test', 'neural-forms-lite' ) }, { id: 'live', label: __( 'Live', 'neural-forms-lite' ) } ],
+		fields: ( mode ) => [
+			{ key: `${ mode }_secret_key`, label: __( 'Secret key', 'neural-forms-lite' ), secret: true, placeholder: mode === 'live' ? 'sk_live_…' : 'sk_test_…', required: true, hint: __( 'Developers › API keys in the Stripe dashboard. Stored encrypted, never shown again.', 'neural-forms-lite' ) },
+			{ key: `${ mode }_publishable_key`, label: __( 'Publishable key', 'neural-forms-lite' ), placeholder: mode === 'live' ? 'pk_live_…' : 'pk_test_…', hint: __( 'Optional for hosted Checkout; kept for reference.', 'neural-forms-lite' ) },
+			{ key: `${ mode }_webhook_secret`, label: __( 'Webhook signing secret', 'neural-forms-lite' ), secret: true, placeholder: 'whsec_…', hint: __( 'Create a webhook endpoint in Stripe pointing at the URL below and paste its signing secret here. Required for payments to be confirmed.', 'neural-forms-lite' ) },
+		],
+		events: 'checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired, payment_intent.succeeded, payment_intent.payment_failed, charge.refunded',
+		docs: 'https://docs.stripe.com/keys',
+		statusRows: ( s ) => [
+			[ __( 'Mode', 'neural-forms-lite' ), s.mode === 'live' ? __( 'Live', 'neural-forms-lite' ) : __( 'Test', 'neural-forms-lite' ) ],
+			[ __( 'Account', 'neural-forms-lite' ), s.account_name ? `${ s.account_name } (${ s.account_id })` : ( s.account_id || '—' ) ],
+			[ __( 'Secret key', 'neural-forms-lite' ), <code>{ s[ s.mode ]?.masked_secret || '—' }</code> ],
+			[ __( 'Webhook secret', 'neural-forms-lite' ), s[ s.mode ]?.has_webhook_secret ? <code>{ s[ s.mode ].masked_webhook }</code> : <span className="neural-forms-integrations__hs-status-error">{ __( 'Missing — payments cannot be confirmed', 'neural-forms-lite' ) }</span> ],
+		],
+	},
+	paypal: {
+		modes: [ { id: 'sandbox', label: __( 'Sandbox', 'neural-forms-lite' ) }, { id: 'live', label: __( 'Live', 'neural-forms-lite' ) } ],
+		fields: ( mode ) => [
+			{ key: `${ mode }_client_id`, label: __( 'Client ID', 'neural-forms-lite' ), placeholder: 'A21AA…', required: true, hint: __( 'From a REST API app in the PayPal Developer dashboard.', 'neural-forms-lite' ) },
+			{ key: `${ mode }_secret`, label: __( 'Client secret', 'neural-forms-lite' ), secret: true, placeholder: '••••••••', required: true, hint: __( 'Stored encrypted, never shown again.', 'neural-forms-lite' ) },
+			{ key: `${ mode }_webhook_id`, label: __( 'Webhook ID', 'neural-forms-lite' ), placeholder: '8PT597110X687430LKGECATA', hint: __( 'Add a webhook to the same app pointing at the URL below, then paste the Webhook ID PayPal shows for it. Required for payments to be confirmed.', 'neural-forms-lite' ) },
+		],
+		events: 'CHECKOUT.ORDER.APPROVED, PAYMENT.CAPTURE.COMPLETED, PAYMENT.CAPTURE.PENDING, PAYMENT.CAPTURE.DENIED, PAYMENT.CAPTURE.REFUNDED',
+		docs: 'https://developer.paypal.com/api/rest/',
+		statusRows: ( s ) => [
+			[ __( 'Mode', 'neural-forms-lite' ), s.mode === 'live' ? __( 'Live', 'neural-forms-lite' ) : __( 'Sandbox', 'neural-forms-lite' ) ],
+			[ __( 'Client ID', 'neural-forms-lite' ), <code>{ s[ s.mode ]?.client_id || '—' }</code> ],
+			[ __( 'Client secret', 'neural-forms-lite' ), <code>{ s[ s.mode ]?.masked_secret || '—' }</code> ],
+			[ __( 'Webhook ID', 'neural-forms-lite' ), s[ s.mode ]?.webhook_id ? <code>{ s[ s.mode ].webhook_id }</code> : <span className="neural-forms-integrations__hs-status-error">{ __( 'Missing — payments cannot be confirmed', 'neural-forms-lite' ) }</span> ],
+		],
+	},
+};
+
+function PaymentProviderPanel( { provider, onStatusChange } ) {
+	const spec = PAYMENT_SPEC[ provider.id ];
+	const base = `/neural-forms-pro/v1/integrations/${ provider.id }`;
+	const [ loading, setLoading ] = useState( true );
+	const [ status,  setStatus ]  = useState( null );
+	const [ flash,   setFlash ]   = useState( null );
+	const [ editing, setEditing ] = useState( false );
+	const [ saving,  setSaving ]  = useState( false );
+	const [ testing, setTesting ] = useState( false );
+	const [ disconnecting, setDisconnecting ] = useState( false );
+	const [ mode,    setMode ]    = useState( spec.modes[ 0 ].id );
+	const [ values,  setValues ]  = useState( {} );
+	const [ saveError, setSaveError ] = useState( '' );
+
+	const reload = useCallback( async () => {
+		try {
+			const s = await api( `${ base }/status` );
+			setStatus( s );
+			if ( s?.mode ) setMode( s.mode );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not load the connection status.', 'neural-forms-lite' ) ) } );
+		}
+	}, [ base ] );
+
+	useEffect( () => { let c = false; ( async () => { await reload(); if ( ! c ) setLoading( false ); } )(); return () => { c = true; }; }, [ reload ] );
+
+	const configured = !! status?.configured;
+	const connected  = !! status?.connected;
+	const showForm   = ! configured || editing;
+
+	useEffect( () => {
+		if ( typeof onStatusChange !== 'function' ) return;
+		if ( loading || status === null ) { onStatusChange( provider.id, 'unknown' ); return; }
+		onStatusChange( provider.id, configured ? 'connected' : 'not_configured' );
+	}, [ onStatusChange, loading, status, configured, provider.id ] );
+
+	const fields = spec.fields( mode );
+	const modeConfigured = !! status?.[ mode ]?.has_secret && ( provider.id !== 'paypal' || !! status?.[ mode ]?.client_id );
+
+	const handleSave = async ( ev ) => {
+		ev.preventDefault();
+		for ( const f of fields ) {
+			if ( f.required && ! modeConfigured && ! ( values[ f.key ] || '' ).trim() ) {
+				setSaveError( sprintf( __( '%s is required.', 'neural-forms-lite' ), f.label ) );
+				return;
+			}
+		}
+		setSaveError( '' ); setSaving( true );
+		try {
+			const data = { mode };
+			fields.forEach( ( f ) => { const v = ( values[ f.key ] || '' ).trim(); if ( v !== '' ) data[ f.key ] = v; } );
+			const next = await api( `${ base }/settings`, { method: 'POST', data } );
+			setStatus( next ); setValues( {} ); setEditing( false );
+			setFlash( { kind: 'success', message: sprintf( __( '%s credentials saved. Click Test connection to verify.', 'neural-forms-lite' ), provider.name ) } );
+		} catch ( e ) {
+			setSaveError( errorMessage( e, __( 'Could not save the credentials.', 'neural-forms-lite' ) ) );
+		} finally { setSaving( false ); }
+	};
+	const handleTest = async () => {
+		setTesting( true ); setFlash( null );
+		try {
+			const res = await api( `${ base }/test`, { method: 'POST' } );
+			if ( res?.status ) setStatus( res.status );
+			setFlash( res?.success
+				? { kind: 'success', message: sprintf( __( '%s connection verified.', 'neural-forms-lite' ), provider.name ) }
+				: { kind: 'error', message: sprintf( __( '%1$s returned an error: %2$s', 'neural-forms-lite' ), provider.name, res?.error || __( 'unknown error', 'neural-forms-lite' ) ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not test the connection.', 'neural-forms-lite' ) ) } );
+		} finally { setTesting( false ); }
+	};
+	const handleDisconnect = async () => {
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( sprintf( __( 'Disconnect %s? Forms that take payments will stop redirecting to checkout until you reconnect. Existing payment records are kept.', 'neural-forms-lite' ), provider.name ) ) ) return;
+		setDisconnecting( true );
+		try {
+			const next = await api( `${ base }/disconnect`, { method: 'POST' } );
+			setStatus( next ); setValues( {} ); setEditing( false );
+			setFlash( { kind: 'success', message: sprintf( __( '%s disconnected.', 'neural-forms-lite' ), provider.name ) } );
+		} catch ( e ) {
+			setFlash( { kind: 'error', message: errorMessage( e, __( 'Could not disconnect.', 'neural-forms-lite' ) ) } );
+		} finally { setDisconnecting( false ); }
+	};
+	const copyWebhook = () => {
+		const url = status?.webhook_url || '';
+		if ( ! url ) return;
+		if ( navigator.clipboard?.writeText ) navigator.clipboard.writeText( url ).then( () => setFlash( { kind: 'success', message: __( 'Webhook URL copied.', 'neural-forms-lite' ) } ) );
+		else window.prompt( __( 'Copy this URL:', 'neural-forms-lite' ), url ); // eslint-disable-line no-alert
+	};
+
+	const webhookBlock = status?.webhook_url && (
+		<div className="neural-forms-integrations__zap-field nf-field-full nf-pay-webhook">
+			<span className="neural-forms-integrations__zap-label">{ __( 'Webhook URL for your gateway', 'neural-forms-lite' ) }</span>
+			<div className="nf-pay-webhook__row">
+				<code className="nf-pay-webhook__url">{ status.webhook_url }</code>
+				<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--small" onClick={ copyWebhook }>{ __( 'Copy', 'neural-forms-lite' ) }</button>
+			</div>
+			<p className="neural-forms-integrations__zap-hint">{ sprintf( __( 'Events to send: %s', 'neural-forms-lite' ), spec.events ) }</p>
+		</div>
+	);
+
+	return (
+		<div className="neural-forms-integrations__provider-card">
+			<div className="neural-forms-integrations__provider-header">
+				<span className="neural-forms-integrations__provider-mark neural-forms-integrations__provider-mark--lg" aria-hidden="true">{ provider.icon }</span>
+				<div className="neural-forms-integrations__provider-heading">
+					<h2 className="neural-forms-integrations__provider-title">{ provider.name }</h2>
+					<p className="neural-forms-integrations__provider-blurb">{ provider.blurb }</p>
+				</div>
+			</div>
+			{ flash && (
+				<div className={ 'neural-forms-integrations__zap-flash neural-forms-integrations__zap-flash--' + flash.kind } role="status">
+					{ flash.message }
+					<button type="button" className="neural-forms-integrations__zap-flash-close" onClick={ () => setFlash( null ) } aria-label={ __( 'Dismiss', 'neural-forms-lite' ) }>×</button>
+				</div>
+			) }
+			{ loading ? (
+				<p className="neural-forms-integrations__zap-loading">{ __( 'Loading…', 'neural-forms-lite' ) }</p>
+			) : showForm ? (
+				<form className="neural-forms-integrations__zap-form" onSubmit={ handleSave }>
+					<header className="neural-forms-integrations__zap-form-header">
+						<h3 className="neural-forms-integrations__zap-form-title">{ configured ? sprintf( __( 'Update %s credentials', 'neural-forms-lite' ), provider.name ) : sprintf( __( 'Connect %s', 'neural-forms-lite' ), provider.name ) }</h3>
+						<p className="neural-forms-integrations__zap-form-help">
+							{ __( 'Keep test and live credentials separate; the active mode decides which set is used for new checkouts. No card details ever reach this site — visitors pay on the hosted checkout page.', 'neural-forms-lite' ) }
+							{ ' ' }<a href={ spec.docs } target="_blank" rel="noopener noreferrer">{ sprintf( __( '%s docs', 'neural-forms-lite' ), provider.name ) }</a>
+						</p>
+					</header>
+					<div className="nf-integration-form-grid">
+						<div className="neural-forms-integrations__zap-field nf-field-full">
+							<span className="neural-forms-integrations__zap-label">{ __( 'Active mode', 'neural-forms-lite' ) }</span>
+							<div className="nf-pay-modes" role="radiogroup">
+								{ spec.modes.map( ( m ) => (
+									<label key={ m.id } className={ 'nf-pay-modes__opt' + ( mode === m.id ? ' is-active' : '' ) }>
+										<input type="radio" name={ `nf-${ provider.id }-mode` } value={ m.id } checked={ mode === m.id } onChange={ () => { setMode( m.id ); setSaveError( '' ); } } />
+										<span>{ m.label }</span>
+										{ status?.[ m.id ]?.has_secret && <span className="nf-pay-modes__dot" title={ __( 'Credentials saved', 'neural-forms-lite' ) } /> }
+									</label>
+								) ) }
+							</div>
+							{ mode === 'live' && <p className="neural-forms-integrations__zap-hint">{ __( 'Live mode charges real money. Test the full flow in test / sandbox mode first.', 'neural-forms-lite' ) }</p> }
+						</div>
+						{ fields.map( ( f ) => (
+							<div key={ f.key } className={ 'neural-forms-integrations__zap-field' + ( f.secret ? ' nf-field-full' : '' ) }>
+								<label className="neural-forms-integrations__zap-label" htmlFor={ `nf-${ provider.id }-${ f.key }` }>{ f.label }</label>
+								<input
+									id={ `nf-${ provider.id }-${ f.key }` }
+									type={ f.secret ? 'password' : 'text' }
+									className="neural-forms-integrations__zap-input"
+									value={ values[ f.key ] || '' }
+									onChange={ ( e ) => setValues( { ...values, [ f.key ]: e.target.value } ) }
+									placeholder={ modeConfigured && f.secret ? '••••••••••••' : f.placeholder }
+									autoComplete="off"
+								/>
+								<p className="neural-forms-integrations__zap-hint">{ modeConfigured && f.secret ? __( 'Leave blank to keep the saved value.', 'neural-forms-lite' ) + ' ' + f.hint : f.hint }</p>
+							</div>
+						) ) }
+						{ webhookBlock }
+					</div>
+					{ saveError && <div className="neural-forms-integrations__zap-error-banner" role="alert">{ saveError }</div> }
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="submit" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" disabled={ saving }>{ saving ? __( 'Saving…', 'neural-forms-lite' ) : __( 'Save settings', 'neural-forms-lite' ) }</button>
+						{ editing && <button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( false ); setValues( {} ); setSaveError( '' ); setMode( status?.mode || mode ); } } disabled={ saving }>{ __( 'Cancel', 'neural-forms-lite' ) }</button> }
+					</div>
+				</form>
+			) : (
+				<div className="neural-forms-integrations__hs-status">
+					<div className="neural-forms-integrations__hs-status-header">
+						<span className={ 'neural-forms-integrations__zap-status ' + ( connected ? 'is-active' : 'is-inactive' ) }>{ connected ? __( 'Connected', 'neural-forms-lite' ) : __( 'Not verified', 'neural-forms-lite' ) }</span>
+						{ status.mode === 'live' ? <span className="nf-pay-live-badge">{ __( 'Live', 'neural-forms-lite' ) }</span> : <span className="nf-pay-test-badge">{ status.mode === 'sandbox' ? __( 'Sandbox', 'neural-forms-lite' ) : __( 'Test mode', 'neural-forms-lite' ) }</span> }
+					</div>
+					<dl className="neural-forms-integrations__hs-status-grid">
+						{ spec.statusRows( status ).map( ( [ k, v ], i ) => <div key={ i }><dt>{ k }</dt><dd>{ v }</dd></div> ) }
+						<div><dt>{ __( 'Last checked', 'neural-forms-lite' ) }</dt><dd>{ status.last_checked_at || __( 'Never', 'neural-forms-lite' ) }</dd></div>
+						{ status.last_error && <div className="neural-forms-integrations__hs-status-error"><dt>{ __( 'Last error', 'neural-forms-lite' ) }</dt><dd>{ status.last_error }</dd></div> }
+					</dl>
+					<div className="nf-integration-form-grid">{ webhookBlock }</div>
+					<div className="neural-forms-integrations__zap-form-actions">
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--primary" onClick={ handleTest } disabled={ testing }>{ testing ? __( 'Testing…', 'neural-forms-lite' ) : __( 'Test connection', 'neural-forms-lite' ) }</button>
+						<button type="button" className="neural-forms-integrations__btn" onClick={ () => { setEditing( true ); setValues( {} ); } }>{ __( 'Update credentials', 'neural-forms-lite' ) }</button>
+						<button type="button" className="neural-forms-integrations__btn neural-forms-integrations__btn--danger" onClick={ handleDisconnect } disabled={ disconnecting }>{ disconnecting ? __( 'Disconnecting…', 'neural-forms-lite' ) : __( 'Disconnect', 'neural-forms-lite' ) }</button>
+					</div>
+					<p className="neural-forms-integrations__zap-hint">{ __( 'Turn payments on per form under Form settings › Payments.', 'neural-forms-lite' ) }</p>
+				</div>
+			) }
+		</div>
+	);
+}
+
 // ─── Tab body switcher ──────────────────────────────────────────
 
 // ─── WhatsApp global connection panel ────────────────────────────
@@ -2676,6 +2925,9 @@ function TabPanel( { provider, onStatusChange } ) {
 	}
 	if ( provider.id === 'mailchimp' ) {
 		return <MailchimpPanel provider={ provider } onStatusChange={ onStatusChange } />;
+	}
+	if ( provider.payment ) {
+		return <PaymentProviderPanel provider={ provider } onStatusChange={ onStatusChange } />;
 	}
 	return <ComingSoonCard provider={ provider } />;
 }

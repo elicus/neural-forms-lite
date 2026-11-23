@@ -88,6 +88,24 @@ function TemplateCard( { template, onClick } ) {
 }
 
 /**
+ * Locked Pro card: the ONLY mention of the Payment Form in Lite. The block,
+ * shortcode and Divi module all live in Neural Forms Pro, so this is a
+ * non-clickable tile with a Pro badge, shown until Pro unlocks payments.
+ */
+function ProLockedCard( { template } ) {
+	return (
+		<div className="nf-starter__card nf-starter__card--locked" aria-disabled="true">
+			<span className="nf-starter__card-badge">{ __( 'Pro', 'neural-forms-lite' ) }</span>
+			<span className="nf-starter__card-title">{ template.label }</span>
+			{ template.description && (
+				<span className="nf-starter__card-desc">{ template.description }</span>
+			) }
+			<span className="nf-starter__card-meta">{ __( 'Available in Neural Forms Pro', 'neural-forms-lite' ) }</span>
+		</div>
+	);
+}
+
+/**
  * @param {object} props
  * @param {(id:string)=>void} props.onApplyTemplate  Called with the picked id.
  * @param {'inline'|'modal'} [props.mode='inline']   Layout variant.
@@ -103,6 +121,8 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 
 	const primary   = PRIMARY_IDS.map( findTemplate ).filter( Boolean );
 	const secondary = SECONDARY_IDS.map( findTemplate ).filter( Boolean );
+	const paymentsUnlocked = !! window.neuralFormsAdmin?.plugin?.capabilities?.payments;
+	const paymentCard      = paymentsUnlocked ? null : findTemplate( 'payment' );
 
 	const title = heading || (
 		mode === 'modal'
@@ -135,6 +155,7 @@ export default function FormTypeChooser( { onApplyTemplate, mode = 'inline', hea
 						{ secondary.map( ( t ) => (
 							<TemplateCard key={ t.id } template={ t } onClick={ handlePick } />
 						) ) }
+						{ paymentCard && <ProLockedCard template={ paymentCard } /> }
 					</div>
 				</>
 			) }

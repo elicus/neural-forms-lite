@@ -11,6 +11,7 @@ import {
 	FileUploadPanel,
 	RepeaterFieldPanel,
 	MatrixFieldPanel,
+	PricingPanel,
 	SubmitButtonPanel,
 	WelcomeScreenPanel,
 	MessagesPanel,
@@ -33,6 +34,7 @@ export default function FormDesignExtras( { attributes, setAttributes, formHasWe
 			<FileUploadPanel      a={ a } set={ set } />
 			<RepeaterFieldPanel   a={ a } set={ set } />
 			<MatrixFieldPanel     a={ a } set={ set } />
+			<PricingPanel         a={ a } set={ set } />
 			<SubmitButtonPanel    a={ a } set={ set } />
 			{ formHasWelcomeScreen && a.showWelcomeScreen !== false && <WelcomeScreenPanel a={ a } set={ set } /> }
 			<MessagesPanel        a={ a } set={ set } />

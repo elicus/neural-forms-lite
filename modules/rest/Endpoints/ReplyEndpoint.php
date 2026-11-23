@@ -102,12 +102,8 @@ class ReplyEndpoint {
 		// "WordPress <wordpress@domain>". Reply-To is set to the same
 		// sender so that a mail plugin that forces a fixed From address
 		// still routes the customer's answer back to the business.
-		$sender  = NotificationService::resolve_sender( $settings );
-		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
-		$headers = array_merge( $headers, NotificationService::build_from_headers( $settings ) );
-		if ( $sender['email'] !== '' ) {
-			$headers[] = 'Reply-To: ' . ( $sender['name'] !== '' ? $sender['name'] . ' <' . $sender['email'] . '>' : $sender['email'] );
-		}
+		$sender       = NotificationService::resolve_sender( $settings );
+		$headers      = NotificationService::reply_headers( $settings );
 		$sender_email = $sender['email'] !== '' ? $sender['email'] : (string) get_bloginfo( 'admin_email' );
 
 		$sent = wp_mail( $to, $subject, $body, $headers );

@@ -29,6 +29,7 @@ final class ActionRegistry {
 			new NotifyInternalAction(),
 			new SendAcknowledgementAction(),
 			new PrepareAiDraftAction(),
+			new CreateQuoteDraftAction(),
 		);
 		$map = array();
 		foreach ( $built_in as $a ) {

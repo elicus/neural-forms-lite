@@ -117,6 +117,9 @@ final class NeuralForms {
 		\NeuralForms\AI\QueueListener::boot();
 		// 1.2.0 workflows: event dispatch + queue drain on the same cron hook.
 		\NeuralForms\Workflows\WorkflowEngine::boot();
+		// 1.2.0 part B: quotes (expiry cron + raw HTML / PDF serving).
+		\NeuralForms\Quotes\QuotesBoot::boot();
+		\NeuralForms\Payments\PaymentsBoot::boot();
 
 		// Log cleanup: daily cron to prune old DB rows and log files.
 		add_action( 'neural_forms_log_cleanup', array( \NeuralForms\Core\Logger::class, 'cleanup' ) );
@@ -124,6 +127,10 @@ final class NeuralForms {
 		// Self-schedule so installs upgrading from a release without this cron
 		// pick it up automatically. wp_schedule_event is a no-op when the
 		// event is already queued.
+		// Self-heal: installs activated before the interval fix never got the
+		// recurring queue event.
+		\NeuralForms\AI\AIQueueProcessor::schedule();
+
 		if ( ! wp_next_scheduled( 'neural_forms_log_cleanup' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'neural_forms_log_cleanup' );
 		}

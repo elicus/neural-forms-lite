@@ -1344,3 +1344,15 @@
 		width: 100%;
 	}
 }
+
+/* ── Payment providers (1.2.0, part B) ─────────────────────────── */
+.nf-pay-modes { display: flex; gap: 8px; }
+.nf-pay-modes__opt { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var( --f-gray-300 ); border-radius: var( --f-radius-md ); cursor: pointer; font-size: 13px; background: #fff; }
+.nf-pay-modes__opt.is-active { border-color: var( --f-blue-600 ); box-shadow: 0 0 0 2px rgba( 8, 15, 91, 0.12 ); }
+.nf-pay-modes__opt input { margin: 0; }
+.nf-pay-modes__dot { width: 7px; height: 7px; border-radius: 50%; background: var( --f-green-600 ); }
+.nf-pay-webhook__row { display: flex; align-items: center; gap: 8px; }
+.nf-pay-webhook__url { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; padding: 8px 10px; background: var( --f-gray-50 ); border: 1px solid var( --f-gray-200 ); border-radius: var( --f-radius-md ); font-size: 12px; }
+.nf-pay-live-badge, .nf-pay-test-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.nf-pay-live-badge { background: #fee2e2; color: #991b1b; }
+.nf-pay-test-badge { background: #fef3c7; color: #92400e; }

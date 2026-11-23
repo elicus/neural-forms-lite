@@ -189,6 +189,12 @@ class FormRenderer {
 		$fields   = is_array( $schema['fields'] ?? null )    ? $schema['fields']    : [];
 		$settings = is_array( $form['settings'] )    ? $form['settings']    : [];
 
+		// Currency for Priced Item price labels. The live totals read it from
+		// the pricing config; the PHP-rendered labels need it as well.
+		if ( class_exists( '\\NeuralForms\\Pricing\\PriceEngine' ) ) {
+			$options['_currency'] = (string) ( \NeuralForms\Pricing\PriceEngine::settings( $form )['currency'] ?? 'USD' );
+		}
+
 		// Mirrors the form_version hash written by SubmitEndpoint at submission
 		// time. Lets the JS layer (or future diffing logic) detect pages served
 		// from a cache after the schema was updated.
@@ -356,8 +362,28 @@ class FormRenderer {
 		// endpoint URL: /wp-json/neural-forms/v1/forms/{id}/submit
 		//
 		// data-neural-forms-version: schema hash for future stale-page detection.
+		// 1.2.0 part B: pricing config for the frontend mirror (only when the
+		// capability is unlocked and the form prices something).
+		// The cheap schema scan runs first so forms without products never
+		// touch Capabilities / PriceEngine (keeps the standalone render
+		// tests and the hot path free of extra class loads).
+		$pricing_cfg = array();
+		$has_product = false;
+		foreach ( SchemaHelper::flatten_fields( $fields ) as $_pf ) {
+			if ( ( $_pf['type'] ?? '' ) === 'product' ) {
+				$has_product = true;
+				break;
+			}
+		}
+		if ( $has_product && Capabilities::can( Capabilities::CALCULATIONS ) ) {
+			$pricing_cfg = \NeuralForms\Pricing\PriceEngine::client_config( $form );
+		}
+
 		$form_attrs  = ' class="neural-forms-form"';
 		$form_attrs .= ' data-neural-forms-id="' . $form_id . '"';
+		if ( ! empty( $pricing_cfg ) ) {
+			$form_attrs .= ' data-neural-forms-pricing="' . esc_attr( (string) wp_json_encode( $pricing_cfg ) ) . '"';
+		}
 		$form_attrs .= ' data-neural-forms-version="' . esc_attr( $version ) . '"';
 		if ( $has_files ) {
 			$form_attrs .= ' data-neural-forms-has-files="1"';
@@ -465,68 +491,20 @@ class FormRenderer {
 		// Global (non-field) error container - populated by JS for 429, 5xx,
 		// and network failures. role="alert" implies aria-live="assertive" so
 		// screen readers announce it immediately when JS sets its text.
+		// 1.2.0 part B: live totals + the pricing config the frontend mirrors.
+		if ( ! empty( $pricing_cfg ) ) {
+			$html .= '<div class="neural-forms-form__totals" data-neural-forms-totals aria-live="polite">'
+				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--subtotal"><span>' . esc_html__( 'Subtotal', 'neural-forms-lite' ) . '</span><span data-total="subtotal">—</span></div>'
+				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--discount" hidden><span data-total-label="discount">' . esc_html__( 'Discount', 'neural-forms-lite' ) . '</span><span data-total="discount">—</span></div>'
+				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--total"><span>' . esc_html__( 'Total', 'neural-forms-lite' ) . '</span><span data-total="total">—</span></div>'
+				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--due" hidden><span>' . esc_html__( 'Due now', 'neural-forms-lite' ) . '</span><span data-total="due_now">—</span></div>'
+				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--remaining" hidden><span>' . esc_html__( 'Remaining balance', 'neural-forms-lite' ) . '</span><span data-total="remaining">—</span></div>'
+				. '</div>';
+		}
+
 		$html .= '<p class="neural-forms-form__global-error" role="alert" hidden></p>';
 
-		// ' CAPTCHA widget '
-		// Rendered only when the form has captcha_enabled = true AND a provider
-		// with a site key is globally configured. The provider JS SDK (Turnstile
-		// or reCAPTCHA) auto-initialises widgets by CSS class name, so no custom
-		// init code is required. The SDK also injects a hidden input that
-		// form-submit.js reads to collect the token.
-		//
-		// data-neural-forms-captcha is a provider identifier read by form-submit.js
-		// to know which input name to look for and which reset API to call.
-		$captcha_provider = (string) Config::get( 'captcha_provider', 'none' );
-		$captcha_site_key = (string) Config::get( 'captcha_site_key', '' );
-		$captcha_enabled  = ! empty( $settings['captcha_enabled'] );
-
-		if ( $captcha_enabled && $captcha_provider !== 'none' && $captcha_site_key !== '' ) {
-			// Map provider slug to the auto-render CSS class expected by the SDK.
-			$provider_class_map = [
-				'turnstile'    => 'cf-turnstile',
-				'recaptcha_v2' => 'g-recaptcha',
-			];
-
-			$provider_class = $provider_class_map[ $captcha_provider ] ?? '';
-
-			if ( $provider_class !== '' ) {
-				$html .= '<div'
-					. ' class="neural-forms-form__captcha ' . esc_attr( $provider_class ) . '"'
-					. ' data-sitekey="' . esc_attr( $captcha_site_key ) . '"'
-					. ' data-neural-forms-captcha="' . esc_attr( $captcha_provider ) . '"'
-					. '></div>';
-
-				// Enqueue the provider script once per page (WP deduplicates).
-				//
-				// These two URLs MUST be loaded from the upstream service -
-				// CAPTCHA verification depends on the same origin server-side
-				// (challenges.cloudflare.com / www.google.com) issuing the
-				// challenge token that the plugin then verifies via siteverify.
-				// Self-hosting the SDK is not supported by either provider.
-				// Both services are disclosed under "External services" in
-				// readme.txt as required for WordPress.org submission.
-				//
-				// phpcs:disable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
-				if ( $captcha_provider === 'turnstile' ) {
-					wp_enqueue_script(
-						'neural-forms-cf-turnstile',
-						'https://challenges.cloudflare.com/turnstile/v0/api.js',
-						[],
-						NEURAL_FORMS_VERSION,
-						true
-					);
-				} elseif ( $captcha_provider === 'recaptcha_v2' ) {
-					wp_enqueue_script(
-						'neural-forms-recaptcha-v2',
-						'https://www.google.com/recaptcha/api.js',
-						[],
-						NEURAL_FORMS_VERSION,
-						true
-					);
-				}
-				// phpcs:enable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
-			}
-		}
+		$html .= self::captcha_widget_html( $settings );
 		// ' end CAPTCHA '
 
 		// Multi-step navigation: emitted only when 2+ top-level step
@@ -683,6 +661,30 @@ class FormRenderer {
 			? (string) $options['submit_button_text']
 			: __( 'Submit', 'neural-forms-lite' );
 
+		// 1.2.0 part B: when the form takes a payment, say so on the button and
+		// let the visitor pick a method when the form allows a choice.
+		$payment_choice_html = '';
+		if ( class_exists( '\\NeuralForms\\Payments\\PaymentService' ) && \NeuralForms\Payments\PaymentService::enabled_for( $form ) ) {
+			$pay_settings = \NeuralForms\Payments\PaymentService::settings( $form );
+			if ( ! array_key_exists( 'submit_button_text', $options ) || (string) $options['submit_button_text'] === '' || (string) $options['submit_button_text'] === __( 'Submit', 'neural-forms-lite' ) ) {
+				$submit_text = $pay_settings['submit_label'] !== '' ? $pay_settings['submit_label'] : __( 'Continue to payment', 'neural-forms-lite' );
+			}
+			$pay_providers = \NeuralForms\Payments\PaymentService::providers_for( $form );
+			if ( $pay_settings['provider'] === 'choice' && count( $pay_providers ) > 1 ) {
+				$payment_choice_html .= '<fieldset class="neural-forms-form__pay-choice"><legend class="neural-forms-form__label">' . esc_html__( 'Pay with', 'neural-forms-lite' ) . '</legend>';
+				$first = true;
+				foreach ( $pay_providers as $pid => $pp ) {
+					$cid = 'nf-pay-' . esc_attr( $pid ) . '-' . esc_attr( (string) ( $form['id'] ?? '0' ) );
+					$payment_choice_html .= '<label class="neural-forms-form__radio-label neural-forms-form__pay-option" for="' . $cid . '"><input type="radio" id="' . $cid . '" name="nf_payment_provider" value="' . esc_attr( $pid ) . '"' . ( $first ? ' checked' : '' ) . ' class="neural-forms-form__radio"> <span>' . esc_html( $pp->label() ) . '</span></label>';
+					$first = false;
+				}
+				$payment_choice_html .= '</fieldset>';
+			}
+			if ( $pay_settings['description'] !== '' ) {
+				$payment_choice_html .= '<p class="neural-forms-form__pay-note">' . esc_html( $pay_settings['description'] ) . '</p>';
+			}
+		}
+
 		if ( $btn_icon_svg !== '' ) {
 			$btn_icon_pos  = (string) ( $options['btn_icon_position'] ?? 'after' );
 			$btn_icon_cls  = 'nf-btn-icon nf-btn-icon--' . esc_attr( $btn_icon_pos );
@@ -700,7 +702,7 @@ class FormRenderer {
 			$btn_content = esc_html( $submit_text );
 		}
 
-		$submit_wrap_html = '<div class="neural-forms-form__submit-wrap">'
+		$submit_wrap_html = $payment_choice_html . '<div class="neural-forms-form__submit-wrap">'
 				. '<button type="submit" class="' . esc_attr( $submit_class ) . '">'
 				. $btn_content
 				. '</button>'
@@ -874,6 +876,75 @@ class FormRenderer {
 	 * exports, AI analysis, or notifications — it's a display element,
 	 * not a field.
 	 */
+
+	/**
+	 * CAPTCHA widget + SDK enqueue for a form that has captcha_enabled and a
+	 * configured provider (shared by the form renderer and the payment form).
+	 */
+	public static function captcha_widget_html( array $settings ): string {
+		$out = '';
+	// Rendered only when the form has captcha_enabled = true AND a provider
+	// with a site key is globally configured. The provider JS SDK (Turnstile
+	// or reCAPTCHA) auto-initialises widgets by CSS class name, so no custom
+	// init code is required. The SDK also injects a hidden input that
+	// form-submit.js reads to collect the token.
+	//
+	// data-neural-forms-captcha is a provider identifier read by form-submit.js
+	// to know which input name to look for and which reset API to call.
+	$captcha_provider = (string) Config::get( 'captcha_provider', 'none' );
+	$captcha_site_key = (string) Config::get( 'captcha_site_key', '' );
+	$captcha_enabled  = ! empty( $settings['captcha_enabled'] );
+
+	if ( $captcha_enabled && $captcha_provider !== 'none' && $captcha_site_key !== '' ) {
+		// Map provider slug to the auto-render CSS class expected by the SDK.
+		$provider_class_map = [
+			'turnstile'    => 'cf-turnstile',
+			'recaptcha_v2' => 'g-recaptcha',
+		];
+
+		$provider_class = $provider_class_map[ $captcha_provider ] ?? '';
+
+		if ( $provider_class !== '' ) {
+			$out = '<div'
+				. ' class="neural-forms-form__captcha ' . esc_attr( $provider_class ) . '"'
+				. ' data-sitekey="' . esc_attr( $captcha_site_key ) . '"'
+				. ' data-neural-forms-captcha="' . esc_attr( $captcha_provider ) . '"'
+				. '></div>';
+
+			// Enqueue the provider script once per page (WP deduplicates).
+			//
+			// These two URLs MUST be loaded from the upstream service -
+			// CAPTCHA verification depends on the same origin server-side
+			// (challenges.cloudflare.com / www.google.com) issuing the
+			// challenge token that the plugin then verifies via siteverify.
+			// Self-hosting the SDK is not supported by either provider.
+			// Both services are disclosed under "External services" in
+			// readme.txt as required for WordPress.org submission.
+			//
+			// phpcs:disable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
+			if ( $captcha_provider === 'turnstile' ) {
+				wp_enqueue_script(
+					'neural-forms-cf-turnstile',
+					'https://challenges.cloudflare.com/turnstile/v0/api.js',
+					[],
+					NEURAL_FORMS_VERSION,
+					true
+				);
+			} elseif ( $captcha_provider === 'recaptcha_v2' ) {
+				wp_enqueue_script(
+					'neural-forms-recaptcha-v2',
+					'https://www.google.com/recaptcha/api.js',
+					[],
+					NEURAL_FORMS_VERSION,
+					true
+				);
+			}
+			// phpcs:enable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
+		}
+	}
+		return $out;
+	}
+
 	private static function render_welcome_screen( array $node, int $form_id, array $options = [] ): string {
 		$node_id     = (string) ( $node['id'] ?? '' );
 		$title       = (string) ( $node['title'] ?? '' );
@@ -1242,6 +1313,18 @@ class FormRenderer {
 				break;
 			case 'matrix':
 				$input_html = static::render_matrix( $field, $input_id, $error_id, $form_id );
+				break;
+			case 'product':
+				$field['_currency'] = (string) ( $options['_currency'] ?? 'USD' );
+				$input_html = static::render_product(
+					$field,
+					$input_id,
+					$error_id,
+					is_array( $options['product_presets'][ $field_id ] ?? null ) ? $options['product_presets'][ $field_id ] : []
+				);
+				break;
+			case 'calculated':
+				$input_html = static::render_calculated( $field, $input_id, $error_id );
 				break;
 			case 'repeater':
 				$input_html = static::render_repeater( $field, $input_id, $error_id, $form_id, $options );
@@ -2211,6 +2294,168 @@ class FormRenderer {
 	 * browser-enforced (the browser cannot express "at least one per row"
 	 * across a name array) and will be enforced server-side in commit 4.
 	 */
+	// ── Product / Calculated (1.2.0, part B) ───────────────────────────
+
+	/**
+	 * Product field. Posted as an array under the field id:
+	 *   {id}[choice]      select / radio (options mode)
+	 *   {id}[choice][]    checkboxes (options mode, add-ons)
+	 *   {id}[amount]      input mode (visitor types the amount)
+	 *   {id}[qty]         when quantity is enabled
+	 * Prices are shown in labels only; the server recomputes everything.
+	 * Locked capability → nothing renders (admin-only notice), like Matrix.
+	 *
+	 * $preset (render option `product_presets[field_id]`, used by Pro's
+	 * Payment Form, which sells ONE item of the form):
+	 *   choice     (string)  options mode: lock the field to this option —
+	 *                        rendered as a static line + hidden {id}[choice]
+	 *                        (or {id}[choice][] for the checkboxes display)
+	 *   qty        (int)     default quantity (clamped to the field's range)
+	 *   allow_qty  (bool)    false → quantity is posted as a hidden input
+	 */
+	private static function render_product( array $field, string $input_id, string $error_id, array $preset = [] ): string {
+		if ( ! Capabilities::can( Capabilities::CALCULATIONS ) ) {
+			if ( current_user_can( 'manage_options' ) ) {
+				return '<p class="neural-forms-product__notice" role="status">'
+					. esc_html__( 'Priced Item field hidden — requires Neural Forms Pro. (Visible to administrators only.)', 'neural-forms-lite' )
+					. '</p>';
+			}
+			return '';
+		}
+		$p        = \NeuralForms\Pricing\PriceEngine::product_pricing( $field );
+		$currency = \NeuralForms\Pricing\Money::normalize_currency( $field['_currency'] ?? 'USD' );
+		$id       = (string) $field['id'];
+		$required = ! empty( $field['required'] );
+		$html     = '';
+		$fmt      = static function ( $price ) use ( $currency ) {
+			$minor = \NeuralForms\Pricing\Money::to_minor( $price, $currency );
+			return null === $minor ? '' : \NeuralForms\Pricing\Money::format( $minor, $currency );
+		};
+
+		if ( $p['mode'] === 'fixed' ) {
+			$html .= '<div class="neural-forms-form__product-fixed" id="' . esc_attr( $input_id ) . '" aria-describedby="' . esc_attr( $error_id ) . '">'
+				. '<span class="neural-forms-form__product-price">' . esc_html( $fmt( $p['price'] ) ) . '</span>'
+				. '</div>';
+		} elseif ( $p['mode'] === 'input' ) {
+			$attrs = 'type="number" step="any" inputmode="decimal" id="' . esc_attr( $input_id ) . '" name="' . esc_attr( $id ) . '[amount]"'
+				. ' class="neural-forms-form__input neural-forms-form__input--number neural-forms-form__product-amount"'
+				. ' aria-describedby="' . esc_attr( $error_id ) . '"';
+			if ( $p['min_amount'] !== '' ) {
+				$attrs .= ' min="' . esc_attr( $p['min_amount'] ) . '"';
+			}
+			if ( $p['max_amount'] !== '' ) {
+				$attrs .= ' max="' . esc_attr( $p['max_amount'] ) . '"';
+			}
+			if ( $required ) {
+				$attrs .= ' required aria-required="true"';
+			}
+			$html .= '<div class="neural-forms-form__product-input"><span class="neural-forms-form__product-symbol">' . esc_html( \NeuralForms\Pricing\Money::SYMBOLS[ $currency ] ?? $currency . ' ' ) . '</span><input ' . $attrs . '></div>';
+		} else {
+			$options = is_array( $field['options'] ?? null ) ? $field['options'] : array();
+			$locked  = null;
+			if ( (string) ( $preset['choice'] ?? '' ) !== '' ) {
+				foreach ( $options as $o ) {
+					$o = (array) $o;
+					$v = (string) ( $o['value'] ?? '' );
+					if ( $v === '' ) {
+						$v = (string) ( $o['label'] ?? '' );
+					}
+					if ( $v !== '' && $v === (string) $preset['choice'] ) {
+						$locked = $o + array( '_value' => $v );
+						break;
+					}
+				}
+			}
+			if ( $locked ) {
+				$price = $fmt( $locked['price'] ?? '0' );
+				$html .= '<div class="neural-forms-form__product-fixed neural-forms-form__product-locked" id="' . esc_attr( $input_id ) . '" aria-describedby="' . esc_attr( $error_id ) . '">'
+					. '<span class="neural-forms-form__product-option-label">' . esc_html( (string) ( $locked['label'] ?? $locked['_value'] ) ) . '</span>'
+					. ( $price !== '' ? '<span class="neural-forms-form__product-price">' . esc_html( $price ) . '</span>' : '' )
+					. '</div>'
+					. '<input type="hidden" name="' . esc_attr( $id ) . ( $p['display'] === 'checkboxes' ? '[choice][]' : '[choice]' ) . '" value="' . esc_attr( $locked['_value'] ) . '" data-price="' . esc_attr( (string) ( \NeuralForms\Pricing\Money::to_minor( $locked['price'] ?? '0', $currency ) ?? 0 ) ) . '">';
+			} elseif ( $p['display'] === 'select' ) {
+				$attrs = 'id="' . esc_attr( $input_id ) . '" name="' . esc_attr( $id ) . '[choice]" class="neural-forms-form__select neural-forms-form__product-select" aria-describedby="' . esc_attr( $error_id ) . '"';
+				if ( $required ) {
+					$attrs .= ' required aria-required="true"';
+				}
+				$opts = '<option value="">' . esc_html__( 'Select...', 'neural-forms-lite' ) . '</option>';
+				foreach ( $options as $o ) {
+					$o = (array) $o;
+					$v = (string) ( $o['value'] ?? '' );
+					if ( $v === '' ) {
+						$v = (string) ( $o['label'] ?? '' );
+					}
+					if ( $v === '' ) {
+						continue;
+					}
+					$price = $fmt( $o['price'] ?? '0' );
+					$opts .= '<option value="' . esc_attr( $v ) . '" data-price="' . esc_attr( (string) ( \NeuralForms\Pricing\Money::to_minor( $o['price'] ?? '0', $currency ) ?? 0 ) ) . '">' . esc_html( (string) ( $o['label'] ?? $v ) ) . ( $price !== '' ? ' — ' . esc_html( $price ) : '' ) . '</option>';
+				}
+				$html .= '<select ' . $attrs . '>' . $opts . '</select>';
+			} else {
+				$is_multi = $p['display'] === 'checkboxes';
+				$type     = $is_multi ? 'checkbox' : 'radio';
+				$name     = esc_attr( $id ) . ( $is_multi ? '[choice][]' : '[choice]' );
+				$html    .= '<fieldset class="neural-forms-form__' . ( $is_multi ? 'checkbox' : 'radio' ) . '-group neural-forms-form__product-options" aria-describedby="' . esc_attr( $error_id ) . '">';
+				$lbl      = (string) ( $field['label'] ?? '' );
+				if ( $lbl !== '' ) {
+					$html .= '<legend class="screen-reader-text">' . esc_html( $lbl ) . '</legend>';
+				}
+				foreach ( $options as $i => $o ) {
+					$o = (array) $o;
+					$v = (string) ( $o['value'] ?? '' );
+					if ( $v === '' ) {
+						$v = (string) ( $o['label'] ?? '' );
+					}
+					if ( $v === '' ) {
+						continue;
+					}
+					$opt_id = $input_id . '-' . (int) $i;
+					$price  = $fmt( $o['price'] ?? '0' );
+					$html  .= '<label class="neural-forms-form__' . $type . '-label neural-forms-form__product-option" for="' . esc_attr( $opt_id ) . '">'
+						. '<input type="' . $type . '" id="' . esc_attr( $opt_id ) . '" name="' . $name . '" value="' . esc_attr( $v ) . '" data-price="' . esc_attr( (string) ( \NeuralForms\Pricing\Money::to_minor( $o['price'] ?? '0', $currency ) ?? 0 ) ) . '"' . ( $required && ! $is_multi ? ' required' : '' ) . '>'
+						. '<span class="neural-forms-form__product-option-label">' . esc_html( (string) ( $o['label'] ?? $v ) ) . '</span>'
+						. ( $price !== '' ? '<span class="neural-forms-form__product-price">' . esc_html( $price ) . '</span>' : '' )
+						. '</label>';
+				}
+				$html .= '</fieldset>';
+			}
+		}
+
+		if ( $p['quantity']['enabled'] ) {
+			$qty_default = (int) $p['quantity']['default'];
+			if ( isset( $preset['qty'] ) && is_numeric( $preset['qty'] ) ) {
+				$qty_default = max( (int) $p['quantity']['min'], min( (int) $p['quantity']['max'], (int) $preset['qty'] ) );
+			}
+			if ( isset( $preset['allow_qty'] ) && $preset['allow_qty'] === false ) {
+				$html .= '<input type="hidden" name="' . esc_attr( $id ) . '[qty]" value="' . $qty_default . '">';
+			} else {
+				$qid   = $input_id . '-qty';
+				$html .= '<label class="neural-forms-form__product-qty" for="' . esc_attr( $qid ) . '">'
+					. '<span class="neural-forms-form__product-qty-label">' . esc_html__( 'Quantity', 'neural-forms-lite' ) . '</span>'
+					. '<input type="number" inputmode="numeric" id="' . esc_attr( $qid ) . '" name="' . esc_attr( $id ) . '[qty]" class="neural-forms-form__input neural-forms-form__input--number neural-forms-form__product-qty-input"'
+					. ' min="' . (int) $p['quantity']['min'] . '" max="' . (int) $p['quantity']['max'] . '" step="1" value="' . $qty_default . '">'
+					. '</label>';
+			}
+		}
+		$html .= '<span class="neural-forms-form__product-line" data-neural-forms-line-total="' . esc_attr( $id ) . '" aria-live="polite"></span>';
+		return $html;
+	}
+
+	/**
+	 * Calculated field: read-only display updated by form-submit.js from
+	 * the pricing config; the server recomputes it into the snapshot.
+	 * Never posts a value.
+	 */
+	private static function render_calculated( array $field, string $input_id, string $error_id ): string {
+		if ( ! Capabilities::can( Capabilities::CALCULATIONS ) ) {
+			return current_user_can( 'manage_options' )
+				? '<p class="neural-forms-product__notice" role="status">' . esc_html__( 'Calculated field hidden — requires Neural Forms Pro. (Visible to administrators only.)', 'neural-forms-lite' ) . '</p>'
+				: '';
+		}
+		return '<output id="' . esc_attr( $input_id ) . '" class="neural-forms-form__calculated" data-neural-forms-calculated="' . esc_attr( (string) $field['id'] ) . '" aria-live="polite" aria-describedby="' . esc_attr( $error_id ) . '">—</output>';
+	}
+
 	// $form_id kept on the signature for parity with render_repeater so
 	// the dispatch table in render() can pass it uniformly to every
 	// composite-field renderer; matrix doesn't currently need it for
