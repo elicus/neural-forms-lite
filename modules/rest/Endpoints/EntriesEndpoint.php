@@ -384,7 +384,10 @@ class EntriesEndpoint {
 			);
 		}
 
+		// Owner's own Spam / Not spam choice: the only kind reported to Akismet.
+		\NeuralForms\Spam\Akismet::$owner_change = true;
 		$updated = EntryRepository::bulk_update( $ids, $field_map[ $action ] );
+		\NeuralForms\Spam\Akismet::$owner_change = false;
 
 		return rest_ensure_response( array( 'updated' => $updated ) );
 	}
@@ -916,7 +919,9 @@ class EntriesEndpoint {
 			);
 		}
 
+		\NeuralForms\Spam\Akismet::$owner_change = true;
 		$ok = EntryRepository::update( $id, $fields );
+		\NeuralForms\Spam\Akismet::$owner_change = false;
 
 		if ( ! $ok ) {
 			return new WP_Error(

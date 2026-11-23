@@ -40,6 +40,13 @@ final class SchemaNormalizer {
 		'quiz_question',
 		'matrix',
 		'repeater',
+		// 1.3.0
+		'name',
+		'address',
+		'time',
+		'password',
+		'signature',
+		'html',
 	);
 
 	/** Mirrors Lite's FormValidator::REPEATER_ALLOWED_CHILD_TYPES — keep in sync. */
@@ -58,6 +65,13 @@ final class SchemaNormalizer {
 		'file',
 	);
 
+	/** 1.3.0 types that have a plain stand-in where they can't be used. Mirrors the cloud. */
+	const EXTRA_TYPE_FALLBACK = array(
+		'name'    => 'text',
+		'address' => 'textarea',
+		'time'    => 'text',
+	);
+
 	const REPEATER_MAX_ITEMS    = 20;
 	const REPEATER_MAX_CHILDREN = 8;
 
@@ -66,8 +80,9 @@ final class SchemaNormalizer {
 		'short_text'        => 'text',
 		'single_line_text'  => 'text',
 		'string'            => 'text',
-		'name'              => 'text',
-		'full_name'         => 'text',
+		'full_name'         => 'name',
+		'person_name'       => 'name',
+		'contact_name'      => 'name',
 		'first_name'        => 'text',
 		'last_name'         => 'text',
 		'company'           => 'text',
@@ -121,6 +136,23 @@ final class SchemaNormalizer {
 		'field_group'       => 'repeater',
 		'group_list'        => 'repeater',
 		'repeating_section' => 'repeater',
+		'street_address'    => 'address',
+		'postal_address'    => 'address',
+		'mailing_address'   => 'address',
+		'shipping_address'  => 'address',
+		'billing_address'   => 'address',
+		'time_picker'       => 'time',
+		'timepicker'        => 'time',
+		'preferred_time'    => 'time',
+		'appointment_time'  => 'time',
+		'new_password'      => 'password',
+		'signature_pad'     => 'signature',
+		'e_signature'       => 'signature',
+		'esignature'        => 'signature',
+		'content'           => 'html',
+		'content_block'     => 'html',
+		'static_text'       => 'html',
+		'instructions'      => 'html',
 		'page'              => 'step',
 		'wizard_step'       => 'step',
 		'group'             => 'section',
@@ -537,6 +569,10 @@ final class SchemaNormalizer {
 			$out['fields']       = $normalized_repeater['fields'];
 		}
 
+		if ( in_array( $type, array( 'name', 'address', 'time', 'password', 'signature', 'html' ), true ) ) {
+			return self::normalize_extra_field( $out, $node, $warnings );
+		}
+
 		return $out;
 	}
 
@@ -595,6 +631,12 @@ final class SchemaNormalizer {
 
 			$raw_child_type = (string) ( $child_in['type'] ?? '' );
 			$child_resolved = self::resolve_type_alias( $raw_child_type, $child_in );
+			// The 1.3.0 composite types aren't allowed in a repeater; keep the
+			// question as a plain field instead of losing it.
+			if ( isset( self::EXTRA_TYPE_FALLBACK[ $child_resolved ] ) ) {
+				$child_resolved   = self::EXTRA_TYPE_FALLBACK[ $child_resolved ];
+				$child_in['type'] = $child_resolved;
+			}
 			if ( ! in_array( $child_resolved, self::REPEATER_ALLOWED_CHILD_TYPES, true ) ) {
 				$warnings[] = sprintf(
 					/* translators: %s: rejected child type */
@@ -850,6 +892,61 @@ final class SchemaNormalizer {
 		return $out;
 	}
 
+	/**
+	 * 1.3.0 field types. Mirrors normalizeExtraField() in the cloud's
+	 * form-schema-normalizer.ts — keep the two in step.
+	 */
+	private static function normalize_extra_field( array $out, array $node, array &$warnings ): ?array {
+		$type = $out['type'];
+		$in   = is_array( $node['settings'] ?? null ) ? $node['settings'] : array();
+		unset( $out['placeholder'] );
+
+		if ( $type === 'name' ) {
+			$middle          = ( $in['format'] ?? '' ) === 'first_middle_last' || ! empty( $node['middle_name'] ) || ! empty( $in['middle_name'] );
+			$out['settings'] = array( 'format' => $middle ? 'first_middle_last' : 'first_last' );
+		} elseif ( $type === 'address' ) {
+			$country         = strtoupper( (string) ( $in['default_country'] ?? '' ) );
+			$out['settings'] = array(
+				'show_line2'      => ! ( isset( $in['show_line2'] ) && false === $in['show_line2'] ),
+				'show_country'    => ! ( isset( $in['show_country'] ) && false === $in['show_country'] ),
+				'default_country' => preg_match( '/^[A-Z]{2}$/', $country ) ? $country : '',
+			);
+		} elseif ( $type === 'time' ) {
+			foreach ( array( 'min', 'max' ) as $k ) {
+				$v = (string) ( $node[ $k ] ?? ( $in[ $k ] ?? '' ) );
+				if ( preg_match( '/^([01]\d|2[0-3]):[0-5]\d$/', $v ) ) {
+					$out[ $k ] = $v;
+				}
+			}
+			$step = (int) ( $node['step'] ?? ( $in['step'] ?? 0 ) );
+			if ( $step >= 1 && $step <= 720 ) {
+				$out['step'] = $step;
+			}
+		} elseif ( $type === 'password' ) {
+			$min             = (int) ( $in['min_length'] ?? ( $node['min_length'] ?? 8 ) );
+			$out['settings'] = array(
+				'min_length' => max( 6, min( 64, $min ) ),
+				'confirm'    => ! empty( $in['confirm'] ) || ! empty( $node['confirm'] ),
+			);
+		} elseif ( $type === 'html' ) {
+			$raw = $node['content'] ?? ( $node['text'] ?? ( $node['help_text'] ?? '' ) );
+			$raw = is_string( $raw ) ? substr( $raw, 0, 2000 ) : '';
+			$out['content'] = '';
+			foreach ( preg_split( '/\n\s*\n/', wp_strip_all_tags( $raw ) ) as $para ) {
+				$para = trim( preg_replace( '/\s+/', ' ', $para ) );
+				if ( $para !== '' ) {
+					$out['content'] .= '<p>' . htmlspecialchars( $para, ENT_QUOTES, 'UTF-8' ) . '</p>';
+				}
+			}
+			if ( $out['content'] === '' ) {
+				$warnings[] = __( 'Dropped an empty content block.', 'neural-forms-lite' );
+				return null;
+			}
+			unset( $out['required'], $out['help_text'] );
+		}
+		return $out;
+	}
+
 	private static function clean_text( $value, int $max_len ): string {
 		if ( ! is_string( $value ) ) {
 			$value = is_scalar( $value ) ? (string) $value : '';
@@ -1020,6 +1117,12 @@ final class SchemaNormalizer {
 				'matrix'        => __( 'Matrix',        'neural-forms-lite' ),
 				'repeater'      => __( 'Group',         'neural-forms-lite' ),
 				'hidden'        => __( 'Hidden field',  'neural-forms-lite' ),
+				'name'          => __( 'Name',          'neural-forms-lite' ),
+				'address'       => __( 'Address',       'neural-forms-lite' ),
+				'time'          => __( 'Time',          'neural-forms-lite' ),
+				'password'      => __( 'Password',      'neural-forms-lite' ),
+				'signature'     => __( 'Signature',     'neural-forms-lite' ),
+				'html'          => __( 'Content',       'neural-forms-lite' ),
 			);
 		}
 		return $map[ $type ] ?? __( 'Field', 'neural-forms-lite' );

@@ -11,6 +11,9 @@ use WP_Error;
 
 defined( 'ABSPATH' ) || exit;
 
+// 1.3.0 field types; loaded here too so standalone tests work without the autoloader.
+require_once dirname( __DIR__, 2 ) . '/forms/ExtraFields.php';
+
 /**
  * CSV export endpoint for Neural Forms entries (admin-only).
  *
@@ -272,7 +275,20 @@ class ExportEndpoint {
 
 				$type = (string) ( $field['type'] ?? '' );
 
-				if ( $type === 'file' ) {
+				if ( $type === 'password' || $type === 'html' ) {
+					continue; // 1.3.0: never in entry data
+				}
+				if ( in_array( $type, array( 'name', 'address' ), true ) ) {
+					$dynamic_cols[] = array(
+						'header'    => $field_id,
+						'source_id' => $field_id,
+						'part'      => 'extra',
+						'field'     => $field,
+					);
+					continue;
+				}
+
+				if ( $type === 'file' || $type === 'signature' ) {
 					$dynamic_cols[] = array(
 						'header'    => $field_id . '_filename',
 						'source_id' => $field_id,
@@ -413,6 +429,8 @@ class ExportEndpoint {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['filename'] ?? '' ) : '' );
 			} elseif ( $col['part'] === 'url' ) {
 				$row[] = self::escape_csv_formula( is_array( $raw ) ? (string) ( $raw['url'] ?? '' ) : '' );
+			} elseif ( $col['part'] === 'extra' ) {
+				$row[] = self::escape_csv_formula( \NeuralForms\Forms\ExtraFields::display( is_array( $col['field'] ?? null ) ? $col['field'] : array(), $raw ) );
 			} elseif ( $col['part'] === 'product' ) {
 				$row[] = self::escape_csv_formula( \NeuralForms\Pricing\ProductFormatter::display( $raw, is_array( $col['field'] ?? null ) ? $col['field'] : array() ) );
 			} elseif ( $col['part'] === 'matrix_row' ) {

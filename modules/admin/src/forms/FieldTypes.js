@@ -28,8 +28,39 @@ export const FIELD_TYPES = [
 	{ value: 'calculated',    label: 'Calculated'    },
 	{ value: 'file',          label: 'File Upload'   },
 	{ value: 'hidden',        label: 'Hidden'        },
+	// 1.3.0
+	{ value: 'name',          label: 'Name'          },
+	{ value: 'address',       label: 'Address'       },
+	{ value: 'time',          label: 'Time'          },
+	{ value: 'password',      label: 'Password'      },
+	{ value: 'signature',     label: 'Signature'     },
+	{ value: 'html',          label: 'Content'       },
 ];
 
+/**
+ * 1.3.0 Name / Address parts in display order — mirrors
+ * ExtraFields::name_parts() / address_parts(). [ key, default label, required-when-field-required ]
+ */
+export function extraParts( field ) {
+	const s = ( field && field.settings && typeof field.settings === 'object' ) ? field.settings : {};
+	let parts = [];
+	if ( field && field.type === 'name' ) {
+		parts.push( [ 'first', __( 'First name', 'neural-forms-lite' ), true ] );
+		if ( s.format === 'first_middle_last' ) parts.push( [ 'middle', __( 'Middle name', 'neural-forms-lite' ), false ] );
+		parts.push( [ 'last', __( 'Last name', 'neural-forms-lite' ), true ] );
+	} else if ( field && field.type === 'address' ) {
+		parts.push( [ 'line1', __( 'Street address', 'neural-forms-lite' ), true ] );
+		if ( s.show_line2 !== false ) parts.push( [ 'line2', __( 'Address line 2', 'neural-forms-lite' ), false ] );
+		parts.push( [ 'city', __( 'City', 'neural-forms-lite' ), true ] );
+		parts.push( [ 'state', __( 'State / Province / Region', 'neural-forms-lite' ), false ] );
+		parts.push( [ 'postal', __( 'ZIP / Postal code', 'neural-forms-lite' ), false ] );
+		if ( s.show_country !== false ) parts.push( [ 'country', __( 'Country', 'neural-forms-lite' ), true ] );
+	}
+	const custom = ( s.sublabels && typeof s.sublabels === 'object' ) ? s.sublabels : {};
+	return parts.map( ( [ k, l, r ] ) => [ k, ( typeof custom[ k ] === 'string' && custom[ k ].trim() ) ? custom[ k ].trim() : l, r ] );
+}
+
+import { __ } from '@wordpress/i18n';
 import { makeFieldId } from './schemaHelper';
 
 /** Default skeleton for a newly-added field of a given type. */
@@ -148,6 +179,29 @@ export function newField( type, existingIds = [] ) {
 			allow_multiple:     false,
 			randomize_options:  false,
 		};
+	}
+
+	// 1.3.0
+	if ( type === 'name' ) {
+		base.label    = 'Name';
+		base.settings = { format: 'first_last' };
+	}
+	if ( type === 'address' ) {
+		base.label    = 'Address';
+		base.settings = { show_line2: true, show_country: true, default_country: '' };
+	}
+	if ( type === 'password' ) {
+		base.label    = 'Password';
+		base.settings = { min_length: 8, confirm: false };
+	}
+	if ( type === 'signature' ) {
+		base.label = 'Signature';
+	}
+	if ( type === 'html' ) {
+		base.label   = 'Content';
+		base.content = '<p>Add your text here.</p>';
+		delete base.required;
+		delete base.placeholder;
 	}
 
 	if ( type === 'quiz_question' ) {

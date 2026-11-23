@@ -43,6 +43,13 @@ const BASIC_TYPES = [
 	'range',
 	'file',
 	'hidden',
+	// 1.3.0
+	'name',
+	'address',
+	'time',
+	'password',
+	'signature',
+	'html',
 	// Poll + Quiz used to live under "Survey Fields" but they're
 	// common enough on lead/landing pages (single-question polls,
 	// score-based quizzes) that hiding them in a secondary section

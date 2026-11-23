@@ -13,9 +13,9 @@
  * are white with the dashboard border + xs shadow.
  */
 
-import { __ } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
 
-function Card( { label, value, primary, statusKey } ) {
+function Card( { label, value, primary, statusKey, hint } ) {
 	const classes = [ 'nf-results__card' ];
 	if ( primary )   classes.push( 'nf-results__card--primary' );
 	if ( statusKey ) classes.push( 'nf-results__card--status', 'nf-results__card--status-' + statusKey );
@@ -27,6 +27,7 @@ function Card( { label, value, primary, statusKey } ) {
 				: 'nf-results__card-value' }>
 				{ value }
 			</div>
+			{ hint && <div className="nf-results__card-hint">{ hint }</div> }
 		</article>
 	);
 }
@@ -40,7 +41,49 @@ function statusLabel( status ) {
 	}
 }
 
-export default function ResultsOverviewCards( { data, quiz, selectedForm } ) {
+function fmtSince( ymd ) {
+	try {
+		const d = new Date( ymd + 'T00:00:00Z' );
+		return d.toLocaleDateString( undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' } );
+	} catch ( e ) {
+		return ymd;
+	}
+}
+
+// 1.3.0: Views + Conversion. Conversion only counts entries from the day
+// view counting started, so the two numbers always cover the same period.
+function ViewCards( { views } ) {
+	if ( ! views ) return null;
+	if ( ! views.tracking ) {
+		return (
+			<Card
+				label={ __( 'Views', 'neural-forms-lite' ) }
+				value="—"
+				hint={ __( 'Counting starts with the next visitor.', 'neural-forms-lite' ) }
+			/>
+		);
+	}
+	/* translators: %s: date view counting started */
+	const since = sprintf( __( 'Since %s', 'neural-forms-lite' ), fmtSince( views.since ) );
+	const conv  = views.conversion === null || views.conversion === undefined ? '—' : views.conversion + '%';
+	return (
+		<>
+			<Card label={ __( 'Views', 'neural-forms-lite' ) } value={ Number( views.views ) || 0 } hint={ since } />
+			<Card
+				label={ __( 'Conversion rate', 'neural-forms-lite' ) }
+				value={ conv }
+				hint={ sprintf(
+					/* translators: 1: submissions, 2: views */
+					_n( '%1$d submission from %2$d views', '%1$d submissions from %2$d views', Number( views.submissions ) || 0, 'neural-forms-lite' ),
+					Number( views.submissions ) || 0,
+					Number( views.views ) || 0
+				) }
+			/>
+		</>
+	);
+}
+
+export default function ResultsOverviewCards( { data, quiz, selectedForm, views } ) {
 	const totalEntries   = Number( ( data && data.total_entries ) ?? ( quiz && quiz.total_entries ) ?? 0 ) || 0;
 	const totalPollVotes = Number( data && data.total_poll_votes ) || 0;
 	const pollCount      = Number( data && data.poll_count )       || 0;
@@ -69,6 +112,8 @@ export default function ResultsOverviewCards( { data, quiz, selectedForm } ) {
 	return (
 		<div className="nf-results__cards">
 			<Card label={ __( 'Total entries', 'neural-forms-lite' ) } value={ totalEntries } primary />
+
+			<ViewCards views={ views } />
 
 			{ isSimple && spamCount > 0 && (
 				<Card label={ __( 'Spam blocked', 'neural-forms-lite' ) } value={ spamCount } />

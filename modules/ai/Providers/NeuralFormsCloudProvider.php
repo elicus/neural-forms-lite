@@ -9,6 +9,9 @@ use NeuralForms\AI\Exceptions\CloudSafetyException;
 
 defined( 'ABSPATH' ) || exit;
 
+// 1.3.0 field types; loaded here too so standalone tests work without the autoloader.
+require_once dirname( __DIR__, 2 ) . '/forms/ExtraFields.php';
+
 /**
  * Calls the Neural Forms Cloud AI service instead of a local model provider.
  *
@@ -547,7 +550,8 @@ class NeuralFormsCloudProvider implements AIAnalysisProviderInterface {
 				$fields[ $id ] = \NeuralForms\Pricing\ProductFormatter::display( $fields[ $id ], $f );
 			}
 		}
-		return $fields;
+		// 1.3.0: Name / Address as one line, Signature as "Signed" (no URL).
+		return \NeuralForms\Forms\ExtraFields::readable( $fields, \NeuralForms\Forms\SchemaHelper::flatten_fields( is_array( $schema['fields'] ?? null ) ? $schema['fields'] : array() ) );
 	}
 
 	private function enrich_matrix_fields( array $fields, array $form ): array {

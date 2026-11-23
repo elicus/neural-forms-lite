@@ -10,6 +10,9 @@ use NeuralForms\Storage\EntryRepository;
 
 defined( 'ABSPATH' ) || exit;
 
+// 1.3.0 field types; loaded here too so standalone tests work without the autoloader.
+require_once dirname( __DIR__ ) . '/forms/ExtraFields.php';
+
 /**
  * Sends admin notifications and autoresponder emails after a form submission.
  *
@@ -161,7 +164,9 @@ class NotificationService {
 			self::get_entry_url( $entry_id, (int) ( $form['id'] ?? 0 ) )
 		) . "\n";
 
-		$headers = self::build_from_headers( $settings );
+		// Plain text, so another plugin's wp_mail_content_type = text/html can't
+		// turn submitted values into live links or images.
+		$headers = array_merge( array( 'Content-Type: text/plain; charset=UTF-8' ), self::build_from_headers( $settings ) );
 
 		// Reply-To: when the submission carries a valid email field,
 		// the admin should be able to hit "Reply" in their mail
@@ -290,7 +295,9 @@ class NotificationService {
 
 		$body = self::apply_tokens( $raw_body, $form_name, $data, $schema_fields );
 
-		$headers = self::build_from_headers( $settings );
+		// Plain text, so another plugin's wp_mail_content_type = text/html can't
+		// turn submitted values into live links or images.
+		$headers = array_merge( array( 'Content-Type: text/plain; charset=UTF-8' ), self::build_from_headers( $settings ) );
 
 		$sent = self::send_with_retry( $to, $subject, $body, $headers );
 
@@ -566,6 +573,9 @@ class NotificationService {
 					$lines[] = $label . ":\n" . implode( "\n", $rendered );
 				}
 				continue;
+			} elseif ( in_array( $field['type'], array( 'name', 'address', 'signature' ), true ) ) {
+				// 1.3.0: "Jo Smith", "1 High St, Leeds, UK", "Signed".
+				$value = \NeuralForms\Forms\ExtraFields::display( $field, $raw );
 			} elseif ( $field['type'] === 'product' ) {
 				$value = \NeuralForms\Pricing\ProductFormatter::display( $raw, $field );
 			} elseif ( $field['type'] === 'matrix' ) {
@@ -741,6 +751,8 @@ class NotificationService {
 			$field = $by_id[ (string) $field_id ] ?? null;
 			if ( $field && in_array( (string) ( $field['type'] ?? '' ), array( 'select', 'radio', 'checkboxes' ), true ) ) {
 				$replacements[ '{' . $field_id . '}' ] = self::display_choice( $value, $field );
+			} elseif ( $field && in_array( (string) ( $field['type'] ?? '' ), array( 'name', 'address', 'signature' ), true ) ) {
+				$replacements[ '{' . $field_id . '}' ] = \NeuralForms\Forms\ExtraFields::display( $field, $value );
 			} elseif ( is_scalar( $value ) ) {
 				$replacements[ '{' . $field_id . '}' ] = (string) $value;
 			} elseif ( is_array( $value ) && ! isset( $value['filename'] ) ) {

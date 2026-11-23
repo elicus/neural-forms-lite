@@ -30,14 +30,16 @@
  */
 
 import { useEffect, useMemo, useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import api from '../api';
 import { ProSlot } from '../slot-registry';
 
 const CAPTCHA_PROVIDERS = [
 	{ value: 'none',         label: __( 'None — CAPTCHA disabled', 'neural-forms-lite' ) },
-	{ value: 'turnstile',    label: __( 'Cloudflare Turnstile',     'neural-forms-lite' ) },
-	{ value: 'recaptcha_v2', label: __( 'reCAPTCHA v2',             'neural-forms-lite' ) },
+	{ value: 'turnstile',    label: __( 'Cloudflare Turnstile',     'neural-forms-lite' ), name: 'Cloudflare Turnstile', keysUrl: 'https://dash.cloudflare.com/?to=/:account/turnstile' },
+	{ value: 'hcaptcha',     label: __( 'hCaptcha',                 'neural-forms-lite' ), name: 'hCaptcha', keysUrl: 'https://dashboard.hcaptcha.com/sites' },
+	{ value: 'recaptcha_v2', label: __( 'reCAPTCHA v2 (checkbox)',  'neural-forms-lite' ), name: 'reCAPTCHA v2', keysUrl: 'https://www.google.com/recaptcha/admin/create' },
+	{ value: 'recaptcha_v3', label: __( 'reCAPTCHA v3 (invisible)', 'neural-forms-lite' ), name: 'reCAPTCHA v3', keysUrl: 'https://www.google.com/recaptcha/admin/create' },
 ];
 
 // ─── Reusable building blocks ────────────────────────────────────
@@ -635,12 +637,20 @@ function NotificationsSection( { form, set } ) {
 
 function CaptchaSection( { form, set, captchaSecretKey, setCaptchaSecretKey } ) {
 	const provider = form.captcha_provider || 'none';
+	const meta     = CAPTCHA_PROVIDERS.find( ( p ) => p.value === provider ) || CAPTCHA_PROVIDERS[ 0 ];
+	// Stored keys belong to one provider; after switching, ask for new ones.
+	const keysMatch = !! form.captcha_secret_key_set && ( form.captcha_keys_provider || '' ) === provider;
 	return (
 		<Section
 			title={ __( 'CAPTCHA', 'neural-forms-lite' ) }
 			description={ __( 'Add a CAPTCHA challenge to individual forms to reduce spam submissions.', 'neural-forms-lite' ) }
 		>
-			<Field label={ __( 'Provider', 'neural-forms-lite' ) }>
+			<Field
+				label={ __( 'Provider', 'neural-forms-lite' ) }
+				hint={ provider === 'recaptcha_v3'
+					? __( 'Invisible: visitors never see a challenge. Google scores each submission and a small reCAPTCHA badge appears on pages with a form.', 'neural-forms-lite' )
+					: undefined }
+			>
 				<Select
 					value={ provider }
 					onChange={ ( e ) => set( { captcha_provider: e.target.value } ) }
@@ -653,7 +663,15 @@ function CaptchaSection( { form, set, captchaSecretKey, setCaptchaSecretKey } ) 
 
 			{ provider !== 'none' && (
 				<>
-					<Field label={ __( 'Site key', 'neural-forms-lite' ) }>
+					{ ! keysMatch && form.captcha_secret_key_set && (
+						<div className="neural-forms-settings__notice neural-forms-settings__notice--warn">
+							{ sprintf( __( 'Enter the Site Key and Secret Key from %s. Keys from another provider will not work.', 'neural-forms-lite' ), meta.name ) }
+						</div>
+					) }
+					<Field
+						label={ __( 'Site key', 'neural-forms-lite' ) }
+						hint={ meta.keysUrl ? <a href={ meta.keysUrl } target="_blank" rel="noopener noreferrer">{ sprintf( __( 'Get your %s keys', 'neural-forms-lite' ), meta.name ) }</a> : undefined }
+					>
 						<TextInput
 							type="text"
 							value={ form.captcha_site_key || '' }
@@ -662,16 +680,31 @@ function CaptchaSection( { form, set, captchaSecretKey, setCaptchaSecretKey } ) 
 					</Field>
 					<Field
 						label={ __( 'Secret key', 'neural-forms-lite' ) }
-						hint={ form.captcha_secret_key_set
+						hint={ keysMatch
 							? __( 'Currently set. Leave blank to keep.', 'neural-forms-lite' )
 							: undefined }
 					>
 						<ApiKeyInput
-							isSet={ !! form.captcha_secret_key_set }
+							isSet={ keysMatch }
 							value={ captchaSecretKey }
 							onChange={ setCaptchaSecretKey }
 						/>
 					</Field>
+					{ provider === 'recaptcha_v3' && (
+						<Field
+							label={ __( 'Score threshold', 'neural-forms-lite' ) }
+							hint={ __( 'Google scores each visitor from 0.0 (bot) to 1.0 (human). Submissions below this score are blocked. 0.5 suits most sites; lower it if real visitors get blocked.', 'neural-forms-lite' ) }
+						>
+							<Select
+								value={ String( form.captcha_v3_threshold ?? 0.5 ) }
+								onChange={ ( e ) => set( { captcha_v3_threshold: parseFloat( e.target.value ) } ) }
+							>
+								{ [ 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 ].map( ( v ) => (
+									<option key={ v } value={ String( v ) }>{ v.toFixed( 1 ) }{ v === 0.5 ? ' ' + __( '(recommended)', 'neural-forms-lite' ) : '' }</option>
+								) ) }
+							</Select>
+						</Field>
+					) }
 				</>
 			) }
 		</Section>

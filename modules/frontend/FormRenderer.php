@@ -4,11 +4,15 @@ namespace NeuralForms\Frontend;
 use NeuralForms\Core\Capabilities;
 use NeuralForms\Core\Config;
 use NeuralForms\Forms\ConditionEngine;
+use NeuralForms\Forms\ExtraFields;
 use NeuralForms\Forms\FieldRegistry;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\SchemaHelper;
 
 defined( 'ABSPATH' ) || exit;
+
+// 1.3.0 field types; loaded here too so standalone tests work without the autoloader.
+require_once dirname( __DIR__ ) . '/forms/ExtraFields.php';
 
 /**
  * FormRenderer
@@ -94,6 +98,13 @@ class FormRenderer {
 		// on one page produces a single <script> tag.
 		wp_enqueue_style( 'neural-forms-form' );
 		wp_enqueue_script( 'neural-forms-form-submit' );
+
+		// 1.3.0 view counting: only real public renders, never post
+		// previews or people who manage forms (their own visits would
+		// skew the numbers). Callers may pass track_views => false.
+		if ( ! array_key_exists( 'track_views', $options ) ) {
+			$options['track_views'] = ! is_preview() && ! current_user_can( NEURAL_FORMS_CAP_MANAGE_FORMS );
+		}
 
 		$html = static::render_form( $form, $options );
 
@@ -385,6 +396,9 @@ class FormRenderer {
 			$form_attrs .= ' data-neural-forms-pricing="' . esc_attr( (string) wp_json_encode( $pricing_cfg ) ) . '"';
 		}
 		$form_attrs .= ' data-neural-forms-version="' . esc_attr( $version ) . '"';
+		if ( ! empty( $options['track_views'] ) ) {
+			$form_attrs .= ' data-neural-forms-track-view="1"';
+		}
 		if ( $has_files ) {
 			$form_attrs .= ' data-neural-forms-has-files="1"';
 		}
@@ -486,6 +500,37 @@ class FormRenderer {
 				. '</div>';
 		} else {
 			$html .= '<div class="neural-forms-form__fields">' . $progress_html . $fields_html . '</div>';
+		}
+
+		// 1.3.0: entry preview. On the last step of a multi-step form,
+		// form-submit.js fills this panel with every answer, grouped by
+		// step, each group with an Edit button back to its step. Hidden at
+		// SSR, so without JS the form behaves as before. Settings live on
+		// form_schema.settings.multistep.entry_preview { enabled, title }.
+		$entry_preview = is_array( $multistep_settings['entry_preview'] ?? null ) ? $multistep_settings['entry_preview'] : array();
+		if ( $has_steps && ! empty( $entry_preview['enabled'] ) ) {
+			$review_title = trim( (string) ( $entry_preview['title'] ?? '' ) );
+			if ( $review_title === '' ) {
+				$review_title = __( 'Review your answers', 'neural-forms-lite' );
+			}
+			$review_title_id = 'neural-forms-' . $form_id . '-review-title';
+			$html .= '<section class="neural-forms-form__review" data-neural-forms-review hidden'
+				. ' aria-labelledby="' . esc_attr( $review_title_id ) . '"'
+				. ' data-edit-label="' . esc_attr__( 'Edit', 'neural-forms-lite' ) . '"'
+				/* translators: %s: step title */
+				. ' data-edit-step-label="' . esc_attr__( 'Edit %s', 'neural-forms-lite' ) . '"'
+				/* translators: %d: step number */
+				. ' data-step-label="' . esc_attr__( 'Step %d', 'neural-forms-lite' ) . '"'
+				. ' data-empty-label="' . esc_attr__( 'Nothing entered', 'neural-forms-lite' ) . '"'
+				. ' data-yes-label="' . esc_attr__( 'Yes', 'neural-forms-lite' ) . '"'
+				. ' data-signed-label="' . esc_attr__( 'Signed', 'neural-forms-lite' ) . '"'
+				/* translators: %d: number of repeated rows */
+				. ' data-rows-label="' . esc_attr__( '%d entries', 'neural-forms-lite' ) . '"'
+				. '>'
+				. '<h3 class="neural-forms-form__review-title" id="' . esc_attr( $review_title_id ) . '">' . esc_html( mb_substr( $review_title, 0, 120 ) ) . '</h3>'
+				. '<p class="neural-forms-form__review-intro">' . esc_html__( 'Check your answers before you submit. Use Edit to change anything.', 'neural-forms-lite' ) . '</p>'
+				. '<div class="neural-forms-form__review-body" data-review-body></div>'
+				. '</section>';
 		}
 
 		// Global (non-field) error container - populated by JS for 429, 5xx,
@@ -897,9 +942,13 @@ class FormRenderer {
 
 	if ( $captcha_enabled && $captcha_provider !== 'none' && $captcha_site_key !== '' ) {
 		// Map provider slug to the auto-render CSS class expected by the SDK.
+		// reCAPTCHA v3 is invisible: its div only carries the site key and
+		// action for form-submit.js, which calls grecaptcha.execute() on submit.
 		$provider_class_map = [
 			'turnstile'    => 'cf-turnstile',
+			'hcaptcha'     => 'h-captcha',
 			'recaptcha_v2' => 'g-recaptcha',
+			'recaptcha_v3' => 'neural-forms-form__captcha--invisible',
 		];
 
 		$provider_class = $provider_class_map[ $captcha_provider ] ?? '';
@@ -909,16 +958,17 @@ class FormRenderer {
 				. ' class="neural-forms-form__captcha ' . esc_attr( $provider_class ) . '"'
 				. ' data-sitekey="' . esc_attr( $captcha_site_key ) . '"'
 				. ' data-neural-forms-captcha="' . esc_attr( $captcha_provider ) . '"'
+				. ( $captcha_provider === 'recaptcha_v3' ? ' data-action="' . esc_attr( \NeuralForms\Captcha\RecaptchaV3Verifier::ACTION ) . '" aria-hidden="true"' : '' )
 				. '></div>';
 
 			// Enqueue the provider script once per page (WP deduplicates).
 			//
-			// These two URLs MUST be loaded from the upstream service -
+			// These URLs MUST be loaded from the upstream service -
 			// CAPTCHA verification depends on the same origin server-side
-			// (challenges.cloudflare.com / www.google.com) issuing the
-			// challenge token that the plugin then verifies via siteverify.
-			// Self-hosting the SDK is not supported by either provider.
-			// Both services are disclosed under "External services" in
+			// (challenges.cloudflare.com / js.hcaptcha.com / www.google.com)
+			// issuing the challenge token that the plugin then verifies via
+			// siteverify. Self-hosting the SDK is not supported by any of
+			// them. All services are disclosed under "External services" in
 			// readme.txt as required for WordPress.org submission.
 			//
 			// phpcs:disable PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent
@@ -930,12 +980,28 @@ class FormRenderer {
 					NEURAL_FORMS_VERSION,
 					true
 				);
+			} elseif ( $captcha_provider === 'hcaptcha' ) {
+				wp_enqueue_script(
+					'neural-forms-hcaptcha',
+					'https://js.hcaptcha.com/1/api.js',
+					[],
+					NEURAL_FORMS_VERSION,
+					true
+				);
 			} elseif ( $captcha_provider === 'recaptcha_v2' ) {
 				wp_enqueue_script(
 					'neural-forms-recaptcha-v2',
 					'https://www.google.com/recaptcha/api.js',
 					[],
 					NEURAL_FORMS_VERSION,
+					true
+				);
+			} elseif ( $captcha_provider === 'recaptcha_v3' ) {
+				wp_enqueue_script(
+					'neural-forms-recaptcha-v3',
+					add_query_arg( 'render', rawurlencode( $captcha_site_key ), 'https://www.google.com/recaptcha/api.js' ),
+					[],
+					null, // a ver= arg would not break Google, but keep the URL exactly as documented
 					true
 				);
 			}
@@ -1203,7 +1269,7 @@ class FormRenderer {
 		// radios), so these always render it visibly regardless of the
 		// block-level toggle — the same rule poll / quiz_question already
 		// follow. Text-like fields keep the label-as-placeholder behaviour.
-		$label_always_visible = in_array( $type, [ 'radio', 'checkboxes', 'rating', 'matrix', 'repeater', 'file' ], true );
+		$label_always_visible = in_array( $type, [ 'radio', 'checkboxes', 'rating', 'matrix', 'repeater', 'file', 'name', 'address', 'signature' ], true );
 
 		// Persist the resolved show_label back onto the field so per-type
 		// renderers (radio / checkboxes) that don't receive $options pick up
@@ -1229,6 +1295,11 @@ class FormRenderer {
 			$conditional_attr = ' data-conditional="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
 		}
 
+		// 1.3.0 Content block: display-only HTML, no label / input / error.
+		if ( $type === 'html' ) {
+			return ExtraFields::render_content_block( $field, $conditional_attr );
+		}
+
 		// Scoped IDs: neural-forms-{form_id}-{field_id}
 		// Prevents ID collisions when two or more forms appear on the same page.
 		$input_id = 'neural-forms-' . $form_id . '-' . $field_id;
@@ -1246,7 +1317,7 @@ class FormRenderer {
 		//   "Full name is required." instead of naming the placeholder
 		//   ("Jane Cooper is required.").
 		$label_html   = '';
-		$owns_legend  = in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater' ], true );
+		$owns_legend  = in_array( $type, [ 'checkbox', 'acceptance', 'radio', 'checkboxes', 'rating', 'poll', 'quiz_question', 'matrix', 'repeater', 'name', 'address' ], true );
 		if ( $lbl !== '' && ! $owns_legend ) {
 			if ( $show_label || $label_always_visible ) {
 				$required_mark = $required
@@ -1335,6 +1406,13 @@ class FormRenderer {
 			case 'file':
 				$input_html = static::render_file( $field, $input_id, $error_id );
 				break;
+			case 'name':
+			case 'address':
+			case 'time':
+			case 'password':
+			case 'signature':
+				$input_html = ExtraFields::render_input( $field, $input_id, $error_id );
+				break;
 			case 'text':
 			default:
 				$input_html = static::render_text( $field, $input_id, $error_id );
@@ -1377,17 +1455,44 @@ class FormRenderer {
 			);
 		}
 
+		// ' URL pre-fill (1.3.0) '
+		// form-submit.js initPrefill() reads ?{param}= from the page URL and
+		// fills the field in the browser, so cached pages never carry one
+		// visitor's values to the next.
+		$prefill_param = self::prefill_param( $field );
+		$prefill_attr  = $prefill_param !== '' ? ' data-prefill="' . esc_attr( $prefill_param ) . '"' : '';
+
 		// ' Wrapper '
 		return '<div'
 			. ' class="neural-forms-form__field neural-forms-form__field--' . esc_attr( $type ) . '"'
 			. ' data-neural-forms-field-id="' . esc_attr( $field_id ) . '"'
 			. $conditional_attr
+			. $prefill_attr
 			. '>'
 			. $label_html
 			. $input_html
 			. $help_html
 			. $error_html
 			. '</div>';
+	}
+
+	/**
+	 * Field types that may be filled from a URL parameter (1.3.0). Single
+	 * checkboxes and acceptance are left out on purpose: a link must never
+	 * tick consent on the visitor's behalf.
+	 */
+	public const PREFILL_TYPES = [ 'text', 'email', 'phone', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkboxes', 'range', 'hidden' ];
+
+	/**
+	 * URL parameter a field is filled from, or '' when none / not allowed.
+	 * Letters, digits, _ - . [ ] only, max 64 characters.
+	 */
+	public static function prefill_param( array $field ): string {
+		if ( ! in_array( (string) ( $field['type'] ?? '' ), self::PREFILL_TYPES, true ) ) {
+			return '';
+		}
+		$param = preg_replace( '/[^A-Za-z0-9_\-.\[\]]/', '', (string) ( $field['prefill_param'] ?? '' ) );
+		return substr( (string) $param, 0, 64 );
 	}
 
 	// Per-type renderers
@@ -1760,10 +1865,15 @@ class FormRenderer {
 	private static function render_hidden( array $field, string $input_id ): string {
 		$value = (string) ( $field['default_value'] ?? '' );
 
+		// Hidden fields have no wrapper, so the URL pre-fill parameter
+		// (1.3.0) sits on the input itself.
+		$prefill = self::prefill_param( $field );
+
 		return '<input type="hidden"'
 			. ' id="' . esc_attr( $input_id ) . '"'
 			. ' name="' . esc_attr( $field['id'] ) . '"'
 			. ' value="' . esc_attr( $value ) . '"'
+			. ( $prefill !== '' ? ' data-prefill="' . esc_attr( $prefill ) . '"' : '' )
 			. '>';
 	}
 

@@ -1,7 +1,15 @@
 == Changelog ==
 
-= 1.2.1 - Unreleased =
+= 1.3.0 - Unreleased =
 
+* Added: hCaptcha and invisible reCAPTCHA v3 spam protection.
+* Added: Check submissions with Akismet (per form, needs the Akismet plugin).
+* Added: Review answers before submitting on multi-step forms.
+* Added: Fill fields from the page link, e.g. ?email=…, and record UTM tags in hidden fields.
+* Added: Form views and conversion rate in Analytics.
+* Added: New fields: Name, Address, Time, Password, Content block and Signature.
+* Improved: Create form with Neural AI can use the new fields.
+* Changed: Switching CAPTCHA provider now asks for that provider's keys.
 * Changed: Removed the Processing health card from Settings.
 
 = 1.2.0 - 2026-11-23 =

@@ -156,6 +156,33 @@ class FieldRegistry {
 		// repeater / matrix / row / step / section / poll / quiz_question
 		// are NOT allowed as children in v1; that whitelist is
 		// enforced in FormValidator + the cloud SchemaNormalizer.
+		// 1.3.0: Name (first/last), Address, Time, Password, Content block
+		// (`html`, display-only) and Signature. Type rules live in
+		// ExtraFields. Not allowed inside a Repeater.
+		'name'          => array(
+			'label'    => 'Name',
+			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width' ),
+		),
+		'address'       => array(
+			'label'    => 'Address',
+			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width' ),
+		),
+		'time'          => array(
+			'label'    => 'Time',
+			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'default_value', 'min', 'max', 'step', 'width' ),
+		),
+		'password'      => array(
+			'label'    => 'Password',
+			'supports' => array( 'label', 'show_label', 'placeholder', 'required', 'help_text', 'css_class', 'settings', 'width' ),
+		),
+		'html'          => array(
+			'label'    => 'Content',
+			'supports' => array( 'label', 'content', 'css_class', 'width' ),
+		),
+		'signature'     => array(
+			'label'    => 'Signature',
+			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'width' ),
+		),
 		'repeater'      => array(
 			'label'    => 'Repeater',
 			'supports' => array( 'label', 'show_label', 'required', 'help_text', 'css_class', 'settings', 'width', 'fields' ),

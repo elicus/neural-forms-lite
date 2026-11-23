@@ -24,6 +24,9 @@ defined( 'ABSPATH' ) || exit;
  */
 class CaptchaManager {
 
+	/** Every provider slug the settings screen accepts. */
+	public const PROVIDERS = array( 'none', 'turnstile', 'hcaptcha', 'recaptcha_v2', 'recaptcha_v3' );
+
 	// Public API
 
 	/**
@@ -46,8 +49,12 @@ class CaptchaManager {
 		switch ( $provider ) {
 			case 'turnstile':
 				return new TurnstileVerifier( $secret_key );
+			case 'hcaptcha':
+				return new HCaptchaVerifier( $secret_key, (string) Config::get( 'captcha_site_key', '' ) );
 			case 'recaptcha_v2':
 				return new RecaptchaV2Verifier( $secret_key );
+			case 'recaptcha_v3':
+				return new RecaptchaV3Verifier( $secret_key, RecaptchaV3Verifier::clamp_threshold( Config::get( 'captcha_v3_threshold', RecaptchaV3Verifier::DEFAULT_THRESHOLD ) ) );
 			default:
 				return null;
 		}

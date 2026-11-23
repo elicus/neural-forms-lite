@@ -95,7 +95,7 @@ class EntryRepository {
 			array(
 				'form_id'      => $form_id,
 				'form_version' => substr( $context['form_version'], 0, 32 ),
-				'status'       => 'new',
+				'status'       => ( $context['status'] ?? '' ) === 'spam' ? 'spam' : 'new',
 				'data'         => $json,
 				'ip_address'   => substr( $context['ip'], 0, 45 ),
 				'user_agent'   => $context['user_agent'],
@@ -186,7 +186,8 @@ class EntryRepository {
 		// (stage exists, assignee may handle entries) is the caller's
 		// job (EntriesEndpoint / workflow actions); this layer only
 		// coerces types.
-		$previous_stage = null;
+		$previous_stage  = null;
+		$previous_status = isset( $data['status'] ) ? self::current_status( $id ) : null;
 		if ( array_key_exists( 'assigned_to', $fields ) ) {
 			$uid                 = (int) $fields['assigned_to'];
 			$data['assigned_to'] = $uid > 0 ? $uid : null;
@@ -254,7 +255,30 @@ class EntryRepository {
 			do_action( 'neural_forms_lead_stage_changed', $id, $previous_stage, $data['lead_stage'], is_array( $fields['_context'] ?? null ) ? $fields['_context'] : array( 'source' => 'user' ) );
 		}
 
+		if ( false !== $result && null !== $previous_status && $previous_status !== $data['status'] ) {
+			/**
+			 * Fires when an entry's inbox status actually changed
+			 * (new / read / spam / trash). Used to report Spam / Not spam
+			 * corrections back to Akismet.
+			 *
+			 * @param int    $id   Entry id.
+			 * @param string $from Previous status.
+			 * @param string $to   New status.
+			 */
+			do_action( 'neural_forms_entry_status_changed', $id, $previous_status, $data['status'] );
+		}
+
 		return false !== $result;
+	}
+
+	/**
+	 * Current inbox status of an entry ('' when the entry does not exist).
+	 */
+	public static function current_status( int $id ): string {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM %i WHERE id = %d', self::table(), $id ) );
+		return is_string( $status ) ? $status : '';
 	}
 
 	/**
@@ -344,6 +368,17 @@ class EntryRepository {
 		$set_clause   = implode( ', ', $set_parts );
 		$table        = self::table();
 
+		// Previous statuses, so neural_forms_entry_status_changed can fire
+		// per entry after the bulk update (same contract as update()).
+		$previous_statuses = array();
+		if ( isset( $fields['status'] ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$prev_rows = $wpdb->get_results( $wpdb->prepare( "SELECT id, status FROM %i WHERE id IN ({$placeholders})", ...array_merge( array( $table ), $ids ) ), ARRAY_A );
+			foreach ( (array) $prev_rows as $r ) {
+				$previous_statuses[ (int) $r['id'] ] = (string) $r['status'];
+			}
+		}
+
 		// $set_clause uses field names from the method-internal whitelist
 		// above; $placeholders is a string of '%d' tokens. All user values
 		// flow through ...$set_values + ...$ids '->-> prepare().
@@ -353,6 +388,16 @@ class EntryRepository {
 			...array_merge( array( $table ), $set_values, $ids )
 		);
 		$wpdb->query( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+		if ( isset( $fields['status'] ) ) {
+			$new_status = self::valid_status( $fields['status'] );
+			foreach ( $previous_statuses as $eid => $from ) {
+				if ( $from !== $new_status ) {
+					/** This action is documented in EntryRepository::update(). */
+					do_action( 'neural_forms_entry_status_changed', $eid, $from, $new_status );
+				}
+			}
+		}
 
 		// Return the subset of requested IDs that actually exist in the table.
 		$confirmed_placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );

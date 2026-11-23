@@ -21,9 +21,10 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 = What's Included =
 
 * Drag and drop form builder with live preview
-* 18 field types: Text, Email, Textarea, Select, Checkbox, Number, Phone, URL, Date, Acceptance, Radio, Checkboxes, Range, Poll, Quiz, File Upload, Hidden, and Rating
+* 23 field types: Text, Email, Textarea, Select, Checkbox, Number, Phone, URL, Date, Time, Name, Address, Password, Signature, Acceptance, Radio, Checkboxes, Range, Poll, Quiz, File Upload, Hidden, and Rating, plus Content blocks for text between fields
 * Row and column layouts (1 to 4 columns per row, mobile-responsive)
-* Multi-step forms with steps, sections, and welcome screens
+* Multi-step forms with steps, sections, welcome screens, and an answer review before submitting
+* Fill fields from the page link and record UTM tags in hidden fields
 * Conditional logic: show or hide any field when all or any of several conditions match
 * Exclude any field from AI so its answer never leaves your site
 * Native Gutenberg block with 150+ styling attributes
@@ -33,7 +34,8 @@ Most form plugins stop at collecting submissions. Neural Forms starts there. Eve
 * Per-form views, bulk actions, and keyboard shortcuts
 * Per-entry message thread for replies
 * CSV export with date filtering
-* Cloudflare Turnstile and Google reCAPTCHA v2 spam protection
+* Form views and conversion rate in Analytics
+* Spam protection with Cloudflare Turnstile, hCaptcha, Google reCAPTCHA v2 / v3, Akismet and a honeypot
 * Admin email notifications and customer auto-responder
 * Privacy mode: disable IP and user-agent storage (GDPR-friendly)
 * One-click Contact Form 7 migration
@@ -135,13 +137,29 @@ When you select Cloudflare Turnstile as your CAPTCHA provider and configure your
 * Terms of Service: [https://www.cloudflare.com/website-terms/](https://www.cloudflare.com/website-terms/)
 * Privacy Policy: [https://www.cloudflare.com/privacypolicy/](https://www.cloudflare.com/privacypolicy/)
 
-**Google reCAPTCHA v2**
+**hCaptcha**
 
-When you select Google reCAPTCHA v2 as your CAPTCHA provider and configure your site and secret keys, the plugin loads the reCAPTCHA challenge script on pages with forms and verifies visitor responses server-side via the Google API. This service is used only when reCAPTCHA v2 is selected as the CAPTCHA provider in Settings.
+When you select hCaptcha as your CAPTCHA provider and configure your site and secret keys, the plugin loads the hCaptcha challenge script on pages with forms and verifies visitor responses server-side via the hCaptcha API. This service is used only when hCaptcha is selected as the CAPTCHA provider in Settings.
+
+* Service website: [https://www.hcaptcha.com/](https://www.hcaptcha.com/)
+* Terms of Service: [https://www.hcaptcha.com/terms](https://www.hcaptcha.com/terms)
+* Privacy Policy: [https://www.hcaptcha.com/privacy](https://www.hcaptcha.com/privacy)
+
+**Google reCAPTCHA v2 and v3**
+
+When you select Google reCAPTCHA v2 or v3 as your CAPTCHA provider and configure your site and secret keys, the plugin loads the reCAPTCHA script on pages with forms and verifies visitor responses server-side via the Google API. reCAPTCHA v3 runs invisibly and returns a score for each submission. This service is used only when reCAPTCHA v2 or v3 is selected as the CAPTCHA provider in Settings.
 
 * Service website: [https://www.google.com/recaptcha/](https://www.google.com/recaptcha/)
 * Terms of Service: [https://policies.google.com/terms](https://policies.google.com/terms)
 * Privacy Policy: [https://policies.google.com/privacy](https://policies.google.com/privacy)
+
+**Akismet**
+
+When the Akismet plugin is installed and connected on your site and you turn on "Check submissions with Akismet" for a form, each submission of that form (name, email, website, text fields, the visitor's IP address, browser user agent and the page URL) is sent to Akismet through the Akismet plugin to check for spam. When you later mark an entry as spam or not spam, that entry is sent again so Akismet can learn. Nothing is sent for forms where the option is off.
+
+* Service website: [https://akismet.com/](https://akismet.com/)
+* Terms of Service: [https://akismet.com/tos/](https://akismet.com/tos/)
+* Privacy Policy: [https://automattic.com/privacy/](https://automattic.com/privacy/)
 
 == Source Code and Build Instructions ==
 
@@ -224,11 +242,11 @@ Yes. Neural Forms ships a native Gutenberg block (`neural-forms/form`) with 150+
 
 = What field types are supported? =
 
-Text, Email, Textarea, Select, Checkbox, Checkboxes, Number, Phone, URL, Date, Acceptance, Radio, Hidden, Range, Poll, Quiz, File Upload, and Rating. That is 18 field types in the free version. Two additional Pro fields (Matrix and Repeater) are available in Neural Forms Pro.
+Text, Email, Textarea, Select, Checkbox, Checkboxes, Number, Phone, URL, Date, Time, Name, Address, Password, Signature, Acceptance, Radio, Hidden, Range, Poll, Quiz, File Upload, and Rating. That is 23 field types in the free version, plus Content blocks for text between fields. Passwords are never stored with the entry. Two additional Pro fields (Matrix and Repeater) are available in Neural Forms Pro.
 
 = How does spam protection work? =
 
-Neural Forms supports Cloudflare Turnstile and Google reCAPTCHA v2 as CAPTCHA providers. Configure your preferred provider in Settings with your site and secret keys. Pro users also get AI spam detection with an adjustable threshold.
+Every form has a hidden honeypot field. You can add a CAPTCHA (Cloudflare Turnstile, hCaptcha, or Google reCAPTCHA v2 or invisible v3) in Settings with your site and secret keys, then turn it on per form. If the Akismet plugin is connected, each form can also check submissions with Akismet: flagged submissions go to Spam instead of the inbox. Pro users also get AI spam detection with an adjustable threshold.
 
 = Can I import my Contact Form 7 forms? =
 
@@ -256,8 +274,16 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 == Changelog ==
 
-= 1.2.1 - Unreleased =
+= 1.3.0 - Unreleased =
 
+* Added: hCaptcha and invisible reCAPTCHA v3 spam protection.
+* Added: Check submissions with Akismet (per form, needs the Akismet plugin).
+* Added: Review answers before submitting on multi-step forms.
+* Added: Fill fields from the page link, e.g. ?email=…, and record UTM tags in hidden fields.
+* Added: Form views and conversion rate in Analytics.
+* Added: New fields: Name, Address, Time, Password, Content block and Signature.
+* Improved: Create form with Neural AI can use the new fields.
+* Changed: Switching CAPTCHA provider now asks for that provider's keys.
 * Changed: Removed the Processing health card from Settings.
 
 = 1.2.0 - 2026-11-23 =

@@ -144,6 +144,10 @@ export default function ResultsApp() {
 	const [ quizData, setQuizData ] = useState( null );
 	const [ quizError, setQuizError ] = useState( '' );
 
+	// 1.3.0: views + conversion (GET /forms/{id}/analytics/views). A
+	// failure just leaves the cards out; it never blocks the page.
+	const [ viewsData, setViewsData ] = useState( null );
+
 	// Whenever the user picks a form, fetch its results. Polls and
 	// quiz are fetched in parallel; the UI renders whichever is
 	// available without blocking the other.
@@ -151,6 +155,7 @@ export default function ResultsApp() {
 		if ( ! selectedId ) {
 			setData( null );
 			setQuizData( null );
+			setViewsData( null );
 			return;
 		}
 		setLoading( true );
@@ -170,7 +175,11 @@ export default function ResultsApp() {
 				setQuizData( null );
 			} );
 
-		Promise.all( [ pollsP, quizP ] ).finally( () => { setLoading( false ); } );
+		const viewsP = api( `/forms/${ selectedId }/analytics/views` )
+			.then( ( res ) => { setViewsData( res ); } )
+			.catch( () => { setViewsData( null ); } );
+
+		Promise.all( [ pollsP, quizP, viewsP ] ).finally( () => { setLoading( false ); } );
 	}, [ selectedId ] );
 
 	useEffect( () => { load(); }, [ load ] );
@@ -244,8 +253,9 @@ export default function ResultsApp() {
 			data,
 			quizData,
 			quizError,
+			viewsData,
 		} ),
-		[ selectedId, selectedForm, data, quizData, quizError ]
+		[ selectedId, selectedForm, data, quizData, quizError, viewsData ]
 	);
 
 	return (

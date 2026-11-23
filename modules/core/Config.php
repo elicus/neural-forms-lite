@@ -45,9 +45,11 @@ class Config {
 		'email_skip_spam_notifications' => false,  // skip email notifications for spam entries
 
 		// CAPTCHA
-		'captcha_provider'              => 'none',       // values: none, turnstile, recaptcha_v2
+		'captcha_provider'              => 'none',       // values: CaptchaManager::PROVIDERS
 		'captcha_site_key'              => '',           // public key, rendered in HTML
 		'captcha_secret_key'            => '',           // private key, used only server-side
+		'captcha_keys_provider'         => '',           // provider the stored keys were saved for
+		'captcha_v3_threshold'          => 0.5,          // reCAPTCHA v3 minimum score, 0.1-0.9
 
 		// Neural Forms Cloud AI. The cloud URL itself is no longer stored as
 		// an option - it is resolved by AiManager::resolve_base_url() from

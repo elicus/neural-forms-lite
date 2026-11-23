@@ -200,6 +200,28 @@ export function formatChoiceValue( value, field ) {
  * Product value { choice, qty, amount } → "SEO, Copywriting × 2" (mirrors
  * PHP ProductFormatter::display).
  */
+/**
+ * 1.3.0 Name / Address: stored as { first, middle, last } /
+ * { line1, line2, city, state, postal, country }. Joined in display order,
+ * name with spaces, address with commas (mirrors ExtraFields::display()).
+ */
+const EXTRA_PART_ORDER = {
+	name:    [ 'first', 'middle', 'last' ],
+	address: [ 'line1', 'line2', 'city', 'state', 'postal', 'country' ],
+};
+export function formatExtraValue( value, field ) {
+	const type = field && field.type;
+	if ( ! EXTRA_PART_ORDER[ type ] ) return '';
+	if ( value == null ) return '';
+	if ( typeof value !== 'object' ) return String( value );
+	const out = [];
+	for ( const k of EXTRA_PART_ORDER[ type ] ) {
+		const v = value[ k ];
+		if ( v != null && typeof v !== 'object' && String( v ).trim() !== '' ) out.push( String( v ).trim() );
+	}
+	return out.join( type === 'name' ? ' ' : ', ' );
+}
+
 export function formatProductValue( value, field ) {
 	if ( ! field || field.type !== 'product' ) return null;
 	const p = ( field.pricing && typeof field.pricing === 'object' ) ? field.pricing : { mode: 'options' };
@@ -434,6 +456,13 @@ function formatPreviewValue( v ) {
 	if ( typeof v === 'string' )  return v;
 	if ( typeof v === 'number' )  return String( v );
 	if ( typeof v === 'boolean' ) return v ? '1' : '0';
+
+	// 1.3.0 Name / Address part objects ("Jo Smith", "1 High St, Leeds").
+	if ( ! Array.isArray( v ) && typeof v === 'object' ) {
+		const keys = Object.keys( v );
+		if ( keys.length && keys.every( ( k ) => EXTRA_PART_ORDER.name.includes( k ) ) ) return formatExtraValue( v, { type: 'name' } );
+		if ( keys.length && keys.every( ( k ) => EXTRA_PART_ORDER.address.includes( k ) ) ) return formatExtraValue( v, { type: 'address' } );
+	}
 
 	if ( Array.isArray( v ) ) {
 		// Empty array (checkboxes group with no picks, etc.).

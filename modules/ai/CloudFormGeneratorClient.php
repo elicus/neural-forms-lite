@@ -97,6 +97,13 @@ final class CloudFormGeneratorClient {
 			'rating',
 			'poll',
 			'quiz_question',
+			// 1.3.0 — the cloud only offers these to plugins that list them.
+			'name',
+			'address',
+			'time',
+			'password',
+			'signature',
+			'html',
 		);
 		$supported  = array();
 		if ( class_exists( '\\NeuralForms\\Forms\\FieldRegistry' ) ) {

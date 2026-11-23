@@ -41,7 +41,7 @@ import api from '../api';
 import AiAnalysisCard from './AiAnalysisCard';
 import AiCarousel     from './AiCarousel';
 import ReplyComposer  from './ReplyComposer';
-import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines, formatProductValue, formatMinor } from './helpers';
+import { formatDate, formatChoiceValue, formatMatrixValueLines, formatRepeaterValueLines, formatProductValue, formatExtraValue, formatMinor } from './helpers';
 import LeadPanel, { ActivityTimeline } from './LeadPanel';
 import QuoteCard from './QuoteCard';
 import PaymentCard from './PaymentCard';
@@ -655,6 +655,30 @@ export default function EntryDetail( {
 						{ rows.map( ( [ k, v ] ) => {
 							const label = ( fieldLabels && fieldLabels[ k ] ) || k;
 							const field = ( fieldSchemas && fieldSchemas[ k ] ) || null;
+
+							// 1.3.0 Name / Address: one readable line.
+							if ( field && ( field.type === 'name' || field.type === 'address' ) ) {
+								return (
+									<div key={ k } className="neural-forms-entry-detail__field-row">
+										<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+										<dd className="neural-forms-entry-detail__field-value">{ formatExtraValue( v, field ) }</dd>
+									</div>
+								);
+							}
+
+							// 1.3.0 Signature: the drawn image, linked to the full file.
+							if ( field && field.type === 'signature' && v && typeof v === 'object' && typeof v.url === 'string' && /^https?:\/\//.test( v.url ) ) {
+								return (
+									<div key={ k } className="neural-forms-entry-detail__field-row">
+										<dt className="neural-forms-entry-detail__field-label">{ label }</dt>
+										<dd className="neural-forms-entry-detail__field-value">
+											<a href={ v.url } target="_blank" rel="noreferrer" className="neural-forms-entry-detail__signature">
+												<img src={ v.url } alt={ __( 'Signature', 'neural-forms-lite' ) } />
+											</a>
+										</dd>
+									</div>
+								);
+							}
 
 							// Product (1.2.0 part B): "SEO, Copywriting × 2".
 							if ( field && field.type === 'product' ) {

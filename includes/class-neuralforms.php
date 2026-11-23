@@ -121,6 +121,9 @@ final class NeuralForms {
 		\NeuralForms\Quotes\QuotesBoot::boot();
 		\NeuralForms\Payments\PaymentsBoot::boot();
 
+		// 1.3.0: report inbox Spam / Not spam corrections back to Akismet.
+		add_action( 'neural_forms_entry_status_changed', array( \NeuralForms\Spam\Akismet::class, 'on_status_changed' ), 10, 3 );
+
 		// Log cleanup: daily cron to prune old DB rows and log files.
 		add_action( 'neural_forms_log_cleanup', array( \NeuralForms\Core\Logger::class, 'cleanup' ) );
 

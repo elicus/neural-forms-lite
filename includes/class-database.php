@@ -41,6 +41,7 @@ class Database {
 			self::sql_quotes( $charset ),
 			self::sql_payments( $charset ),
 			self::sql_payment_events( $charset ),
+			self::sql_form_views( $charset ),
 		);
 
 		foreach ( $tables as $sql ) {
@@ -501,6 +502,22 @@ class Database {
   PRIMARY KEY  (id),
   UNIQUE KEY run_action (run_id,action_key),
   KEY status_next (status,next_attempt_at)
+) {$charset};";
+	}
+
+	/**
+	 * 1.3.0: daily view counters per form (FormViews). Only a number per
+	 * form per day — no visitor data.
+	 */
+	private static function sql_form_views( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_form_views';
+
+		return "CREATE TABLE {$table} (
+  form_id bigint(20) UNSIGNED NOT NULL,
+  view_date date NOT NULL,
+  views int(10) UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY  (form_id,view_date)
 ) {$charset};";
 	}
 }

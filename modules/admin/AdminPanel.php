@@ -3170,6 +3170,8 @@ CSS;
 				// Host upload cap in MB (wp_max_upload_size) — the builder's
 				// File Upload "Maximum file size" control shows + caps to it.
 				'maxUploadMb'         => function_exists( 'wp_max_upload_size' ) ? round( wp_max_upload_size() / 1048576, 1 ) : 0,
+				// 1.3.0 Address field: default-country dropdown in the builder.
+				'countries'           => \NeuralForms\Forms\Countries::all(),
 				'aiSpam'         => array(
 					'enabled'   => (bool) \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
 					'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),
@@ -3197,6 +3199,13 @@ CSS;
 			'captcha'   => array(
 				'configured'  => \NeuralForms\Captcha\CaptchaManager::is_configured(),
 				'settingsUrl' => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
+			),
+
+			// 1.3.0: per-form Akismet check needs the Akismet plugin connected.
+			'akismet'   => array(
+				'available' => \NeuralForms\Spam\Akismet::available(),
+				'installed' => class_exists( '\\Akismet' ),
+				'pluginUrl' => esc_url_raw( admin_url( class_exists( '\\Akismet' ) ? 'options-general.php?page=akismet-key-config' : 'plugin-install.php?s=akismet&tab=search&type=term' ) ),
 			),
 
 			'migration' => array(

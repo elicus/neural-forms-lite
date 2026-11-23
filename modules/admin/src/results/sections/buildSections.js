@@ -83,7 +83,7 @@ export function normaliseAnalytics( { selectedForm, selectedId, data, quizData }
 /**
  * Build the ordered descriptor list. Order here IS the rendered order.
  *
- * @param {object} ctx { selectedId, selectedForm, data, quizData, quizError }
+ * @param {object} ctx { selectedId, selectedForm, data, quizData, quizError, viewsData }
  * @return {Array<object>} descriptors
  */
 export default function buildSections( ctx ) {
@@ -101,8 +101,8 @@ export default function buildSections( ctx ) {
 		isAvailable: true,
 		isEmpty:     false,
 		chrome:      false,
-		data:        { data: ctx.data, quiz: ctx.quizData, selectedForm: ctx.selectedForm },
-		render:      ( d ) => <OverviewCards data={ d.data } quiz={ d.quiz } selectedForm={ d.selectedForm } />,
+		data:        { data: ctx.data, quiz: ctx.quizData, selectedForm: ctx.selectedForm, views: ctx.viewsData },
+		render:      ( d ) => <OverviewCards data={ d.data } quiz={ d.quiz } selectedForm={ d.selectedForm } views={ d.views } />,
 	} );
 
 	// 1b. Payments — Pro analytics for forms that take payments. Sits

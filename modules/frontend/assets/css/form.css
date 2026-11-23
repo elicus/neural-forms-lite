@@ -925,6 +925,116 @@
    Populated and un-hidden by form-submit.js.
  */
 
+/*
+   Entry preview (1.3.0) - summary of answers on the last step of a
+   multi-step form. Filled by form-submit.js renderEntryReview().
+ */
+.neural-forms-form__review {
+    margin: 0 0 1.25rem;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--neural-forms-border);
+    border-radius: var(--neural-forms-radius);
+    background-color: var(--neural-forms-field-bg);
+}
+
+.neural-forms-form__review[hidden] {
+    display: none;
+}
+
+.neural-forms-form .neural-forms-form__review-title {
+    margin: 0 0 0.25rem;
+    padding: 0;
+    font-size: 1.0625rem;
+    line-height: 1.3;
+}
+
+.neural-forms-form__review-intro {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    opacity: 0.75;
+}
+
+.neural-forms-form__review-group {
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--neural-forms-border);
+}
+
+.neural-forms-form__review-group:last-child {
+    padding-bottom: 0;
+}
+
+.neural-forms-form__review-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.neural-forms-form .neural-forms-form__review-step {
+    margin: 0;
+    padding: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.neural-forms-form .neural-forms-form__review-edit {
+    flex: none;
+    margin: 0;
+    padding: 0.125rem 0.25rem;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--neural-forms-accent);
+    font: inherit;
+    font-size: 0.875rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.neural-forms-form .neural-forms-form__review-edit:hover,
+.neural-forms-form .neural-forms-form__review-edit:focus-visible {
+    text-decoration: none;
+}
+
+.neural-forms-form__review-list {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 0.375rem 1rem;
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.neural-forms-form__review-list dt {
+    margin: 0;
+    opacity: 0.75;
+}
+
+.neural-forms-form__review-list dd {
+    margin: 0;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.neural-forms-form__review-empty {
+    margin: 0;
+    font-size: 0.875rem;
+    opacity: 0.6;
+}
+
+@media (max-width: 480px) {
+    .neural-forms-form__review-list {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.125rem;
+    }
+
+    .neural-forms-form__review-list dd {
+        margin-bottom: 0.5rem;
+    }
+}
+
 .neural-forms-form__global-error {
     margin: 0 0 1rem;
     padding: 0.625rem 0.875rem;
@@ -1085,6 +1195,12 @@
 .neural-forms-form__captcha {
     margin-top: 16px;
     margin-bottom: 16px;
+}
+
+/* reCAPTCHA v3 is invisible: the div only carries data for form-submit.js
+   (Google shows its own badge in the page corner). */
+.neural-forms-form__captcha--invisible {
+    display: none;
 }
 
 
@@ -2127,3 +2243,92 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
 .neural-forms-form__totals-row--remaining { opacity: 0.75; font-size: 0.9em; }
 .neural-forms-form__totals-row[hidden] { display: none; }
 .neural-forms-product__notice { font-size: 0.85em; opacity: 0.7; }
+
+/*
+   1.3.0: Name / Address parts, Password, Signature, Content block
+ */
+
+.neural-forms-form__parts-group {
+    border: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.neural-forms-form__parts {
+    display: grid;
+    grid-template-columns: repeat( 2, minmax( 0, 1fr ) );
+    gap: 0.75rem 1rem;
+}
+
+.neural-forms-form__parts--name:has( .neural-forms-form__part--middle ) {
+    grid-template-columns: repeat( 3, minmax( 0, 1fr ) );
+}
+
+.neural-forms-form__part--line1,
+.neural-forms-form__part--line2 {
+    grid-column: 1 / -1;
+}
+
+.neural-forms-form__sublabel {
+    display: block;
+    margin: 0.25rem 0 0;
+    color: #6b7280;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.neural-forms-form__part--confirm {
+    margin-top: 0.75rem;
+}
+
+.neural-forms-form__signature-pad {
+    display: block;
+    width: 100%;
+    height: 180px;
+    color: var(--neural-forms-text);
+    background-color: var(--neural-forms-field-bg);
+    border: var(--neural-forms-border-width) dashed var(--neural-forms-border);
+    border-radius: var(--neural-forms-radius);
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.neural-forms-form__field--has-error .neural-forms-form__signature-pad {
+    border-color: var(--neural-forms-border-error);
+}
+
+.neural-forms-form__signature-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.25rem;
+}
+
+.neural-forms-form .neural-forms-form__signature-clear {
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    background: none;
+    color: var(--neural-forms-accent);
+    font: inherit;
+    font-size: 0.8125rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.neural-forms-form__content-block {
+    margin-bottom: var(--neural-forms-field-gap);
+    color: var(--neural-forms-text);
+    line-height: 1.6;
+}
+
+.neural-forms-form__content-block > :first-child { margin-top: 0; }
+.neural-forms-form__content-block > :last-child { margin-bottom: 0; }
+
+@media ( max-width: 480px ) {
+    .neural-forms-form__parts,
+    .neural-forms-form__parts--name:has( .neural-forms-form__part--middle ) {
+        grid-template-columns: minmax( 0, 1fr );
+    }
+}

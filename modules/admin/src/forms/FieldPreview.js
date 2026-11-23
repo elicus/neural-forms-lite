@@ -13,6 +13,7 @@
  */
 
 import { __ } from '@wordpress/i18n';
+import { extraParts } from './FieldTypes';
 
 function readOnlyText( { field, type, classMod = '' } ) {
 	return (
@@ -316,6 +317,69 @@ function readOnlyCalculated( { field } ) {
 	);
 }
 
+// 1.3.0 previews.
+function countryName( value ) {
+	const list = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.plugin?.countries ) || {};
+	const v = typeof value === 'string' ? value.trim() : '';
+	return list[ v.toUpperCase() ] || v;
+}
+
+function readOnlyParts( { field } ) {
+	const ph = ( field.settings && field.settings.placeholders ) || {};
+	return (
+		<div className={ 'nf-preview__parts nf-preview__parts--' + field.type } aria-hidden="true">
+			{ extraParts( field ).map( ( [ key, label ] ) => (
+				<div key={ key } className={ 'nf-preview__part nf-preview__part--' + key }>
+					{ key === 'country' ? (
+						<select className="nf-preview__select" disabled>
+							<option>{ countryName( field.settings?.default_country ) || __( 'Select a country', 'neural-forms-lite' ) }</option>
+						</select>
+					) : (
+						<input type="text" className="nf-preview__input" readOnly tabIndex={ -1 } placeholder={ ph[ key ] || '' } />
+					) }
+					<span className="nf-preview__sublabel">{ label }</span>
+				</div>
+			) ) }
+		</div>
+	);
+}
+
+function readOnlyPassword( { field } ) {
+	const min = Number( field.settings?.min_length ) || 8;
+	return (
+		<div aria-hidden="true">
+			<input type="password" className="nf-preview__input" readOnly tabIndex={ -1 } placeholder={ field.placeholder || '' } />
+			{ field.settings?.confirm && (
+				<>
+					<input type="password" className="nf-preview__input nf-preview__part--confirm" readOnly tabIndex={ -1 } />
+					<span className="nf-preview__sublabel">{ __( 'Confirm password', 'neural-forms-lite' ) }</span>
+				</>
+			) }
+			<span className="nf-preview__sublabel">{ __( 'At least', 'neural-forms-lite' ) } { min } { __( 'characters.', 'neural-forms-lite' ) }</span>
+		</div>
+	);
+}
+
+function readOnlySignature() {
+	return (
+		<div aria-hidden="true">
+			<div className="nf-preview__signature">{ __( 'Sign here', 'neural-forms-lite' ) }</div>
+			<span className="nf-preview__sublabel">{ __( 'Visitors draw with a mouse, finger or stylus.', 'neural-forms-lite' ) }</span>
+		</div>
+	);
+}
+
+// The builder shows the content as TEXT (tags stripped): it is rendered
+// as HTML only on the live form, after wp_kses_post().
+function readOnlyContent( { field } ) {
+	const text = String( field.content || '' ).replace( /<[^>]*>/g, ' ' ).replace( /\s+/g, ' ' ).trim();
+	return (
+		<div className="nf-preview__content" aria-hidden="true">
+			{ text || __( '(empty content block)', 'neural-forms-lite' ) }
+		</div>
+	);
+}
+
 export default function FieldPreview( { field } ) {
 	if ( ! field || typeof field !== 'object' ) return null;
 	switch ( field.type ) {
@@ -341,6 +405,12 @@ export default function FieldPreview( { field } ) {
 		case 'repeater':   return readOnlyRepeater( { field } );
 		case 'file':       return readOnlyFile( { field } );
 		case 'hidden':     return readOnlyHidden( { field } );
+		case 'name':
+		case 'address':    return readOnlyParts( { field } );
+		case 'time':       return readOnlyText( { field, type: 'time' } );
+		case 'password':   return readOnlyPassword( { field } );
+		case 'signature':  return readOnlySignature();
+		case 'html':       return readOnlyContent( { field } );
 		case 'text':
 		default:           return readOnlyText( { field, type: 'text' } );
 	}

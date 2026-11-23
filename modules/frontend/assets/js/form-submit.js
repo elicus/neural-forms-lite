@@ -57,6 +57,9 @@
 		initRepeaters( form );
 		initPhonePickers( form );
 		initRandomizeOptions( form );
+		initPrefill( form );
+		initViewTracking( form );
+		initSignatures( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
 		// step-driven mutations are captured. Must run before the first
 		// submit so the "always" restoration path has the original bars
@@ -66,6 +69,292 @@
 		// snapshot them anyway so the reset path is symmetric with
 		// poll's restore semantics.
 		snapshotQuizResults( form );
+	}
+
+	// Signature pads (1.3.0)
+
+	/**
+	 * Draw-to-sign pad. Strokes are drawn on the canvas; after each stroke
+	 * the PNG goes into the hidden input as a data URL (the server checks it
+	 * is a real, small PNG and saves it as a private image). "Clear" and a
+	 * form reset empty both.
+	 */
+	function initSignatures( form ) {
+		var pads = form.querySelectorAll( '[data-neural-forms-signature]' );
+		for ( var i = 0; i < pads.length; i++ ) {
+			setupSignature( pads[ i ] );
+		}
+		if ( pads.length ) {
+			form.addEventListener( 'reset', function () {
+				for ( var j = 0; j < pads.length; j++ ) {
+					if ( pads[ j ]._nfClear ) pads[ j ]._nfClear();
+				}
+			} );
+		}
+	}
+
+	function setupSignature( pad ) {
+		var canvas = pad.querySelector( 'canvas' );
+		var input  = pad.querySelector( 'input[type="hidden"]' );
+		var clear  = pad.querySelector( '[data-neural-forms-signature-clear]' );
+		if ( ! canvas || ! input || ! canvas.getContext ) return;
+		var ctx     = canvas.getContext( '2d' );
+		var drawing = false;
+		var dirty   = false;
+		var last    = null;
+
+		// Match the canvas to its on-screen size (max 2x pixel ratio, max
+		// 1600 x 600 px) so lines are crisp and the PNG stays small. Only
+		// while empty: resizing a canvas wipes it.
+		function fit() {
+			if ( dirty ) return;
+			var rect  = canvas.getBoundingClientRect();
+			if ( ! rect.width || ! rect.height ) return;
+			var ratio = Math.min( window.devicePixelRatio || 1, 2 );
+			var w = Math.min( 1600, Math.round( rect.width * ratio ) );
+			var h = Math.min( 600, Math.round( rect.height * ratio ) );
+			if ( canvas.width !== w || canvas.height !== h ) {
+				canvas.width  = w;
+				canvas.height = h;
+			}
+			var color = window.getComputedStyle( canvas ).color || '#111827';
+			ctx.setTransform( w / rect.width, 0, 0, h / rect.height, 0, 0 );
+			ctx.lineWidth   = 2.2;
+			ctx.lineCap     = 'round';
+			ctx.lineJoin    = 'round';
+			ctx.strokeStyle = color;
+		}
+
+		function point( ev ) {
+			var rect = canvas.getBoundingClientRect();
+			return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+		}
+
+		function save() {
+			try {
+				input.value = canvas.toDataURL( 'image/png' );
+			} catch ( e ) {
+				input.value = '';
+			}
+			fireChange( input );
+			var w = pad.closest( '.neural-forms-form__field' );
+			if ( w && w.classList.contains( 'neural-forms-form__field--has-error' ) ) {
+				w.classList.remove( 'neural-forms-form__field--has-error' );
+				var err = w.querySelector( '.neural-forms-form__field-error' );
+				if ( err ) { err.textContent = ''; err.hidden = true; }
+			}
+		}
+
+		canvas.addEventListener( 'pointerdown', function ( ev ) {
+			if ( ev.button !== undefined && ev.button !== 0 ) return;
+			fit();
+			drawing = true;
+			last    = point( ev );
+			try { canvas.setPointerCapture( ev.pointerId ); } catch ( e ) { /* noop */ }
+			ctx.beginPath();
+			ctx.arc( last.x, last.y, ctx.lineWidth / 2, 0, Math.PI * 2 );
+			ctx.fillStyle = ctx.strokeStyle;
+			ctx.fill();
+			dirty = true;
+			ev.preventDefault();
+		} );
+		canvas.addEventListener( 'pointermove', function ( ev ) {
+			if ( ! drawing ) return;
+			var p = point( ev );
+			ctx.beginPath();
+			ctx.moveTo( last.x, last.y );
+			ctx.lineTo( p.x, p.y );
+			ctx.stroke();
+			last = p;
+			ev.preventDefault();
+		} );
+		function end() {
+			if ( ! drawing ) return;
+			drawing = false;
+			save();
+		}
+		canvas.addEventListener( 'pointerup', end );
+		canvas.addEventListener( 'pointercancel', end );
+		canvas.addEventListener( 'pointerleave', end );
+
+		pad._nfClear = function () {
+			ctx.setTransform( 1, 0, 0, 1, 0, 0 );
+			ctx.clearRect( 0, 0, canvas.width, canvas.height );
+			dirty = false;
+			input.value = '';
+			fit();
+		};
+		if ( clear ) {
+			clear.addEventListener( 'click', function () {
+				pad._nfClear();
+				fireChange( input );
+			} );
+		}
+		fit();
+		window.addEventListener( 'resize', fit );
+	}
+
+	// View counting (1.3.0)
+
+	/**
+	 * Count one view of this form for Analytics: once per browser session
+	 * per form, when at least 40% of it has been on screen. Only forms the
+	 * server marked with data-neural-forms-track-view (public render,
+	 * visitor can't manage forms). Sends nothing about the visitor.
+	 */
+	function initViewTracking( form ) {
+		if ( form.getAttribute( 'data-neural-forms-track-view' ) !== '1' ) return;
+		var formId = form.getAttribute( 'data-neural-forms-id' );
+		if ( ! formId || ! getApiUrl() ) return;
+		var key = 'neural_forms_viewed_' + formId;
+		try {
+			if ( window.sessionStorage.getItem( key ) ) return;
+		} catch ( e ) { /* storage blocked: still count, once per page */ }
+
+		var sent = false;
+		function send() {
+			if ( sent ) return;
+			sent = true;
+			try { window.sessionStorage.setItem( key, '1' ); } catch ( e ) { /* noop */ }
+			var url = getApiUrl().replace( /\/+$/, '' ) + '/forms/' + formId + '/view';
+			try {
+				if ( navigator.sendBeacon && navigator.sendBeacon( url ) ) return;
+			} catch ( e ) { /* fall through */ }
+			try { fetch( url, { method: 'POST', keepalive: true, credentials: 'omit' } ); } catch ( e ) { /* noop */ }
+		}
+
+		if ( typeof window.IntersectionObserver !== 'function' ) {
+			send();
+			return;
+		}
+		// 40% of the form on screen, or - for a form taller than the
+		// window - enough of it to fill 40% of the window.
+		var io = new window.IntersectionObserver( function ( list ) {
+			for ( var i = 0; i < list.length; i++ ) {
+				var en = list[ i ];
+				if ( en.isIntersecting && ( en.intersectionRatio >= 0.4 || en.intersectionRect.height >= window.innerHeight * 0.4 ) ) {
+					io.disconnect();
+					send();
+					return;
+				}
+			}
+		}, { threshold: [ 0, 0.1, 0.2, 0.3, 0.4 ] } );
+		io.observe( form );
+	}
+
+	// URL pre-fill (1.3.0)
+
+	var PREFILL_STORE = 'neural_forms_prefill';
+	var PREFILL_MAX   = 500;
+
+	function prefillStoreRead() {
+		try {
+			var raw = window.sessionStorage.getItem( PREFILL_STORE );
+			var obj = raw ? JSON.parse( raw ) : null;
+			return obj && typeof obj === 'object' ? obj : {};
+		} catch ( e ) {
+			return {};
+		}
+	}
+
+	function prefillStoreWrite( obj ) {
+		try { window.sessionStorage.setItem( PREFILL_STORE, JSON.stringify( obj ) ); } catch ( e ) { /* private mode */ }
+	}
+
+	function prefillMatches( input, wanted ) {
+		var w = String( wanted ).trim().toLowerCase();
+		if ( String( input.value ).toLowerCase() === w ) return true;
+		return reviewOptionText( input ).toLowerCase() === w;
+	}
+
+	function isHiddenPrefill( el ) {
+		return el.tagName === 'INPUT' && el.type === 'hidden';
+	}
+
+	function fireChange( el ) {
+		el.dispatchEvent( new Event( 'input',  { bubbles: true } ) );
+		el.dispatchEvent( new Event( 'change', { bubbles: true } ) );
+	}
+
+	/**
+	 * Fill one field wrapper with a value from the URL. Visible fields are
+	 * only filled while empty, so nothing the visitor typed is replaced.
+	 * Options match by value or by label (case-insensitive); a value that
+	 * matches no option is ignored.
+	 */
+	function applyPrefill( wrap, value ) {
+		var i;
+		var choices = isHiddenPrefill( wrap ) ? [] : wrap.querySelectorAll( 'input[type="radio"], input[type="checkbox"]' );
+		if ( choices.length ) {
+			for ( i = 0; i < choices.length; i++ ) if ( choices[ i ].checked ) return;
+			var wanted = choices[ 0 ].type === 'checkbox' ? value.split( ',' ) : [ value ];
+			for ( i = 0; i < choices.length; i++ ) {
+				for ( var w = 0; w < wanted.length; w++ ) {
+					if ( wanted[ w ].trim() !== '' && prefillMatches( choices[ i ], wanted[ w ] ) ) {
+						choices[ i ].checked = true;
+						fireChange( choices[ i ] );
+						break;
+					}
+				}
+			}
+			return;
+		}
+
+		var sel = isHiddenPrefill( wrap ) ? null : wrap.querySelector( 'select' );
+		if ( sel ) {
+			if ( sel.value !== '' ) return;
+			for ( i = 0; i < sel.options.length; i++ ) {
+				if ( sel.options[ i ].value !== '' && ( sel.options[ i ].value.toLowerCase() === value.trim().toLowerCase() || ( sel.options[ i ].textContent || '' ).trim().toLowerCase() === value.trim().toLowerCase() ) ) {
+					sel.value = sel.options[ i ].value;
+					fireChange( sel );
+					return;
+				}
+			}
+			return;
+		}
+
+		// Hidden fields carry data-prefill on the bare <input> itself.
+		var hidden = isHiddenPrefill( wrap );
+		var el = hidden
+			? wrap
+			: wrap.querySelector( 'textarea, input:not([type="hidden"]):not([type="file"]):not(.neural-forms-form__phone-search)' );
+		if ( ! el ) return;
+		// Hidden fields: the URL wins over the default value. Visible
+		// fields: only fill when empty.
+		if ( ! hidden && String( el.value ).trim() !== '' ) return;
+		el.value = value;
+		fireChange( el );
+	}
+
+	/**
+	 * Fill fields that carry data-prefill="{param}" from the page URL.
+	 * Hidden fields also remember the value for the browser session, so a
+	 * visitor who landed with ?utm_source=… and opened the form on a later
+	 * page (that also loads Neural Forms) still sends it.
+	 */
+	function initPrefill( form ) {
+		var wraps = form.querySelectorAll( '[data-prefill]' );
+		if ( ! wraps.length ) return;
+		var params;
+		try { params = new URLSearchParams( window.location.search ); } catch ( e ) { return; }
+		var store = prefillStoreRead();
+		var changed = false;
+		for ( var i = 0; i < wraps.length; i++ ) {
+			var name  = wraps[ i ].getAttribute( 'data-prefill' );
+			var isHid = isHiddenPrefill( wraps[ i ] );
+			var value = null;
+			if ( name && params.has( name ) ) {
+				value = params.get( name );
+				if ( isHid && store[ name ] !== value ) { store[ name ] = String( value ).slice( 0, PREFILL_MAX ); changed = true; }
+			} else if ( name && isHid && typeof store[ name ] === 'string' ) {
+				value = store[ name ];
+			}
+			if ( value === null ) continue;
+			value = String( value ).slice( 0, PREFILL_MAX );
+			if ( value.trim() === '' ) continue;
+			applyPrefill( wraps[ i ], value );
+		}
+		if ( changed ) prefillStoreWrite( store );
 	}
 
 	// Randomize options (quiz + poll)
@@ -708,6 +997,30 @@
 			return;
 		}
 
+		// reCAPTCHA v3 is invisible: ask Google for a fresh token now
+		// (tokens expire after two minutes), then send.
+		if ( captchaToken === CAPTCHA_V3 ) {
+			executeRecaptchaV3( form ).then( function ( token ) {
+				sendSubmission( form, formId, token );
+			}, function () {
+				showGlobalError( form, 'The spam check could not load. Please refresh the page and try again.' );
+				setSubmitting( form, false );
+			} );
+			return;
+		}
+
+		sendSubmission( form, formId, captchaToken );
+	}
+
+	/**
+	 * POST the submission and handle the response. Split from handleSubmit
+	 * so the invisible reCAPTCHA v3 path can fetch its token first.
+	 *
+	 * @param {HTMLFormElement} form
+	 * @param {string}          formId
+	 * @param {string|null}     captchaToken
+	 */
+	function sendSubmission( form, formId, captchaToken ) {
 		// Strip any trailing slash from the base URL so concatenation is clean
 		// regardless of whether rest_url() appends one or not.
 		var baseUrl  = getApiUrl().replace( /\/+$/, '' );
@@ -2203,6 +2516,42 @@
 			var label    = fieldLabelText( w, input );
 			var required = input.required || input.hasAttribute( 'required' );
 
+			// 1.3.0 Name / Address: every required part must be filled.
+			if ( w.querySelector( '.neural-forms-form__parts-group' ) ) {
+				var partInputs = w.querySelectorAll( 'input[required], select[required]' );
+				var missing    = null;
+				for ( var pi = 0; pi < partInputs.length; pi++ ) {
+					if ( String( partInputs[ pi ].value || '' ).trim() === '' ) { missing = partInputs[ pi ]; break; }
+				}
+				if ( missing ) {
+					var partLabel = w.querySelector( 'label[for="' + missing.id + '"]' );
+					var partText  = partLabel ? ( partLabel.textContent || '' ).replace( /\*\s*$/, '' ).trim() : '';
+					markFieldInvalid( w, label + ( partText ? ': ' + partText : '' ) + ' is required.' );
+					if ( ! firstError ) firstError = w;
+				}
+				continue;
+			}
+
+			// 1.3.0 Password: minimum length + confirmation (server re-checks).
+			if ( input.type === 'password' ) {
+				var pwVal = String( input.value || '' );
+				var pwMin = parseInt( input.getAttribute( 'minlength' ), 10 ) || 0;
+				var pwConfirm = w.querySelector( '[data-neural-forms-confirm-of]' );
+				var pwErr = null;
+				if ( pwVal === '' ) {
+					if ( required ) pwErr = label + ' is required.';
+				} else if ( pwMin && pwVal.length < pwMin ) {
+					pwErr = label + ' must be at least ' + pwMin + ' characters.';
+				} else if ( pwConfirm && pwConfirm.value !== pwVal ) {
+					pwErr = 'The passwords do not match.';
+				}
+				if ( pwErr ) {
+					markFieldInvalid( w, pwErr );
+					if ( ! firstError ) firstError = w;
+				}
+				continue;
+			}
+
 			if ( input.type === 'file' ) {
 				if ( required && input.files && input.files.length === 0 ) {
 					markFieldInvalid( w, label + ' is required.' );
@@ -2432,6 +2781,7 @@
 		resetQuizResults( form );
 		clearDynamicResults( form );
 		resetMultiStep( form );
+		initPrefill( form );
 
 		var submit = form.querySelector( '.neural-forms-form__submit' );
 		if ( submit ) {
@@ -3114,9 +3464,13 @@
 	 *           Caller should block submission and show an error.
 	 *   str   - token string, ready to include in the submission payload.
 	 *
-	 * Both Turnstile and reCAPTCHA v2 inject a hidden <input> or <textarea>
-	 * into the form when the user completes the challenge:
+	 *   CAPTCHA_V3 - invisible reCAPTCHA v3; the caller fetches a token with
+	 *           executeRecaptchaV3() just before sending.
+	 *
+	 * Turnstile, hCaptcha and reCAPTCHA v2 inject a hidden <input> or
+	 * <textarea> into the form when the user completes the challenge:
 	 *   Turnstile    '->-> input[name="cf-turnstile-response"]
+	 *   hCaptcha     '->-> textarea[name="h-captcha-response"]
 	 *   reCAPTCHA v2 '->-> textarea[name="g-recaptcha-response"]
 	 *
 	 * data-neural-forms-captcha on the widget div stores the provider slug so we
@@ -3125,6 +3479,8 @@
 	 * @param  {HTMLFormElement} form
 	 * @return {string|null}
 	 */
+	var CAPTCHA_V3 = '__nf_recaptcha_v3__';
+
 	function getCaptchaToken( form ) {
 		var widget = form.querySelector( '[data-neural-forms-captcha]' );
 		if ( ! widget ) {
@@ -3134,8 +3490,14 @@
 		var provider  = widget.getAttribute( 'data-neural-forms-captcha' );
 		var inputName = null;
 
+		if ( provider === 'recaptcha_v3' ) {
+			return CAPTCHA_V3;
+		}
+
 		if ( provider === 'turnstile' ) {
 			inputName = 'cf-turnstile-response';
+		} else if ( provider === 'hcaptcha' ) {
+			inputName = 'h-captcha-response';
 		} else if ( provider === 'recaptcha_v2' ) {
 			inputName = 'g-recaptcha-response';
 		}
@@ -3157,13 +3519,14 @@
 	 * Reset the CAPTCHA widget after a failed submission so the user can
 	 * complete the challenge again without refreshing the page.
 	 *
-	 * Turnstile: window.turnstile.reset(container) resets a specific widget.
-	 * reCAPTCHA v2: window.grecaptcha.reset() resets the first widget on the
-	 *               page. With one form per page this is always correct.
-	 *               Multi-form pages with reCAPTCHA would need widget IDs,
-	 *               which is out of scope for MVP.
+	 * Turnstile:    window.turnstile.reset(container) resets that widget.
+	 * hCaptcha:     the auto-rendered iframe carries data-hcaptcha-widget-id.
+	 * reCAPTCHA v2: auto-rendered widgets get ids 0, 1, 2… in page order,
+	 *               so the widget's index among .g-recaptcha divs is its id
+	 *               (multi-form pages reset the right widget).
+	 * reCAPTCHA v3: nothing to reset; every submit fetches a new token.
 	 *
-	 * Both calls are guarded - if the SDK has not loaded or the widget div
+	 * All calls are guarded - if the SDK has not loaded or the widget div
 	 * is absent, the reset is silently skipped.
 	 *
 	 * @param {HTMLFormElement} form
@@ -3176,11 +3539,52 @@
 
 		var provider = widget.getAttribute( 'data-neural-forms-captcha' );
 
-		if ( provider === 'turnstile' && window.turnstile ) {
-			window.turnstile.reset( widget );
-		} else if ( provider === 'recaptcha_v2' && window.grecaptcha ) {
-			window.grecaptcha.reset();
-		}
+		try {
+			if ( provider === 'turnstile' && window.turnstile ) {
+				window.turnstile.reset( widget );
+			} else if ( provider === 'hcaptcha' && window.hcaptcha ) {
+				var frame = widget.querySelector( 'iframe[data-hcaptcha-widget-id]' );
+				if ( frame ) {
+					window.hcaptcha.reset( frame.getAttribute( 'data-hcaptcha-widget-id' ) );
+				} else {
+					window.hcaptcha.reset();
+				}
+			} else if ( provider === 'recaptcha_v2' && window.grecaptcha ) {
+				var all = Array.prototype.slice.call( document.querySelectorAll( '.g-recaptcha' ) );
+				var idx = all.indexOf( widget );
+				window.grecaptcha.reset( idx > 0 ? idx : undefined );
+			}
+		} catch ( err ) { /* widget already gone — nothing to reset */ }
+	}
+
+	/**
+	 * Fetch an invisible reCAPTCHA v3 token for this form's submit action.
+	 * Resolves with the token; rejects when the script never loaded.
+	 *
+	 * @param  {HTMLFormElement} form
+	 * @return {Promise<string>}
+	 */
+	function executeRecaptchaV3( form ) {
+		var widget  = form.querySelector( '[data-neural-forms-captcha="recaptcha_v3"]' );
+		var siteKey = widget ? widget.getAttribute( 'data-sitekey' ) : '';
+		var action  = ( widget && widget.getAttribute( 'data-action' ) ) || 'neural_forms_submit';
+		return new Promise( function ( resolve, reject ) {
+			var g = window.grecaptcha;
+			if ( ! siteKey || ! g || typeof g.ready !== 'function' ) {
+				reject( new Error( 'recaptcha_unavailable' ) );
+				return;
+			}
+			var timer = setTimeout( function () { reject( new Error( 'recaptcha_timeout' ) ); }, 10000 );
+			g.ready( function () {
+				g.execute( siteKey, { action: action } ).then( function ( token ) {
+					clearTimeout( timer );
+					resolve( String( token || '' ) );
+				}, function ( err ) {
+					clearTimeout( timer );
+					reject( err );
+				} );
+			} );
+		} );
 	}
 
 	/**
@@ -3210,6 +3614,199 @@
 	 * Initialise multi-step navigation for a form, if applicable.
 	 * @param {HTMLFormElement} form
 	 */
+	// ── Entry preview (1.3.0) ───────────────────────────────────────
+	// Reads what the visitor entered straight from the DOM and turns each
+	// field into one display string. Text only: values are written with
+	// textContent, never as HTML.
+
+	function reviewOptionText( input ) {
+		var lbl = input.closest( 'label' );
+		if ( ! lbl && input.id ) {
+			lbl = input.ownerDocument.querySelector( 'label[for="' + cssEscapeValue( input.id ) + '"]' );
+		}
+		var txt = lbl ? ( lbl.textContent || '' ).replace( /\s+/g, ' ' ).trim() : '';
+		return txt !== '' ? txt : String( input.value || '' );
+	}
+
+	function reviewFieldValue( wrapper, labels ) {
+		var cls  = wrapper.className || '';
+		var type = ( cls.match( /neural-forms-form__field--([a-z_]+)/ ) || [] )[ 1 ] || '';
+		var i;
+
+		if ( type === 'hidden' ) return '';
+
+		// 1.3.0 types.
+		if ( type === 'password' ) {
+			var pw = wrapper.querySelector( 'input[type="password"]' );
+			return pw && pw.value ? '••••••••' : '';
+		}
+		if ( type === 'signature' ) {
+			var sig = wrapper.querySelector( 'input[type="hidden"]' );
+			return sig && sig.value ? ( labels.signed || 'Signed' ) : '';
+		}
+		if ( type === 'name' ) {
+			var nameParts = [];
+			var nameInputs = wrapper.querySelectorAll( 'input' );
+			for ( i = 0; i < nameInputs.length; i++ ) {
+				var nv = String( nameInputs[ i ].value || '' ).trim();
+				if ( nv !== '' ) nameParts.push( nv );
+			}
+			return nameParts.join( ' ' );
+		}
+
+		if ( type === 'calculated' ) {
+			var out = wrapper.querySelector( 'output' );
+			return out ? ( out.textContent || '' ).trim() : '';
+		}
+
+		if ( type === 'repeater' ) {
+			var rows = wrapper.querySelectorAll( '[data-repeater-item]' );
+			return rows.length ? labels.rows.replace( '%d', String( rows.length ) ) : '';
+		}
+
+		if ( type === 'rating' ) {
+			var stars = wrapper.querySelectorAll( 'input[type="radio"]' );
+			for ( i = 0; i < stars.length; i++ ) {
+				if ( stars[ i ].checked ) return stars[ i ].value + ' / ' + stars.length;
+			}
+			return '';
+		}
+
+		if ( type === 'matrix' ) {
+			var lines = [];
+			var trs = wrapper.querySelectorAll( 'tr' );
+			for ( i = 0; i < trs.length; i++ ) {
+				var th = trs[ i ].querySelector( '.neural-forms-matrix__row-label' );
+				if ( ! th ) continue;
+				var picked = [];
+				var cells = trs[ i ].querySelectorAll( 'input:checked' );
+				for ( var c = 0; c < cells.length; c++ ) {
+					var head = wrapper.querySelectorAll( '.neural-forms-matrix__col' )[ cells[ c ].closest( 'td' ) ? cells[ c ].closest( 'td' ).cellIndex - 1 : -1 ];
+					picked.push( head ? ( head.textContent || '' ).trim() : String( cells[ c ].value ) );
+				}
+				if ( picked.length ) lines.push( ( th.textContent || '' ).trim() + ': ' + picked.join( ', ' ) );
+			}
+			return lines.join( '\n' );
+		}
+
+		var parts = [];
+		var qty   = '';
+		var controls = wrapper.querySelectorAll( 'input, select, textarea' );
+		for ( i = 0; i < controls.length; i++ ) {
+			var el = controls[ i ];
+			if ( el.disabled ) continue;
+			if ( el.closest( '.neural-forms-form__phone-dropdown' ) ) continue;
+			var t = ( el.type || '' ).toLowerCase();
+			var name = el.getAttribute( 'name' ) || '';
+			if ( t === 'hidden' || t === 'button' || t === 'submit' ) continue;
+			if ( /\[qty\]$/.test( name ) ) { qty = String( el.value || '' ); continue; }
+			if ( t === 'radio' ) {
+				if ( el.checked ) parts.push( reviewOptionText( el ) );
+			} else if ( t === 'checkbox' ) {
+				if ( el.checked ) {
+					// A lone checkbox / acceptance is a yes/no question.
+					parts.push( ( type === 'checkbox' || type === 'acceptance' ) ? labels.yes : reviewOptionText( el ) );
+				}
+			} else if ( t === 'file' ) {
+				for ( var f = 0; el.files && f < el.files.length; f++ ) parts.push( el.files[ f ].name );
+			} else if ( el.tagName === 'SELECT' ) {
+				for ( var o = 0; o < el.options.length; o++ ) {
+					if ( el.options[ o ].selected && el.options[ o ].value !== '' ) parts.push( ( el.options[ o ].textContent || '' ).trim() );
+				}
+			} else {
+				var v = String( el.value || '' ).trim();
+				if ( v !== '' ) parts.push( v );
+			}
+		}
+		var text = parts.join( ', ' );
+		if ( text !== '' && type === 'product' && qty !== '' && qty !== '1' ) text += ' × ' + qty;
+		return text;
+	}
+
+	function isHiddenByLogicWithin( el, stop ) {
+		for ( var n = el; n && n !== stop; n = n.parentElement ) {
+			if ( n.hasAttribute && n.hasAttribute( 'data-conditional' ) && n.style.display === 'none' ) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Fill the review panel. steps / eligible come from initMultiStep;
+	 * onEdit( stepIndex ) jumps back to a step.
+	 */
+	function renderEntryReview( panel, steps, eligible, onEdit ) {
+		var body = panel.querySelector( '[data-review-body]' );
+		if ( ! body ) return;
+		var labels = {
+			edit:     panel.getAttribute( 'data-edit-label' ) || 'Edit',
+			editStep: panel.getAttribute( 'data-edit-step-label' ) || 'Edit %s',
+			step:     panel.getAttribute( 'data-step-label' ) || 'Step %d',
+			empty:    panel.getAttribute( 'data-empty-label' ) || 'Nothing entered',
+			yes:      panel.getAttribute( 'data-yes-label' ) || 'Yes',
+			signed:   panel.getAttribute( 'data-signed-label' ) || 'Signed',
+			rows:     panel.getAttribute( 'data-rows-label' ) || '%d entries'
+		};
+		var doc = panel.ownerDocument;
+		while ( body.firstChild ) body.removeChild( body.firstChild );
+
+		var shown = 0;
+		for ( var s = 0; s < steps.length; s++ ) {
+			if ( ! eligible[ s ] ) continue;
+			shown++;
+			var step = steps[ s ];
+			var titleEl = step.querySelector( '.neural-forms-form__step-title' );
+			var title = titleEl ? ( titleEl.textContent || '' ).trim() : '';
+			if ( title === '' ) title = labels.step.replace( '%d', String( shown ) );
+
+			var group = doc.createElement( 'div' );
+			group.className = 'neural-forms-form__review-group';
+			var head = doc.createElement( 'div' );
+			head.className = 'neural-forms-form__review-group-head';
+			var h = doc.createElement( 'h4' );
+			h.className = 'neural-forms-form__review-step';
+			h.textContent = title;
+			var btn = doc.createElement( 'button' );
+			btn.type = 'button';
+			btn.className = 'neural-forms-form__review-edit';
+			btn.textContent = labels.edit;
+			btn.setAttribute( 'aria-label', labels.editStep.replace( '%s', title ) );
+			btn.setAttribute( 'data-review-step', String( s ) );
+			btn.addEventListener( 'click', ( function ( idx ) {
+				return function ( e ) { e.preventDefault(); onEdit( idx ); };
+			}( s ) ) );
+			head.appendChild( h );
+			head.appendChild( btn );
+			group.appendChild( head );
+
+			var dl = doc.createElement( 'dl' );
+			dl.className = 'neural-forms-form__review-list';
+			var wrappers = step.querySelectorAll( '.neural-forms-form__field[data-neural-forms-field-id]' );
+			for ( var w = 0; w < wrappers.length; w++ ) {
+				var wrap = wrappers[ w ];
+				// Repeater children are summarised by their repeater.
+				if ( wrap.parentElement && wrap.parentElement.closest( '.neural-forms-form__field[data-neural-forms-field-id]' ) ) continue;
+				if ( isHiddenByLogicWithin( wrap, step ) ) continue;
+				var value = reviewFieldValue( wrap, labels );
+				if ( value === '' ) continue;
+				var dt = doc.createElement( 'dt' );
+				dt.textContent = fieldLabelText( wrap, wrap.querySelector( 'input, select, textarea' ) );
+				var dd = doc.createElement( 'dd' );
+				dd.textContent = value;
+				dl.appendChild( dt );
+				dl.appendChild( dd );
+			}
+			if ( dl.childNodes.length ) {
+				group.appendChild( dl );
+			} else {
+				var none = doc.createElement( 'p' );
+				none.className = 'neural-forms-form__review-empty';
+				none.textContent = labels.empty;
+				group.appendChild( none );
+			}
+			body.appendChild( group );
+		}
+	}
+
 	function initMultiStep( form ) {
 		if ( form.getAttribute( 'data-neural-forms-multistep' ) !== '1' ) return;
 
@@ -3220,6 +3817,7 @@
 		var nextBtn  = form.querySelector( '[data-step-action="next"]' );
 		var submit   = form.querySelector( '.neural-forms-form__submit' );
 		var progress = form.querySelector( '.neural-forms-form__progress' );
+		var review   = form.querySelector( '[data-neural-forms-review]' );
 
 		var current = 0;
 
@@ -3524,7 +4122,10 @@
 				if ( nextBtn ) nextBtn.style.display = nowLast  ? 'none' : '';
 				if ( submit )  submit.style.display  = nowLast  ? '' : 'none';
 				updateProgress( index );
+				isLast = nowLast;
 			}
+
+			refreshReview( isLast );
 
 			// Skip the scrollIntoView when this is the page-load initial
 			// render. Without the guard, every multi-step form on a page
@@ -3541,6 +4142,45 @@
 			if ( target && typeof target.scrollIntoView === 'function' ) {
 				try { target.scrollIntoView( { behavior: 'smooth', block: 'nearest' } ); } catch ( e ) { /* noop */ }
 			}
+		}
+
+		// 1.3.0 entry preview: shown on the last step only, rebuilt on
+		// every step change and live while the visitor edits that step.
+		function onLastStep() {
+			return hasStepLogic ? nextEligible( current ) === -1 : current === steps.length - 1;
+		}
+
+		function refreshReview( isLast ) {
+			if ( ! review ) return;
+			if ( ! isLast ) {
+				review.hidden = true;
+				return;
+			}
+			// eligible[] is all true unless the form has step logic.
+			renderEntryReview( review, steps, eligible, jumpToStep );
+			review.hidden = false;
+		}
+
+		function jumpToStep( index ) {
+			if ( _animating || index === current ) return;
+			var from = current;
+			current = index;
+			show( current, false, from );
+			var first = steps[ current ].querySelector( 'input:not([type="hidden"]), select, textarea' );
+			if ( first && typeof first.focus === 'function' ) {
+				try { first.focus( { preventScroll: true } ); } catch ( e ) { /* noop */ }
+			}
+		}
+
+		if ( review ) {
+			var reviewTimer = null;
+			var liveReview = function () {
+				if ( review.hidden || ! onLastStep() ) return;
+				clearTimeout( reviewTimer );
+				reviewTimer = setTimeout( function () { refreshReview( onLastStep() ); }, 150 );
+			};
+			form.addEventListener( 'input',  liveReview );
+			form.addEventListener( 'change', liveReview );
 		}
 
 		function updateNavLabels( step ) {

@@ -196,7 +196,8 @@ export default function ConditionEditor( {
 } ) {
 	const cl      = toEditableConditional( value );
 	const enabled = showEnable ? cl.enabled : true;
-	const srcs    = Array.isArray( sources ) ? sources : [];
+	// 1.3.0: multi-part / secret / display-only types can't drive a rule.
+	const srcs    = ( Array.isArray( sources ) ? sources : [] ).filter( ( n ) => ! [ 'name', 'address', 'password', 'signature', 'html' ].includes( n && n.type ) );
 
 	const write = ( patch ) => onChange( { ...cl, enabled, ...patch } );
 

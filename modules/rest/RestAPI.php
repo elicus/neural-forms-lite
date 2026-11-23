@@ -29,6 +29,7 @@ class RestAPI {
 		( new Endpoints\SettingsEndpoint() )->register_routes();
 		( new Endpoints\ProcessQueueEndpoint() )->register_routes();
 		( new Endpoints\StatsEndpoint() )->register_routes();
+		( new Endpoints\FormViewsEndpoint() )->register_routes();
 		( new Endpoints\MigrationEndpoint() )->register_routes();
 		( new Endpoints\PollsEndpoint() )->register_routes();
 		( new Endpoints\TemplatesEndpoint() )->register_routes();

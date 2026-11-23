@@ -32,7 +32,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Plugin header name:** `Neural Forms Lite`
 - **Main class:** `NeuralForms\NeuralForms` (namespace **not** renamed)
 - **Version constants:**
-  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.2.1` on dev. 1.2.0 (the whole draft, Release A + B, with Pro 1.1.0) was cut on 2026-11-23: `release/1.2.0` was re-cut by merging dev into the earlier A-only branch, stripped, and merged to `main` (see `docs/RELEASE-1.2-PLAN.md` and `docs/RELEASE-1.2-PLAN-B.md`).
+  - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.3.0` on dev (bumped 2026-11-24 for hCaptcha / reCAPTCHA v3 / Akismet; no schema change, DB version stays). 1.2.0 (the whole draft, Release A + B, with Pro 1.1.0) was cut on 2026-11-23: `release/1.2.0` was re-cut by merging dev into the earlier A-only branch, stripped, and merged to `main` (see `docs/RELEASE-1.2-PLAN.md` and `docs/RELEASE-1.2-PLAN-B.md`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
   - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.1` (1.2.0 added the lead-management columns, `meta` on `neural_forms_entry_ai_responses` and the three `neural_forms_workflow*` tables; 1.2.1 adds the pricing / payment columns on entries). The schema version intentionally runs ahead of the plugin version inside the 1.2.0 cycle so dev sites that already migrated pick up the part-B columns. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
@@ -74,7 +74,8 @@ Located in: `modules/`
 | `frontend/blocks/` | Metadata-only `block.json` for the 3 extra blocks (added 2026-07-01) | `quiz/block.json`, `multi-step/block.json`, `poll/block.json` |
 | `notifications/` | Email system | `NotificationService.php` |
 | `privacy/` | WordPress privacy tools (added 1.1.3) | `PrivacyTools.php` — registers the personal-data exporter + eraser (entries matched by submitted email via `EntryRepository::find_by_email()`) and suggested privacy-policy text |
-| `captcha/` | CAPTCHA verification | `CaptchaManager.php`, `TurnstileVerifier.php`, `RecaptchaV2Verifier.php` |
+| `captcha/` | CAPTCHA verification | `CaptchaManager.php` (`PROVIDERS`), `SiteverifyVerifier.php` (shared base), `TurnstileVerifier.php`, `HCaptchaVerifier.php`, `RecaptchaV2Verifier.php`, `RecaptchaV3Verifier.php` |
+| `spam/` | Akismet content check (1.3.0) | `Akismet.php` |
 | `admin/` | Admin React app | `AdminPanel.php` enqueues; `src/` contains React source; `build/` contains compiled output |
 | `core/Capabilities.php` | Premium-capability registry — filter-based unlock gates | see "Capability / Unlock Architecture" below |
 
@@ -390,7 +391,9 @@ Base: `/wp-json/neural-forms/v1`
 | `ai_spam_mode` | `'suggest'` | `'suggest'` or `'auto'` |
 | `ai_spam_threshold` | `85` | 60-100 |
 | `email_skip_spam_notifications` | `false` | |
-| `captcha_provider` | `'none'` | `'none'`, `'turnstile'`, `'recaptcha_v2'` |
+| `captcha_provider` | `'none'` | `CaptchaManager::PROVIDERS`: `none`, `turnstile`, `hcaptcha`, `recaptcha_v2`, `recaptcha_v3` |
+| `captcha_keys_provider` | `''` | Provider the stored keys were saved for; switching provider without new keys → 422 `captcha_new_keys_required` |
+| `captcha_v3_threshold` | `0.5` | reCAPTCHA v3 minimum score, clamped 0.1-0.9 |
 | `captcha_site_key` | `''` | |
 | `captcha_secret_key` | `''` | Write-only |
 | `cloud_ai_enabled` | `false` | Enable Neural Forms Cloud |
@@ -826,6 +829,157 @@ prevents overflow without needing `overflow: hidden` anywhere.
 - **Do not use the `mixed` type hint** anywhere (Requires PHP 7.4). Run
   the test suite under both 7.4 and 8.2 (Local ships
   `lightning-services/php-8.2.*`).
+
+### Spam protection: hCaptcha, reCAPTCHA v3, Akismet (1.3.0, free in Lite)
+
+- **Verifiers** extend `SiteverifyVerifier` (POST secret/response/remoteip,
+  `captcha_unreachable` / `captcha_failed`). hCaptcha also sends `sitekey`.
+  reCAPTCHA v3 additionally requires `action === RecaptchaV3Verifier::ACTION`
+  (`neural_forms_submit`) and `score >= captcha_v3_threshold`; the score is
+  in the error data for the CAPTCHA log only.
+- **Frontend**: v3 renders a hidden `.neural-forms-form__captcha--invisible`
+  div (`data-sitekey`, `data-action`) and loads `api.js?render=KEY`;
+  `form-submit.js` `getCaptchaToken()` returns the `CAPTCHA_V3` sentinel and
+  `handleSubmit()` calls `executeRecaptchaV3()` before `sendSubmission()`.
+  Widget resets are per widget (several forms per page).
+- **Akismet** (`Spam\Akismet`): per-form `settings.akismet_enabled`, only
+  when the Akismet plugin is connected (`available()`; boot data
+  `neuralFormsAdmin.akismet`). Runs in `SubmitEndpoint` Step 8b after
+  validation, never on a form with something due to pay. Spam is SAVED
+  with status `spam` (`EntryRepository::create()` reads
+  `$context['status']`, spam only), the visitor sees success, and
+  `neural_forms_entry_created` / notifications / AI queue do NOT fire —
+  `neural_forms_entry_spam_detected( $id, $form_id, 'akismet' )` does.
+  Akismet errors let the entry through. The request is kept as an
+  `entry.akismet` activity row (IP / UA dropped in privacy mode) so
+  `on_status_changed()` (hook `neural_forms_entry_status_changed`, fired
+  by `update()` and `bulk_update()`) can send submit-spam / submit-ham
+  when the owner disagrees with Akismet — only for inbox actions
+  (`EntriesEndpoint` sets `Akismet::$owner_change`; AI / workflow status
+  changes are never reported) and at most `MAX_REPORTS_PER_REQUEST` (20)
+  per request. Restoring from Spam does not
+  replay notifications or workflows.
+- Tests: `tests/SpamProtectionTest.php`.
+
+### Name, Address, Time, Password, Content, Signature fields (1.3.0, free in Lite)
+
+- All type rules live in `Forms\ExtraFields` (parts, markup, `validate()`,
+  `sanitize()`, `display()`, `decode_signature()`); FormRenderer,
+  SubmissionValidator (early branch before `check_shape`), SubmitEndpoint,
+  NotificationService (body + `{tokens}`), ExportEndpoint, the AI payload
+  (`readable_products()` → `ExtraFields::readable()`) and Akismet (name →
+  `comment_author`) call into it. JS mirror of the parts: `extraParts()` in
+  `forms/FieldTypes.js`; inbox `formatExtraValue()` in `entries/helpers.js`.
+- Stored shapes: name `{ first, middle?, last }` (`settings.format`
+  first_last | first_middle_last), address `{ line1, line2?, city, state,
+  postal, country? }` (`settings.show_line2`, `show_country`,
+  `default_country` = ISO code, older forms may hold a name — resolved by
+  `Countries::resolve_default()`; optional `sublabels` / `placeholders`),
+  time "HH:MM"
+  (`min`, `max`, `step` minutes). Empty parts are not stored.
+- **Password is never stored, emailed, exported, logged or sent to AI.**
+  Posted as `{id}[password]` (+ `{id}[confirm]` when `settings.confirm`),
+  checked (`settings.min_length`, default 8, max 64), then handed once to
+  `do_action( 'neural_forms_password_submitted', $password, $field_id,
+  $entry_id, $form_id )` after the entry is saved (not for Akismet spam).
+  The public `neural_forms_spam_check` filter gets `$raw_data` WITHOUT
+  password fields.
+- **Content block** = type `html`, `content` rendered through
+  `wp_kses_post()` + `wpautop()` as `.neural-forms-form__content-block`
+  (NOT a `.neural-forms-form__field`, so validation / review / prefill skip
+  it). Stripped from every submission (`$_strip_types`). The builder
+  previews it as plain text only.
+- **Signature**: canvas pad (`initSignatures()` in form-submit.js, pointer
+  events, max 2x DPR / 1600x600, cleared on form reset) → PNG data URL in
+  a hidden input → `decode_signature()` (prefix, base64, PNG magic,
+  getimagesizefromstring, ≤ 300 KB, ≤ 2000x1000) → `store_signature()`
+  saves a PRIVATE attachment with a random name and stores file-style
+  meta, so CSV / email treat it like an upload; the inbox shows the image.
+- Address country is a `<select>` of `Forms\Countries::all()` (ISO 3166,
+  filter `neural_forms_countries`, localised to the builder as
+  `neuralFormsAdmin.plugin.countries`). The option VALUE is the country
+  name, so entries store "United Kingdom"; the server refuses names not in
+  the list (`invalid_country`) and stores the listed spelling.
+- **AI form generator**: `CloudFormGeneratorClient` advertises the six
+  types; `SchemaNormalizer::normalize_extra_field()` whitelists their
+  settings (html `content` → escaped `<p>` paragraphs), mirrored by
+  `normalizeExtraField()` in the cloud's `form-schema-normalizer.ts`. The
+  cloud never sends them to a plugin that doesn't list them:
+  `EXTRA_TYPE_FALLBACK` (name/time → text, address → textarea, others
+  dropped), also used for repeater children on both sides.
+- Not allowed in Repeaters (allowlist) and not offered as condition
+  sources (`ConditionEditor.js` filters them).
+- Tests: `tests/NewFieldTypesTest.php`.
+
+### Form views + conversion rate (1.3.0, free in Lite)
+
+- Table `neural_forms_form_views` (DB 1.3.0): `(form_id, view_date)` PK +
+  `views` counter — one row per form per UTC day, no visitor data.
+  `Analytics\FormViews::record()` is one `INSERT … ON DUPLICATE KEY
+  UPDATE`. Dropped on uninstall, rows deleted on a hard form delete.
+- Counting: `FormRenderer::render()` sets `track_views` (unless the
+  caller passes it) to `! is_preview() && ! current_user_can( manage
+  forms )` → `data-neural-forms-track-view="1"` on the `<form>`. Preview
+  / editor renders never carry it. `form-submit.js` `initViewTracking()`
+  POSTs `/forms/{id}/view` (sendBeacon, no cookies) once per session per
+  form (`sessionStorage neural_forms_viewed_{id}`) when 40% of the form —
+  or 40% of the window for tall forms — is on screen. Page caches are fine
+  (the marker is the same for every logged-out visitor).
+- `POST /forms/{id}/view`: public, active forms only (404 otherwise),
+  always 204, per-IP cap `FormViewsEndpoint::IP_CAP` per 10 min (IP only
+  hashed into a transient key).
+- `GET /forms/{id}/analytics/views` (manage forms): `{ tracking, since,
+  views, submissions, conversion, views_30d, submissions_30d,
+  conversion_30d, trend[30 × { date, views, submissions }] }`.
+  Submissions exclude spam / trash and only count from `since` (first
+  view day), so old entries never inflate the rate; rate capped at 100.
+- UI: Views + Conversion rate cards after Total entries in
+  `results/ResultsOverviewCards.js` (`build:results`). The 30-day trend is
+  returned but not drawn yet.
+- Tests: `tests/FormViewsTest.php`.
+
+### URL pre-fill + UTM tracking (1.3.0, free in Lite)
+
+- Per-field `prefill_param` (builder: "Fill from URL parameter" under CSS
+  class; hidden fields get utm_* / gclid / fbclid chips). Allowed types:
+  `FormRenderer::PREFILL_TYPES` (mirrored in `BuilderInspector.js`) —
+  single checkbox and acceptance are deliberately excluded so a link can
+  never tick consent. `FormRenderer::prefill_param()` cleans the name
+  (`[A-Za-z0-9_-.[]]`, 64 chars) and emits `data-prefill` on the field
+  wrapper, or on the bare `<input type="hidden">` (hidden fields have no
+  wrapper).
+- Filling happens in the browser (`form-submit.js` `initPrefill()`, also
+  re-run after "Submit another response"), never server-side, so page
+  caches can't leak one visitor's values. Visible fields fill only when
+  empty; options match by value or label (case-insensitive); hidden fields
+  override their default and remember the value in sessionStorage
+  (`neural_forms_prefill`) so a later page with a form still sends it.
+  Values are set with `.value` only and are sanitised by SubmitEndpoint as
+  normal input. Values over 500 chars are cut.
+- WordPress reserves some URL words (`name`, `page`, `p`, `s`, `author`,
+  … = `WP::$public_query_vars`): `?name=` makes WordPress 404. The builder
+  warns (`WP_RESERVED_PARAMS`).
+- Tests: `tests/UrlPrefillTest.php`.
+
+### Entry preview on multi-step forms (1.3.0, free in Lite)
+
+- Setting: `form_schema.settings.multistep.entry_preview { enabled, title }`
+  (next to `progress_indicator`), edited in the builder's Step inspector
+  under "Form progress indicator". Schema settings are stored as-is; the
+  renderer escapes the title (max 120 chars, default "Review your answers").
+- `FormRenderer::render_form()` emits a hidden
+  `section.neural-forms-form__review[data-neural-forms-review]` after the
+  fields, only when the form has 2+ steps. It carries the translated
+  labels as `data-*` attributes for the JS.
+- `form-submit.js`: `renderEntryReview()` + `reviewFieldValue()` read the
+  DOM (radio / checkbox labels, select text, file names, rating "n / max",
+  matrix "row: column", repeater "N entries", product "× qty", calculated
+  output) and write with `textContent` only. `initMultiStep()` shows it from
+  `afterShow()` on the last eligible step, rebuilds it live (150 ms
+  debounce) while on that step, and each step's Edit button calls
+  `jumpToStep()`. Skipped steps and fields hidden by logic are left out.
+  Nothing in the panel is submitted (buttons only).
+- Tests: `tests/EntryPreviewTest.php`.
 
 ### Create form with Neural AI — Lite-owned (moved from Pro 2026-10-30)
 

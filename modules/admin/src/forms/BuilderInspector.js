@@ -197,10 +197,77 @@ function replaceRow( nodes, hit, nextRow ) {
 	return copy;
 }
 
+// 1.3.0 URL pre-fill. Mirrors FormRenderer::PREFILL_TYPES (single
+// checkboxes / acceptance are left out: a link must never tick consent).
+const PREFILL_TYPES = [ 'text', 'email', 'phone', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkboxes', 'range', 'hidden' ];
+const TRACKING_PARAMS = [ 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid' ];
+// WordPress reads these from every URL itself (WP::$public_query_vars):
+// ?name=… or ?page=… makes WordPress look for another post and 404.
+const WP_RESERVED_PARAMS = [ 'm', 'p', 'posts', 'w', 'cat', 'withcomments', 'withoutcomments', 's', 'search', 'exact', 'sentence', 'calendar', 'page', 'paged', 'more', 'tb', 'pb', 'author', 'order', 'orderby', 'year', 'monthnum', 'day', 'hour', 'minute', 'second', 'name', 'category_name', 'tag', 'feed', 'author_name', 'pagename', 'page_id', 'error', 'attachment', 'attachment_id', 'subpost', 'subpost_id', 'preview', 'robots', 'favicon', 'taxonomy', 'term', 'cpage', 'post_type', 'embed' ];
+
+function PrefillControl( { field, onChange, isHidden } ) {
+	const param = typeof field.prefill_param === 'string' ? field.prefill_param : '';
+	const clean = ( v ) => v.replace( /[^A-Za-z0-9_\-.[\]]/g, '' ).slice( 0, 64 );
+	const setParam = ( v ) => onChange( { prefill_param: clean( v ) || undefined } );
+	return (
+		<div className="nf-inspector__field">
+			<label className="nf-inspector__label" htmlFor={ `nf-prefill-${ field.id }` }>
+				{ __( 'Fill from URL parameter', 'neural-forms-lite' ) }
+			</label>
+			<input
+				id={ `nf-prefill-${ field.id }` }
+				type="text"
+				value={ param }
+				placeholder={ isHidden ? 'utm_source' : 'email' }
+				onChange={ ( e ) => setParam( e.target.value ) }
+			/>
+			{ isHidden && (
+				<div className="nf-inspector__chips">
+					{ TRACKING_PARAMS.map( ( p ) => (
+						<button
+							key={ p }
+							type="button"
+							className={ 'nf-inspector__chip' + ( param === p ? ' is-active' : '' ) }
+							onClick={ () => setParam( p ) }
+						>
+							{ p }
+						</button>
+					) ) }
+				</div>
+			) }
+			{ WP_RESERVED_PARAMS.includes( param.toLowerCase() ) && (
+				<p className="nf-inspector__hint nf-inspector__hint--warn" role="alert">
+					{ sprintf(
+						/* translators: 1: reserved word, 2: suggested alternative */
+						__( 'WordPress uses “%1$s” in its own links, so a link with it shows “Page not found”. Use something like “%2$s” instead.', 'neural-forms-lite' ),
+						param,
+						`your_${ param }`
+					) }
+				</p>
+			) }
+			<p className="nf-inspector__hint">
+				{ param
+					? sprintf(
+						/* translators: %s: example link */
+						__( 'Example: %s', 'neural-forms-lite' ),
+						`yoursite.com/contact/?${ param }=${ isHidden ? 'newsletter' : '…' }`
+					)
+					: ( isHidden
+						? __( 'Optional. Records where the visitor came from, e.g. utm_source. The value is kept for the rest of their visit.', 'neural-forms-lite' )
+						: __( 'Optional. Fills this field from a link, e.g. ?email=… The visitor can still change it.', 'neural-forms-lite' ) ) }
+			</p>
+		</div>
+	);
+}
+
 function FieldInspector( { hit, nodes, onChange, formId } ) {
 	const f = hit.node;
 	const set = ( patch ) => onChange( replaceField( nodes, hit, { ...f, ...patch } ) );
 	const isHidden = f.type === 'hidden';
+	// 1.3.0: controls that don't apply to the new types.
+	const isContent      = f.type === 'html';
+	const noPlaceholder  = [ 'name', 'address', 'time', 'signature', 'html' ].includes( f.type );
+	const noDefault      = [ 'name', 'address', 'password', 'signature', 'html' ].includes( f.type );
 
 	return (
 		<>
@@ -244,15 +311,17 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				</div>
 			) }
 
-			<label className="nf-inspector__field">
-				<span className="nf-inspector__label">{ __( 'Placeholder', 'neural-forms-lite' ) }</span>
-				<input
-					type="text"
-					value={ f.placeholder || '' }
-					onChange={ ( e ) => set( { placeholder: e.target.value } ) }
-					disabled={ isHidden }
-				/>
-			</label>
+			{ ! noPlaceholder && (
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Placeholder', 'neural-forms-lite' ) }</span>
+					<input
+						type="text"
+						value={ f.placeholder || '' }
+						onChange={ ( e ) => set( { placeholder: e.target.value } ) }
+						disabled={ isHidden }
+					/>
+				</label>
+			) }
 
 			<label className="nf-inspector__field">
 				<span className="nf-inspector__label">{ __( 'Field type', 'neural-forms-lite' ) }</span>
@@ -266,19 +335,25 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				</select>
 			</label>
 
-			<label className="nf-inspector__field nf-inspector__field--inline">
-				<input
-					type="checkbox"
-					checked={ !! f.required }
-					onChange={ ( e ) => set( { required: e.target.checked } ) }
-					disabled={ isHidden }
-				/>
-				<span>{ __( 'Required', 'neural-forms-lite' ) }</span>
-			</label>
+			{ ! isContent && (
+				<label className="nf-inspector__field nf-inspector__field--inline">
+					<input
+						type="checkbox"
+						checked={ !! f.required }
+						onChange={ ( e ) => set( { required: e.target.checked } ) }
+						disabled={ isHidden }
+					/>
+					<span>{ __( 'Required', 'neural-forms-lite' ) }</span>
+				</label>
+			) }
 
-			{ ! isHidden && (
+			{ [ 'name', 'address', 'time', 'password', 'signature', 'html' ].includes( f.type ) && (
+				<ExtraFieldSettings field={ f } onChange={ set } />
+			) }
+
+			{ ! isHidden && ! noDefault && (
 				<label className="nf-inspector__field">
-					<span className="nf-inspector__label">{ __( 'Default value', 'neural-forms-lite' ) }</span>
+					<span className="nf-inspector__label">{ f.type === 'time' ? __( 'Default time (HH:MM)', 'neural-forms-lite' ) : __( 'Default value', 'neural-forms-lite' ) }</span>
 					<input
 						type="text"
 						value={ typeof f.default_value === 'string' ? f.default_value : '' }
@@ -287,7 +362,7 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				</label>
 			) }
 
-			{ ! isHidden && (
+			{ ! isHidden && ! isContent && (
 				<label className="nf-inspector__field">
 					<span className="nf-inspector__label">{ __( 'Help text', 'neural-forms-lite' ) }</span>
 					<textarea
@@ -321,7 +396,11 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 				/>
 			</label>
 
-			{ f.type !== 'hidden' && (
+			{ PREFILL_TYPES.includes( f.type ) && (
+				<PrefillControl field={ f } onChange={ set } isHidden={ isHidden } />
+			) }
+
+			{ ! [ 'hidden', 'password', 'html' ].includes( f.type ) && (
 				<label className="nf-inspector__field nf-inspector__field--inline" title={ __( 'When on, this field\'s answer is removed before anything is sent to Neural Forms Cloud. Use it for IDs, card numbers, health details or anything the AI should never see.', 'neural-forms-lite' ) }>
 					<input
 						type="checkbox"
@@ -398,6 +477,120 @@ function FieldInspector( { hit, nodes, onChange, formId } ) {
 			<ConditionalLogicPanel field={ f } onChange={ set } nodes={ nodes } />
 		</>
 	);
+}
+
+/**
+ * 1.3.0 settings for Name, Address, Time, Password, Signature and the
+ * Content block. Shapes mirror ExtraFields (PHP).
+ */
+// [ 'GB' => 'United Kingdom', … ] from Forms\Countries (PHP), localised by AdminPanel.
+const COUNTRIES = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.plugin?.countries ) || {};
+
+// Stored default is an ISO code; forms saved before the dropdown may hold a name.
+function defaultCountryCode( value ) {
+	const v = typeof value === 'string' ? value.trim() : '';
+	if ( v === '' ) return '';
+	if ( COUNTRIES[ v.toUpperCase() ] ) return v.toUpperCase();
+	const hit = Object.entries( COUNTRIES ).find( ( [ , name ] ) => name.toLowerCase() === v.toLowerCase() );
+	return hit ? hit[ 0 ] : '';
+}
+
+function ExtraFieldSettings( { field, onChange } ) {
+	const st  = ( field.settings && typeof field.settings === 'object' ) ? field.settings : {};
+	const setS = ( patch ) => onChange( { settings: { ...st, ...patch } } );
+
+	if ( field.type === 'name' ) {
+		return (
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Name format', 'neural-forms-lite' ) }</span>
+				<select value={ st.format === 'first_middle_last' ? 'first_middle_last' : 'first_last' } onChange={ ( e ) => setS( { format: e.target.value } ) }>
+					<option value="first_last">{ __( 'First and last name', 'neural-forms-lite' ) }</option>
+					<option value="first_middle_last">{ __( 'First, middle and last name', 'neural-forms-lite' ) }</option>
+				</select>
+				<span className="nf-inspector__hint">{ __( 'When required, first and last name must be filled. Middle name is always optional.', 'neural-forms-lite' ) }</span>
+			</label>
+		);
+	}
+
+	if ( field.type === 'address' ) {
+		return (
+			<>
+				<label className="nf-inspector__field nf-inspector__field--inline">
+					<input type="checkbox" checked={ st.show_line2 !== false } onChange={ ( e ) => setS( { show_line2: e.target.checked } ) } />
+					<span>{ __( 'Show address line 2', 'neural-forms-lite' ) }</span>
+				</label>
+				<label className="nf-inspector__field nf-inspector__field--inline">
+					<input type="checkbox" checked={ st.show_country !== false } onChange={ ( e ) => setS( { show_country: e.target.checked } ) } />
+					<span>{ __( 'Show country', 'neural-forms-lite' ) }</span>
+				</label>
+				{ st.show_country !== false && (
+					<label className="nf-inspector__field">
+						<span className="nf-inspector__label">{ __( 'Default country', 'neural-forms-lite' ) }</span>
+						<select value={ defaultCountryCode( st.default_country ) } onChange={ ( e ) => setS( { default_country: e.target.value } ) }>
+							<option value="">{ __( 'None (visitor chooses)', 'neural-forms-lite' ) }</option>
+							{ Object.entries( COUNTRIES ).map( ( [ code, name ] ) => <option key={ code } value={ code }>{ name }</option> ) }
+						</select>
+					</label>
+				) }
+				<span className="nf-inspector__hint">{ __( 'When required, street address, city and country (if shown) must be filled.', 'neural-forms-lite' ) }</span>
+			</>
+		);
+	}
+
+	if ( field.type === 'time' ) {
+		return (
+			<>
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Earliest time', 'neural-forms-lite' ) }</span>
+					<input type="time" value={ typeof field.min === 'string' ? field.min : '' } onChange={ ( e ) => onChange( { min: e.target.value } ) } />
+				</label>
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Latest time', 'neural-forms-lite' ) }</span>
+					<input type="time" value={ typeof field.max === 'string' ? field.max : '' } onChange={ ( e ) => onChange( { max: e.target.value } ) } />
+				</label>
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Step (minutes)', 'neural-forms-lite' ) }</span>
+					<select value={ Number( field.step ) || 0 } onChange={ ( e ) => onChange( { step: Number( e.target.value ) || undefined } ) }>
+						<option value={ 0 }>{ __( 'Any minute', 'neural-forms-lite' ) }</option>
+						{ [ 5, 10, 15, 30, 60 ].map( ( n ) => <option key={ n } value={ n }>{ n }</option> ) }
+					</select>
+				</label>
+			</>
+		);
+	}
+
+	if ( field.type === 'password' ) {
+		return (
+			<>
+				<label className="nf-inspector__field">
+					<span className="nf-inspector__label">{ __( 'Minimum length', 'neural-forms-lite' ) }</span>
+					<input type="number" min={ 1 } max={ 64 } value={ Number( st.min_length ) || 8 } onChange={ ( e ) => setS( { min_length: Math.max( 1, Math.min( 64, Number( e.target.value ) || 8 ) ) } ) } />
+				</label>
+				<label className="nf-inspector__field nf-inspector__field--inline">
+					<input type="checkbox" checked={ !! st.confirm } onChange={ ( e ) => setS( { confirm: e.target.checked } ) } />
+					<span>{ __( 'Ask to type it twice', 'neural-forms-lite' ) }</span>
+				</label>
+				<span className="nf-inspector__hint">{ __( 'Passwords are never saved with the entry, emailed, exported or sent to AI. Developers can read them once with the neural_forms_password_submitted action.', 'neural-forms-lite' ) }</span>
+			</>
+		);
+	}
+
+	if ( field.type === 'signature' ) {
+		return (
+			<span className="nf-inspector__hint">{ __( 'Saved as a private PNG image in the Media Library and shown on the entry.', 'neural-forms-lite' ) }</span>
+		);
+	}
+
+	if ( field.type === 'html' ) {
+		return (
+			<label className="nf-inspector__field">
+				<span className="nf-inspector__label">{ __( 'Content', 'neural-forms-lite' ) }</span>
+				<textarea rows={ 8 } value={ typeof field.content === 'string' ? field.content : '' } onChange={ ( e ) => onChange( { content: e.target.value } ) } />
+				<span className="nf-inspector__hint">{ __( 'Text or HTML (links, lists, bold, images). Scripts and forms are removed. Visitors only see it; nothing is saved with the entry.', 'neural-forms-lite' ) }</span>
+			</label>
+		);
+	}
+	return null;
 }
 
 /**
@@ -2064,6 +2257,46 @@ function StepInspector( { nodes, stepId, onChange, formSchemaSettings, onChangeF
 						<option value="none">{ __( 'None', 'neural-forms-lite' ) }</option>
 					</select>
 				</label>
+
+				{ /* 1.3.0 entry preview: summary of answers on the last step.
+				    Stored on form_schema.settings.multistep.entry_preview. */ }
+				{ ( () => {
+					const ms = ( formSchemaSettings && formSchemaSettings.multistep ) || {};
+					const ep = ( ms.entry_preview && typeof ms.entry_preview === 'object' ) ? ms.entry_preview : {};
+					const setEp = ( patch ) => {
+						if ( typeof onChangeFormSchemaSettings !== 'function' ) return;
+						onChangeFormSchemaSettings( {
+							multistep: { ...ms, entry_preview: { ...ep, ...patch } },
+						} );
+					};
+					return (
+						<>
+							<label className="nf-inspector__field nf-inspector__field--inline">
+								<input
+									type="checkbox"
+									checked={ !! ep.enabled }
+									onChange={ ( e ) => setEp( { enabled: e.target.checked } ) }
+								/>
+								<span>{ __( 'Show a review of answers before submit', 'neural-forms-lite' ) }</span>
+							</label>
+							<p className="nf-inspector__form-progress-hint">
+								{ __( 'On the last step, visitors see everything they entered, with an Edit link for each step.', 'neural-forms-lite' ) }
+							</p>
+							{ !! ep.enabled && (
+								<label className="nf-inspector__field">
+									<span className="nf-inspector__label">{ __( 'Review heading', 'neural-forms-lite' ) }</span>
+									<input
+										type="text"
+										maxLength={ 120 }
+										value={ ep.title || '' }
+										placeholder={ __( 'Review your answers', 'neural-forms-lite' ) }
+										onChange={ ( e ) => setEp( { title: e.target.value } ) }
+									/>
+								</label>
+							) }
+						</>
+					);
+				} )() }
 			</div>
 
 			<LayoutLogicPanel

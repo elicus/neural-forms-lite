@@ -8,12 +8,16 @@ use NeuralForms\Core\Logger;
 use NeuralForms\Forms\ConditionEngine;
 use NeuralForms\Forms\FormRepository;
 use NeuralForms\Forms\SchemaHelper;
+use NeuralForms\Forms\ExtraFields;
 use NeuralForms\Forms\SubmissionValidator;
 use NeuralForms\Storage\EntryRepository;
 use WP_REST_Request;
 use WP_Error;
 
 defined( 'ABSPATH' ) || exit;
+
+// 1.3.0 field types; loaded here too so standalone tests work without the autoloader.
+require_once dirname( __DIR__, 2 ) . '/forms/ExtraFields.php';
 
 /**
  * Public REST endpoint for form submissions.
@@ -369,7 +373,7 @@ class SubmitEndpoint {
 		// 1.2.0 part B: a Calculated value is never accepted from the client;
 		// with the calculations capability locked, Product fields are not
 		// rendered and must not be accepted either (same as Matrix below).
-		$_strip_types = array( 'calculated' );
+		$_strip_types = array( 'calculated', 'html' ); // html = 1.3.0 Content block, display-only
 		if ( ! Capabilities::can( Capabilities::CALCULATIONS ) ) {
 			$_strip_types[] = 'product';
 		}
@@ -415,7 +419,17 @@ class SubmitEndpoint {
 		// Fires after body is available so filters can inspect field values.
 		// Return truthy to block with 400. Response is intentionally vague -
 		// leaking which heuristic triggered would help spammers bypass it.
-		$is_spam = apply_filters( 'neural_forms_spam_check', false, $raw_data, $form );
+		// Password values never leave this request except through
+		// `neural_forms_password_submitted`, so the filter gets a copy without them.
+		$_spam_view = $raw_data;
+		foreach ( SchemaHelper::flatten_fields( $schema_fields ) as $_f ) {
+			$_f = (array) $_f;
+			if ( ( $_f['type'] ?? '' ) === 'password' && isset( $_f['id'] ) ) {
+				unset( $_spam_view[ (string) $_f['id'] ] );
+			}
+		}
+		$is_spam = apply_filters( 'neural_forms_spam_check', false, $_spam_view, $form );
+		unset( $_spam_view );
 
 		if ( $is_spam ) {
 			return new WP_Error(
@@ -442,6 +456,20 @@ class SubmitEndpoint {
 		// sanitization removes any remaining unsafe content before storage.
 		// Null values are skipped - they represent optional absent fields and
 		// should not appear in the stored entry data blob.
+		// 1.3.0 Password fields: checked above, never stored. Kept in memory
+		// only until the entry exists, for `neural_forms_password_submitted`.
+		$_passwords = array();
+		foreach ( $schema_fields as $_pwf ) {
+			$_pwf = (array) $_pwf;
+			$_pid = (string) ( $_pwf['id'] ?? '' );
+			if ( ( $_pwf['type'] ?? '' ) === 'password' && $_pid !== '' && is_array( $raw_data[ $_pid ] ?? null ) ) {
+				$_pw = (string) ( $raw_data[ $_pid ]['password'] ?? '' );
+				if ( $_pw !== '' ) {
+					$_passwords[ $_pid ] = $_pw;
+				}
+			}
+		}
+
 		$sanitized_data = $this->sanitize_fields( $schema_fields, $raw_data );
 
 		// 1.2.0 part B: authoritative totals. Computed from the SAVED form and
@@ -470,6 +498,25 @@ class SubmitEndpoint {
 		if ( $_pricing ) {
 			$context['pricing'] = $_pricing;
 		}
+
+		// ' Step 8b: Akismet content check (1.3.0, per form) '
+		// Never blocks: spam is SAVED with status "spam" so a false positive
+		// can be recovered, and the visitor sees the normal confirmation.
+		// Forms that take a payment skip it — the gateway is its own spam
+		// barrier and a paying customer must never land in Spam unseen.
+		// Akismet errors (unreachable, bad key) let the entry through.
+		$_akismet = null;
+		if ( ( ! $_pricing || (int) ( $_pricing['due_now'] ?? 0 ) <= 0 ) && \NeuralForms\Spam\Akismet::enabled_for( $form ) ) {
+			$_akismet_request = \NeuralForms\Spam\Akismet::build_request( $schema_fields, $sanitized_data, \NeuralForms\Spam\Akismet::environment( $ip, $context['page_url'] ) );
+			$_akismet_verdict = \NeuralForms\Spam\Akismet::check( $_akismet_request );
+			if ( $_akismet_verdict !== \NeuralForms\Spam\Akismet::ERROR ) {
+				$_akismet = array( 'request' => $_akismet_request, 'verdict' => $_akismet_verdict );
+				if ( $_akismet_verdict === \NeuralForms\Spam\Akismet::SPAM ) {
+					$context['status'] = 'spam';
+				}
+			}
+		}
+		$_is_akismet_spam = $_akismet && $_akismet['verdict'] === \NeuralForms\Spam\Akismet::SPAM;
 
 		// ' Step 9: Persist '
 		// EntryRepository::create() already logs the raw DB error internally.
@@ -501,9 +548,53 @@ class SubmitEndpoint {
 		// * Debugging does not require tailing server error logs.
 		// The neural_forms_logs and neural_forms_queue tables already exist for this purpose.
 
+		// Akismet: keep the request on the entry timeline so an inbox
+		// Spam / Not spam click can be reported back. Privacy mode keeps the
+		// visitor's IP and browser out of storage here too.
+		if ( $_akismet ) {
+			$_stored_request = $_akismet['request'];
+			if ( $privacy_mode ) {
+				unset( $_stored_request['user_ip'], $_stored_request['user_agent'] );
+			}
+			\NeuralForms\Spam\Akismet::remember( (int) $entry_id, $_stored_request, $_akismet['verdict'] );
+		}
+
+		// Akismet spam: stored for review only. No emails, AI, workflows or
+		// integrations run for it; restoring it from Spam does not replay them.
+		if ( $_is_akismet_spam ) {
+			/**
+			 * Fires when a new submission was saved straight into Spam.
+			 *
+			 * @param int    $entry_id
+			 * @param int    $form_id
+			 * @param string $source   'akismet'
+			 */
+			do_action( 'neural_forms_entry_spam_detected', $entry_id, $form_id, 'akismet' );
+		}
+
 		// Canonical "submission happened" event.
 		// Listeners: CRM sync, webhook triggers, custom logging.
-		do_action( 'neural_forms_entry_created', $entry_id, $form_id, $sanitized_data );
+		if ( ! $_is_akismet_spam ) {
+			do_action( 'neural_forms_entry_created', $entry_id, $form_id, $sanitized_data );
+		}
+
+		// 1.3.0 Password fields are never stored. Developers who need the
+		// value (e.g. to create a user account) get it once, here.
+		if ( ! $_is_akismet_spam ) {
+			foreach ( $_passwords as $_pid => $_pw ) {
+				/**
+				 * Fires once per filled Password field after the entry is saved.
+				 * The password is not stored anywhere by Neural Forms.
+				 *
+				 * @param string $password Plain text, as typed.
+				 * @param string $field_id
+				 * @param int    $entry_id
+				 * @param int    $form_id
+				 */
+				do_action( 'neural_forms_password_submitted', $_pw, $_pid, $entry_id, $form_id );
+			}
+		}
+		unset( $_passwords, $_pw );
 
 		// Notification layer (email, Slack, etc.).
 		// Receives $form so listeners can read form name and notification settings.
@@ -518,7 +609,7 @@ class SubmitEndpoint {
 			&& \NeuralForms\Core\Config::get( 'ai_spam_enabled' )
 			&& \NeuralForms\Core\Config::get( 'email_skip_spam_notifications' );
 
-		if ( ! $defer_notifications ) {
+		if ( ! $defer_notifications && ! $_is_akismet_spam ) {
 			do_action( 'neural_forms_send_notifications', $entry_id, $form_id, $form );
 		}
 
@@ -526,7 +617,9 @@ class SubmitEndpoint {
 		// Intentionally last - depends on the entry existing (neural_forms_entry_created)
 		// and notification config being available (neural_forms_send_notifications).
 		// Listener must insert a row into neural_forms_queue, not call the AI API inline.
-		do_action( 'neural_forms_queue_ai_processing', $entry_id, $form_id );
+		if ( ! $_is_akismet_spam ) {
+			do_action( 'neural_forms_queue_ai_processing', $entry_id, $form_id );
+		}
 
 		// ' Step 11: Success response '
 		$body = array(
@@ -1056,7 +1149,14 @@ class SubmitEndpoint {
 				continue;
 			}
 
-			$sanitized[ $field_id ] = $this->sanitize_value( $value, $field );
+			$clean = $this->sanitize_value( $value, $field );
+
+			// 1.3.0 types: null = nothing to store (empty parts, password).
+			if ( null === $clean && ExtraFields::handles( (string) ( $field['type'] ?? '' ) ) ) {
+				continue;
+			}
+
+			$sanitized[ $field_id ] = $clean;
 		}
 
 		return $sanitized;
@@ -1127,6 +1227,19 @@ class SubmitEndpoint {
 
 			case 'product':
 				return $this->sanitize_product( $value, $field );
+
+			// 1.3.0
+			case 'name':
+			case 'address':
+			case 'time':
+				return ExtraFields::sanitize( $field, $value );
+
+			case 'password':
+			case 'html':
+				return null; // never stored
+
+			case 'signature':
+				return is_string( $value ) && $value !== '' ? $this->store_signature( $value, $field ) : null;
 
 			case 'matrix':
 				// Stored shape mirrors what the validator accepted:
@@ -1746,6 +1859,48 @@ class SubmitEndpoint {
 			'filename'      => sanitize_file_name( (string) $file_info['name'] ),
 			'mime_type'     => $upload['type'],
 			'size'          => (int) filesize( $upload['file'] ),
+		);
+	}
+
+	/**
+	 * 1.3.0 Signature: save the drawn PNG as a PRIVATE attachment (same rule
+	 * as uploads) under a random name, and return file-style metadata so the
+	 * inbox, emails and CSV show it like an upload. Null on failure (logged).
+	 */
+	private function store_signature( string $data_url, array $field ): ?array {
+		$bin = ExtraFields::decode_signature( $data_url );
+		if ( null === $bin ) {
+			return null;
+		}
+		if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+		}
+		$name   = 'signature-' . strtolower( wp_generate_password( 24, false ) ) . '.png';
+		$upload = wp_upload_bits( $name, null, $bin );
+		if ( ! empty( $upload['error'] ) ) {
+			Logger::file( 'upload', 'error', sprintf( 'Signature for "%s" could not be saved: %s', (string) ( $field['id'] ?? '' ), $upload['error'] ) );
+			return null;
+		}
+		$attachment_id = wp_insert_attachment(
+			array(
+				'post_mime_type' => 'image/png',
+				'post_title'     => $name,
+				'post_content'   => '',
+				'post_status'    => 'private',
+			),
+			$upload['file']
+		);
+		if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+			Logger::file( 'upload', 'error', sprintf( 'Signature attachment for "%s" failed.', (string) ( $field['id'] ?? '' ) ) );
+			return null;
+		}
+		wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $upload['file'] ) );
+		return array(
+			'attachment_id' => (int) $attachment_id,
+			'url'           => (string) $upload['url'],
+			'filename'      => 'signature.png',
+			'mime_type'     => 'image/png',
+			'size'          => strlen( $bin ),
 		);
 	}
 

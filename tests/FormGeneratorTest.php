@@ -91,7 +91,7 @@ if ( ! class_exists( 'NeuralForms\\Core\\Config' ) ) {
 	eval( 'namespace NeuralForms\\Core; class Config { public static function get( $key, $default = null ) { return $GLOBALS["__nf_config"][ $key ] ?? $default; } }' );
 }
 if ( ! class_exists( 'NeuralForms\\Forms\\FieldRegistry' ) ) {
-	eval( 'namespace NeuralForms\\Forms; class FieldRegistry { public static function is_registered( string $type ): bool { return in_array( $type, [ "text","email","textarea","select","checkbox","checkboxes","number","phone","url","date","radio","hidden","acceptance","file","rating","poll","quiz_question","matrix","repeater" ], true ); } }' );
+	eval( 'namespace NeuralForms\\Forms; class FieldRegistry { public static function is_registered( string $type ): bool { return in_array( $type, [ "text","email","textarea","select","checkbox","checkboxes","number","phone","url","date","radio","hidden","acceptance","file","rating","poll","quiz_question","matrix","repeater","name","address","time","password","signature","html" ], true ); } }' );
 }
 // Capabilities stub. `field_matrix` is the only cap consulted by the
 // normaliser; gate it via a global so individual test cases can flip
@@ -555,7 +555,7 @@ $alias_cases = [
 	'consent'       => 'acceptance',
 	'gdpr'          => 'acceptance',
 	'short_text'    => 'text',
-	'full_name'     => 'text',
+	'full_name'     => 'name',
 	'email_address' => 'email',
 	'mail'          => 'email',
 	'website'       => 'url',
@@ -945,6 +945,29 @@ check( '6b FormGeneratorService source has no openai_api_key option',
 	strpos( $service_src, 'openai_api_key' ), false, $cases, $passed, $failed );
 check( '6c FormGeneratorService source has no NEURAL_FORMS_PRO_OPENAI_API_KEY constant',
 	strpos( $service_src, 'NEURAL_FORMS_PRO_OPENAI_API_KEY' ), false, $cases, $passed, $failed );
+
+// =============================================================================
+// SECTION 7 — 1.3.0 field types (mirror of the cloud's normalizeExtraField)
+// =============================================================================
+$client_src = file_get_contents( $plugin_root . '/modules/ai/CloudFormGeneratorClient.php' );
+check( '7a client advertises the new types', strpos( $client_src, "'signature'," ) !== false && strpos( $client_src, "'address'," ) !== false, true, $cases, $passed, $failed );
+$r = SchemaNormalizer::normalize( [ 'name' => 'X', 'fields' => [
+	[ 'type' => 'full_name', 'label' => 'Name', 'placeholder' => 'x', 'middle_name' => true ],
+	[ 'type' => 'shipping_address', 'label' => 'Address', 'settings' => [ 'show_line2' => false, 'default_country' => 'gb', 'evil' => 1 ] ],
+	[ 'type' => 'time', 'label' => 'Time', 'min' => '09:00', 'max' => '25:00', 'step' => 30 ],
+	[ 'type' => 'password', 'label' => 'Password', 'settings' => [ 'min_length' => 2, 'confirm' => true ] ],
+	[ 'type' => 'signature', 'label' => 'Sign' ],
+	[ 'type' => 'content', 'content' => "Hello <script>x</script>there\n\nSecond & last" ],
+	[ 'type' => 'repeater', 'label' => 'Guests', 'fields' => [ [ 'type' => 'name', 'label' => 'Guest name' ] ] ],
+] ] );
+$f = $r['form']['form_schema']['fields'] ?? [];
+check( '7b types kept', array_column( $f, 'type' ), [ 'name', 'address', 'time', 'password', 'signature', 'html', 'repeater' ], $cases, $passed, $failed );
+check( '7c name format + no placeholder', [ $f[0]['settings'] ?? null, isset( $f[0]['placeholder'] ) ], [ [ 'format' => 'first_middle_last' ], false ], $cases, $passed, $failed );
+check( '7d address settings whitelisted', $f[1]['settings'] ?? null, [ 'show_line2' => false, 'show_country' => true, 'default_country' => 'GB' ], $cases, $passed, $failed );
+check( '7e time bad max dropped', [ $f[2]['min'] ?? null, isset( $f[2]['max'] ), $f[2]['step'] ?? null ], [ '09:00', false, 30 ], $cases, $passed, $failed );
+check( '7f password min clamped', $f[3]['settings'] ?? null, [ 'min_length' => 6, 'confirm' => true ], $cases, $passed, $failed );
+check( '7g content escaped into paragraphs', $f[5]['content'] ?? null, '<p>Hello xthere</p><p>Second &amp; last</p>', $cases, $passed, $failed );
+check( '7h name inside a repeater becomes text', $f[6]['fields'][0]['type'] ?? null, 'text', $cases, $passed, $failed );
 
 // ---------------------------------------------------------------------------
 // Output

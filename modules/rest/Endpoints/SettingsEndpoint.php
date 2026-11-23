@@ -172,6 +172,8 @@ class SettingsEndpoint {
 				'captcha_provider'              => (string) ( $all['captcha_provider'] ?? 'none' ),
 				'captcha_site_key'              => (string) ( $all['captcha_site_key'] ?? '' ),
 				'captcha_secret_key_set'        => ! empty( $all['captcha_secret_key'] ),
+				'captcha_keys_provider'         => self::stored_keys_provider(),
+				'captcha_v3_threshold'          => \NeuralForms\Captcha\RecaptchaV3Verifier::clamp_threshold( $all['captcha_v3_threshold'] ?? 0.5 ),
 
 				// Neural Forms Cloud AI - cloud key is write-only.
 				'cloud_ai_enabled'              => (bool) ( $all['cloud_ai_enabled'] ?? false ),
@@ -332,6 +334,9 @@ class SettingsEndpoint {
 		if ( null !== $captcha_secret && trim( (string) $captcha_secret ) !== '' ) {
 			$updates['captcha_secret_key'] = sanitize_text_field( (string) $captcha_secret );
 		}
+		if ( null !== $request->get_param( 'captcha_v3_threshold' ) ) {
+			$updates['captcha_v3_threshold'] = \NeuralForms\Captcha\RecaptchaV3Verifier::clamp_threshold( $request->get_param( 'captcha_v3_threshold' ) );
+		}
 
 		if ( empty( $updates ) ) {
 			return new WP_Error(
@@ -357,6 +362,22 @@ class SettingsEndpoint {
 					__( 'CAPTCHA cannot be enabled without both a Site Key and a Secret Key.', 'neural-forms-lite' ),
 					array( 'status' => 422 )
 				);
+			}
+
+			// Keys belong to one service: switching provider needs that
+			// provider's keys, otherwise every submission would fail.
+			// Only when this request changes the provider, so an unrelated
+			// save (AI toggle, threshold, ...) is never blocked.
+			$provider_changed = isset( $updates['captcha_provider'] ) && $updates['captcha_provider'] !== (string) Config::get( 'captcha_provider', 'none' );
+			if ( $provider_changed && ! isset( $updates['captcha_secret_key'] ) && self::stored_keys_provider() !== $captcha_provider ) {
+				return new WP_Error(
+					'captcha_new_keys_required',
+					__( 'Enter the Site Key and Secret Key for the new CAPTCHA provider. Keys from another provider will not work.', 'neural-forms-lite' ),
+					array( 'status' => 422 )
+				);
+			}
+			if ( isset( $updates['captcha_secret_key'] ) ) {
+				$updates['captcha_keys_provider'] = $captcha_provider;
 			}
 		}
 
@@ -833,7 +854,7 @@ class SettingsEndpoint {
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => static function ( $value ): bool {
-					return in_array( $value, array( 'none', 'turnstile', 'recaptcha_v2' ), true );
+					return in_array( $value, \NeuralForms\Captcha\CaptchaManager::PROVIDERS, true );
 				},
 			),
 			'captcha_site_key'              => array(
@@ -844,6 +865,21 @@ class SettingsEndpoint {
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 			),
+			'captcha_v3_threshold'          => array(
+				'required'          => false,
+				'validate_callback' => static function ( $value ): bool {
+					return is_numeric( $value );
+				},
+			),
 		);
+	}
+
+	/**
+	 * Provider the stored CAPTCHA keys were saved for. Installs from
+	 * before 1.3.0 have no record, so the current provider is assumed.
+	 */
+	private static function stored_keys_provider(): string {
+		$for = (string) Config::get( 'captcha_keys_provider', '' );
+		return $for !== '' ? $for : (string) Config::get( 'captcha_provider', 'none' );
 	}
 }

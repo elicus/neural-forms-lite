@@ -234,6 +234,14 @@
 	line-height: 1.2;
 }
 
+/* 1.3.0: small line under a card value (Views "Since …", conversion maths). */
+#neural-forms-results-app .nf-results__card-hint {
+	margin-top: 6px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var( --nfr-muted );
+}
+
 #neural-forms-results-app .nf-results__card-value {
 	margin-top: 10px;
 	font-size: 28px;

@@ -3,6 +3,9 @@ namespace NeuralForms\Forms;
 
 defined( 'ABSPATH' ) || exit;
 
+// 1.3.0 field types; loaded here too so standalone tests work without the autoloader.
+require_once __DIR__ . '/ExtraFields.php';
+
 /**
  * Validates submitted form data against a stored form schema.
  *
@@ -124,6 +127,16 @@ class SubmissionValidator {
 			$value = array_key_exists( $field_id, $submitted_data )
 				? $submitted_data[ $field_id ]
 				: null;
+
+			// 1.3.0 Name / Address / Time / Password / Content / Signature:
+			// shape, required and format rules live in ExtraFields.
+			if ( ExtraFields::handles( $type ) ) {
+				$extra_error = ExtraFields::validate( $field, $value );
+				if ( null !== $extra_error ) {
+					$errors[ $field_id ] = array( $extra_error );
+				}
+				continue;
+			}
 
 			// ' Shape / size guard '
 			// Rejects an array/object sent for a scalar field (an array to

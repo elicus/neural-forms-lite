@@ -630,6 +630,7 @@ export default function FormSettings( {
 	const [ section, setSection ] = useState( SECTIONS[ 0 ].id );
 
 	const s = settings || {};
+	const akismet = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.akismet ) || {};
 	const onSuccess = { mode: 'message', message: '', url: '', ...( s.on_success || {} ) };
 	const onError   = { mode: 'message', message: '', url: '', ...( s.on_error   || {} ) };
 
@@ -783,6 +784,27 @@ export default function FormSettings( {
 							</label>
 							<p className="nf-form-settings__note">
 								{ __( 'Provider and keys are configured globally under plugin Settings.', 'neural-forms-lite' ) }
+							</p>
+
+							<label className="nf-form-settings__field nf-form-settings__field--inline">
+								<input
+									type="checkbox"
+									checked={ !! s.akismet_enabled }
+									disabled={ ! akismet.available && ! s.akismet_enabled }
+									onChange={ ( e ) => set( { akismet_enabled: e.target.checked } ) }
+								/>
+								<span>{ __( 'Check submissions with Akismet', 'neural-forms-lite' ) }</span>
+							</label>
+							<p className="nf-form-settings__note">
+								{ akismet.available
+									? __( 'Submissions Akismet flags are saved to Spam instead of the inbox, with no emails sent. Forms that take a payment are not checked.', 'neural-forms-lite' )
+									: <>
+										{ akismet.installed
+											? __( 'Connect Akismet with an API key to use this.', 'neural-forms-lite' )
+											: __( 'Install and connect the Akismet plugin to use this.', 'neural-forms-lite' ) }
+										{ ' ' }
+										{ akismet.pluginUrl && <a href={ akismet.pluginUrl } target="_blank" rel="noopener noreferrer">{ akismet.installed ? __( 'Open Akismet settings', 'neural-forms-lite' ) : __( 'Find Akismet', 'neural-forms-lite' ) }</a> }
+									</> }
 							</p>
 						</div>
 					) }

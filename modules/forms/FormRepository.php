@@ -181,6 +181,10 @@ class FormRepository {
 			array( '%d' )
 		);
 
+		if ( false !== $result && class_exists( '\\NeuralForms\\Analytics\\FormViews' ) ) {
+			\NeuralForms\Analytics\FormViews::delete_for_form( $id );
+		}
+
 		return false !== $result;
 	}
 
