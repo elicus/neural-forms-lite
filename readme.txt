@@ -258,6 +258,8 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 = 1.2.1 - Unreleased =
 
+* Changed: Redesigned Payments page with summary cards, simpler filters and one actions menu per payment.
+
 = 1.2.0 - 2026-11-23 =
 
 * Security: Hardened block design values and checkout links.

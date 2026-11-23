@@ -1,30 +1,88 @@
-/* Payments page (1.2.0 part B). Hero + cards come from settings.css. */
-.nf-pay-totals { display: grid; grid-template-columns: repeat( auto-fill, minmax( 240px, 1fr ) ); gap: 16px; margin-bottom: 24px; }
-.nf-pay-totals__card { background: #fff; border: 1px solid var( --f-gray-200 ); border-radius: var( --f-radius-xl ); padding: 16px 18px; }
-.nf-pay-totals__card.is-test { border-style: dashed; }
-.nf-pay-totals__head { font-weight: 700; color: var( --f-gray-900 ); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.nf-pay-totals__row { display: flex; justify-content: space-between; font-size: 13px; color: var( --f-gray-600 ); padding: 2px 0; }
-.nf-pay-totals__row.is-net { border-top: 1px solid var( --f-gray-100 ); margin-top: 4px; padding-top: 6px; color: var( --f-gray-900 ); font-size: 15px; }
-.nf-pay-totals__meta { margin-top: 8px; font-size: 11px; color: var( --f-gray-400 ); }
-.nf-pay-test-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #fef3c7; color: #92400e; vertical-align: middle; }
+/* Payments page (1.2.0 part B). Hero + section card come from settings.css. */
+
+/* ── KPI row, one per currency + mode ─────────────────────────── */
+.nf-pay-kpis { margin-bottom: 20px; }
+.nf-pay-kpis__head { display: flex; align-items: center; gap: 8px; margin: 0 2px 10px; }
+.nf-pay-kpis__currency { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var( --f-gray-500 ); }
+.nf-pay-kpis__grid { display: grid; grid-template-columns: repeat( 4, minmax( 0, 1fr ) ); gap: 12px; }
+.nf-pay-kpi { background: #fff; border: 1px solid var( --f-gray-200 ); border-radius: var( --f-radius-xl ); box-shadow: var( --f-shadow-xs ); padding: 16px 18px; min-width: 0; }
+.nf-pay-kpi__value { font-size: 24px; font-weight: 700; line-height: 1.1; color: var( --f-gray-900 ); margin-bottom: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.nf-pay-kpi__label { font-size: 12px; font-weight: 600; color: var( --f-gray-700 ); }
+.nf-pay-kpi__helper { font-size: 11px; color: var( --f-gray-400 ); margin-top: 3px; }
+.nf-pay-kpi--navy { background: var( --f-blue-600 ); border-color: var( --f-blue-600 ); }
+.nf-pay-kpi--navy .nf-pay-kpi__value { color: #fff; }
+.nf-pay-kpi--navy .nf-pay-kpi__label { color: rgba( 255, 255, 255, .85 ); }
+.nf-pay-kpi--navy .nf-pay-kpi__helper { color: rgba( 255, 255, 255, .6 ); }
+.nf-pay-kpi--danger { background: var( --f-red-50 ); border-color: var( --f-red-200 ); }
+.nf-pay-kpi--danger .nf-pay-kpi__value { color: var( --f-red-600 ); }
+
+.nf-pay-test-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; background: var( --f-amber-50 ); color: #92400e; vertical-align: middle; line-height: 1.6; }
+.nf-pay-kpis__head .nf-pay-test-badge { margin-left: 0; }
 .nf-pay-hint { margin: 0 0 16px; }
-.nf-pay-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var( --f-gray-100 ); }
-.nf-pay-filters select, .nf-pay-filters input { font-size: 13px; padding: 7px 10px; border: 1px solid var( --f-gray-300 ); border-radius: 8px; background: #fff; }
-.nf-pay-filters input[type="search"] { flex: 1 1 220px; }
-.nf-pay-msg { margin: 10px 24px 0; }
-.nf-pay-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.nf-pay-table th { text-align: left; font-weight: 600; color: var( --f-gray-500 ); font-size: 12px; padding: 10px 12px; border-bottom: 1px solid var( --f-gray-100 ); }
-.nf-pay-table th:first-child, .nf-pay-table td:first-child { padding-left: 24px; }
-.nf-pay-table td { padding: 10px 12px; border-bottom: 1px solid var( --f-gray-100 ); vertical-align: top; }
-.nf-pay-table td small { display: block; color: var( --f-gray-400 ); font-size: 11px; margin-top: 2px; }
-.nf-pay-table .is-num { text-align: right; white-space: nowrap; font-weight: 600; color: var( --f-gray-900 ); }
-.nf-pay-table tr.is-failed td, .nf-pay-table tr.is-expired td, .nf-pay-table tr.is-replaced td { color: var( --f-gray-400 ); }
-.nf-pay-empty { text-align: center; color: var( --f-gray-400 ); padding: 32px !important; }
-.nf-pay-actions { white-space: nowrap; display: flex; flex-wrap: wrap; gap: 4px; }
-.nf-pay-actions .neural-forms-settings__btn { padding: 5px 9px; font-size: 12px; text-decoration: none; }
+
+/* ── Filters ──────────────────────────────────────────────────── */
+.nf-pay-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var( --f-gray-100 ); background: var( --f-gray-50 ); }
+.nf-pay-filters select,
+.nf-pay-filters input { font-size: 13px; line-height: 1.4; min-height: 34px; padding: 6px 10px; border: 1px solid var( --f-gray-300 ); border-radius: var( --f-radius-md ); background: #fff; color: var( --f-gray-800 ); box-shadow: none; margin: 0; }
+.nf-pay-filters select { padding-right: 28px; max-width: 190px; }
+.nf-pay-filters select:focus,
+.nf-pay-filters input:focus { border-color: var( --f-blue-400 ); box-shadow: 0 0 0 2px var( --f-blue-100 ); outline: none; }
+.nf-pay-filters__search { position: relative; flex: 1 1 260px; display: flex; align-items: center; }
+.nf-pay-filters__search svg { position: absolute; left: 10px; color: var( --f-gray-400 ); pointer-events: none; }
+.nf-pay-filters__search input { width: 100%; padding-left: 32px; }
+.nf-pay-filters__dates { display: flex; gap: 6px; }
+.nf-pay-filters__dates label { display: flex; align-items: center; border: 1px solid var( --f-gray-300 ); border-radius: var( --f-radius-md ); background: #fff; padding-left: 9px; }
+.nf-pay-filters__dates label:focus-within { border-color: var( --f-blue-400 ); box-shadow: 0 0 0 2px var( --f-blue-100 ); }
+.nf-pay-filters__dates span { font-size: 12px; color: var( --f-gray-500 ); }
+.nf-pay-filters__dates input { border: 0; min-height: 32px; padding: 5px 8px 5px 6px; background: transparent; }
+.nf-pay-filters__dates input:focus { box-shadow: none; }
+.nf-pay-filters__clear { border: 0; background: none; padding: 6px 4px; font: inherit; font-size: 13px; color: var( --f-blue-500 ); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.nf-pay-msg { margin: 10px 20px 0; }
+
+/* ── Table ────────────────────────────────────────────────────── */
+.nf-pay-table-wrap { overflow-x: auto; }
+.nf-pay-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var( --f-gray-700 ); }
+.nf-pay-table th { text-align: left; font-weight: 600; color: var( --f-gray-500 ); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid var( --f-gray-200 ); white-space: nowrap; }
+.nf-pay-table th:first-child, .nf-pay-table td:first-child { padding-left: 20px; }
+.nf-pay-table th:last-child, .nf-pay-table td:last-child { padding-right: 20px; }
+.nf-pay-table td { padding: 12px; border-bottom: 1px solid var( --f-gray-100 ); vertical-align: top; }
+.nf-pay-table tbody tr:last-child td { border-bottom: 0; }
+.nf-pay-table tbody tr:hover td { background: var( --f-gray-50 ); }
+.nf-pay-table td small { display: block; color: var( --f-gray-400 ); font-size: 12px; margin-top: 2px; }
+.nf-pay-table .is-num { text-align: right; white-space: nowrap; font-weight: 600; color: var( --f-gray-900 ); font-variant-numeric: tabular-nums; }
+.nf-pay-table th.is-num { font-weight: 600; color: var( --f-gray-500 ); }
+.nf-pay-table .is-num small.nf-pay-refunded { color: var( --f-red-600 ); font-weight: 500; }
+.nf-pay-date { white-space: nowrap; color: var( --f-gray-900 ); }
+.nf-pay-date small { display: flex !important; align-items: center; gap: 0; }
+.nf-pay-customer { font-weight: 600; color: var( --f-blue-500 ); text-decoration: none; }
+.nf-pay-customer:hover { text-decoration: underline; }
+.nf-pay-ref { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px !important; }
+.nf-pay-muted { color: var( --f-gray-400 ); }
+.nf-pay-table tr.is-failed td, .nf-pay-table tr.is-expired td, .nf-pay-table tr.is-replaced td, .nf-pay-table tr.is-cancelled td { color: var( --f-gray-400 ); }
+.nf-pay-table tr.is-failed .is-num, .nf-pay-table tr.is-expired .is-num, .nf-pay-table tr.is-replaced .is-num, .nf-pay-table tr.is-cancelled .is-num,
+.nf-pay-table tr.is-failed .nf-pay-date, .nf-pay-table tr.is-expired .nf-pay-date, .nf-pay-table tr.is-replaced .nf-pay-date, .nf-pay-table tr.is-cancelled .nf-pay-date { color: var( --f-gray-400 ); font-weight: 500; }
+.nf-pay-empty { text-align: center; color: var( --f-gray-400 ); padding: 40px 20px !important; }
+
+/* Row actions: one button + "⋯" menu, never wraps. */
+.nf-pay-actions-head { width: 1%; }
+.nf-pay-actions { white-space: nowrap; text-align: right; }
+.nf-pay-actions .neural-forms-settings__btn { display: inline-flex; align-items: center; padding: 5px 10px; font-size: 12px; text-decoration: none; vertical-align: middle; }
+.nf-pay-actions .neural-forms-settings__btn + .neural-forms-settings__btn { margin-left: 4px; }
+.nf-pay-actions .neural-forms-settings__btn:hover { border-color: var( --f-gray-400 ); background: var( --f-gray-50 ); }
+.nf-pay-menu-spacer { display: inline-block; width: 32px; margin-left: 4px; vertical-align: middle; }
+.nf-pay-more-btn { padding: 5px 7px !important; color: var( --f-gray-600 ) !important; }
+.nf-pay-more-btn[aria-expanded="true"] { background: var( --f-gray-100 ) !important; }
+.nf-pay-menu { position: fixed; z-index: 100001; min-width: 180px; background: #fff; border: 1px solid var( --f-gray-200 ); border-radius: var( --f-radius-lg ); box-shadow: 0 12px 32px rgba( 17, 24, 39, .16 ); padding: 4px; }
+.nf-pay-menu__item { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit; font-size: 13px; color: var( --f-gray-800 ); padding: 8px 12px; border-radius: var( --f-radius-sm ); cursor: pointer; text-decoration: none; }
+.nf-pay-menu__item:hover, .nf-pay-menu__item:focus { background: var( --f-gray-100 ); color: var( --f-gray-900 ); outline: none; }
+.nf-pay-menu__item.is-danger { color: #b91c1c; border-top: 1px solid var( --f-gray-100 ); border-radius: 0 0 var( --f-radius-sm ) var( --f-radius-sm ); }
+.nf-pay-menu__item.is-danger:hover { background: var( --f-red-50 ); color: #991b1b; }
+
 .neural-forms-settings__btn.is-danger { color: #b91c1c; border-color: #fca5a5; }
 .neural-forms-settings__btn.is-primary.is-danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
-.nf-pay-more { padding: 12px 24px; text-align: center; }
+.nf-pay-more { padding: 12px 20px; text-align: center; border-top: 1px solid var( --f-gray-100 ); }
+
+/* ── Dialogs ──────────────────────────────────────────────────── */
 .nf-pay-dialog { position: fixed; inset: 0; background: rgba( 17, 24, 39, .45 ); display: flex; align-items: center; justify-content: center; z-index: 100000; }
 .nf-pay-dialog__box { background: #fff; border-radius: 12px; padding: 22px 24px; width: min( 480px, calc( 100vw - 32px ) ); box-shadow: 0 20px 50px rgba( 0, 0, 0, .25 ); }
 .nf-pay-dialog__box h3 { margin: 0 0 8px; font-size: 16px; }
@@ -32,9 +90,25 @@
 .nf-pay-dialog__field > span { color: var( --f-gray-600 ); font-weight: 500; }
 .nf-pay-dialog__field input, .nf-pay-dialog__field textarea { font-size: 14px; padding: 9px 11px; border: 1px solid var( --f-gray-300 ); border-radius: 8px; }
 .nf-pay-dialog__actions { display: flex; gap: 8px; margin-top: 18px; }
-.neural-forms-entries-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #e5e7eb; color: #374151; }
+
+/* ── Status pills ─────────────────────────────────────────────── */
+.neural-forms-entries-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.4; white-space: nowrap; background: var( --f-gray-100 ); color: var( --f-gray-600 ); }
 .neural-forms-entries-pill--pay-paid, .neural-forms-entries-pill--pay-deposit_paid { background: #d1fae5; color: #065f46; }
 .neural-forms-entries-pill--pay-processing, .neural-forms-entries-pill--pay-pending { background: #fef3c7; color: #92400e; }
 .neural-forms-entries-pill--pay-failed, .neural-forms-entries-pill--pay-cancelled { background: #fee2e2; color: #991b1b; }
 .neural-forms-entries-pill--pay-partially_refunded { background: #ede9fe; color: #5b21b6; }
-@media (max-width: 900px) { .nf-pay-table thead { display: none; } .nf-pay-table tr { display: block; padding: 8px 0; } .nf-pay-table td { display: block; border: 0; padding: 4px 24px; } }
+.neural-forms-entries-pill--pay-refunded { background: #e0e7ff; color: #3730a3; }
+
+/* ── Narrow screens ───────────────────────────────────────────── */
+@media ( max-width: 1100px ) { .nf-pay-kpis__grid { grid-template-columns: repeat( 2, minmax( 0, 1fr ) ); } }
+@media ( max-width: 900px ) {
+	.nf-pay-table thead { display: none; }
+	.nf-pay-table, .nf-pay-table tbody { display: block; }
+	.nf-pay-table tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 12px 16px; border-bottom: 1px solid var( --f-gray-100 ); }
+	.nf-pay-table td { display: block; border: 0; padding: 2px 0 !important; text-align: left; }
+	.nf-pay-table td.is-num, .nf-pay-table td.nf-pay-actions { text-align: right; }
+	.nf-pay-filters__dates { flex: 1 1 100%; }
+	.nf-pay-filters__dates label { flex: 1; }
+	.nf-pay-filters select { flex: 1 1 140px; max-width: none; }
+}
+@media ( max-width: 520px ) { .nf-pay-kpis__grid { grid-template-columns: minmax( 0, 1fr ); } }
