@@ -34,6 +34,9 @@ class AdminPanel {
 		// unlock the provider tabs (which still show "Coming soon"
 		// until the actual provider work ships).
 		'neural-forms-integrations' => 'integrations',
+		// 1.2.0 part B: quote branding / numbering (own page, not Settings).
+		'neural-forms-quotes'       => 'quotes',
+		'neural-forms-payments'     => 'payments',
 	);
 
 	public static function boot(): void {
@@ -112,13 +115,17 @@ class AdminPanel {
 
 		// Submenu order is driven by the sequence of add_submenu_page()
 		// calls below. Intentional ordering (Forms first, Import last):
+		// Grouped by use case (owner request 2026-10-29): build → handle
+		// leads and money → measure → connect and configure.
 		// 1. Forms          ← landing page (matches the parent slug)
 		// 2. Entries        ← submissions inbox (carries unread bubble)
-		// 3. Analytics      ← form-level conversion / drop-off
-		// 4. Stats          ← admin dashboard KPIs
-		// 5. Integrations   ← provider config (Pro-gated, Lite shows shell)
-		// 6. Settings       ← email / CAPTCHA / Cloud AI
-		// 7. Import         ← CF7 migration, conditional on CF7 active
+		// 3. Business Details ← identity, logo, numbering, terms printed on quotes + invoices (slug stays neural-forms-quotes)
+		// 4. Payments       ← every payment, invoices, refunds (1.2.0 part B)
+		// 5. Analytics      ← form-level conversion / drop-off
+		// 6. Stats          ← admin dashboard KPIs
+		// 7. Integrations   ← provider config (Pro-gated, Lite shows shell)
+		// 8. Settings       ← email / CAPTCHA / Cloud AI
+		// 9. Import         ← CF7 migration, conditional on CF7 active
 		//
 		// Templates used to be its own submenu (slug 'neural-forms-templates')
 		// in 1.1.0 — removed once the popup variant landed on the Forms list.
@@ -162,7 +169,29 @@ class AdminPanel {
 			array( self::class, 'render_page' )
 		);
 
-		// 4. Analytics screen (1.1.0). Independent split bundle.
+		// 3. Quotes (1.2.0 part B): business details, numbering and terms
+		// for quotes. Lite shows the menu with a Pro lock card; Pro flips
+		// Capabilities::QUOTES.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Business Details - Neural Forms', 'neural-forms-lite' ),
+			__( 'Business Details', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-quotes',
+			array( self::class, 'render_page' )
+		);
+
+		// 4. Payments (1.2.0 part B): every payment, invoices, refunds.
+		add_submenu_page(
+			'neural-forms',
+			__( 'Payments - Neural Forms', 'neural-forms-lite' ),
+			__( 'Payments', 'neural-forms-lite' ),
+			NEURAL_FORMS_CAP_MANAGE_FORMS,
+			'neural-forms-payments',
+			array( self::class, 'render_page' )
+		);
+
+		// 5. Analytics screen (1.1.0). Independent split bundle.
 		// render_results_page() emits the #neural-forms-results-app root
 		// that the analytics bundle mounts into; the rest of the screens
 		// (Forms / Entries / Settings / Stats / Import) each have their
@@ -181,7 +210,7 @@ class AdminPanel {
 			array( self::class, 'render_results_page' )
 		);
 
-		// 5. Stats.
+		// 6. Stats.
 		add_submenu_page(
 			'neural-forms',
 			__( 'Stats - Neural Forms', 'neural-forms-lite' ),
@@ -191,7 +220,7 @@ class AdminPanel {
 			array( self::class, 'render_page' )
 		);
 
-		// 6. Integrations (1.1.0). Lite always shows the menu entry;
+		// 7. Integrations (1.1.0). Lite always shows the menu entry;
 		// the page renders in a locked Pro-upsell state when
 		// Capabilities::INTEGRATIONS is false (default in Lite). Pro
 		// flips the filter and the provider tabs become live.
@@ -204,7 +233,7 @@ class AdminPanel {
 			array( self::class, 'render_page' )
 		);
 
-		// 7. Settings.
+		// 8. Settings.
 		add_submenu_page(
 			'neural-forms',
 			__( 'Settings - Neural Forms', 'neural-forms-lite' ),
@@ -696,6 +725,50 @@ class AdminPanel {
 					array( 'wp-components' ),
 					(string) filemtime( $build_dir . 'integrations.css' )
 				);
+			}
+		}
+
+		// Quotes page (1.2.0 part B) — build/quotes.js + build/quotes.css
+		// on ?page=neural-forms-quotes. Same per-screen pattern as above.
+		if (
+			self::get_current_screen() === 'quotes'
+			&& file_exists( $build_dir . 'quotes.js' )
+		) {
+			$asset_file = $build_dir . 'quotes.asset.php';
+			$asset      = file_exists( $asset_file ) ? require $asset_file : array();
+			if ( ! is_array( $asset ) ) {
+				$asset = array();
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'quotes.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script( 'neural-forms-admin', $build_url . 'quotes.js', $deps, $version, true );
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+			if ( file_exists( $build_dir . 'quotes.css' ) ) {
+				wp_enqueue_style( 'neural-forms-admin', $build_url . 'quotes.css', array( 'wp-components' ), (string) filemtime( $build_dir . 'quotes.css' ) );
+			}
+			wp_enqueue_media();
+		}
+
+		// Payments page (1.2.0 part B) — build/payments.js + build/payments.css.
+		if (
+			self::get_current_screen() === 'payments'
+			&& file_exists( $build_dir . 'payments.js' )
+		) {
+			$asset_file = $build_dir . 'payments.asset.php';
+			$asset      = file_exists( $asset_file ) ? require $asset_file : array();
+			if ( ! is_array( $asset ) ) {
+				$asset = array();
+			}
+			$deps    = isset( $asset['dependencies'] ) && is_array( $asset['dependencies'] ) ? $asset['dependencies'] : array();
+			$bust    = (string) filemtime( $build_dir . 'payments.js' );
+			$version = ( $asset['version'] ?? NEURAL_FORMS_VERSION ) . '.' . $bust;
+
+			wp_enqueue_script( 'neural-forms-admin', $build_url . 'payments.js', $deps, $version, true );
+			wp_localize_script( 'neural-forms-admin', 'neuralFormsAdmin', self::script_data() );
+			if ( file_exists( $build_dir . 'payments.css' ) ) {
+				wp_enqueue_style( 'neural-forms-admin', $build_url . 'payments.css', array( 'wp-components' ), (string) filemtime( $build_dir . 'payments.css' ) );
 			}
 		}
 
@@ -1544,8 +1617,8 @@ CSS;
 	 *
 	 * The "Create with AI" flow opens its own modal (rendered into a
 	 * portal under document.body so it isn't constrained by the rich
-	 * bundle's container CSS). The modal POSTs the prompt to Pro's
-	 * /neural-forms-pro/v1/ai/generate-form endpoint, then on Create
+	 * bundle's container CSS). The modal POSTs the prompt to Lite's
+	 * /neural-forms/v1/ai/generate-form endpoint, then on Create
 	 * persists the returned schema via /neural-forms/v1/forms with
 	 * status=draft and redirects to ?page=neural-forms&edit=N so the
 	 * builder split-bundle picks up where the user left off.
@@ -1553,38 +1626,24 @@ CSS;
 	private static function enqueue_new_form_dropdown_injector(): void {
 		$cloud_ai_enabled = (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' );
 		$cloud_key_set    = \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '';
-		$can_generate     = \NeuralForms\Core\Capabilities::can( \NeuralForms\Core\Capabilities::AI_FORM_GENERATE );
-		$pro_installed    = class_exists( '\\NeuralForms\\Pro\\NeuralFormsPro' );
 
 		// The dropdown ships on every install — Lite users still need
 		// access to Blank Form + Use Template (the Template Library
-		// hosts the Block Editor catalog Lite ships). The "Create Form
-		// with AI" item is gated separately below: enabled = full AI
-		// flow, locked = PRO badge + click routes to the pricing page.
+		// hosts the Block Editor catalog Lite ships). "Create form with
+		// Neural AI" ships in Lite (since 2026-10-30): it only needs the
+		// cloud connection, otherwise the click routes to Settings.
 
 		$payload = wp_json_encode(
 			array(
-				'available'      => $can_generate && $cloud_ai_enabled && $cloud_key_set,
-				'proInstalled'   => $pro_installed,
-				'canGenerate'    => $can_generate,
-				'cloudConnected' => $cloud_ai_enabled && $cloud_key_set,
-				'cloudKeySet'    => $cloud_key_set,
-				'cloudAiEnabled' => $cloud_ai_enabled,
+				'available'      => $cloud_ai_enabled && $cloud_key_set,
 				'settingsUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms-settings' ) ),
-				'newFormUrl'     => esc_url_raw( admin_url( 'admin.php?page=neural-forms&new=1' ) ),
 				'editFormUrl'    => esc_url_raw( admin_url( 'admin.php?page=neural-forms&edit=__ID__' ) ),
-				// Canonical upgrade URL — matches every other "Upgrade
-				// to Pro" call-to-action across the admin (Integrations,
-				// EntryDetail, BuilderInspector's AI card, Settings).
-				'upgradeUrl'     => esc_url_raw( 'https://neuralforms.ai/pricing' ),
 				'i18n'           => array(
 					'caretLabel'   => __( 'New form options', 'neural-forms-lite' ),
 					'blank'        => __( 'Blank Form', 'neural-forms-lite' ),
 					'template'     => __( 'Use Template', 'neural-forms-lite' ),
 					'ai'           => __( 'Create form with Neural AI', 'neural-forms-lite' ),
 					'aiBadge'      => __( 'AI', 'neural-forms-lite' ),
-					'proBadge'     => __( 'PRO', 'neural-forms-lite' ),
-					'aiLocked'     => __( 'Available in Neural Forms Pro', 'neural-forms-lite' ),
 					'aiSetup'      => __( 'Connect Neural Forms Cloud to use Neural AI', 'neural-forms-lite' ),
 					'modalTitle'   => __( 'Create form with Neural AI', 'neural-forms-lite' ),
 					'modalDesc'    => __( 'Describe the form you want. Neural Forms will draft the fields for you.', 'neural-forms-lite' ),
@@ -1658,7 +1717,8 @@ CSS;
     function safeEscape( s ) {
         var d = document.createElement( 'div' );
         d.textContent = s == null ? '' : String( s );
-        return d.innerHTML;
+        // innerHTML round-trip leaves quotes alone; this helper is also used inside attributes.
+        return d.innerHTML.replace( /"/g, '&quot;' ).replace( /'/g, '&#39;' );
     }
 
     function format( tmpl, args ) {
@@ -1830,7 +1890,7 @@ CSS;
             var rootUrl = apiSettings.root || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.root ) || '/wp-json/';
             var nonce   = apiSettings.nonce || ( window.neuralFormsAdmin && window.neuralFormsAdmin.api && window.neuralFormsAdmin.api.nonce ) || '';
 
-            var url = ( rootUrl.replace( /\/$/, '' ) ) + '/neural-forms-pro/v1/ai/generate-form';
+            var url = ( rootUrl.replace( /\/$/, '' ) ) + '/neural-forms/v1/ai/generate-form';
 
             fetch( url, {
                 method: 'POST',
@@ -2007,30 +2067,16 @@ CSS;
             { id: 'template', label: data.i18n.template, enabled: true,  action: openTemplateLibrary },
         ];
 
-        // Three AI-item states, in priority order:
-        //   1. Lite install (no capability)        → PRO badge, click → upgrade page
-        //   2. Pro installed but cloud not set up  → AI badge, hint, click → Settings
-        //   3. Pro + cloud ready                   → AI badge, click → AI modal
-        // The item is always visible so Lite users discover the Pro
-        // feature; the locked state is communicated via the PRO pill
-        // + secondary hint rather than hiding the row entirely.
-        var aiCanGenerate = !! data.canGenerate;
+        // Two AI-item states, in priority order:
+        //   1. Cloud not connected  → AI badge, hint, click → Settings
+        //   2. Cloud ready          → AI badge, click → AI modal
         var aiReady       = !! data.available;
         var aiBadges      = [];
         var aiHint        = '';
         var aiAction;
 
-        if ( ! aiCanGenerate ) {
-            // Lite — no Pro. Surface PRO + AI pills so the user sees
-            // both that this is the AI flow and that it's gated.
-            aiBadges.push( data.i18n.proBadge || 'PRO' );
-            aiBadges.push( data.i18n.aiBadge  || 'AI' );
-            aiHint   = data.i18n.aiLocked || 'Available in Neural Forms Pro';
-            aiAction = function () {
-                window.open( data.upgradeUrl || 'https://neuralforms.ai/pricing', '_blank', 'noopener' );
-            };
-        } else if ( ! aiReady ) {
-            // Pro installed but Cloud not connected — route to Settings.
+        if ( ! aiReady ) {
+            // Cloud not connected — route to Settings.
             aiBadges.push( data.i18n.aiBadge || 'AI' );
             aiHint   = data.i18n.aiSetup || '';
             aiAction = function () { window.location.href = data.settingsUrl; };
@@ -2042,9 +2088,7 @@ CSS;
         items.push( {
             id: 'ai',
             label: data.i18n.ai,
-            // `enabled` is now purely a click-state concern. The
-            // locked-PRO row is still clickable (it opens the upgrade
-            // page), so we keep enabled=true and only flip false when
+            // `enabled` is purely a click-state concern: false only when
             // the action is missing entirely.
             enabled: typeof aiAction === 'function',
             badges:  aiBadges,
@@ -2076,11 +2120,7 @@ CSS;
                 for ( var bi = 0; bi < badgeList.length; bi++ ) {
                     var badgeText = badgeList[ bi ];
                     if ( ! badgeText ) continue;
-                    var badgeClass = 'nf-newform-split__badge';
-                    if ( String( badgeText ).toUpperCase() === 'PRO' ) {
-                        badgeClass += ' nf-newform-split__badge--pro';
-                    }
-                    html += '<span class="' + badgeClass + '">' + safeEscape( badgeText ) + '</span>';
+                    html += '<span class="nf-newform-split__badge">' + safeEscape( badgeText ) + '</span>';
                 }
                 html += '</span>';
             }
@@ -2288,13 +2328,6 @@ JS;
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
-}
-/* PRO variant — solid navy fill to match every other PRO pill across
- * the admin (BuilderInspector AI card, Templates Divi tab, integrations
- * locked card). Keeps the AI badge's purple gradient for the actual
- * AI-flow signal and reserves navy for the plan/capability signal. */
-#neural-forms-app .nf-newform-split__badge--pro {
-    background: #080f5b;
 }
 #neural-forms-app .nf-newform-split__hint {
     font-size: 11px;
@@ -3077,6 +3110,20 @@ CSS;
 	 * Grouped by concern so each consumer (middleware, router, UI) reads
 	 * only its own namespace without touching unrelated values.
 	 */
+	/** Boot flags for AiPromptPanel (builder) — see FormGeneratorService::status(). */
+	private static function ai_form_generate_boot(): array {
+		$snap = \NeuralForms\AI\FormGeneratorService::status();
+		return array(
+			'configured'       => (bool) $snap['configured'],
+			'cloudConnected'   => (bool) $snap['cloud_connected'],
+			'aiEnabled'        => (bool) $snap['ai_enabled'],
+			'plan'             => (string) $snap['plan'],
+			'eligible'         => (bool) $snap['eligible'],
+			'creditsAvailable' => (bool) $snap['credits']['available'],
+			'maxPromptChars'   => (int) $snap['limits']['max_prompt_chars'],
+		);
+	}
+
 	private static function script_data(): array {
 		$data = array(
 			'screen'    => self::get_current_screen(),
@@ -3113,6 +3160,9 @@ CSS;
 				'features'       => \NeuralForms\Core\Config::features(),
 				'cloudAiEnabled' => (bool) \NeuralForms\Core\Config::get( 'cloud_ai_enabled' ),
 				'cloudApiKeySet' => \NeuralForms\Core\Config::get( 'cloud_api_key' ) !== '',
+				// "Create form with Neural AI" boot flags (Lite-owned since
+				// 2026-10-30). Flags only — never a key or model name.
+				'aiFormGenerate' => self::ai_form_generate_boot(),
 				// Email Settings > "Default reply subject" — the reply
 				// composer pre-fills its Subject field from this (tokens
 				// {site_name} / {form_name} resolved client-side).

@@ -33,6 +33,17 @@ function StatusPill( { entry } ) {
 	return <span className="neural-forms-entries-pill neural-forms-entries-pill--read">{ __( 'Read', 'neural-forms-lite' ) }</span>;
 }
 
+/** 1.2.0 part B: aggregate payment status, only when the entry carries a price. */
+const PAYMENT_PILL_LABELS = {
+	pending: __( 'Awaiting payment', 'neural-forms-lite' ), processing: __( 'Processing', 'neural-forms-lite' ), failed: __( 'Payment failed', 'neural-forms-lite' ),
+	cancelled: __( 'Checkout cancelled', 'neural-forms-lite' ), deposit_paid: __( 'Deposit paid', 'neural-forms-lite' ), paid: __( 'Paid', 'neural-forms-lite' ),
+	partially_refunded: __( 'Partly refunded', 'neural-forms-lite' ), refunded: __( 'Refunded', 'neural-forms-lite' ),
+};
+function PaymentPill( { status } ) {
+	if ( ! status || ! PAYMENT_PILL_LABELS[ status ] ) return null;
+	return <span className={ 'neural-forms-entries-pill neural-forms-entries-pill--pay neural-forms-entries-pill--pay-' + status }>{ PAYMENT_PILL_LABELS[ status ] }</span>;
+}
+
 function PriorityPill( { p } ) {
 	const v = String( p || '' ).toLowerCase();
 	if ( v === 'high'   ) return <span className="neural-forms-entries-pill neural-forms-entries-pill--high">{ __( 'High',   'neural-forms-lite' ) }</span>;
@@ -124,7 +135,7 @@ export default function EntriesList( {
 							<td className="neural-forms-entries-row__form">{ e.form_name || `#${ e.form_id }` }</td>
 							<td className="neural-forms-entries-row__submitter">{ submitter }</td>
 							<td className="neural-forms-entries-row__preview">{ previewCell }</td>
-							<td><StatusPill entry={ e } /></td>
+							<td><StatusPill entry={ e } /><PaymentPill status={ e.payment_status } /></td>
 							<td><PriorityPill p={ e.ai_priority } /></td>
 							<td className="neural-forms-entries-row__date">{ formatDate( e.submitted_at || e.created_at ) }</td>
 						</tr>

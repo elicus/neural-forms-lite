@@ -39,7 +39,7 @@ class AiManager {
 			throw new \RuntimeException( 'Neural Forms Cloud AI is not enabled.' );
 		}
 
-		$key = (string) Config::get( 'cloud_api_key', '' );
+		$key = trim( (string) Config::get( 'cloud_api_key', '' ) ); // cloud hashes exact bytes; a stray space 401s
 
 		if ( $key === '' ) {
 			throw new \RuntimeException( 'Neural Forms Cloud API key is not configured.' );

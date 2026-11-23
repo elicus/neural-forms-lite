@@ -106,6 +106,27 @@ class EntryRepository {
 			array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
+		// 1.2.0 part B: pricing snapshot (PriceEngine::evaluate output) in
+		// its own columns so lists can sort/filter without decoding JSON.
+		// Written after the insert so a snapshot problem can never lose
+		// the submission itself.
+		if ( false !== $inserted && is_array( $context['pricing'] ?? null ) ) {
+			$p = $context['pricing'];
+			$wpdb->update(
+				self::table(),
+				array(
+					'pricing_snapshot'   => wp_json_encode( $p, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+					'amount_total_minor' => (int) ( $p['total'] ?? 0 ),
+					'amount_due_minor'   => (int) ( $p['due_now'] ?? 0 ),
+					'currency'           => substr( (string) ( $p['currency'] ?? '' ), 0, 3 ),
+					'payment_status'     => (int) ( $p['due_now'] ?? 0 ) > 0 ? 'pending' : 'none',
+				),
+				array( 'id' => (int) $wpdb->insert_id ),
+				array( '%s', '%d', '%d', '%s', '%s' ),
+				array( '%d' )
+			);
+		}
+
 		if ( false === $inserted ) {
 			$db_err = $wpdb->last_error ?: '(no wpdb error message)';
 			Logger::file(
@@ -199,6 +220,14 @@ class EntryRepository {
 		if ( array_key_exists( 'follow_up_overdue_sent', $fields ) ) {
 			$data['follow_up_overdue_sent'] = (int) (bool) $fields['follow_up_overdue_sent'];
 			$format[]                       = '%d';
+		}
+		// 1.2.0 part B: aggregate payment status (PaymentStatus::ENTRY_STATUSES).
+		if ( array_key_exists( 'payment_status', $fields ) && class_exists( '\\NeuralForms\\Payments\\PaymentStatus' ) ) {
+			$ps = (string) $fields['payment_status'];
+			if ( in_array( $ps, \NeuralForms\Payments\PaymentStatus::ENTRY_STATUSES, true ) ) {
+				$data['payment_status'] = $ps;
+				$format[]               = '%s';
+			}
 		}
 
 		if ( empty( $data ) ) {
@@ -422,6 +451,8 @@ class EntryRepository {
 			'high_priority'  => $count( "ai_priority = 'high' AND status IN ('new','read')" ),
 			'spam_suspected' => $count( "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')" ),
 			'overdue'        => $count( self::OVERDUE_WHERE ),
+			'awaiting_payment' => $count( self::AWAITING_PAYMENT_WHERE ),
+			'paid'             => $count( self::PAID_WHERE ),
 			'stages'         => self::count_by_stage( $scope_clause ),
 		);
 	}
@@ -752,9 +783,16 @@ class EntryRepository {
 	 * System view identifiers and the WHERE clauses they expand to.
 	 * Used by list() and count_by_view().
 	 */
-	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue' );
+	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue', 'awaiting_payment', 'paid' );
 
 	/** SQL predicate for an open, overdue follow-up on a live entry (1.2.0). */
+	/** 1.2.0 part B smart views (single-column predicates; the aliased form prefixes `e.`). */
+	// "Awaiting payment" = a checkout that is still open. Failed and cancelled
+	// checkouts are NOT awaiting (rows show them as "Payment failed" /
+	// "Cancelled"); the Stats dashboard counts with this same predicate so its
+	// "N awaiting payment" link opens a list of exactly N entries.
+	public const AWAITING_PAYMENT_WHERE = "payment_status IN ('pending','processing') AND status IN ('new','read')";
+	public const PAID_WHERE             = "payment_status IN ('deposit_paid','paid','partially_refunded') AND status IN ('new','read')";
 	public const OVERDUE_WHERE = "follow_up_due IS NOT NULL AND follow_up_done = 0 AND follow_up_due < UTC_TIMESTAMP() AND status IN ('new','read')";
 
 	/**
@@ -1079,6 +1117,14 @@ class EntryRepository {
 					$plain_parts[]   = "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')";
 					$aliased_parts[] = "e.ai_is_spam = 1 AND e.ai_auto_spam_applied = 0 AND e.status NOT IN ('spam','trash')";
 					break;
+				case 'awaiting_payment':
+					$plain_parts[]   = self::AWAITING_PAYMENT_WHERE;
+					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::AWAITING_PAYMENT_WHERE );
+					break;
+				case 'paid':
+					$plain_parts[]   = self::PAID_WHERE;
+					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::PAID_WHERE );
+					break;
 				case 'overdue':
 					$plain_parts[]   = self::OVERDUE_WHERE;
 					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::OVERDUE_WHERE );
@@ -1091,6 +1137,18 @@ class EntryRepository {
 		}
 
 		// 1.2.0 lead filters. Combine with any view (e.g. Inbox + stage).
+		// 1.2.0 part B: payment aggregate filter (comma list allowed, e.g. paid,deposit_paid).
+		if ( ! empty( $args['payment_status'] ) ) {
+			$wanted = array_values( array_filter( array_map( 'trim', explode( ',', (string) $args['payment_status'] ) ), static function ( $v ) { return preg_match( '/^[a-z_]+$/', $v ) === 1; } ) );
+			if ( $wanted ) {
+				$ph              = implode( ',', array_fill( 0, count( $wanted ), '%s' ) );
+				$plain_parts[]   = 'payment_status IN (' . $ph . ')';
+				$aliased_parts[] = 'e.payment_status IN (' . $ph . ')';
+				foreach ( $wanted as $w ) {
+					$values[] = $w;
+				}
+			}
+		}
 		$stage = isset( $args['stage'] ) ? LeadStages::sanitize_id( (string) $args['stage'] ) : '';
 		if ( $stage !== '' ) {
 			$plain_parts[]   = 'lead_stage = %s';
@@ -1209,6 +1267,14 @@ class EntryRepository {
 		$row['follow_up_due']          = isset( $row['follow_up_due'] ) && $row['follow_up_due'] ? (string) $row['follow_up_due'] : null;
 		$row['follow_up_done']         = isset( $row['follow_up_done'] ) ? (int) $row['follow_up_done'] : 0;
 		$row['follow_up_overdue_sent'] = isset( $row['follow_up_overdue_sent'] ) ? (int) $row['follow_up_overdue_sent'] : 0;
+		// 1.2.0 part B: pricing / payment columns.
+		$snap                       = isset( $row['pricing_snapshot'] ) && is_string( $row['pricing_snapshot'] ) ? json_decode( $row['pricing_snapshot'], true ) : null;
+		$row['pricing']             = is_array( $snap ) ? $snap : null;
+		$row['amount_total_minor']  = isset( $row['amount_total_minor'] ) && null !== $row['amount_total_minor'] ? (int) $row['amount_total_minor'] : null;
+		$row['amount_due_minor']    = isset( $row['amount_due_minor'] ) && null !== $row['amount_due_minor'] ? (int) $row['amount_due_minor'] : null;
+		$row['currency']            = isset( $row['currency'] ) && $row['currency'] ? (string) $row['currency'] : null;
+		$row['payment_status']      = isset( $row['payment_status'] ) && $row['payment_status'] !== '' ? (string) $row['payment_status'] : 'none';
+		unset( $row['pricing_snapshot'] );
 		$row['follow_up_overdue']      = ( null !== $row['follow_up_due'] && ! $row['follow_up_done']
 			&& strtotime( $row['follow_up_due'] . ' UTC' ) < time()
 			&& in_array( $row['status'] ?? '', array( 'new', 'read' ), true ) ) ? 1 : 0;

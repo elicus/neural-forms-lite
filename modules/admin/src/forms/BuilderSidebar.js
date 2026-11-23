@@ -20,6 +20,7 @@ import { __ } from '@wordpress/i18n';
 import {
 	BasicFieldsPalette,
 	SurveyFieldsPalette,
+	PricingFieldsPalette,
 	AdvancedFieldsPalette,
 } from './FieldPalette';
 import LayoutPalette from './LayoutPalette';
@@ -32,6 +33,7 @@ export default function BuilderSidebar( {
 		<aside className="nf-builder-sidebar" aria-label={ __( 'Add fields and layout', 'neural-forms-lite' ) }>
 			<BasicFieldsPalette    onAddField={ onAddField } />
 			<SurveyFieldsPalette   onAddField={ onAddField } />
+			<PricingFieldsPalette  onAddField={ onAddField } />
 			<AdvancedFieldsPalette onAddField={ onAddField } />
 			<LayoutPalette
 				onAddRow={ onAddRow }

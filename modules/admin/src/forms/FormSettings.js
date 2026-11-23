@@ -51,6 +51,8 @@ const BASE_SECTIONS = [
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
 	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
 	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
+	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules and deposit for Priced Item fields on this form.' },
+	{ id: 'payments',     label: 'Payments',     hint: 'Send visitors to a hosted checkout for the amount due right after they submit.' },
 ];
 
 /**
@@ -141,12 +143,242 @@ const STARTER_RESULT_MESSAGES = [
 ];
 
 /**
+ * Pricing (1.2.0, part B, Pro): currency, discount rules (first match
+ * wins, each with optional conditions via the shared editor) and deposit.
+ * Mirrors PriceEngine::normalize_settings(). Product field prices are
+ * typed in this currency.
+ */
+const CURRENCIES = [ 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD', 'NZD', 'SGD', 'AED', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'JPY', 'ZAR', 'BRL', 'MXN' ];
+
+function PricingSection( { value, onChange, fields } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.calculations;
+	const v = { currency: 'USD', discounts: [], deposit: { type: 'none', value: '' }, ...( value || {} ) };
+	v.deposit = { type: 'none', value: '', ...( v.deposit || {} ) };
+	const set = ( patch ) => onChange( { ...v, ...patch } );
+	const sources = flattenFields( Array.isArray( fields ) ? fields : [] ).filter( ( n ) => n && n.id && n.type !== 'hidden' );
+	const hasProducts = sources.some( ( n ) => n.type === 'product' );
+	const custom = ! CURRENCIES.includes( v.currency );
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Price your services with Priced Item fields, show a live total with discounts and a deposit, and calculate values from answers. Prices are set in the form itself; no WooCommerce or shop plugin is needed. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</div>
+		);
+	}
+
+	const updateDiscount = ( i, patch ) => set( { discounts: v.discounts.map( ( d, k ) => ( k === i ? { ...d, ...patch } : d ) ) } );
+	const removeDiscount = ( i ) => set( { discounts: v.discounts.filter( ( _, k ) => k !== i ) } );
+	const moveDiscount = ( i, dir ) => {
+		const j = i + dir;
+		if ( j < 0 || j >= v.discounts.length ) return;
+		const next = v.discounts.slice(); const t = next[ i ]; next[ i ] = next[ j ]; next[ j ] = t;
+		set( { discounts: next } );
+	};
+	const addDiscount = () => {
+		if ( v.discounts.length >= 20 ) return;
+		set( { discounts: [ ...v.discounts, { id: 'discount_' + Math.random().toString( 36 ).slice( 2, 8 ), label: '', type: 'percent', value: '10', max: '', conditions: null } ] } );
+	};
+
+	return (
+		<div className="nf-pricing">
+			{ ! hasProducts && (
+				<p className="nf-form-settings__hint">{ __( 'Add a Priced Item field to the form to start pricing. These settings apply once it has one.', 'neural-forms-lite' ) }</p>
+			) }
+			<label className="nf-form-settings__field">
+				<span className="nf-form-settings__label">{ __( 'Currency', 'neural-forms-lite' ) }</span>
+				<select value={ custom ? 'other' : v.currency } onChange={ ( e ) => set( { currency: e.target.value === 'other' ? '' : e.target.value } ) }>
+					{ CURRENCIES.map( ( c ) => <option key={ c } value={ c }>{ c }</option> ) }
+					<option value="other">{ __( 'Other ISO code…', 'neural-forms-lite' ) }</option>
+				</select>
+			</label>
+			{ custom && (
+				<label className="nf-form-settings__field">
+					<span className="nf-form-settings__label">{ __( 'ISO 4217 code', 'neural-forms-lite' ) }</span>
+					<input type="text" maxLength={ 3 } value={ v.currency } placeholder="e.g. CZK" onChange={ ( e ) => set( { currency: e.target.value.toUpperCase() } ) } />
+				</label>
+			) }
+
+			<h4 className="nf-form-settings__subtitle">{ __( 'Discount rules', 'neural-forms-lite' ) }</h4>
+			<p className="nf-form-settings__rules-note">{ __( 'Checked in order; the first rule whose conditions match is applied. A rule without conditions always matches. Discounts never take the total below zero.', 'neural-forms-lite' ) }</p>
+			<div className="nf-form-settings__rules">
+				{ v.discounts.map( ( d, i ) => (
+					<div className="nf-form-settings__rule" key={ d.id || i }>
+						<div className="nf-form-settings__rule-head">
+							<strong>{ sprintf( __( 'Discount %d', 'neural-forms-lite' ), i + 1 ) }</strong>
+							<button type="button" onClick={ () => moveDiscount( i, -1 ) } disabled={ i === 0 } aria-label={ __( 'Move up', 'neural-forms-lite' ) }>↑</button>
+							<button type="button" onClick={ () => moveDiscount( i, 1 ) } disabled={ i === v.discounts.length - 1 } aria-label={ __( 'Move down', 'neural-forms-lite' ) }>↓</button>
+							<button type="button" onClick={ () => removeDiscount( i ) } aria-label={ __( 'Remove discount', 'neural-forms-lite' ) }>{ __( 'Remove', 'neural-forms-lite' ) }</button>
+						</div>
+						<label className="nf-inspector__field">
+							<span className="nf-inspector__label">{ __( 'Label (shown to the visitor)', 'neural-forms-lite' ) }</span>
+							<input type="text" value={ d.label || '' } placeholder={ __( 'e.g. Launch offer', 'neural-forms-lite' ) } onChange={ ( e ) => updateDiscount( i, { label: e.target.value } ) } />
+						</label>
+						<div className="nf-inspector__row">
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Type', 'neural-forms-lite' ) }</span>
+								<select value={ d.type === 'fixed' ? 'fixed' : 'percent' } onChange={ ( e ) => updateDiscount( i, { type: e.target.value } ) }>
+									<option value="percent">{ __( 'Percent off', 'neural-forms-lite' ) }</option>
+									<option value="fixed">{ __( 'Fixed amount off', 'neural-forms-lite' ) }</option>
+								</select>
+							</label>
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ d.type === 'fixed' ? __( 'Amount', 'neural-forms-lite' ) : __( 'Percent', 'neural-forms-lite' ) }</span>
+								<input type="text" inputMode="decimal" value={ d.value ?? '' } onChange={ ( e ) => updateDiscount( i, { value: e.target.value } ) } />
+							</label>
+							<label className="nf-inspector__field">
+								<span className="nf-inspector__label">{ __( 'Max amount (optional)', 'neural-forms-lite' ) }</span>
+								<input type="text" inputMode="decimal" value={ d.max ?? '' } onChange={ ( e ) => updateDiscount( i, { max: e.target.value } ) } />
+							</label>
+						</div>
+						<span className="nf-inspector__label">{ __( 'Apply when', 'neural-forms-lite' ) }</span>
+						<ConditionEditor
+							value={ { ...toEditableConditional( d.conditions ), enabled: true } }
+							onChange={ ( next ) => updateDiscount( i, { conditions: ( next.rules.length || next.groups.length ) ? { ...next, enabled: true } : null } ) }
+							sources={ sources }
+							allowGroups
+							actionLabels={ null }
+							showEnable={ false }
+							emptySourcesHint={ __( 'Add a field to the form first.', 'neural-forms-lite' ) }
+						/>
+						{ d.conditions && ( toEditableConditional( d.conditions ).rules.length + toEditableConditional( d.conditions ).groups.length ) > 0
+							? <p className="nf-inspector__cl-summary">{ sprintf( __( 'Applies when %s.', 'neural-forms-lite' ), describeConditional( d.conditions, sources ) ) }</p>
+							: <p className="nf-inspector__cl-hint">{ __( 'No conditions: always applies (if no earlier rule matched).', 'neural-forms-lite' ) }</p> }
+					</div>
+				) ) }
+			</div>
+			<button type="button" className="nf-form-settings__rules-add" onClick={ addDiscount } disabled={ v.discounts.length >= 20 }>
+				{ __( '+ Add discount rule', 'neural-forms-lite' ) }
+			</button>
+
+			<h4 className="nf-form-settings__subtitle">{ __( 'Deposit', 'neural-forms-lite' ) }</h4>
+			<div className="nf-inspector__row">
+				<label className="nf-form-settings__field">
+					<span className="nf-form-settings__label">{ __( 'Collect', 'neural-forms-lite' ) }</span>
+					<select value={ v.deposit.type } onChange={ ( e ) => set( { deposit: { ...v.deposit, type: e.target.value } } ) }>
+						<option value="none">{ __( 'The full amount', 'neural-forms-lite' ) }</option>
+						<option value="percent">{ __( 'A percentage as deposit', 'neural-forms-lite' ) }</option>
+						<option value="fixed">{ __( 'A fixed deposit', 'neural-forms-lite' ) }</option>
+					</select>
+				</label>
+				{ v.deposit.type !== 'none' && (
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ v.deposit.type === 'fixed' ? __( 'Deposit amount', 'neural-forms-lite' ) : __( 'Deposit percent', 'neural-forms-lite' ) }</span>
+						<input type="text" inputMode="decimal" value={ v.deposit.value ?? '' } placeholder={ v.deposit.type === 'fixed' ? '250' : '30' } onChange={ ( e ) => set( { deposit: { ...v.deposit, value: e.target.value } } ) } />
+					</label>
+				) }
+			</div>
+			<p className="nf-form-settings__hint">{ __( 'The visitor sees the total, the amount due now and the remaining balance. Payment collection is configured under Payments once connected.', 'neural-forms-lite' ) }</p>
+		</div>
+	);
+}
+
+/**
  * Per-form AI behaviour (1.2.0, Pro): tone, language policy and a
  * knowledge picker. Saved as settings.ai_behaviour and sent with every
  * AI call for this form (the cloud applies the site-level business
  * context otherwise). Knowledge items come from Pro's business-context
  * endpoint; without Pro the section is an upsell.
  */
+/**
+ * Payments (1.2.0 part B): per-form switch + provider choice. Credentials
+ * live on Neural Forms › Integrations (Stripe / PayPal tabs); this only
+ * decides whether THIS form sends the visitor to checkout for the amount
+ * due (the deposit when one is set, otherwise the full total).
+ */
+function PaymentsSection( { value, onChange, fields } ) {
+	const caps     = readCaps();
+	const unlocked = !! caps.payments;
+	const v = { enabled: false, provider: 'auto', submit_label: '', description: '', success_url: '', cancel_url: '', send_invoice: true, notify_admin: true, notify_email: '', ...( value || {} ) };
+	const set = ( patch ) => onChange( { ...v, ...patch } );
+	const [ providers, setProviders ] = useState( null );
+	useEffect( () => {
+		if ( ! unlocked ) return;
+		let cancelled = false;
+		api( '/payments/providers' ).then( ( res ) => { if ( ! cancelled ) setProviders( Array.isArray( res?.providers ) ? res.providers : [] ); } ).catch( () => { if ( ! cancelled ) setProviders( [] ); } );
+		return () => { cancelled = true; };
+	}, [ unlocked ] );
+	const hasProducts = flattenFields( Array.isArray( fields ) ? fields : [] ).some( ( n ) => n && n.type === 'product' );
+	const configured  = ( providers || [] ).filter( ( p ) => p.configured );
+	const integrationsUrl = ( window.neuralFormsAdmin?.admin?.adminUrl || '' ) ? window.neuralFormsAdmin.admin.adminUrl + 'admin.php?page=neural-forms-integrations' : 'admin.php?page=neural-forms-integrations';
+
+	if ( ! unlocked ) {
+		return (
+			<div className="nf-form-settings__pro-note">
+				{ __( 'Take a deposit or the full amount through Stripe or PayPal right after a priced form is submitted. Payments are confirmed by the gateway, never by the browser. Available in Neural Forms Pro.', 'neural-forms-lite' ) }
+			</div>
+		);
+	}
+	return (
+		<div className="nf-payments-section">
+			{ ! hasProducts && <p className="nf-form-settings__hint">{ __( 'Add a Priced Item field first — payments need an amount to charge.', 'neural-forms-lite' ) }</p> }
+			{ providers && configured.length === 0 && (
+				<p className="nf-form-settings__hint">
+					{ __( 'No payment provider is connected yet.', 'neural-forms-lite' ) } <a href={ integrationsUrl } target="_blank" rel="noopener noreferrer">{ __( 'Connect Stripe or PayPal under Integrations.', 'neural-forms-lite' ) }</a>
+				</p>
+			) }
+			<label className="nf-form-settings__field nf-payments-section__toggle">
+				<input type="checkbox" checked={ !! v.enabled } disabled={ ! hasProducts } onChange={ ( e ) => set( { enabled: e.target.checked } ) } />
+				<span>
+					<strong>{ __( 'Take payment after submit', 'neural-forms-lite' ) }</strong>
+					<small>{ __( 'The entry is saved first, then the visitor is sent to the hosted checkout for the amount due (the deposit when one is set, otherwise the total). Zero totals skip the checkout.', 'neural-forms-lite' ) }</small>
+				</span>
+			</label>
+			{ v.enabled && (
+				<>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'Payment method', 'neural-forms-lite' ) }</span>
+						<select value={ v.provider } onChange={ ( e ) => set( { provider: e.target.value } ) }>
+							<option value="auto">{ __( 'First connected provider', 'neural-forms-lite' ) }</option>
+							{ ( providers || [] ).map( ( p ) => <option key={ p.id } value={ p.id }>{ p.label }{ p.configured ? '' : ' — ' + __( 'not connected', 'neural-forms-lite' ) }{ p.configured && ! p.live ? ' (' + __( 'test mode', 'neural-forms-lite' ) + ')' : '' }</option> ) }
+							<option value="choice">{ __( 'Let the visitor choose', 'neural-forms-lite' ) }</option>
+						</select>
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'Submit button text', 'neural-forms-lite' ) }</span>
+						<input type="text" value={ v.submit_label } placeholder={ __( 'Continue to payment', 'neural-forms-lite' ) } maxLength={ 80 } onChange={ ( e ) => set( { submit_label: e.target.value } ) } />
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'Note above the button', 'neural-forms-lite' ) }</span>
+						<input type="text" value={ v.description } placeholder={ __( 'You will be taken to a secure checkout page.', 'neural-forms-lite' ) } maxLength={ 200 } onChange={ ( e ) => set( { description: e.target.value } ) } />
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'After payment, send to (optional)', 'neural-forms-lite' ) }</span>
+						<input type="url" value={ v.success_url } placeholder="https://" onChange={ ( e ) => set( { success_url: e.target.value } ) } />
+						<span className="nf-form-settings__hint">{ __( 'Leave empty to show the built-in confirmation page. The page only ever shows the status the gateway confirmed.', 'neural-forms-lite' ) }</span>
+					</label>
+					<label className="nf-form-settings__field">
+						<span className="nf-form-settings__label">{ __( 'If the visitor cancels, send to (optional)', 'neural-forms-lite' ) }</span>
+						<input type="url" value={ v.cancel_url } placeholder="https://" onChange={ ( e ) => set( { cancel_url: e.target.value } ) } />
+					</label>
+					<label className="nf-form-settings__field nf-payments-section__toggle">
+						<input type="checkbox" checked={ v.send_invoice !== false } onChange={ ( e ) => set( { send_invoice: e.target.checked } ) } />
+						<span>
+							<strong>{ __( 'Email an invoice automatically when a payment is confirmed', 'neural-forms-lite' ) }</strong>
+							<small>{ __( 'Uses the details from Neural Forms › Business Details. You can also send or resend invoices by hand from the entry or the Payments page.', 'neural-forms-lite' ) }</small>
+						</span>
+					</label>
+					<label className="nf-form-settings__field nf-payments-section__toggle">
+						<input type="checkbox" checked={ v.notify_admin !== false } onChange={ ( e ) => set( { notify_admin: e.target.checked } ) } />
+						<span>
+							<strong>{ __( 'Email the site owner when a payment is confirmed', 'neural-forms-lite' ) }</strong>
+							<small>{ __( 'Amount, customer, remaining balance and a link to the entry. Goes to the addresses below, otherwise the admin notification address from Settings.', 'neural-forms-lite' ) }</small>
+						</span>
+					</label>
+					{ v.notify_admin !== false && (
+						<label className="nf-form-settings__field">
+							<span className="nf-form-settings__label">{ __( 'Payment notification recipients (optional)', 'neural-forms-lite' ) }</span>
+							<input type="text" value={ v.notify_email } placeholder={ __( 'sales@example.com, accounts@example.com', 'neural-forms-lite' ) } onChange={ ( e ) => set( { notify_email: e.target.value } ) } />
+						</label>
+					) }
+					<p className="nf-form-settings__hint">{ __( 'Payments are confirmed by signed webhooks from the gateway, so make sure the webhook URL shown on the Integrations page is set up there. A "Submission received" workflow never carries a paid status; use the "Payment confirmed" trigger for that.', 'neural-forms-lite' ) }</p>
+				</>
+			) }
+		</div>
+	);
+}
+
 function AiBehaviourSection( { value, onChange } ) {
 	const caps     = readCaps();
 	const unlocked = !! caps.ai_business_context;
@@ -676,6 +908,36 @@ export default function FormSettings( {
 					{ section === 'workflows' && (
 						<div className="nf-form-settings__body">
 							<WorkflowsSection formId={ formId } fields={ fields } />
+						</div>
+					) }
+
+					{ section === 'payments' && (
+						<div className="nf-form-settings__body">
+							<PaymentsSection
+								value={ s.payment && typeof s.payment === 'object' ? s.payment : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									const isDefault = ! next.enabled && ( ! next.provider || next.provider === 'auto' ) && ! next.submit_label && ! next.description && ! next.success_url && ! next.cancel_url && next.send_invoice !== false && next.notify_admin !== false && ! next.notify_email;
+									if ( isDefault ) delete copy.payment; else copy.payment = next;
+									onChange( copy );
+								} }
+								fields={ fields }
+							/>
+						</div>
+					) }
+
+					{ section === 'pricing' && (
+						<div className="nf-form-settings__body">
+							<PricingSection
+								value={ s.pricing && typeof s.pricing === 'object' ? s.pricing : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									const isDefault = ( ! next.currency || next.currency === 'USD' ) && ! ( next.discounts && next.discounts.length ) && ( ! next.deposit || ! next.deposit.type || next.deposit.type === 'none' );
+									if ( isDefault ) delete copy.pricing; else copy.pricing = next;
+									onChange( copy );
+								} }
+								fields={ fields }
+							/>
 						</div>
 					) }
 

@@ -253,6 +253,9 @@ class EntriesEndpoint {
 		if ( null !== $request->get_param( 'assigned_to' ) && (string) $request->get_param( 'assigned_to' ) !== '' ) {
 			$list_args['assigned_to'] = (int) $request->get_param( 'assigned_to' );
 		}
+		if ( null !== $request->get_param( 'payment_status' ) && (string) $request->get_param( 'payment_status' ) !== '' ) {
+			$list_args['payment_status'] = (string) $request->get_param( 'payment_status' );
+		}
 		if ( $request->get_param( 'overdue' ) ) {
 			$list_args['overdue'] = true;
 		}
@@ -1098,13 +1101,6 @@ class EntriesEndpoint {
 	}
 
 	/**
-	 * Kept for backward compatibility - delegates to update_entry.
-	 */
-	public function update_entry_status( WP_REST_Request $request ) {
-		return $this->update_entry( $request );
-	}
-
-	/**
 	 * DELETE /entries/{id}
 	 *
 	 * Permanently removes an entry from the database.
@@ -1126,10 +1122,35 @@ class EntriesEndpoint {
 			);
 		}
 
+		// Financial records are never deleted: a settled attempt blocks deletion
+		// (refund / trash it first), open checkouts are closed so a later payment
+		// cannot arrive for an entry that no longer exists.
+		if ( class_exists( '\\NeuralForms\\Payments\\PaymentRepository' ) ) {
+			foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( $id ) as $attempt ) {
+				if ( in_array( $attempt['status'], \NeuralForms\Payments\PaymentStatus::SETTLED, true ) ) {
+					return new WP_Error( 'entry_has_payments', __( 'This entry has a confirmed payment and cannot be deleted. Move it to trash instead.', 'neural-forms-lite' ), array( 'status' => 409 ) );
+				}
+			}
+			foreach ( \NeuralForms\Payments\PaymentRepository::list_for_entry( $id ) as $attempt ) {
+				if ( $attempt['status'] === 'pending' && \NeuralForms\Payments\PaymentRepository::update_if_status( (int) $attempt['id'], 'pending', array( 'status' => 'replaced' ) ) ) {
+					$prov = \NeuralForms\Payments\PaymentProviderRegistry::get( (string) $attempt['provider'] );
+					if ( $prov && $attempt['session_id'] ) {
+						$prov->expire_checkout( $attempt );
+					}
+				}
+			}
+		}
+
 		$ok = EntryRepository::delete( $id );
 
 		if ( $ok ) {
 			EntryActivity::delete_for_entry( $id );
+			if ( class_exists( '\\NeuralForms\\Quotes\\QuoteRepository' ) ) {
+				\NeuralForms\Quotes\QuoteRepository::delete_for_entry( $id );
+			}
+			if ( class_exists( '\\NeuralForms\\Payments\\PaymentRepository' ) ) {
+				\NeuralForms\Payments\PaymentRepository::delete_for_entry( $id );
+			}
 		}
 
 		if ( ! $ok ) {

@@ -40,6 +40,51 @@ abstract class AbstractAction implements WorkflowAction {
 		EntryActivity::record( $entry_id, $event_type, $message, $payload, $status );
 	}
 
+	/**
+	 * Entry data plus the payment tokens every template may use:
+	 * {payment_status}, {payment_amount}, {payment_remaining},
+	 * {payment_kind}, {payment_currency}, {payment_provider}. Values come
+	 * from the confirmed payment on a `payment_confirmed` run, otherwise
+	 * from the entry's stored aggregate. Never from visitor input.
+	 */
+	protected function token_data( array $ctx ): array {
+		$data = is_array( $ctx['entry']['data'] ?? null ) ? $ctx['entry']['data'] : array();
+		if ( ! class_exists( '\\NeuralForms\\Payments\\PaymentStatus' ) ) {
+			return $data;
+		}
+		$entry    = is_array( $ctx['entry'] ?? null ) ? $ctx['entry'] : array();
+		$currency = (string) ( $entry['currency'] ?? 'USD' );
+		$status   = (string) ( $entry['payment_status'] ?? 'none' );
+		$paid     = 0;
+		$remain   = (int) ( $entry['amount_total_minor'] ?? 0 );
+		$kind     = '';
+		$provider = '';
+		$tc       = is_array( $ctx['trigger_context']['payment'] ?? null ) ? $ctx['trigger_context']['payment'] : null;
+		if ( $tc ) {
+			$currency = (string) ( $tc['currency'] ?? $currency );
+			$paid     = (int) ( $tc['amount_paid_minor'] ?? 0 );
+			$remain   = (int) ( $tc['remaining_minor'] ?? $remain );
+			$kind     = (string) ( $tc['kind'] ?? '' );
+			$provider = (string) ( $tc['provider'] ?? '' );
+			$status   = (string) ( $tc['status'] ?: $status );
+		} elseif ( $status !== 'none' && (int) ( $entry['id'] ?? 0 ) > 0 && class_exists( '\\NeuralForms\\Payments\\PaymentService' ) && empty( $ctx['dry_run'] ) ) {
+			$sum    = \NeuralForms\Payments\PaymentService::entry_summary( (int) $entry['id'] );
+			$paid   = (int) ( $sum['amounts']['paid'] ?? 0 );
+			$remain = (int) ( $sum['amounts']['remaining'] ?? $remain );
+			$status = (string) ( $sum['status'] ?? $status );
+		}
+		$fmt = static function ( int $minor ) use ( $currency ): string {
+			return class_exists( '\\NeuralForms\\Pricing\\Money' ) ? \NeuralForms\Pricing\Money::format( $minor, $currency ) : (string) $minor;
+		};
+		$data['payment_status']    = \NeuralForms\Payments\PaymentStatus::label( $status );
+		$data['payment_amount']    = $fmt( $paid );
+		$data['payment_remaining'] = $fmt( $remain );
+		$data['payment_kind']      = $kind === 'deposit' ? __( 'deposit', 'neural-forms-lite' ) : ( $kind === 'full' ? __( 'full payment', 'neural-forms-lite' ) : '' );
+		$data['payment_currency']  = $currency;
+		$data['payment_provider']  = $provider;
+		return $data;
+	}
+
 	protected function lead_context( array $ctx ): array {
 		return array(
 			'source'   => 'workflow',

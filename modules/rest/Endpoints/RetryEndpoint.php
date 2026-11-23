@@ -112,7 +112,8 @@ class RetryEndpoint {
 			$subject = __( 'Re: Your submission', 'neural-forms-lite' );
 		}
 
-		$sent = wp_mail( $to, $subject, $body );
+		// Same From / Reply-To as the original reply (before: no headers → "WordPress <wordpress@…>").
+		$sent = wp_mail( $to, $subject, $body, \NeuralForms\Notifications\NotificationService::reply_headers() );
 
 		if ( ! $sent ) {
 			Logger::log(

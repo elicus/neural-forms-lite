@@ -234,6 +234,11 @@ class BlockHandler {
 		$attributes = isset( $base['attributes'] ) && is_array( $base['attributes'] ) ? $base['attributes'] : [];
 		$supports   = isset( $base['supports'] )   && is_array( $base['supports'] )   ? $base['supports']   : [];
 
+		// neural-forms/payment-form moved to Pro 2026-10-30 — Pro registers its
+		// own block.json + render callback when active (see CLAUDE.md "Payment
+		// Form moved to Pro"). build_scoped_css() / build_wrap_style() below are
+		// public specifically so Pro's renderer can reuse this CSS pipeline.
+
 		foreach ( [ 'quiz', 'multi-step', 'poll' ] as $slug ) {
 			register_block_type(
 				__DIR__ . '/blocks/' . $slug,
@@ -246,50 +251,18 @@ class BlockHandler {
 		}
 	}
 
+	// render_payment_form() moved to Pro's PaymentFormBlock (2026-10-30);
+	// it calls the now-public build_scoped_css() / build_wrap_style() below.
+
 	// Render callback
 
 	/**
-	 * PHP render callback for the neural-forms/form block.
-	 *
-	 * When the block carries formatting attributes, wraps the form HTML in a
-	 * scoped container so the styles affect only this block instance.
-	 *
-	 * @param  array $attributes  Block attributes as saved by the editor.
-	 * @return string             Rendered HTML.
+	 * FormRenderer options derived from the block attributes (labels,
+	 * placeholders, button texts, button icons, welcome screen, steps, quiz
+	 * and poll switches). Public so Pro's Payment Form block renders the
+	 * embedded form with exactly the same switches as Lite's blocks.
 	 */
-	public static function render( array $attributes ): string {
-		$form_id   = (int) ( $attributes['formId'] ?? 0 );
-		// Detect ServerSideRender editor preview. The block editor's
-		// REST call hits /wp-json/wp/v2/block-renderer/<block> from
-		// the admin page, but the PHP handling of that REST endpoint
-		// does NOT define WP_ADMIN — so `is_admin()` returns FALSE
-		// here even though the browser is on an admin URL. The
-		// reliable signal is REST_REQUEST alone. (An over-narrow
-		// `REST_REQUEST && is_admin()` guard was tried and broke the
-		// editor preview entirely: the hybrid CSS routing below would
-		// have taken the wp_add_inline_style path, which never
-		// reaches the REST response body.)
-		// Editor preview (block-renderer / editor REST calls) is only for
-		// users who can edit posts. Without the capability check, any
-		// anonymous `GET /wp-json/wp/v2/posts/{id}` (content.rendered runs
-		// do_blocks) took this branch and render_preview() skipped the
-		// `status === active` gate — exposing draft / archived forms.
-		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
-
-		if ( $form_id < 1 ) {
-			if ( $is_editor ) {
-				// Return nothing in editor - the JS empty state handles this.
-				return '';
-			}
-			return static::admin_notice(
-				__( 'Neural Forms: no form selected. Edit the block and choose a form.', 'neural-forms-lite' )
-			);
-		}
-
-		// Build render options from block attributes that affect HTML output
-		// (not just CSS). show_labels / show_placeholders override the per-
-		// field schema settings so the block author controls label/placeholder
-		// behaviour for every field in one place.
+	public static function render_options( array $attributes ): array {
 		$render_options = [
 			'form_title'         => (string) ( $attributes['formTitle'] ?? '' ),
 			'title_level'        => (string) ( $attributes['titleLevel'] ?? 'h2' ),
@@ -399,6 +372,53 @@ class BlockHandler {
 
 		// In editor context, render the form without enqueuing the submission
 		// handler JS - the preview should be visual only, not interactive.
+		return $render_options;
+	}
+
+	/**
+	 * PHP render callback for the neural-forms/form block.
+	 *
+	 * When the block carries formatting attributes, wraps the form HTML in a
+	 * scoped container so the styles affect only this block instance.
+	 *
+	 * @param  array $attributes  Block attributes as saved by the editor.
+	 * @return string             Rendered HTML.
+	 */
+	public static function render( array $attributes ): string {
+		$form_id   = (int) ( $attributes['formId'] ?? 0 );
+		// Detect ServerSideRender editor preview. The block editor's
+		// REST call hits /wp-json/wp/v2/block-renderer/<block> from
+		// the admin page, but the PHP handling of that REST endpoint
+		// does NOT define WP_ADMIN — so `is_admin()` returns FALSE
+		// here even though the browser is on an admin URL. The
+		// reliable signal is REST_REQUEST alone. (An over-narrow
+		// `REST_REQUEST && is_admin()` guard was tried and broke the
+		// editor preview entirely: the hybrid CSS routing below would
+		// have taken the wp_add_inline_style path, which never
+		// reaches the REST response body.)
+		// Editor preview (block-renderer / editor REST calls) is only for
+		// users who can edit posts. Without the capability check, any
+		// anonymous `GET /wp-json/wp/v2/posts/{id}` (content.rendered runs
+		// do_blocks) took this branch and render_preview() skipped the
+		// `status === active` gate — exposing draft / archived forms.
+		$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST && current_user_can( 'edit_posts' );
+
+		if ( $form_id < 1 ) {
+			if ( $is_editor ) {
+				// Return nothing in editor - the JS empty state handles this.
+				return '';
+			}
+			return static::admin_notice(
+				__( 'Neural Forms: no form selected. Edit the block and choose a form.', 'neural-forms-lite' )
+			);
+		}
+
+		// Build render options from block attributes that affect HTML output
+		// (not just CSS). show_labels / show_placeholders override the per-
+		// field schema settings so the block author controls label/placeholder
+		// behaviour for every field in one place.
+		$render_options = static::render_options( $attributes );
+
 		$form_html = $is_editor
 			? FormRenderer::render_preview( $form_id, $render_options )
 			: FormRenderer::render( $form_id, $render_options );
@@ -514,7 +534,7 @@ class BlockHandler {
 	/** Validate & format one { color, style, width } side into a CSS shorthand value. */
 	private static function single_border_rule( array $side, string $fallback = '' ): string {
 		$color = self::sanitize_color( (string) ( $side['color'] ?? '' ) );
-		$width = sanitize_text_field( (string) ( $side['width'] ?? '' ) );
+		$width = self::css_text( $side['width'] ?? '' );
 		$style_raw = (string) ( $side['style'] ?? 'solid' );
 		$style = in_array( $style_raw, [ 'solid', 'dashed', 'dotted', 'double', 'none' ], true )
 			? $style_raw : 'solid';
@@ -627,6 +647,16 @@ class BlockHandler {
 			'cbGroupGap', 'cbGroupItemGap',
 			// Rating field
 			'ratingStarSize', 'ratingStarGap', 'ratingEmptyColor', 'ratingFilledColor', 'ratingHoverColor',
+			// Pricing: Priced Item quantity label, Calculated field, totals box (2026-11-05)
+			'qtyLabelColor', 'qtyLabelFontSize', 'qtyLabelFontWeight',
+			'calculatedColor', 'calculatedFontSize', 'calculatedFontWeight',
+			'totalsBg', 'totalsBorder', 'totalsBorderRadius',
+			'totalsPaddingTop', 'totalsPaddingRight', 'totalsPaddingBottom', 'totalsPaddingLeft',
+			'totalsRowLabelColor', 'totalsRowValueColor', 'totalsTotalColor', 'totalsTotalFontSize',
+			'productPriceColor', 'productPriceFontSize', 'productPriceFontWeight',
+			'productLineColor', 'productLineFontSize',
+			'productOptionAccentColor', 'productOptionSize',
+			'productOptionLabelColor', 'productOptionLabelFontSize', 'productOptionLabelFontWeight',
 			// File input field
 			'fileInputBg', 'fileInputBgGradient', 'fileInputBorder', 'fileInputBorderRadius',
 			'fileInputColor', 'fileInputFontSize',
@@ -817,7 +847,7 @@ class BlockHandler {
 	 * internally. Inline styles on the wrapper let the block editor preview
 	 * them correctly via useBlockProps({ style: wrapStyle }) in index.js.
 	 */
-	private static function build_wrap_style( array $attributes ): string {
+	public static function build_wrap_style( array $attributes ): string {
 		$parts = [];
 
 		$form_width = (string) ( $attributes['formWidth'] ?? '' );
@@ -903,7 +933,7 @@ class BlockHandler {
 	 * @param array  $attributes  Block attributes.
 	 * @return string             Raw CSS string (safe to echo inside <style>).
 	 */
-	private static function build_scoped_css( string $uid, array $attributes ): string {
+	public static function build_scoped_css( string $uid, array $attributes ): string {
 		$css = '';
 
 		// Compound the two classes that BlockHandler::render() always
@@ -1344,11 +1374,26 @@ class BlockHandler {
 			}
 		}
 
-		$btn_hover_bg     = (string) ( $attributes['btnHoverBg']          ?? '' );
-		$btn_hover_color  = (string) ( $attributes['btnHoverColor']       ?? '' );
-		$btn_hover_border = (string) ( $attributes['btnHoverBorderColor'] ?? '' );
-		if ( $btn_hover_bg !== '' ) {
+		// Gradient tab of the Submit Button panel (BtnControls pfx "btn"): the
+		// solid colour goes through --neural-forms-btn-bg above; a gradient is a
+		// background-image on the button itself (same priority rule as the
+		// welcome / file buttons: gradient wins over colour).
+		$btn_bg_gradient = (string) ( $attributes['btnBgGradient'] ?? '' );
+		if ( $btn_bg_gradient !== '' ) {
+			$btn_rules[] = 'background-image:' . self::css_text( $btn_bg_gradient );
+		}
+
+		$btn_hover_bg          = (string) ( $attributes['btnHoverBg']          ?? '' );
+		$btn_hover_bg_gradient = (string) ( $attributes['btnHoverBgGradient']  ?? '' );
+		$btn_hover_color       = (string) ( $attributes['btnHoverColor']       ?? '' );
+		$btn_hover_border      = (string) ( $attributes['btnHoverBorderColor'] ?? '' );
+		if ( $btn_hover_bg_gradient !== '' ) {
+			$btn_hover_rules[] = 'background-image:' . self::css_text( $btn_hover_bg_gradient );
+		} elseif ( $btn_hover_bg !== '' ) {
 			$btn_hover_rules[] = 'background-color:' . self::sanitize_color( $btn_hover_bg );
+			if ( $btn_bg_gradient !== '' ) {
+				$btn_hover_rules[] = 'background-image:none'; // a normal-state gradient would hide the hover colour
+			}
 		}
 		if ( $btn_hover_color !== '' ) {
 			$btn_hover_rules[] = 'color:' . self::sanitize_color( $btn_hover_color );
@@ -2268,7 +2313,10 @@ class BlockHandler {
 			}
 		}
 		if ( $radio_opt_rules ) {
-			$css .= $radio_input_sel . '{' . implode( ';', $radio_opt_rules ) . '}';
+			// appearance:none here too (form.css already does it, but a theme's
+			// input[type="radio"] rule can win over that one): without it the
+			// browser paints the native control and ignores border / background.
+			$css .= $radio_input_sel . '{appearance:none;-webkit-appearance:none;box-sizing:border-box;' . implode( ';', $radio_opt_rules ) . '}';
 		}
 
 		$radio_hover_bg = (string) ( $attributes['radioOptionHoverBg'] ?? '' );
@@ -2458,6 +2506,188 @@ class BlockHandler {
 					. $rating_star_sel . ':focus-within ~ .neural-forms-form__rating-star .neural-forms-form__rating-glyph'
 					. '{color:' . $hex . '}';
 			}
+		}
+
+		// ——— Pricing: Priced Item quantity label, Calculated field, totals
+		// box (2026-11-05, owner request — no shared panel covered these
+		// classes before, on any block) ———
+
+		$qty_label_rules = [];
+		$qty_label_color = (string) ( $attributes['qtyLabelColor'] ?? '' );
+		if ( $qty_label_color !== '' ) {
+			$hex = self::sanitize_color( $qty_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$qty_label_rules[] = 'color:' . $hex;
+			}
+		}
+		$qty_label_fs = (string) ( $attributes['qtyLabelFontSize'] ?? '' );
+		if ( $qty_label_fs !== '' ) {
+			$qty_label_rules[] = 'font-size:' . $len( $qty_label_fs );
+		}
+		$qty_label_fw = (string) ( $attributes['qtyLabelFontWeight'] ?? '' );
+		if ( $qty_label_fw !== '' ) {
+			$qty_label_rules[] = 'font-weight:' . self::css_text( $qty_label_fw );
+		}
+		if ( $qty_label_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-qty-label{' . implode( ';', $qty_label_rules ) . '}';
+		}
+
+		$calc_rules = [];
+		$calc_color = (string) ( $attributes['calculatedColor'] ?? '' );
+		if ( $calc_color !== '' ) {
+			$hex = self::sanitize_color( $calc_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$calc_rules[] = 'color:' . $hex;
+			}
+		}
+		$calc_fs = (string) ( $attributes['calculatedFontSize'] ?? '' );
+		if ( $calc_fs !== '' ) {
+			$calc_rules[] = 'font-size:' . $len( $calc_fs );
+		}
+		$calc_fw = (string) ( $attributes['calculatedFontWeight'] ?? '' );
+		if ( $calc_fw !== '' ) {
+			$calc_rules[] = 'font-weight:' . self::css_text( $calc_fw );
+		}
+		if ( $calc_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__calculated{' . implode( ';', $calc_rules ) . '}';
+		}
+
+		$totals_sel   = $wrap_sel . ' .neural-forms-form__totals';
+		$totals_rules = [];
+		$totals_bg    = (string) ( $attributes['totalsBg'] ?? '' );
+		if ( $totals_bg !== '' ) {
+			$hex = self::sanitize_color( $totals_bg );
+			if ( $hex !== null && $hex !== '' ) {
+				$totals_rules[] = 'background-color:' . $hex;
+			}
+		}
+		$totals_radius = (string) ( $attributes['totalsBorderRadius'] ?? '' );
+		if ( $totals_radius !== '' ) {
+			$totals_rules[] = 'border-radius:' . $len( $totals_radius );
+		}
+		foreach ( [ 'Top' => 'padding-top', 'Right' => 'padding-right', 'Bottom' => 'padding-bottom', 'Left' => 'padding-left' ] as $key => $css_prop ) {
+			$val = (string) ( $attributes[ 'totalsPadding' . $key ] ?? '' );
+			if ( $val !== '' ) {
+				$totals_rules[] = $css_prop . ':' . $spacing( $val );
+			}
+		}
+		if ( $totals_rules ) {
+			$css .= $totals_sel . '{' . implode( ';', $totals_rules ) . '}';
+		}
+		$css .= self::border_css( $totals_sel, $attributes['totalsBorder'] ?? null );
+
+		$totals_row_label_color = (string) ( $attributes['totalsRowLabelColor'] ?? '' );
+		if ( $totals_row_label_color !== '' ) {
+			$hex = self::sanitize_color( $totals_row_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $totals_sel . '-row span:first-child{color:' . $hex . '}';
+			}
+		}
+		$totals_row_value_color = (string) ( $attributes['totalsRowValueColor'] ?? '' );
+		if ( $totals_row_value_color !== '' ) {
+			$hex = self::sanitize_color( $totals_row_value_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $totals_sel . '-row span:last-child{color:' . $hex . '}';
+			}
+		}
+		$totals_total_rules = [];
+		$totals_total_color  = (string) ( $attributes['totalsTotalColor'] ?? '' );
+		if ( $totals_total_color !== '' ) {
+			$hex = self::sanitize_color( $totals_total_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$totals_total_rules[] = 'color:' . $hex;
+			}
+		}
+		$totals_total_fs = (string) ( $attributes['totalsTotalFontSize'] ?? '' );
+		if ( $totals_total_fs !== '' ) {
+			$totals_total_rules[] = 'font-size:' . $len( $totals_total_fs );
+		}
+		if ( $totals_total_rules ) {
+			// Must match the row-label/value rules' specificity (class + a
+			// :first-child/:last-child pseudo-class each) — `-row--total span`
+			// alone is LOWER specificity (one class, no pseudo-class) than
+			// `-row span:last-child`, so without the pseudo-classes here the
+			// generic Row Value Color rule above always won regardless of
+			// source order (user report + live DevTools check, 2026-11-05).
+			$css .= $totals_sel . '-row--total span:first-child,' . $totals_sel . '-row--total span:last-child{' . implode( ';', $totals_total_rules ) . '}';
+		}
+
+		// Per-option / fixed-price display (`.product-price`) and the
+		// per-product computed running total (`.product-line`) — the two
+		// remaining pricing elements with no control anywhere, found in the
+		// same pass as the panel above (2026-11-05).
+		$product_price_rules = [];
+		$pp_color = (string) ( $attributes['productPriceColor'] ?? '' );
+		if ( $pp_color !== '' ) {
+			$hex = self::sanitize_color( $pp_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$product_price_rules[] = 'color:' . $hex;
+			}
+		}
+		$pp_fs = (string) ( $attributes['productPriceFontSize'] ?? '' );
+		if ( $pp_fs !== '' ) {
+			$product_price_rules[] = 'font-size:' . $len( $pp_fs );
+		}
+		$pp_fw = (string) ( $attributes['productPriceFontWeight'] ?? '' );
+		if ( $pp_fw !== '' ) {
+			$product_price_rules[] = 'font-weight:' . self::css_text( $pp_fw );
+		}
+		if ( $product_price_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-price{' . implode( ';', $product_price_rules ) . '}';
+		}
+
+		$product_line_rules = [];
+		$pl_color = (string) ( $attributes['productLineColor'] ?? '' );
+		if ( $pl_color !== '' ) {
+			$hex = self::sanitize_color( $pl_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$product_line_rules[] = 'color:' . $hex;
+			}
+		}
+		$pl_fs = (string) ( $attributes['productLineFontSize'] ?? '' );
+		if ( $pl_fs !== '' ) {
+			$product_line_rules[] = 'font-size:' . $len( $pl_fs );
+		}
+		if ( $product_line_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-line{' . implode( ';', $product_line_rules ) . '}';
+		}
+
+		// Priced Item rendered as radio/checkbox options — the `<input>` has
+		// NO class at all (FormRenderer::render_product()) and the label text
+		// span is `.product-option-label`, a class no other panel targets (it
+		// is NOT the same class the generic Radio/Checkbox field panels use),
+		// so this was a complete, confirmed gap (user report, 2026-11-05).
+		$po_input_sel = $wrap_sel . ' .neural-forms-form__product-options input';
+		$po_accent    = (string) ( $attributes['productOptionAccentColor'] ?? '' );
+		if ( $po_accent !== '' ) {
+			$hex = self::sanitize_color( $po_accent );
+			if ( $hex !== null && $hex !== '' ) {
+				$css .= $po_input_sel . '{accent-color:' . $hex . '}';
+			}
+		}
+		$po_size = (string) ( $attributes['productOptionSize'] ?? '' );
+		if ( $po_size !== '' ) {
+			$css .= $po_input_sel . '{width:' . $len( $po_size ) . ';height:' . $len( $po_size ) . '}';
+		}
+
+		$po_label_rules = [];
+		$po_label_color = (string) ( $attributes['productOptionLabelColor'] ?? '' );
+		if ( $po_label_color !== '' ) {
+			$hex = self::sanitize_color( $po_label_color );
+			if ( $hex !== null && $hex !== '' ) {
+				$po_label_rules[] = 'color:' . $hex;
+			}
+		}
+		$po_label_fs = (string) ( $attributes['productOptionLabelFontSize'] ?? '' );
+		if ( $po_label_fs !== '' ) {
+			$po_label_rules[] = 'font-size:' . $len( $po_label_fs );
+		}
+		$po_label_fw = (string) ( $attributes['productOptionLabelFontWeight'] ?? '' );
+		if ( $po_label_fw !== '' ) {
+			$po_label_rules[] = 'font-weight:' . self::css_text( $po_label_fw );
+		}
+		if ( $po_label_rules ) {
+			$css .= $wrap_sel . ' .neural-forms-form__product-option-label{' . implode( ';', $po_label_rules ) . '}';
 		}
 
 		// ——— File input field (filename display area) ———
@@ -3497,15 +3727,22 @@ class BlockHandler {
 		$mat_cell_pr    = (string) ( $attributes['matrixCellPaddingRight']  ?? '' );
 		$mat_cell_pb    = (string) ( $attributes['matrixCellPaddingBottom'] ?? '' );
 		$mat_cell_pl    = (string) ( $attributes['matrixCellPaddingLeft']   ?? '' );
-		if ( $mat_cell_bg ) $mat_cell_rules[] = 'background:' . $mat_cell_bg;
+		if ( $mat_cell_bg_grad !== '' ) {
+			$mat_cell_rules[] = 'background-image:' . self::css_text( $mat_cell_bg_grad );
+		} elseif ( $mat_cell_bg ) {
+			$mat_cell_rules[] = 'background:' . $mat_cell_bg;
+		}
 		$css .= self::border_css( $mat_cell_sel, $mat_cell_border );
 		if ( $mat_cell_pt || $mat_cell_pr || $mat_cell_pb || $mat_cell_pl ) {
 			$mat_cell_rules[] = 'padding:' . $spacing( $mat_cell_pt ?: '0' ) . ' ' . $spacing( $mat_cell_pr ?: '0' ) . ' ' . $spacing( $mat_cell_pb ?: '0' ) . ' ' . $spacing( $mat_cell_pl ?: '0' );
 		}
 		if ( $mat_cell_rules ) $css .= $mat_cell_sel . '{' . implode( ';', $mat_cell_rules ) . '}';
 
-		$mat_cell_hover_bg = self::sanitize_color( (string) ( $attributes['matrixCellHoverBg'] ?? '' ) );
-		if ( $mat_cell_hover_bg ) {
+		$mat_cell_hover_bg      = self::sanitize_color( (string) ( $attributes['matrixCellHoverBg'] ?? '' ) );
+		$mat_cell_hover_bg_grad = (string) ( $attributes['matrixCellHoverBgGradient'] ?? '' );
+		if ( $mat_cell_hover_bg_grad !== '' ) {
+			$css .= $mat_cell_sel . ':hover{background-image:' . self::css_text( $mat_cell_hover_bg_grad ) . '}';
+		} elseif ( $mat_cell_hover_bg ) {
 			$css .= $mat_cell_sel . ':hover{background:' . $mat_cell_hover_bg . '}';
 		}
 
@@ -3528,13 +3765,19 @@ class BlockHandler {
 		}
 
 		// Alternating row background
-		$mat_row_bg = self::sanitize_color( (string) ( $attributes['matrixRowBg'] ?? '' ) );
-		if ( $mat_row_bg ) {
+		$mat_row_bg      = self::sanitize_color( (string) ( $attributes['matrixRowBg'] ?? '' ) );
+		$mat_row_bg_grad = (string) ( $attributes['matrixRowBgGradient'] ?? '' );
+		if ( $mat_row_bg_grad !== '' ) {
+			$css .= $wrap_sel . ' .neural-forms-matrix__row .neural-forms-matrix__cell{background-image:' . self::css_text( $mat_row_bg_grad ) . '}';
+		} elseif ( $mat_row_bg ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__row .neural-forms-matrix__cell{background:' . $mat_row_bg . '}';
 		}
 
-		$mat_alt_bg = self::sanitize_color( (string) ( $attributes['matrixAltRowBg'] ?? '' ) );
-		if ( $mat_alt_bg ) {
+		$mat_alt_bg      = self::sanitize_color( (string) ( $attributes['matrixAltRowBg'] ?? '' ) );
+		$mat_alt_bg_grad = (string) ( $attributes['matrixAltRowBgGradient'] ?? '' );
+		if ( $mat_alt_bg_grad !== '' ) {
+			$css .= $wrap_sel . ' .neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell{background-image:' . self::css_text( $mat_alt_bg_grad ) . '}';
+		} elseif ( $mat_alt_bg ) {
 			$css .= $wrap_sel . ' .neural-forms-matrix__row:nth-child(even) .neural-forms-matrix__cell{background:' . $mat_alt_bg . '}';
 		}
 

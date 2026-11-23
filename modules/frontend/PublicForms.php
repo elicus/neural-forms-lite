@@ -111,6 +111,9 @@ class PublicForms {
 			true
 		);
 
+		// Payment Form card (block / shortcode / Divi) moved to Pro 2026-10-30 —
+		// Pro registers its own 'neural-forms-payment-form' script handle.
+
 		// ' Inline config '
 		// Output as a <script> block immediately before form-submit.js so
 		// window.neuralFormsPublic is defined when the script executes.

@@ -38,7 +38,7 @@
  */
 
 import { useEffect, useState, useMemo, useCallback } from '@wordpress/element';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, sprintf, _n } from '@wordpress/i18n';
 import api from '../api';
 
 // Range options — must match the StatsEndpoint::RANGES allowlist on
@@ -253,6 +253,101 @@ function readAiCapability() {
 	if ( typeof window === 'undefined' ) return false;
 	const caps = window.neuralFormsAdmin?.plugin?.capabilities || {};
 	return !! caps.ai_process_entries;
+}
+
+function readPaymentsCapability() {
+	if ( typeof window === 'undefined' ) return false;
+	const caps = window.neuralFormsAdmin?.plugin?.capabilities || {};
+	return !! caps.payments;
+}
+
+function paymentsUrl() {
+	return readAdminBase() + 'admin.php?page=neural-forms-payments';
+}
+
+function analyticsUrl( formId ) {
+	return readAdminBase() + 'admin.php?page=neural-forms-results&form_id=' + Number( formId );
+}
+
+/**
+ * Payments card (1.2.0 part B). Range-scoped revenue per currency from
+ * /stats.payments, the top paying forms and the lifetime "awaiting
+ * payment" count. Locked installs get the Pro card; unlocked installs
+ * without a single attempt in range get a one-line empty state.
+ */
+function PaymentsOverview( { payments, helperRange } ) {
+	const unlocked = readPaymentsCapability() && payments && payments.unlocked !== false;
+	const rows     = unlocked && Array.isArray( payments.rows )      ? payments.rows      : [];
+	const top      = unlocked && Array.isArray( payments.top_forms ) ? payments.top_forms : [];
+	const awaiting = unlocked ? Number( payments.awaiting_entries ) || 0 : 0;
+
+	return (
+		<section className="neural-forms-stats__card neural-forms-stats__payments">
+			<header className="neural-forms-stats__card-head">
+				<h2 className="neural-forms-stats__card-title">
+					{ __( 'Payments', 'neural-forms-lite' ) }
+					{ ! unlocked && <span className="neural-forms-stats__card-pro">{ __( 'Pro', 'neural-forms-lite' ) }</span> }
+				</h2>
+				<span className="neural-forms-stats__card-sub">{ helperRange }</span>
+			</header>
+
+			{ ! unlocked && (
+				<div className="neural-forms-stats__ai neural-forms-stats__ai--locked">
+					<p className="neural-forms-stats__empty">
+						{ __( 'Take payments with Stripe or PayPal and see revenue, refunds and the forms that earn the most right here.', 'neural-forms-lite' ) }
+					</p>
+					<div className="neural-forms-stats__ai-actions">
+						<a className="neural-forms-stats__link" href="https://neuralforms.ai/pricing" target="_blank" rel="noopener noreferrer">
+							{ __( 'Upgrade to Pro', 'neural-forms-lite' ) }
+						</a>
+					</div>
+				</div>
+			) }
+
+			{ unlocked && rows.length === 0 && (
+				<p className="neural-forms-stats__empty">
+					{ awaiting > 0
+						? sprintf( __( 'No payment received in this range. %d entries are still awaiting payment.', 'neural-forms-lite' ), awaiting )
+						: __( 'No payments in this range yet.', 'neural-forms-lite' ) }
+				</p>
+			) }
+
+			{ unlocked && rows.map( ( r ) => (
+				<div key={ r.currency + ( r.livemode ? '-live' : '-test' ) } className="neural-forms-stats__pay-group">
+					{ ( rows.length > 1 || ! r.livemode ) && (
+						<div className="neural-forms-stats__pay-label">
+							{ r.currency }
+							{ ! r.livemode && <span className="neural-forms-stats__pay-test">{ __( 'test mode', 'neural-forms-lite' ) }</span> }
+						</div>
+					) }
+					<div className="neural-forms-stats__metrics neural-forms-stats__metrics--4">
+						<StatCard label={ __( 'Net revenue', 'neural-forms-lite' ) } value={ r.formatted.net } helper={ sprintf( __( '%s received', 'neural-forms-lite' ), r.formatted.paid ) } intent="navy" />
+						<StatCard label={ __( 'Payments', 'neural-forms-lite' ) } value={ formatNumber( r.paid_count ) } helper={ sprintf( __( '%d failed or cancelled', 'neural-forms-lite' ), r.failed_count ) } />
+						<StatCard label={ __( 'Awaiting payment', 'neural-forms-lite' ) } value={ formatNumber( r.open_count ) } helper={ r.formatted.open } />
+						<StatCard label={ __( 'Refunded', 'neural-forms-lite' ) } value={ r.formatted.refunded } helper={ __( 'In this range', 'neural-forms-lite' ) } intent={ r.refunded > 0 ? 'danger' : undefined } />
+					</div>
+				</div>
+			) ) }
+
+			{ unlocked && top.length > 0 && (
+				<div className="neural-forms-stats__ai-rows">
+					{ top.map( ( f ) => (
+						<a key={ f.form_id + f.currency } className="neural-forms-stats__insight-row neural-forms-stats__pay-row" href={ analyticsUrl( f.form_id ) }>
+							<span className="neural-forms-stats__insight-label">{ f.title || ( '#' + f.form_id ) }{ ! f.livemode && <span className="neural-forms-stats__pay-test">{ __( 'test', 'neural-forms-lite' ) }</span> }</span>
+							<span className="neural-forms-stats__insight-value">{ f.formatted } · { sprintf( _n( '%d payment', '%d payments', f.paid_count, 'neural-forms-lite' ), f.paid_count ) }</span>
+						</a>
+					) ) }
+				</div>
+			) }
+
+			{ unlocked && (
+				<div className="neural-forms-stats__ai-actions">
+					<a className="neural-forms-stats__link" href={ paymentsUrl() }>{ __( 'Open the Payments page', 'neural-forms-lite' ) }</a>
+					{ awaiting > 0 && <a className="neural-forms-stats__link" href={ entriesUrl( { view: 'awaiting_payment' } ) }>{ sprintf( __( '%d awaiting payment', 'neural-forms-lite' ), awaiting ) }</a> }
+				</div>
+			) }
+		</section>
+	);
 }
 
 function AiInsights( { ai } ) {
@@ -631,6 +726,8 @@ export default function Stats() {
 						</header>
 						<TrendChart points={ trend } />
 					</section>
+
+					<PaymentsOverview payments={ data?.payments } helperRange={ helperRange } />
 
 					{ /* Two-column: Needs Attention | AI Insights */ }
 					<div className="neural-forms-stats__cols">

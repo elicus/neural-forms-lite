@@ -279,6 +279,43 @@ function readOnlyHidden( { field } ) {
 	);
 }
 
+function readOnlyProduct( { field } ) {
+	const p = ( field.pricing && typeof field.pricing === 'object' ) ? field.pricing : { mode: 'options' };
+	const options = Array.isArray( field.options ) ? field.options : [];
+	const price = ( v ) => ( v === '' || v == null ? '' : ' — ' + String( v ) );
+	if ( p.mode === 'fixed' ) {
+		return <div className="nf-preview__product"><span className="nf-preview__product-price">{ p.price || '0.00' }</span>{ p.quantity?.enabled && <span className="nf-preview__product-qty">{ __( 'Qty', 'neural-forms-lite' ) } <input type="number" disabled value={ p.quantity.default || 1 } /></span> }</div>;
+	}
+	if ( p.mode === 'input' ) {
+		return <input type="number" className="nf-preview__input" disabled placeholder={ ( p.min_amount || '0' ) + ' – ' + ( p.max_amount || '∞' ) } aria-hidden="true" />;
+	}
+	if ( p.display === 'select' ) {
+		return (
+			<select className="nf-preview__select" disabled aria-hidden="true">
+				<option>{ __( 'Select...', 'neural-forms-lite' ) }</option>
+				{ options.map( ( opt, i ) => <option key={ i }>{ ( opt?.label || opt?.value || '' ) + price( opt?.price ) }</option> ) }
+			</select>
+		);
+	}
+	const type = p.display === 'checkboxes' ? 'checkbox' : 'radio';
+	return (
+		<div className="nf-preview__choices" aria-hidden="true">
+			{ options.map( ( opt, i ) => (
+				<label key={ i } className="nf-preview__choice"><input type={ type } disabled /> { opt?.label || opt?.value || '' }<em className="nf-preview__product-price">{ price( opt?.price ) }</em></label>
+			) ) }
+		</div>
+	);
+}
+
+function readOnlyCalculated( { field } ) {
+	return (
+		<div className="nf-preview__calculated" aria-hidden="true">
+			<span className="nf-preview__calculated-value">{ field.format === 'number' ? '0' : '0.00' }</span>
+			<code className="nf-preview__calculated-expr">{ field.expression || __( '(no expression yet)', 'neural-forms-lite' ) }</code>
+		</div>
+	);
+}
+
 export default function FieldPreview( { field } ) {
 	if ( ! field || typeof field !== 'object' ) return null;
 	switch ( field.type ) {
@@ -298,6 +335,8 @@ export default function FieldPreview( { field } ) {
 		case 'acceptance': return readOnlyAcceptance( { field } );
 		case 'range':      return readOnlyRange( { field } );
 		case 'rating':     return readOnlyRating( { field } );
+		case 'product':    return readOnlyProduct( { field } );
+		case 'calculated': return readOnlyCalculated( { field } );
 		case 'matrix':     return readOnlyMatrix( { field } );
 		case 'repeater':   return readOnlyRepeater( { field } );
 		case 'file':       return readOnlyFile( { field } );
