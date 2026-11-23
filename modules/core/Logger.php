@@ -258,12 +258,19 @@ class Logger {
 	public static function cleanup(): void {
 		global $wpdb;
 
-		// DB: remove rows older than 60 days.
+		// DB: remove diagnostic rows older than 60 days. The entry timeline
+		// (entry.* / workflow.* / quote.* / payment.* rows written by
+		// Storage\EntryActivity) shares this table and is a record, not a
+		// log: it lives as long as its entry and is removed with it.
 		if ( $wpdb instanceof \wpdb ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$wpdb->query(
 				"DELETE FROM {$wpdb->prefix}neural_forms_logs
-				 WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 DAY)"
+				 WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 DAY)
+				 AND event_type NOT LIKE 'entry.%'
+				 AND event_type NOT LIKE 'workflow.%'
+				 AND event_type NOT LIKE 'quote.%'
+				 AND event_type NOT LIKE 'payment.%'"
 			);
 		}
 

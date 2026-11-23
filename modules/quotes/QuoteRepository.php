@@ -128,6 +128,38 @@ final class QuoteRepository {
 		return (bool) $wpdb->delete( self::table(), array( 'id' => $id ), array( '%d' ) );
 	}
 
+	/**
+	 * Quote snapshot with the customer block blanked (privacy eraser). Line
+	 * items, totals and the business block stay: they are the financial
+	 * record.
+	 */
+	public static function anonymised_snapshot( array $snapshot ): array {
+		if ( isset( $snapshot['customer'] ) && is_array( $snapshot['customer'] ) ) {
+			foreach ( $snapshot['customer'] as $k => $v ) {
+				$snapshot['customer'][ $k ] = is_array( $v ) ? array() : '';
+			}
+		}
+		$snapshot['notes']      = '';
+		$snapshot['anonymised'] = true;
+		return $snapshot;
+	}
+
+	/**
+	 * Privacy eraser: strip customer details from every revision of an
+	 * entry's quotes and revoke their public links (NULL token seed).
+	 * Returns rows touched.
+	 */
+	public static function anonymise_for_entry( int $entry_id ): int {
+		$n = 0;
+		foreach ( self::list_for_entry( $entry_id ) as $quote ) {
+			$snapshot = is_array( $quote['snapshot'] ?? null ) ? $quote['snapshot'] : array();
+			if ( self::update( (int) $quote['id'], array( 'snapshot' => self::anonymised_snapshot( $snapshot ), 'notes' => null, 'token_seed' => null ) ) ) {
+				$n++;
+			}
+		}
+		return $n;
+	}
+
 	public static function delete_for_entry( int $entry_id ): int {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery

@@ -268,6 +268,36 @@ final class PaymentRepository {
 		return $out;
 	}
 
+	/**
+	 * Attempt meta with the customer's personal details removed (privacy
+	 * eraser). Amounts, provider ids and the invoice number stay: they are
+	 * the financial record.
+	 */
+	public static function anonymised_meta( array $meta ): array {
+		foreach ( array( 'customer_name', 'customer_email' ) as $k ) {
+			if ( array_key_exists( $k, $meta ) ) {
+				$meta[ $k ] = '';
+			}
+		}
+		if ( isset( $meta['invoice'] ) && is_array( $meta['invoice'] ) && array_key_exists( 'sent_to', $meta['invoice'] ) ) {
+			$meta['invoice']['sent_to'] = '';
+		}
+		$meta['anonymised'] = true;
+		return $meta;
+	}
+
+	/** Privacy eraser: strip customer details from every attempt of an entry. Returns rows touched. */
+	public static function anonymise_for_entry( int $entry_id ): int {
+		$n = 0;
+		foreach ( self::list_for_entry( $entry_id ) as $attempt ) {
+			$meta = is_array( $attempt['meta'] ?? null ) ? $attempt['meta'] : array();
+			if ( self::update( (int) $attempt['id'], array( 'meta' => self::anonymised_meta( $meta ), 'checkout_url' => null ) ) ) {
+				$n++;
+			}
+		}
+		return $n;
+	}
+
 	public static function delete_for_entry( int $entry_id ): int {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery

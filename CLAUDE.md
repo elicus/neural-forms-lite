@@ -948,6 +948,24 @@ What Lite provides (generic engine, used by the normal form checkout too):
 `tests/live/B3PaymentFormHarness.php` moved to Pro with the feature;
 `tests/ProductPresetRenderTest.php` covers the presets + currency fix here.
 
+### Privacy eraser cascade + timeline retention (1.2.0, B5, 2026-11-23)
+
+- `Logger::cleanup()` prunes diagnostic rows after 60 days but never the
+  entry timeline: `entry.*` / `workflow.*` / `quote.*` / `payment.*` rows
+  live as long as their entry (`EntryActivity::delete_for_entry()`).
+- `PrivacyTools::erase()` → `erase_commerce( $entry_id )`: open checkouts
+  are closed (and expired at the gateway, best effort). No confirmed
+  payment → quotes + attempts are deleted like an admin delete. A confirmed
+  payment → rows are KEPT as the financial record and anonymised
+  (`PaymentRepository::anonymise_for_entry()` blanks `meta.customer_name /
+  customer_email / invoice.sent_to` + `checkout_url`;
+  `QuoteRepository::anonymise_for_entry()` blanks `snapshot.customer`,
+  notes and NULLs `token_seed`, which revokes the public links). Amounts,
+  provider ids, quote / invoice numbers stay. The eraser reports
+  `items_retained` + a message. The entry and its timeline always go.
+- Tests: `tests/PrivacyEraserCascadeTest.php` (real repositories on an
+  in-memory `$wpdb` double — reuse it for repository-level tests).
+
 ### Payment analytics (1.2.0 part B, owner request 2026-11-04)
 
 - `GET /forms/{id}/analytics/payments` (`StatsEndpoint::get_payment_analytics`,
