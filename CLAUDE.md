@@ -913,6 +913,12 @@ moved to Pro"). **Lite ships no payment-form code at all** — no block, no
 shortcode, no endpoint, no script, no CSS (the card stylesheet moved to
 Pro on 2026-11-04). A Lite user never sees the block in the inserter.
 
+**The only Payment Form mention in Lite's UI** (owner decision 2026-11-23)
+is a non-clickable, Pro-badged "Payment Form" tile in the builder's template
+chooser (`ProLockedCard` in `forms/FormTypeChooser.js`, catalog entry
+`payment` in `formTemplates.js`), hidden once the `payments` capability is
+unlocked. No placeholder block in the inserter, no shortcode stub.
+
 This is a second exception to "Lite owns every premium feature's
 implementation; Pro only flips capability filters" (the first is Site
 Profile). It is tied to Lite's pricing / payment engine, so do not use
@@ -1049,6 +1055,10 @@ What Lite provides (generic engine, used by the normal form checkout too):
   `public_pay`) which calls `PaymentService::start_checkout( …, [ 'quote' ] )`
   and 302s to the gateway; already paid → 409 page. The public quote page
   and the quote email show the "Pay … now" button / link.
+- **"Awaiting payment" = open checkouts only** (`pending`, `processing`;
+  fixed 2026-11-23). Failed / cancelled are not awaiting. The Stats card
+  counts with `EntryRepository::AWAITING_PAYMENT_WHERE` itself, so its
+  "N awaiting payment" link opens exactly N entries.
 - **Inbox**: views `awaiting_payment` / `paid` (`EntryRepository::VALID_VIEWS`,
   `AWAITING_PAYMENT_WHERE` / `PAID_WHERE`, also in `/entries/counts`), smart
   filters gated by the `payments` capability, `PaymentPill` on list rows.

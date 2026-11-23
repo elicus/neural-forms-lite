@@ -787,7 +787,11 @@ class EntryRepository {
 
 	/** SQL predicate for an open, overdue follow-up on a live entry (1.2.0). */
 	/** 1.2.0 part B smart views (single-column predicates; the aliased form prefixes `e.`). */
-	public const AWAITING_PAYMENT_WHERE = "payment_status IN ('pending','processing','failed','cancelled') AND status IN ('new','read')";
+	// "Awaiting payment" = a checkout that is still open. Failed and cancelled
+	// checkouts are NOT awaiting (rows show them as "Payment failed" /
+	// "Cancelled"); the Stats dashboard counts with this same predicate so its
+	// "N awaiting payment" link opens a list of exactly N entries.
+	public const AWAITING_PAYMENT_WHERE = "payment_status IN ('pending','processing') AND status IN ('new','read')";
 	public const PAID_WHERE             = "payment_status IN ('deposit_paid','paid','partially_refunded') AND status IN ('new','read')";
 	public const OVERDUE_WHERE = "follow_up_due IS NOT NULL AND follow_up_done = 0 AND follow_up_due < UTC_TIMESTAMP() AND status IN ('new','read')";
 

@@ -258,32 +258,21 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 
 = 1.2.0 - Unreleased =
 
-* Added: Conditional logic can combine several conditions with All or Any and show or hide a field.
-* Added: Pro users can group conditions, show or skip steps and sections based on answers, and pick a confirmation message or redirect per rule.
-* Added: Pro users can track each lead through stages, assign an owner, set follow-up reminders and see an activity timeline on every entry.
-* Added: Workflows for Pro users: when a submission arrives, an AI analysis finishes, a stage changes or a follow-up is overdue, assign, notify, acknowledge, set a follow-up or prepare an AI draft, with a test run and history.
-* Added: A Processing health card in Settings shows waiting jobs and how to set up a system cron.
-* Added: Pro users can give AI drafts approved business knowledge, a brand voice and a reply-language policy, site-wide and per form; drafts show which facts they used and flag what they could not answer.
-* Added: Any field can be excluded from AI so its answer never leaves your site.
-* Added: Translate an AI draft into your site language from the drafts carousel.
-* Added: Pro users can price their services with Priced Item fields (no WooCommerce needed), show a live total with discount rules and a deposit, and calculate values from answers; totals are always recalculated on the server.
-* Added: Pro users can turn a priced entry into a numbered, branded quote, send it as a PDF with a secure link, and keep every revision on record.
-* Added: Pro users can take a deposit or the full amount through Stripe or PayPal right after a priced form is submitted; payments are confirmed by the gateway and shown on the entry.
-* Security: Block design values can no longer inject site-wide styles, and checkout links are validated before use.
-* Added: Create a form from a short description with Neural AI, now included in Lite.
-* Fixed: Cancelling at the gateway can no longer overwrite a payment confirmed moments earlier.
-* Fixed: Superseded or expired quotes close their open checkout links so the old price cannot be paid.
-* Fixed: Entries with a confirmed payment can no longer be deleted; open checkouts are closed first.
-* Fixed: Retried replies now use the configured sender name and address.
-* Fixed: The recurring AI queue is scheduled correctly on activation.
-* Fixed: Refund amounts for currencies without decimals are entered correctly.
-* Fixed: Priced Item prices on the form are shown in the form's currency instead of always in dollars.
-* Added: A Payment Form block, shortcode and Divi module that shows one priced item with the whole form underneath and sends the visitor straight to checkout (Pro).
-* Added: A Payments page listing every payment with totals and filters, invoices sent automatically or by hand as PDF, and full or partial refunds issued through the gateway (Pro).
-* Added: A "Payment confirmed" workflow trigger, payment details in workflow emails, a workflow action that creates a quote, a Pay button on issued quotes, and Awaiting payment / Paid inbox filters (Pro).
-* Fixed: Cloud error messages show their real code instead of a bare HTTP status.
-* Fixed: "Analyze with AI" runs immediately when a queued job was never picked up by cron.
-* Fixed: Upstream failures no longer show a Cloudflare error page on proxied sites.
+* Security: Hardened block design values and checkout links.
+* Added: Conditional logic with multiple conditions.
+* Added: Create a form with Neural AI.
+* Added: Exclude a field from AI, and translate AI drafts.
+* Added: Processing health card in Settings.
+* Added: Advanced conditions, lead management and workflows (Pro).
+* Added: Business knowledge and brand voice for AI drafts (Pro).
+* Added: Priced Item and Calculated fields with live totals (Pro).
+* Added: Quotes with PDF (Pro).
+* Added: Stripe and PayPal payments, invoices and refunds (Pro).
+* Added: Payment Form block, shortcode and Divi module (Pro).
+* Added: Payment analytics (Pro).
+* Fixed: Matrix field width on phones.
+* Fixed: Radio, checkbox and gradient styling from the Style tab.
+* Fixed: AI queue scheduling and clearer Cloud error messages.
 
 = 1.1.3 - 2026-10-28 =
 
@@ -345,7 +334,7 @@ Full documentation is available at [neuralforms.ai/documentation](https://neural
 == Upgrade Notice ==
 
 = 1.2.0 =
-Conditional logic can now combine several conditions. Pro adds condition groups, step skipping, conditional confirmations, lead stages with follow-ups, workflows and business knowledge for AI drafts. The database upgrades automatically on first admin load; Pro 1.1.0 requires this version.
+Conditional logic can now combine several conditions. Pro adds condition groups, step skipping, conditional confirmations, lead stages with follow-ups, workflows, business knowledge for AI drafts, priced forms, quotes, payments and the Payment Form. The database upgrades automatically on first admin load; Pro 1.1.0 requires this version.
 
 = 1.1.3 =
 Privacy mode now actually stops IP and user-agent storage; sites with it on have existing entries cleaned on update. Security fix for the submission rate limit. Sites behind a reverse proxy or Cloudflare should add their proxy ranges via the `neural_forms_trusted_proxies` filter so the inbox shows real visitor IPs. Emails now go out from your site title and WordPress admin email when the Sender fields are blank; if your admin email is on another domain, set an on-domain Sender email in Settings > Email for best deliverability.

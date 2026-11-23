@@ -450,12 +450,13 @@ export const TEMPLATE_CATALOG = [
 	{ id: 'multistep-contact',      label: 'Multi-step Contact',        description: 'Two-step contact form with progress indicator.',                 category: 'Multi-step',  locked: false },
 	{ id: 'multistep-appointment',  label: 'Multi-step Appointment',    description: 'Two-step appointment booking with contact + service + date.',    category: 'Multi-step',  locked: false },
 
-	// Future templates — still locked. Payment is genuinely upcoming;
-	// AI generated forms are now available via the "Create Form with
+	// Locked catalog entries. Payment Form ships in Neural Forms Pro only
+	// (block, shortcode, Divi module); Lite shows this entry as a Pro-badged
+	// tile in the chooser and nothing else. AI generated forms are now available via the "Create Form with
 	// AI" entry point on the Forms list (Pro), so we leave the AI
 	// catalog entry locked as a discovery hint and let the FormType
 	// chooser footer phrase it accurately.
-	{ id: 'payment',                label: 'Payment Form',              description: 'Collect payments with Stripe / PayPal.',                         category: 'Pro',         locked: true,  pro: true },
+	{ id: 'payment',                label: 'Payment Form',              description: 'Sell a priced item with Stripe / PayPal checkout.',                        category: 'Pro',         locked: true,  pro: true },
 	{ id: 'ai',                     label: 'AI Generated Form',         description: 'Describe what you need and Neural Forms drafts it for you.',     category: 'Pro',         locked: true,  pro: true, available: 'pro-modal' },
 ];
 

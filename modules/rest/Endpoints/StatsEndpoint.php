@@ -158,7 +158,8 @@ class StatsEndpoint {
 		}
 
 		$awaiting = (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE status != 'trash' AND payment_status IN ('pending','processing')", $entries )
+			// Same predicate as the inbox "Awaiting payment" view the card links to.
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE ' . \NeuralForms\Storage\EntryRepository::AWAITING_PAYMENT_WHERE, $entries )
 		);
 
 		$top = $wpdb->get_results(
