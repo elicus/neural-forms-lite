@@ -441,7 +441,7 @@ class StatsEndpoint {
 			$wpdb->prepare(
 				"SELECT
 				   COUNT(*)                                              AS analyzed,
-				   SUM( ai_priority = 'high' )                           AS high_priority,
+				   SUM( ai_priority = 'high' )                           AS `high_priority`,
 				   SUM( needs_reply = 1 AND status IN ('new','read') )   AS needs_reply,
 				   SUM( ai_is_spam = 1 )                                 AS spam_detected
 				 FROM %i
