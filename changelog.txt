@@ -7,13 +7,6 @@
 * Added: Create a form with Neural AI.
 * Added: Exclude a field from AI, and translate AI drafts.
 * Added: Processing health card in Settings.
-* Added: Advanced conditions, lead management and workflows (Pro).
-* Added: Business knowledge and brand voice for AI drafts (Pro).
-* Added: Priced Item and Calculated fields with live totals (Pro).
-* Added: Quotes with PDF (Pro).
-* Added: Stripe and PayPal payments, invoices and refunds (Pro).
-* Added: Payment Form block, shortcode and Divi module (Pro).
-* Added: Payment analytics (Pro).
 * Fixed: Matrix field width on phones.
 * Fixed: Radio, checkbox and gradient styling from the Style tab.
 * Fixed: AI queue scheduling and clearer Cloud error messages.
