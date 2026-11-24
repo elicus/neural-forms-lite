@@ -1,0 +1,403 @@
+[
+    {
+        "name": "SAVE10 x1 + rule",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [
+                {
+                    "id": "r1",
+                    "label": "Launch",
+                    "conditions": null,
+                    "type": "percent",
+                    "bp": 1000,
+                    "amount": 0,
+                    "max": null
+                }
+            ],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c1",
+                "code": "SAVE10",
+                "label": "Coupon SAVE10",
+                "type": "percent",
+                "bp": 1000,
+                "amount": 0,
+                "max": null,
+                "min": null
+            }
+        },
+        "qty": "1",
+        "expected": {
+            "subtotal": 10000,
+            "discount": 1900,
+            "coupon": 900,
+            "coupon_error": false,
+            "total": 8100,
+            "due_now": 2430
+        }
+    },
+    {
+        "name": "FIVE x1",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c2",
+                "code": "FIVE",
+                "label": "Five off",
+                "type": "fixed",
+                "bp": 0,
+                "amount": 500,
+                "max": null,
+                "min": null
+            }
+        },
+        "qty": "1",
+        "expected": {
+            "subtotal": 10000,
+            "discount": 500,
+            "coupon": 500,
+            "coupon_error": false,
+            "total": 9500,
+            "due_now": 2850
+        }
+    },
+    {
+        "name": "BIG x1",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c3",
+                "code": "BIG",
+                "label": "Coupon BIG",
+                "type": "fixed",
+                "bp": 0,
+                "amount": 50000,
+                "max": null,
+                "min": null
+            }
+        },
+        "qty": "1",
+        "expected": {
+            "subtotal": 10000,
+            "discount": 10000,
+            "coupon": 10000,
+            "coupon_error": false,
+            "total": 0,
+            "due_now": 0
+        }
+    },
+    {
+        "name": "CAPPED x3",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c4",
+                "code": "CAPPED",
+                "label": "Coupon CAPPED",
+                "type": "percent",
+                "bp": 5000,
+                "amount": 0,
+                "max": 2000,
+                "min": null
+            }
+        },
+        "qty": "3",
+        "expected": {
+            "subtotal": 30000,
+            "discount": 2000,
+            "coupon": 2000,
+            "coupon_error": false,
+            "total": 28000,
+            "due_now": 8400
+        }
+    },
+    {
+        "name": "MIN200 x1",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c5",
+                "code": "MIN200",
+                "label": "Coupon MIN200",
+                "type": "percent",
+                "bp": 1000,
+                "amount": 0,
+                "max": null,
+                "min": 20000
+            }
+        },
+        "qty": "1",
+        "expected": {
+            "subtotal": 10000,
+            "discount": 0,
+            "coupon": 0,
+            "coupon_error": true,
+            "total": 10000,
+            "due_now": 3000
+        }
+    },
+    {
+        "name": "MIN200 x2 + rule",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [
+                {
+                    "id": "r1",
+                    "label": "Launch",
+                    "conditions": null,
+                    "type": "percent",
+                    "bp": 1000,
+                    "amount": 0,
+                    "max": null
+                }
+            ],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c5",
+                "code": "MIN200",
+                "label": "Coupon MIN200",
+                "type": "percent",
+                "bp": 1000,
+                "amount": 0,
+                "max": null,
+                "min": 20000
+            }
+        },
+        "qty": "2",
+        "expected": {
+            "subtotal": 20000,
+            "discount": 3800,
+            "coupon": 1800,
+            "coupon_error": false,
+            "total": 16200,
+            "due_now": 4860
+        }
+    },
+    {
+        "name": "SAVE10 x7 + rule",
+        "cfg": {
+            "currency": "USD",
+            "exponent": 2,
+            "symbol": "$",
+            "products": [
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "mode": "fixed",
+                    "display": "select",
+                    "price": 10000,
+                    "quantity": {
+                        "enabled": true,
+                        "min": 1,
+                        "max": 10,
+                        "default": 1
+                    },
+                    "min": null,
+                    "max": null,
+                    "options": []
+                }
+            ],
+            "calculated": [],
+            "discounts": [
+                {
+                    "id": "r1",
+                    "label": "Launch",
+                    "conditions": null,
+                    "type": "percent",
+                    "bp": 1000,
+                    "amount": 0,
+                    "max": null
+                }
+            ],
+            "deposit": {
+                "type": "percent",
+                "bp": 3000,
+                "amount": 0
+            },
+            "coupons": true,
+            "coupon": {
+                "id": "c1",
+                "code": "SAVE10",
+                "label": "Coupon SAVE10",
+                "type": "percent",
+                "bp": 1000,
+                "amount": 0,
+                "max": null,
+                "min": null
+            }
+        },
+        "qty": "7",
+        "expected": {
+            "subtotal": 70000,
+            "discount": 13300,
+            "coupon": 6300,
+            "coupon_error": false,
+            "total": 56700,
+            "due_now": 17010
+        }
+    }
+]

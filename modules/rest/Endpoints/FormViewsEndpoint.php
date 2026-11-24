@@ -84,13 +84,14 @@ class FormViewsEndpoint {
 	}
 
 	/**
-	 * True once an IP has had IP_CAP views counted for a form in the last
-	 * 10 minutes. The IP never leaves this hash.
+	 * True once an IP has had $cap events counted for a form in the last
+	 * 10 minutes (views by default; FormFunnelEndpoint passes its own
+	 * prefix and cap). The IP never leaves this hash.
 	 */
-	public static function over_cap( string $ip, int $form_id ): bool {
-		$key   = self::RL_PREFIX . md5( wp_salt( 'nonce' ) . '|' . $form_id . '|' . ( $ip === '' ? 'unknown' : $ip ) );
+	public static function over_cap( string $ip, int $form_id, string $prefix = self::RL_PREFIX, int $cap = self::IP_CAP ): bool {
+		$key   = $prefix . md5( wp_salt( 'nonce' ) . '|' . $form_id . '|' . ( $ip === '' ? 'unknown' : $ip ) );
 		$count = (int) get_transient( $key );
-		if ( $count >= self::IP_CAP ) {
+		if ( $count >= $cap ) {
 			return true;
 		}
 		set_transient( $key, $count + 1, 10 * MINUTE_IN_SECONDS );

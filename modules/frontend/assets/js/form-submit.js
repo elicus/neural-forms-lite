@@ -59,6 +59,7 @@
 		initRandomizeOptions( form );
 		initPrefill( form );
 		initViewTracking( form );
+		initDropoffTracking( form );
 		initSignatures( form );
 		// Snapshot the SSR poll-results markup AFTER initMultiStep so any
 		// step-driven mutations are captured. Must run before the first
@@ -240,6 +241,120 @@
 			}
 		}, { threshold: [ 0, 0.1, 0.2, 0.3, 0.4 ] } );
 		io.observe( form );
+	}
+
+	// Drop-off tracking (1.3.0)
+
+	/**
+	 * The id a step is recorded under: its own id, or for a conversational
+	 * screen (nfcv_<id>) the field / section it shows.
+	 */
+	function funnelStepNode( step ) {
+		if ( ! step ) return '';
+		var id = step.getAttribute( 'data-neural-forms-step-id' ) || '';
+		return id.indexOf( 'nfcv_' ) === 0 ? id.slice( 5 ) : id;
+	}
+
+	/** The top-level field a control belongs to (repeater children count as the repeater). */
+	function funnelFieldNode( el, form ) {
+		var found = '';
+		var node  = el && el.closest ? el.closest( '[data-neural-forms-field-id]' ) : null;
+		while ( node && form.contains( node ) ) {
+			found = node.getAttribute( 'data-neural-forms-field-id' ) || found;
+			node  = node.parentElement ? node.parentElement.closest( '[data-neural-forms-field-id]' ) : null;
+		}
+		return found === 'nf_coupon' ? '' : found;
+	}
+
+	/**
+	 * Where visitors give up (Analytics › Drop-off). Same forms as view
+	 * counting. Per browser session per form: "started" once (first real
+	 * input), each step once after starting, and one "quit" with the last
+	 * field touched when the page is hidden before a successful submit.
+	 * A submit after a reported quit takes the quit back. Sends ids only.
+	 */
+	function initDropoffTracking( form ) {
+		if ( form.getAttribute( 'data-neural-forms-track-view' ) !== '1' ) return;
+		var formId = form.getAttribute( 'data-neural-forms-id' );
+		if ( ! formId || ! getApiUrl() ) return;
+		var url   = getApiUrl().replace( /\/+$/, '' ) + '/forms/' + formId + '/funnel';
+		var store = 'neural_forms_funnel_' + formId;
+		var state = { started: false, done: false, steps: {}, quit: '' };
+		try {
+			var saved = JSON.parse( window.sessionStorage.getItem( store ) || 'null' );
+			if ( saved && typeof saved === 'object' ) {
+				state.started = !! saved.started;
+				state.done    = !! saved.done;
+				state.steps   = saved.steps && typeof saved.steps === 'object' ? saved.steps : {};
+				state.quit    = typeof saved.quit === 'string' ? saved.quit : '';
+			}
+		} catch ( e ) { /* storage blocked: track this page only */ }
+		if ( state.done ) return;
+
+		var lastField = '';
+
+		function save() {
+			try { window.sessionStorage.setItem( store, JSON.stringify( state ) ); } catch ( e ) { /* noop */ }
+		}
+		function beacon( params ) {
+			var body = new URLSearchParams( params );
+			try {
+				if ( navigator.sendBeacon && navigator.sendBeacon( url, body ) ) return;
+			} catch ( e ) { /* fall through */ }
+			try { fetch( url, { method: 'POST', body: body, keepalive: true, credentials: 'omit' } ); } catch ( e ) { /* noop */ }
+		}
+		function recordStep( step ) {
+			if ( ! state.started || state.done ) return;
+			var node = funnelStepNode( step );
+			if ( ! node || state.steps[ node ] ) return;
+			state.steps[ node ] = 1;
+			save();
+			beacon( { kind: 'step', node: node } );
+		}
+		function activeStep() {
+			return form.querySelector( '.neural-forms-form__step.is-active' );
+		}
+		function onInput( e ) {
+			if ( state.done || ( e && e.isTrusted === false ) ) return;
+			var field = funnelFieldNode( e.target, form );
+			if ( ! field ) return;
+			lastField = field;
+			if ( ! state.started ) {
+				state.started = true;
+				save();
+				beacon( { kind: 'started' } );
+				recordStep( activeStep() );
+			}
+			// Back after leaving: the earlier quit no longer stands.
+			if ( state.quit ) {
+				beacon( { kind: 'unquit', field: state.quit } );
+				state.quit = '';
+				save();
+			}
+		}
+		function onLeave() {
+			if ( ! state.started || state.done || state.quit || ! lastField ) return;
+			state.quit = lastField;
+			save();
+			beacon( { kind: 'quit', field: lastField } );
+		}
+
+		form.addEventListener( 'focusin', onInput );
+		form.addEventListener( 'input', onInput );
+		form.addEventListener( 'change', onInput );
+		window.addEventListener( 'pagehide', onLeave );
+		document.addEventListener( 'visibilitychange', function () {
+			if ( document.visibilityState === 'hidden' ) onLeave();
+		} );
+
+		form._nfFunnelStep = recordStep;
+		form._nfFunnelDone = function () {
+			if ( state.done ) return;
+			if ( state.quit ) beacon( { kind: 'unquit', field: state.quit } );
+			state.done = true;
+			state.quit = '';
+			save();
+		};
 	}
 
 	// URL pre-fill (1.3.0)
@@ -1089,6 +1204,9 @@
 					// Entry stored. Either redirect or show the inline message
 					// based on the form's on_success setting.
 					case 201:
+						// Drop-off: this visitor finished, take back any quit
+						// already reported (before a redirect fires pagehide).
+						if ( form._nfFunnelDone ) form._nfFunnelDone();
 						// Some apiFetch wrappers expose the JSON body
 						// at result.body; raw fetch already does. Either
 						// shape is supported defensively.
@@ -1811,6 +1929,23 @@
 			discount = { id: rule.id, label: rule.label, amount: amt };
 			break;
 		}
+		// 1.3.0 coupon (cfg.coupon is set only after the server accepted the
+		// code): on top of the automatic discount, on what is left. Mirrors
+		// PriceEngine::evaluate().
+		var ruleDiscount = discount, coupon = null, couponError = null;
+		if ( cfg.coupon ) {
+			var cp = cfg.coupon;
+			if ( cp.min !== null && cp.min !== undefined && subtotal < cp.min ) {
+				couponError = { code: 'coupon_min', min: cp.min };
+			} else {
+				var base = Math.max( 0, subtotal - ( discount ? discount.amount : 0 ) );
+				var camt = cp.type === 'percent' ? nfPercentOf( base, cp.bp || 0 ) : ( cp.amount || 0 );
+				if ( cp.max !== null && cp.max !== undefined && cp.max >= 0 ) camt = Math.min( camt, cp.max );
+				camt = Math.max( 0, Math.min( camt, base ) );
+				coupon = { id: cp.id, code: cp.code, label: cp.label, amount: camt };
+				discount = { id: discount ? discount.id + '+' + cp.id : cp.id, label: discount ? '' : cp.label, amount: ( discount ? discount.amount : 0 ) + camt };
+			}
+		}
 		var total = Math.max( 0, subtotal - ( discount ? discount.amount : 0 ) );
 		var deposit = null, dueNow = total;
 		if ( cfg.deposit && total > 0 ) {
@@ -1856,7 +1991,7 @@
 			}
 			pending = next;
 		}
-		return { currency: cfg.currency, exponent: exp, line_items: lines, subtotal: subtotal, discount: discount, total: total, deposit: deposit, due_now: dueNow, remaining: total - dueNow, calculated: calculated };
+		return { currency: cfg.currency, exponent: exp, line_items: lines, subtotal: subtotal, discount: discount, rule_discount: ruleDiscount, coupon: coupon, coupon_error: couponError, total: total, deposit: deposit, due_now: dueNow, remaining: total - dueNow, calculated: calculated };
 	}
 
 	/** Read a product's posted-shaped value from the DOM. */
@@ -1909,10 +2044,16 @@
 					if ( row && show !== undefined ) row.hidden = ! show;
 				};
 				set( 'subtotal', nfFormatMinor( res.subtotal, cfg ) );
-				var hasDiscount = !! ( res.discount && res.discount.amount > 0 );
-				set( 'discount', hasDiscount ? '−' + nfFormatMinor( res.discount.amount, cfg ) : '', hasDiscount );
+				// Automatic discount and coupon on their own rows.
+				var rd = res.rule_discount;
+				var hasDiscount = !! ( rd && rd.amount > 0 );
+				set( 'discount', hasDiscount ? '−' + nfFormatMinor( rd.amount, cfg ) : '', hasDiscount );
 				var dl = box.querySelector( '[data-total-label="discount"]' );
-				if ( dl && hasDiscount && res.discount.label ) dl.textContent = res.discount.label;
+				if ( dl && hasDiscount && rd.label ) dl.textContent = rd.label;
+				var hasCoupon = !! ( res.coupon && res.coupon.amount > 0 );
+				set( 'coupon', hasCoupon ? '−' + nfFormatMinor( res.coupon.amount, cfg ) : '', hasCoupon );
+				var cl = box.querySelector( '[data-total-label="coupon"]' );
+				if ( cl && hasCoupon ) cl.textContent = res.coupon.label;
 				set( 'total', nfFormatMinor( res.total, cfg ) );
 				var hasDeposit = !! ( res.deposit && res.deposit.amount > 0 && res.deposit.amount < res.total );
 				set( 'due_now', nfFormatMinor( res.due_now, cfg ), hasDeposit );
@@ -1930,11 +2071,99 @@
 				var cid = calcEls[ k ].getAttribute( 'data-neural-forms-calculated' );
 				calcEls[ k ].textContent = res.calculated[ cid ] ? res.calculated[ cid ].display : '—';
 			}
+			if ( form._nfCouponStatus ) form._nfCouponStatus( res );
 		};
+		initCoupon( form, cfg, function () { render(); } );
 		form.addEventListener( 'input', render );
 		form.addEventListener( 'change', render );
 		form._nfPricingRender = render;
 		render();
+	}
+
+	/**
+	 * Coupon box (1.3.0). The code is checked by POST /forms/{id}/coupon;
+	 * on success the returned coupon goes into cfg.coupon (the totals
+	 * mirror applies it) and the code into the hidden nf_coupon input,
+	 * which is all the server reads. The server checks the code again.
+	 */
+	function initCoupon( form, cfg, rerender ) {
+		var box = form.querySelector( '[data-neural-forms-coupon]' );
+		if ( ! box ) return;
+		var input  = box.querySelector( '[data-coupon-input]' );
+		var apply  = box.querySelector( '[data-coupon-apply]' );
+		var remove = box.querySelector( '[data-coupon-remove]' );
+		var hidden = box.querySelector( '[data-coupon-value]' );
+		var status = box.querySelector( '[data-coupon-status]' );
+		var errEl  = box.querySelector( '.neural-forms-form__field-error' );
+		var label  = function ( name, fallback ) { return box.getAttribute( name ) || fallback; };
+		var busy   = false;
+
+		function showError( msg ) {
+			if ( ! errEl ) return;
+			errEl.textContent = msg || '';
+			errEl.hidden = ! msg;
+			box.classList.toggle( 'neural-forms-form__field--has-error', !! msg );
+			if ( input ) {
+				if ( msg ) input.setAttribute( 'aria-invalid', 'true' ); else input.removeAttribute( 'aria-invalid' );
+			}
+		}
+		function setApplied( coupon ) {
+			cfg.coupon = coupon || null;
+			hidden.value = coupon ? coupon.code : '';
+			if ( input ) {
+				input.readOnly = !! coupon;
+				if ( coupon ) input.value = coupon.code;
+			}
+			if ( apply ) apply.hidden = !! coupon;
+			if ( remove ) remove.hidden = ! coupon;
+			if ( ! coupon && status ) { status.hidden = true; status.textContent = ''; }
+			rerender();
+		}
+		form._nfCouponStatus = function ( res ) {
+			if ( ! status || ! cfg.coupon ) return;
+			if ( res.coupon_error ) {
+				status.textContent = label( 'data-min-label', 'Spend at least %s to use this code.' ).replace( '%s', nfFormatMinor( res.coupon_error.min, cfg ) );
+			} else {
+				status.textContent = label( 'data-applied-label', '%s applied' ).replace( '%s', cfg.coupon.label ) + ( res.coupon ? ': −' + nfFormatMinor( res.coupon.amount, cfg ) : '' );
+			}
+			status.hidden = false;
+		};
+		function check() {
+			if ( busy ) return;
+			var code = String( input && input.value || '' ).replace( /[^A-Za-z0-9_\-]/g, '' ).toUpperCase();
+			if ( code === '' ) { showError( label( 'data-empty-label', 'Enter a code first.' ) ); return; }
+			busy = true;
+			if ( apply ) apply.disabled = true;
+			showError( '' );
+			var url = getApiUrl().replace( /\/+$/, '' ) + '/forms/' + form.getAttribute( 'data-neural-forms-id' ) + '/coupon';
+			fetch( url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify( { code: code } ) } )
+				.then( function ( r ) { return r.json().catch( function () { return {}; } ).then( function ( b ) { return { ok: r.ok, body: b }; } ); } )
+				.then( function ( res ) {
+					if ( res.ok && res.body && res.body.coupon ) {
+						setApplied( res.body.coupon );
+					} else {
+						showError( ( res.body && res.body.message ) || label( 'data-error-label', 'That code could not be checked.' ) );
+					}
+				} )
+				.catch( function () { showError( label( 'data-error-label', 'That code could not be checked.' ) ); } )
+				.finally( function () { busy = false; if ( apply ) apply.disabled = false; } );
+		}
+		if ( apply ) apply.addEventListener( 'click', function ( e ) { e.preventDefault(); check(); } );
+		if ( remove ) remove.addEventListener( 'click', function ( e ) {
+			e.preventDefault();
+			setApplied( null );
+			if ( input ) { input.value = ''; input.focus(); }
+		} );
+		if ( input ) input.addEventListener( 'keydown', function ( e ) {
+			// Enter applies the code; it never submits or moves a step on.
+			if ( e.key === 'Enter' ) {
+				e.preventDefault();
+				e.stopPropagation();
+				if ( ! input.readOnly ) check();
+			}
+		} );
+		// "Submit another response" resets the form: drop the coupon too.
+		form.addEventListener( 'reset', function () { setTimeout( function () { showError( '' ); setApplied( null ); }, 0 ); } );
 	}
 
 	/**
@@ -3749,6 +3978,46 @@
 		var doc = panel.ownerDocument;
 		while ( body.firstChild ) body.removeChild( body.firstChild );
 
+		// Conversational forms: one row per question, each with its own Edit.
+		if ( panel.hasAttribute( 'data-review-flat' ) ) {
+			for ( var fs = 0; fs < steps.length; fs++ ) {
+				if ( ! eligible[ fs ] ) continue;
+				var fWraps = steps[ fs ].querySelectorAll( '.neural-forms-form__field[data-neural-forms-field-id]' );
+				for ( var fw = 0; fw < fWraps.length; fw++ ) {
+					var fWrap = fWraps[ fw ];
+					if ( fWrap.parentElement && fWrap.parentElement.closest( '.neural-forms-form__field[data-neural-forms-field-id]' ) ) continue;
+					if ( isHiddenByLogicWithin( fWrap, steps[ fs ] ) ) continue;
+					var q = fieldLabelText( fWrap, fWrap.querySelector( 'input, select, textarea' ) );
+					var answer = reviewFieldValue( fWrap, labels );
+					var item = doc.createElement( 'div' );
+					item.className = 'neural-forms-form__review-group neural-forms-form__review-group--flat';
+					var fHead = doc.createElement( 'div' );
+					fHead.className = 'neural-forms-form__review-group-head';
+					var fH = doc.createElement( 'h4' );
+					fH.className = 'neural-forms-form__review-step';
+					fH.textContent = q;
+					var fBtn = doc.createElement( 'button' );
+					fBtn.type = 'button';
+					fBtn.className = 'neural-forms-form__review-edit';
+					fBtn.textContent = labels.edit;
+					fBtn.setAttribute( 'aria-label', labels.editStep.replace( '%s', q ) );
+					fBtn.setAttribute( 'data-review-step', String( fs ) );
+					fBtn.addEventListener( 'click', ( function ( idx ) {
+						return function ( e ) { e.preventDefault(); onEdit( idx ); };
+					}( fs ) ) );
+					fHead.appendChild( fH );
+					fHead.appendChild( fBtn );
+					item.appendChild( fHead );
+					var fVal = doc.createElement( 'p' );
+					fVal.className = answer === '' ? 'neural-forms-form__review-empty' : 'neural-forms-form__review-value';
+					fVal.textContent = answer === '' ? labels.empty : answer;
+					item.appendChild( fVal );
+					body.appendChild( item );
+				}
+			}
+			return;
+		}
+
 		var shown = 0;
 		for ( var s = 0; s < steps.length; s++ ) {
 			if ( ! eligible[ s ] ) continue;
@@ -3821,6 +4090,13 @@
 
 		var current = 0;
 
+		// 1.3.0 conversational forms: every screen is a virtual step
+		// (Conversational::expand()). Eligibility always runs so a screen
+		// whose only question is hidden by logic is jumped over.
+		var isCv        = form.getAttribute( 'data-neural-forms-conversational' ) === '1';
+		var cvAuto      = isCv && form.getAttribute( 'data-cv-auto-advance' ) === '1';
+		var cvNumbers   = isCv && form.getAttribute( 'data-cv-numbers' ) === '1';
+
 		// 1.2.0: step eligibility. Each step may carry
 		// data-conditional-step (normalised v2 tree). Skipped steps get
 		// .neural-forms-form__step--skipped so the serializer drops their
@@ -3839,7 +4115,7 @@
 			}
 			stepMeta.push( { tree: tree, fieldIds: ids } );
 		}
-		var hasStepLogic = false;
+		var hasStepLogic = isCv;
 		for ( var hi = 0; hi < stepMeta.length; hi++ ) {
 			if ( stepMeta[ hi ].tree ) hasStepLogic = true;
 		}
@@ -3851,18 +4127,41 @@
 			return !! ( wrap && wrap.hasAttribute( 'data-conditional' ) && wrap.style.display === 'none' );
 		}
 
+		// A conversational screen with nothing left to show (its question
+		// is hidden by field logic). Not --skipped: that class makes the
+		// serializer drop the screen's inputs, and hidden fields riding on
+		// this screen must still be sent.
+		function cvScreenEmpty( step ) {
+			var kind = step.getAttribute( 'data-cv-kind' );
+			if ( kind !== 'question' && kind !== 'statement' ) return false;
+			var body = step.querySelector( '.neural-forms-form__step-body' );
+			if ( ! body ) return false;
+			for ( var k = 0; k < body.children.length; k++ ) {
+				var kid = body.children[ k ];
+				if ( kid.tagName === 'INPUT' && kid.type === 'hidden' ) continue;
+				if ( kid.hasAttribute( 'data-conditional' ) && kid.style.display === 'none' ) continue;
+				return false;
+			}
+			return true;
+		}
+
 		function refreshEligibility() {
 			if ( ! hasStepLogic ) return;
-			eligible = computeStepEligibility(
+			var byLogic = computeStepEligibility(
 				stepMeta,
 				function ( id ) { return getFieldValue( form, id ); },
 				isFieldHiddenByLogic
 			);
+			eligible = [];
 			for ( var i = 0; i < steps.length; i++ ) {
-				if ( eligible[ i ] ) {
+				var empty = isCv && byLogic[ i ] && cvScreenEmpty( steps[ i ] );
+				eligible.push( byLogic[ i ] && ! empty );
+				if ( byLogic[ i ] ) {
 					steps[ i ].classList.remove( 'neural-forms-form__step--skipped' );
 				} else {
 					steps[ i ].classList.add( 'neural-forms-form__step--skipped' );
+				}
+				if ( ! eligible[ i ] && ( ! isCv || i !== current ) ) {
 					steps[ i ].classList.remove( 'is-active' );
 					steps[ i ].style.display = 'none';
 				}
@@ -3963,7 +4262,8 @@
 				var pos   = hasStepLogic ? eligiblePosition( index ) + 1 : index + 1;
 				var pct  = total > 0 ? Math.round( ( pos / total ) * 100 ) : 0;
 				if ( fill ) fill.style.width = pct + '%';
-				if ( text ) text.textContent = 'Step ' + pos + ' of ' + total;
+				var fmt = progress.getAttribute( 'data-progress-format' ) || 'Step %1$d of %2$d';
+				if ( text ) text.textContent = fmt.replace( '%1$d', String( pos ) ).replace( '%2$d', String( total ) );
 				if ( track ) {
 					track.setAttribute( 'aria-valuemax', String( total ) );
 					track.setAttribute( 'aria-valuenow', String( pos ) );
@@ -4127,6 +4427,11 @@
 
 			refreshReview( isLast );
 
+			if ( isCv ) cvAfterShow( index, isLast, suppressScroll );
+
+			// Drop-off analytics listens for the step a visitor reached.
+			if ( form._nfFunnelStep ) form._nfFunnelStep( steps[ index ] );
+
 			// Skip the scrollIntoView when this is the page-load initial
 			// render. Without the guard, every multi-step form on a page
 			// runs scrollIntoView({behavior:'smooth'}) at load time and
@@ -4271,12 +4576,137 @@
 			} );
 		}
 
+		// ── Conversational helpers ────────────────────────────────────
+		function cvOptions( step ) {
+			var out = [];
+			var groups = step.querySelectorAll( '.neural-forms-form__radio-group, .neural-forms-form__checkbox-group' );
+			// Only the screen's own question; repeaters / matrices keep plain keys.
+			if ( groups.length !== 1 || groups[ 0 ].closest( '[data-repeater-item]' ) ) return out;
+			var opts = groups[ 0 ].querySelectorAll( ':scope > .neural-forms-form__radio-option, :scope > .neural-forms-form__checkbox-option' );
+			for ( var o = 0; o < opts.length && o < 26; o++ ) out.push( opts[ o ] );
+			return out;
+		}
+
+		function cvAfterShow( index, isLast, suppressScroll ) {
+			var step = steps[ index ];
+			// Letter keys, stamped on show so randomised options stay right.
+			var stale = form.querySelectorAll( '[data-cv-key]' );
+			for ( var sk = 0; sk < stale.length; sk++ ) stale[ sk ].removeAttribute( 'data-cv-key' );
+			var opts = cvOptions( step );
+			for ( var ok = 0; ok < opts.length; ok++ ) {
+				var keyLabel = opts[ ok ].querySelector( 'label' );
+				if ( keyLabel ) keyLabel.setAttribute( 'data-cv-key', String.fromCharCode( 65 + ok ) );
+			}
+			form.classList.toggle( 'neural-forms-form--cv-has-keys', opts.length > 0 );
+
+			if ( cvNumbers ) {
+				var n = 0;
+				for ( var q = 0; q <= index; q++ ) {
+					if ( eligible[ q ] && steps[ q ].getAttribute( 'data-cv-kind' ) === 'question' ) n++;
+				}
+				var num = step.querySelector( '.neural-forms-form__cv-num' );
+				if ( num ) num.textContent = String( n );
+			}
+
+			var hint = form.querySelector( '[data-cv-hint]' );
+			if ( hint ) hint.hidden = !! step.querySelector( 'textarea' );
+
+			if ( suppressScroll ) return; // Page load: never steal focus.
+			var first = step.querySelector( 'input:not([type="hidden"]):not([disabled]), select, textarea' );
+			if ( first && typeof first.focus === 'function' ) {
+				try { first.focus( { preventScroll: true } ); } catch ( e ) { /* noop */ }
+			} else if ( isLast && submit && typeof submit.focus === 'function' ) {
+				try { submit.focus( { preventScroll: true } ); } catch ( e2 ) { /* noop */ }
+			}
+		}
+
+		function cvIsLast() {
+			return nextEligible( current ) === -1;
+		}
+
+		function cvNext() {
+			if ( ! _animating && ! cvIsLast() && nextBtn ) nextBtn.click();
+		}
+
+		// A single-choice question with nothing to type moves on by itself.
+		var cvAutoTimer = null;
+		function cvMaybeAutoAdvance( input ) {
+			if ( ! cvAuto || ! input || input.type !== 'radio' ) return;
+			var step = steps[ current ];
+			if ( ! step.contains( input ) || cvIsLast() ) return;
+			var wraps = step.querySelectorAll( '.neural-forms-form__field[data-neural-forms-field-id]' );
+			if ( wraps.length !== 1 ) return;
+			var ctrls = wraps[ 0 ].querySelectorAll( 'input:not([type="hidden"]), select, textarea' );
+			for ( var c = 0; c < ctrls.length; c++ ) {
+				if ( ctrls[ c ].type !== 'radio' ) return;
+			}
+			clearTimeout( cvAutoTimer );
+			var at = current;
+			cvAutoTimer = setTimeout( function () {
+				if ( current === at ) cvNext();
+			}, 400 );
+		}
+
+		if ( isCv ) {
+			form.addEventListener( 'change', function ( e ) {
+				// Trusted only: URL pre-fill fires change events at load.
+				if ( e.isTrusted ) cvMaybeAutoAdvance( e.target );
+			} );
+
+			form.addEventListener( 'keydown', function ( e ) {
+				if ( e.defaultPrevented || e.isComposing ) return;
+				var t   = e.target;
+				var tag = t && t.tagName ? t.tagName.toUpperCase() : '';
+				if ( t && t.closest && t.closest( '.neural-forms-form__phone-dropdown' ) ) return;
+
+				if ( e.key === 'Enter' ) {
+					if ( tag === 'TEXTAREA' ) {
+						if ( ! ( e.metaKey || e.ctrlKey ) ) return; // plain Enter = new line
+					} else if ( tag !== 'INPUT' && tag !== 'SELECT' ) {
+						return; // buttons keep their own Enter
+					} else if ( t.type === 'submit' || t.type === 'button' || t.type === 'file' ) {
+						return;
+					}
+					if ( cvIsLast() ) return; // last screen: Enter submits as usual
+					e.preventDefault();
+					cvNext();
+					return;
+				}
+
+				// A–Z picks an option, unless the visitor is typing.
+				if ( e.key && e.key.length === 1 && ! e.metaKey && ! e.ctrlKey && ! e.altKey ) {
+					var typing = tag === 'TEXTAREA' || tag === 'SELECT' || ( t && t.isContentEditable )
+						|| ( tag === 'INPUT' && [ 'radio', 'checkbox', 'button', 'submit' ].indexOf( t.type ) === -1 );
+					if ( typing ) return;
+					var code = e.key.toUpperCase().charCodeAt( 0 ) - 65;
+					if ( code < 0 || code > 25 ) return;
+					var opts = cvOptions( steps[ current ] );
+					if ( ! opts[ code ] ) return;
+					var input = opts[ code ].querySelector( 'input' );
+					if ( ! input || input.disabled ) return;
+					e.preventDefault();
+					input.click();
+					try { input.focus( { preventScroll: true } ); } catch ( err ) { /* noop */ }
+					cvMaybeAutoAdvance( input );
+				}
+			} );
+		}
+
 		// Initial render: only step 0 visible, submit hidden, prev hidden.
 		// 4th arg true = suppress the auto-scrollIntoView so a page with
 		// one or more multi-step forms doesn't yank the viewport down
 		// to the first form on page load. See show()/afterShow() for the
 		// scroll-suppression rationale.
-		show( 0, undefined, undefined, true );
+		// Conversational: the first screen may already be empty (its
+		// question hidden by logic at load), so start on the first one left.
+		function firstScreen() {
+			if ( ! isCv ) return 0;
+			refreshEligibility();
+			var f = eligible[ 0 ] ? 0 : nextEligible( 0 );
+			return f === -1 ? 0 : f;
+		}
+		current = firstScreen();
+		show( current, undefined, undefined, true );
 
 		// Expose a reset hook so resetFormState() can return this form
 		// to step 0 after "Submit another response". Closure-bound so
@@ -4285,7 +4715,8 @@
 		form._nfMultiStepReset = function () {
 			current = 0;
 			refreshEligibility();
-			show( 0 );
+			current = firstScreen();
+			show( current );
 		};
 	}
 

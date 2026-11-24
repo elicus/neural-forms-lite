@@ -91,6 +91,15 @@ class FormRenderer {
 			);
 		}
 
+		// 1.3.0: registration forms are replaced by a short note for people
+		// who are already logged in (setting register_user.logged_in = hide).
+		if ( class_exists( '\\NeuralForms\\Submissions\\UserRegistration' ) ) {
+			$_logged_in_note = \NeuralForms\Submissions\UserRegistration::hide_for_current_user( $form );
+			if ( null !== $_logged_in_note ) {
+				return '<div class="neural-forms-form__notice neural-forms-form__notice--logged-in">' . esc_html( $_logged_in_note ) . '</div>';
+			}
+		}
+
 		// Handles registered by PublicForms::boot() (Step 3).
 		// wp_enqueue_* is safe inside shortcode callbacks - the script/style
 		// output happens in wp_footer() / wp_head(), which run after the_content.
@@ -261,6 +270,21 @@ class FormRenderer {
 			}
 		}
 
+		// 1.3.0 conversational forms (Pro): one question per screen. The
+		// field tree is re-cut into one virtual step per question, so the
+		// rest of this method (and form-submit.js) runs the normal
+		// multi-step path. Fewer than two screens → normal layout.
+		$cv = null;
+		if ( class_exists( __NAMESPACE__ . '\\Conversational' ) && Conversational::active( $form ) ) {
+			$cv       = Conversational::settings( $form );
+			$expanded = Conversational::expand( $fields, ! empty( $cv['review'] ) );
+			if ( count( $expanded ) >= 2 ) {
+				$fields = $expanded;
+			} else {
+				$cv = null;
+			}
+		}
+
 		// Render the field tree. A node is either:
 		//   - a layout row (type=row) with explicit columns; or
 		//   - a flat field, optionally with width=half for pair-rendering.
@@ -304,6 +328,11 @@ class FormRenderer {
 			: '';
 		if ( in_array( $progress_override, [ 'numbers', 'bar', 'none' ], true ) ) {
 			$progress_indicator = $progress_override;
+		}
+		// Conversational: a bar or nothing (a numbered list of every
+		// question doesn't fit); a block set to "none" still wins.
+		if ( $cv !== null ) {
+			$progress_indicator = ( $progress_override === 'none' || $cv['progress'] === 'none' ) ? 'none' : 'bar';
 		}
 
 		$show_progress = $has_steps && $progress_indicator !== 'none';
@@ -390,7 +419,7 @@ class FormRenderer {
 			$pricing_cfg = \NeuralForms\Pricing\PriceEngine::client_config( $form );
 		}
 
-		$form_attrs  = ' class="neural-forms-form"';
+		$form_attrs  = ' class="neural-forms-form' . ( $cv !== null ? ' neural-forms-form--conversational' : '' ) . '"';
 		$form_attrs .= ' data-neural-forms-id="' . $form_id . '"';
 		if ( ! empty( $pricing_cfg ) ) {
 			$form_attrs .= ' data-neural-forms-pricing="' . esc_attr( (string) wp_json_encode( $pricing_cfg ) ) . '"';
@@ -406,6 +435,16 @@ class FormRenderer {
 			$form_attrs .= ' data-neural-forms-multistep="1"';
 			$form_attrs .= ' data-neural-forms-step-count="' . count( $top_steps ) . '"';
 			$step_transition = isset( $options['step_transition'] ) ? (string) $options['step_transition'] : '';
+			if ( $cv !== null && $step_transition === '' ) {
+				// Conversational default: a short fade up to the next question.
+				$step_transition = 'fade';
+				$options        += array( 'step_transition_direction' => 'up', 'step_transition_duration' => 250 );
+			}
+			if ( $cv !== null ) {
+				$form_attrs .= ' data-neural-forms-conversational="1"'
+					. ' data-cv-auto-advance="' . ( $cv['auto_advance'] ? '1' : '0' ) . '"'
+					. ' data-cv-numbers="' . ( $cv['show_numbers'] ? '1' : '0' ) . '"';
+			}
 			if ( $step_transition !== '' ) {
 				$form_attrs .= ' data-step-transition="' . esc_attr( $step_transition ) . '"';
 				$form_attrs .= ' data-step-transition-dir="' . esc_attr( (string) ( $options['step_transition_direction'] ?? 'auto' ) ) . '"';
@@ -470,20 +509,18 @@ class FormRenderer {
 		} elseif ( $show_progress && $progress_indicator === 'bar' ) {
 			$total = count( $top_steps );
 			$pct   = $total > 0 ? (int) floor( ( 1 / $total ) * 100 ) : 0;
+			/* translators: 1: current step number  2: total steps */
+			$progress_format = $cv !== null ? __( '%1$d of %2$d', 'neural-forms-lite' ) : __( 'Step %1$d of %2$d', 'neural-forms-lite' );
 			$progress_html .= '<div class="neural-forms-form__progress neural-forms-form__progress--bar"'
 				. ' data-progress-mode="bar"'
+				. ' data-progress-format="' . esc_attr( $progress_format ) . '"'
 				. ' aria-label="' . esc_attr__( 'Form progress', 'neural-forms-lite' ) . '">'
 				. '<div class="neural-forms-form__progress-bar-track" role="progressbar"'
 				. ' aria-valuemin="0" aria-valuemax="' . (int) $total . '" aria-valuenow="1">'
 				. '<div class="neural-forms-form__progress-bar-fill" style="width:' . (int) $pct . '%"></div>'
 				. '</div>'
 				. '<p class="neural-forms-form__progress-text" aria-live="polite">'
-				. sprintf(
-					/* translators: 1: current step number  2: total steps */
-					esc_html__( 'Step %1$d of %2$d', 'neural-forms-lite' ),
-					1,
-					(int) $total
-				)
+				. esc_html( sprintf( $progress_format, 1, (int) $total ) )
 				. '</p>'
 				. '</div>';
 		}
@@ -508,6 +545,10 @@ class FormRenderer {
 		// SSR, so without JS the form behaves as before. Settings live on
 		// form_schema.settings.multistep.entry_preview { enabled, title }.
 		$entry_preview = is_array( $multistep_settings['entry_preview'] ?? null ) ? $multistep_settings['entry_preview'] : array();
+		if ( $cv !== null ) {
+			// Conversational: its own switch; the panel sits on a final review screen.
+			$entry_preview = array( 'enabled' => ! empty( $cv['review'] ), 'title' => (string) ( $entry_preview['title'] ?? '' ) );
+		}
 		if ( $has_steps && ! empty( $entry_preview['enabled'] ) ) {
 			$review_title = trim( (string) ( $entry_preview['title'] ?? '' ) );
 			if ( $review_title === '' ) {
@@ -515,6 +556,7 @@ class FormRenderer {
 			}
 			$review_title_id = 'neural-forms-' . $form_id . '-review-title';
 			$html .= '<section class="neural-forms-form__review" data-neural-forms-review hidden'
+				. ( $cv !== null ? ' data-review-flat' : '' )
 				. ' aria-labelledby="' . esc_attr( $review_title_id ) . '"'
 				. ' data-edit-label="' . esc_attr__( 'Edit', 'neural-forms-lite' ) . '"'
 				/* translators: %s: step title */
@@ -537,10 +579,34 @@ class FormRenderer {
 		// and network failures. role="alert" implies aria-live="assertive" so
 		// screen readers announce it immediately when JS sets its text.
 		// 1.2.0 part B: live totals + the pricing config the frontend mirrors.
+		if ( ! empty( $pricing_cfg['coupons'] ) ) {
+			// 1.3.0 coupon box. Shaped like a field (id nf_coupon) so a 422 on
+			// the code shows in its error slot. The text box has no name: only
+			// an APPLIED code is posted, through the hidden nf_coupon input.
+			$cid   = 'neural-forms-' . $form_id . '-coupon';
+			$html .= '<div class="neural-forms-form__field neural-forms-form__coupon" data-neural-forms-field-id="nf_coupon" data-neural-forms-coupon'
+				/* translators: %s: coupon label, e.g. "Coupon SPRING10" */
+				. ' data-applied-label="' . esc_attr__( '%s applied', 'neural-forms-lite' ) . '"'
+				/* translators: %s: minimum order amount */
+				. ' data-min-label="' . esc_attr__( 'Spend at least %s to use this code.', 'neural-forms-lite' ) . '"'
+				. ' data-error-label="' . esc_attr__( 'That code could not be checked. Please try again.', 'neural-forms-lite' ) . '"'
+				. ' data-empty-label="' . esc_attr__( 'Enter a code first.', 'neural-forms-lite' ) . '">'
+				. '<label class="neural-forms-form__label" for="' . esc_attr( $cid ) . '">' . esc_html__( 'Coupon code', 'neural-forms-lite' ) . '</label>'
+				. '<div class="neural-forms-form__coupon-row">'
+				. '<input type="text" id="' . esc_attr( $cid ) . '" class="neural-forms-form__input neural-forms-form__coupon-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40" data-coupon-input aria-describedby="' . esc_attr( $cid . '-error' ) . '">'
+				. '<button type="button" class="neural-forms-form__coupon-apply wp-element-button" data-coupon-apply>' . esc_html__( 'Apply', 'neural-forms-lite' ) . '</button>'
+				. '<button type="button" class="neural-forms-form__coupon-remove" data-coupon-remove hidden>' . esc_html__( 'Remove', 'neural-forms-lite' ) . '</button>'
+				. '</div>'
+				. '<input type="hidden" name="nf_coupon" value="" data-coupon-value>'
+				. '<p class="neural-forms-form__coupon-status" data-coupon-status aria-live="polite" hidden></p>'
+				. '<p class="neural-forms-form__field-error" id="' . esc_attr( $cid . '-error' ) . '" role="alert" hidden></p>'
+				. '</div>';
+		}
 		if ( ! empty( $pricing_cfg ) ) {
 			$html .= '<div class="neural-forms-form__totals" data-neural-forms-totals aria-live="polite">'
 				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--subtotal"><span>' . esc_html__( 'Subtotal', 'neural-forms-lite' ) . '</span><span data-total="subtotal">—</span></div>'
 				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--discount" hidden><span data-total-label="discount">' . esc_html__( 'Discount', 'neural-forms-lite' ) . '</span><span data-total="discount">—</span></div>'
+				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--coupon" hidden><span data-total-label="coupon">' . esc_html__( 'Coupon', 'neural-forms-lite' ) . '</span><span data-total="coupon">—</span></div>'
 				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--total"><span>' . esc_html__( 'Total', 'neural-forms-lite' ) . '</span><span data-total="total">—</span></div>'
 				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--due" hidden><span>' . esc_html__( 'Due now', 'neural-forms-lite' ) . '</span><span data-total="due_now">—</span></div>'
 				. '<div class="neural-forms-form__totals-row neural-forms-form__totals-row--remaining" hidden><span>' . esc_html__( 'Remaining balance', 'neural-forms-lite' ) . '</span><span data-total="remaining">—</span></div>'
@@ -571,6 +637,9 @@ class FormRenderer {
 			$first_next = array_key_exists( 'next_button_text', $options )
 				? (string) $options['next_button_text']
 				: (string) ( $top_steps[0]['settings']['button_next']     ?? __( 'Next', 'neural-forms-lite' ) );
+			if ( $cv !== null && ! array_key_exists( 'next_button_text', $options ) ) {
+				$first_next = $cv['next_label'] !== '' ? $cv['next_label'] : __( 'OK', 'neural-forms-lite' );
+			}
 
 			// `wp-element-button` is the WordPress core class that block
 			// themes (and many classic themes) apply Button-element
@@ -757,9 +826,17 @@ class FormRenderer {
 			// Nav row + submit wrapper in one flex footer. The nav keeps
 			// its own markup/classes (Divi's scoped CSS targets them), the
 			// footer only lays the two out side by side.
+			$cv_hint = '';
+			if ( $cv !== null ) {
+				$cv_hint = '<p class="neural-forms-form__cv-hint" aria-hidden="true" data-cv-hint>'
+					/* translators: %s: the Enter key */
+					. sprintf( esc_html__( 'press %s', 'neural-forms-lite' ), '<kbd>' . esc_html__( 'Enter ↵', 'neural-forms-lite' ) . '</kbd>' )
+					. '</p>';
+			}
 			$html .= '<div class="neural-forms-form__steps-footer">'
 				. $nav_html
 				. $submit_wrap_html
+				. $cv_hint
 				. '</div>';
 		} else {
 			$html .= $submit_wrap_html;
@@ -1138,7 +1215,16 @@ class FormRenderer {
 		if ( is_array( $cl ) && ! empty( $cl['enabled'] ) && ConditionEngine::is_active( $cl ) ) {
 			$html .= ' data-conditional-step="' . esc_attr( (string) wp_json_encode( ConditionEngine::for_attribute( $cl ) ) ) . '"';
 		}
+		// Conversational screen (virtual step from Conversational::expand()).
+		$cv_kind = (string) ( $step['_cv_kind'] ?? '' );
+		if ( $cv_kind !== '' ) {
+			$html .= ' data-cv-kind="' . esc_attr( $cv_kind ) . '"';
+		}
 		$html .= '>';
+		if ( $cv_kind === 'question' ) {
+			// Question number, filled in by form-submit.js (skipped screens don't count).
+			$html .= '<span class="neural-forms-form__cv-num" aria-hidden="true"></span>';
+		}
 
 		if ( $title !== '' && ( $options['show_step_labels'] ?? true ) ) {
 			$html .= '<h3 class="neural-forms-form__step-title">' . esc_html( $title ) . '</h3>';

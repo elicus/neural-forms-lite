@@ -296,8 +296,8 @@ final class FormSettingsSanitizer {
 		}
 		if ( array_key_exists( 'pricing', $out ) ) {
 			$clean = \NeuralForms\Pricing\PriceEngine::normalize_settings( $out['pricing'] );
-			// Default-only (USD, no discounts, no deposit) → drop the key.
-			if ( $clean['currency'] === 'USD' && ! $clean['discounts'] && $clean['deposit']['type'] === 'none' ) {
+			// Default-only (USD, no discounts, no coupons, no deposit) → drop the key.
+			if ( $clean['currency'] === 'USD' && ! $clean['discounts'] && ! $clean['coupons'] && $clean['deposit']['type'] === 'none' ) {
 				unset( $out['pricing'] );
 			} else {
 				$out['pricing'] = $clean;
@@ -309,6 +309,24 @@ final class FormSettingsSanitizer {
 				$out['payment'] = $clean;
 			} else {
 				unset( $out['payment'] );
+			}
+		}
+		foreach ( array( 'create_post' => '\\NeuralForms\\Submissions\\PostSubmission', 'register_user' => '\\NeuralForms\\Submissions\\UserRegistration' ) as $_key => $_class ) {
+			if ( array_key_exists( $_key, $out ) ) {
+				$clean = class_exists( $_class ) ? $_class::sanitize_settings( $out[ $_key ] ) : array();
+				if ( $clean ) {
+					$out[ $_key ] = $clean;
+				} else {
+					unset( $out[ $_key ] );
+				}
+			}
+		}
+		if ( array_key_exists( 'conversational', $out ) ) {
+			$clean = class_exists( '\\NeuralForms\\Frontend\\Conversational' ) ? \NeuralForms\Frontend\Conversational::sanitize_settings( $out['conversational'] ) : array();
+			if ( $clean ) {
+				$out['conversational'] = $clean;
+			} else {
+				unset( $out['conversational'] );
 			}
 		}
 		if ( array_key_exists( 'ai_behaviour', $out ) ) {

@@ -34,7 +34,7 @@ See `../neural-forms-pro/CLAUDE.md` for the Pro-side contract.
 - **Version constants:**
   - `NEURAL_FORMS_LITE_VERSION` — canonical Lite version (Pro dep check reads this). Currently `1.3.0` on dev (bumped 2026-11-24 for hCaptcha / reCAPTCHA v3 / Akismet; no schema change, DB version stays). 1.2.0 (the whole draft, Release A + B, with Pro 1.1.0) was cut on 2026-11-23: `release/1.2.0` was re-cut by merging dev into the earlier A-only branch, stripped, and merged to `main` (see `docs/RELEASE-1.2-PLAN.md` and `docs/RELEASE-1.2-PLAN-B.md`).
   - `NEURAL_FORMS_VERSION` — kept as an alias (= `NEURAL_FORMS_LITE_VERSION`) for back-compat
-  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.2.1` (1.2.0 added the lead-management columns, `meta` on `neural_forms_entry_ai_responses` and the three `neural_forms_workflow*` tables; 1.2.1 adds the pricing / payment columns on entries). The schema version intentionally runs ahead of the plugin version inside the 1.2.0 cycle so dev sites that already migrated pick up the part-B columns. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
+  - `NEURAL_FORMS_DB_VERSION` — schema version consumed by `Database::maybe_upgrade()`. Currently `1.3.1` on dev (1.3.0 form views, 1.3.1 drop-off counters); was `1.2.1` (1.2.0 added the lead-management columns, `meta` on `neural_forms_entry_ai_responses` and the three `neural_forms_workflow*` tables; 1.2.1 adds the pricing / payment columns on entries). The schema version intentionally runs ahead of the plugin version inside the 1.2.0 cycle so dev sites that already migrated pick up the part-B columns. Bump this whenever you change a table column or add a migration so existing installs re-run `dbDelta()` on admin_init.
 
 **Identifiers deliberately NOT renamed** (changing these would break installs):
 
@@ -497,6 +497,10 @@ Capabilities::AI_BUSINESS_CONTEXT             // 'ai_business_context' (added 1.
 Capabilities::CALCULATIONS                    // 'calculations' (added 1.2.0 part B)
 Capabilities::QUOTES                          // 'quotes' (added 1.2.0 part B)
 Capabilities::PAYMENTS                        // 'payments' (added 1.2.0 part B)
+Capabilities::FRONTEND_POSTS                  // 'frontend_posts' (added 1.3.0)
+Capabilities::USER_REGISTRATION               // 'user_registration' (added 1.3.0)
+Capabilities::CONVERSATIONAL_FORMS            // 'conversational_forms' (added 1.3.0)
+Capabilities::FORM_DROPOFF_ANALYTICS          // 'form_dropoff_analytics' (added 1.3.0)
 
 Capabilities::can( $cap )      // apply_filters("neural_forms_can_{$cap}", false)
 Capabilities::all()            // snapshot of every cap (localized to React)
@@ -938,6 +942,43 @@ prevents overflow without needing `overflow: hidden` anywhere.
   returned but not drawn yet.
 - Tests: `tests/FormViewsTest.php`.
 
+### Drop-off analytics (1.3.0, report is Pro via `form_dropoff_analytics`)
+
+- Table `neural_forms_form_funnel` (DB 1.3.1): PK `(form_id, day, kind,
+  node)` + `count`; kinds `started` (node ''), `step` (step id, or the
+  field / section id of a conversational screen — `nfcv_` stripped in the
+  browser), `quit_field` (last field touched by someone who left). No
+  visitor data. `Analytics\FormFunnel` (`bump()`, `known_nodes()`,
+  `layout()`, pure `build()`, `report()`). Dropped on uninstall, rows
+  deleted on a hard form delete.
+- **Recording is free** (same forms as view counting:
+  `data-neural-forms-track-view`); only `GET /forms/{id}/analytics/dropoff
+  ?days=7|30|90` (manage forms + cap → `pro_feature_locked`) and the
+  Analytics section are gated, so an upgrade shows history at once.
+- `POST /forms/{id}/funnel` (public, form-encoded beacon `kind` started |
+  step | quit | unquit, `node`, `field`): active forms only, always 204,
+  ids not in the CURRENT schema are dropped (`FormFunnelEndpoint::parse()`),
+  per-IP cap 60 / 10 min via `FormViewsEndpoint::over_cap( $ip, $form,
+  $prefix, $cap )`.
+- form-submit.js `initDropoffTracking()`: state per session per form in
+  `sessionStorage neural_forms_funnel_{id}`. `started` on the first
+  trusted focusin / input / change on a field (repeater children count as
+  the repeater, the coupon box never counts); steps from `afterShow()`
+  via `form._nfFunnelStep` (only after starting, once per step); `quit`
+  on pagehide / visibility hidden; a later input or a 201 sends `unquit`
+  (`form._nfFunnelDone` runs first in the 201 branch, before any
+  redirect). Nothing after a successful submit.
+- Report: funnel Viewed (FormViews) → Started → steps (multi-step or
+  conversational layout of the form as it is NOW; single-page forms have
+  none) → Submitted (entries, not spam / trash, from the first tracked
+  day), drop % per stage, `biggest` (from Started on, never into a step
+  logic can skip), top 10 `quit_fields` (deleted ids → "Removed field").
+  Below `MIN_SAMPLE` (20 starters) no percentages / callout.
+  Switching conversational mode on or off changes which step rows show.
+- UI: `results/sections/DropoffSection.js` (descriptor `dropoff`, after
+  Payments), `.nf-drop*` in `results.css`, `build:results`.
+- Tests: `tests/FormDropoffTest.php`.
+
 ### URL pre-fill + UTM tracking (1.3.0, free in Lite)
 
 - Per-field `prefill_param` (builder: "Fill from URL parameter" under CSS
@@ -1241,8 +1282,9 @@ What Lite provides (generic engine, used by the normal form checkout too):
 
 ### Payments: Stripe + PayPal (1.2.0 part B, B3)
 
-`modules/payments/` — Lite owns the engine; Pro ships the two gateways
-(`neural-forms-pro/modules/payments/{Stripe,PayPal}/`) through the
+`modules/payments/` — Lite owns the engine; Pro ships the gateways
+(`neural-forms-pro/modules/payments/{Stripe,PayPal,Square}/`; Square
+added in Pro 1.1.1) through the
 `neural_forms_payment_providers` filter (id => `PaymentProviderInterface`).
 
 - **Contract** (`PaymentProviderInterface`): `create_checkout( $payment,
@@ -1509,7 +1551,7 @@ adds integration actions.
   Run ends `done | partial | failed | skipped`.
   `dry_run()` = conditions + `describe()` per action, zero side effects.
 - **Actions** (`Actions/`, registry `ActionRegistry` + filter
-  `neural_forms_workflow_actions`): assign_user, set_stage (passes
+  `neural_forms_workflow_actions`): assign_user, route_lead (1.3.0), set_stage (passes
   `_context` lineage into `EntryRepository::update`), create_follow_up
   (elapsed hours), notify_internal (fixed recipients, tokens
   `{form_name} {site_name} {entry_url} {field_id}`),
@@ -1544,6 +1586,150 @@ adds integration actions.
 - Retry semantics: a `retry` outcome leaves dependents PENDING (`$halt
   = 'wait'`), a final failure / uncertain outcome SKIPS them (`'fail'`).
   `reopen_action()` also accepts a waiting action ("retry now").
+
+### Front-end submissions: create posts + register users (1.3.0, Pro)
+
+- Engine in Lite `modules/submissions/` (`Mapping`, `PostSubmission`,
+  `UserRegistration`), gated by `frontend_posts` / `user_registration`
+  (Pro `Unlocker` flips both). Form settings `create_post` /
+  `register_user`, sanitised in `FormSettingsSanitizer::sanitize()`,
+  validated from `FormValidator::validate_settings_logic()` (locked → 403,
+  bad mapping → 422). Builder: Form settings › Create post / User
+  registration (`forms/FrontendSubmissionsSections.js`, `build:builder`);
+  boot data `neuralFormsAdmin.plugin.frontendSubmissions`.
+- **SubmitEndpoint order:** `UserRegistration::precheck()` right after
+  sanitising (taken / invalid email or username → 422 field errors, nothing
+  saved); after `neural_forms_entry_created` and only for non-spam:
+  `register()` then `PostSubmission::create()` (author = new account, else
+  the logged-in visitor, else `settings.create_post.author`). 201 body gains
+  `account { created, logged_in }`. The password capture loop now flattens
+  rows / steps (it used to miss Password fields inside them).
+- **Security rules (keep them):** roles are limited to
+  `UserRegistration::safe_roles()` (no role holding any `DANGEROUS_CAPS`,
+  incl. the manage-forms cap), re-checked before every insert; custom
+  fields go through `Mapping::safe_meta_key()` (no `_`, `wp_` /
+  table-prefix, capabilities / user_level or core profile keys); visitor
+  text is `esc_html`'d into the admin's kses'd template and the final
+  content is kses'd again (no HTML, shortcodes or `javascript:` links);
+  terms only match EXISTING terms; logged-in visitors are never registered
+  and see `logged_in_message` instead of the form (front end only, never
+  in admin / REST previews); the password goes only to `wp_insert_user()`.
+- Featured image: the File Upload attachment is switched from private to
+  `inherit` + parented to the new post (the one place an upload becomes
+  public). Links back: post / user meta `_neural_forms_entry_id`, activity
+  `entry.post_created` / `entry.user_registered` (+ `_failed`). Hooks
+  `neural_forms_post_created( $post_id, $entry_id, $form )`,
+  `neural_forms_user_registered( $user_id, $entry_id, $form )`.
+- **Account activation** (`AccountActivation`, booted always — held
+  accounts stay held even without Pro): `register_user.activation` none |
+  email | admin. A held account is a user with NO role + meta
+  `_neural_forms_pending { mode, role, form_id, entry_id, auto_login,
+  notify_user, redirect }`. Email mode: link `/?nf_activate={id}&key=`
+  (32 chars, 48 h, only `hash_hmac(key, wp_salt('auth'))` stored in
+  `_neural_forms_activation`, one-time, a new link replaces the old one).
+  Login is refused only AFTER the password checks out (wrong password →
+  WordPress's own error) and resends a link (max 3/hour); password reset is
+  refused while held. Admin mode: the admin gets a link to Users ›
+  "Pending confirmation" (`views_users` + `pre_get_users`), row actions
+  Approve / Resend (nonce + `promote_users`). `activate()` re-checks the
+  role is still safe, sends WordPress's login-details email, fires
+  `neural_forms_user_activated`. Visitor sees `pending_message` as the 201
+  `outcome`. Unconfirmed accounts are NEVER auto-deleted (owner decision):
+  they are listed for WordPress's own Delete screen.
+- Not built: payment-gated creation (posts / accounts are created on
+  submit, before any payment).
+- Tests: `tests/FrontendSubmissionsTest.php`. Live checks on diviplus run
+  inside one DB transaction + ROLLBACK (never delete users by id).
+
+### Coupon codes (1.3.0, Pro via `calculations` cap)
+
+- `Pricing\Coupons` + `settings.pricing.coupons[] { id, code (A-Z0-9_-,
+  3-40, unique, upper-cased), label, type percent|fixed, value, max, min
+  (minimum subtotal), expires (Y-m-d, valid through that day, site time),
+  limit (0 = none), enabled }`, max 50, normalised inside
+  `PriceEngine::normalize_settings()`. Builder: Form settings › Pricing ›
+  Coupon codes (`forms/CouponsEditor.js`, shows "Used n of m").
+- **Codes never reach the page.** `client_config()` only carries
+  `coupons: bool`; the box (`data-neural-forms-coupon`, field id
+  `nf_coupon`) asks `POST /forms/{id}/coupon { code }` (public, active
+  forms that price something, `Coupons::TRY_CAP` = 10 tries per IP per
+  form per 10 min → 429; unknown and switched-off codes answer the same
+  `coupon_invalid`). Only an APPLIED code is posted (hidden `nf_coupon`);
+  `SubmitEndpoint` checks it again (`Coupons::check()`), bad / expired /
+  used up / under minimum → 422 field error on `nf_coupon`, nothing saved.
+- **Maths:** automatic discount rule first, coupon on what is left, never
+  below zero, deposit from the discounted total. Mirrored in form-submit.js
+  `computePricing()` (`cfg.coupon` set after the server accepted the code;
+  separate Discount / Coupon rows in the totals).
+- **Snapshot:** the coupon is folded into `discount` (amount = rule +
+  coupon; with both: label "Discounts", type fixed, value = the amount) plus
+  `discount.parts[]` (`kind` rule | coupon) — so quotes, invoices, payments
+  and the inbox keep reading ONE discount. `snapshot.coupon { id, code,
+  amount }` is what counts a use: `Coupons::uses()` = entries of the form
+  not in spam / trash whose `pricing_snapshot` LIKEs `"coupon":{"id":"…"`
+  (no table; a use is freed when the entry is spammed / trashed; two
+  simultaneous submits can both take the last use). `GET
+  /forms/{id}/coupons/usage` (manage forms) feeds the builder.
+- Tests: `tests/CouponsTest.php` (writes `tests/fixtures/coupons.client.json`)
+  + `tests/CouponsTest.js` (JS mirror parity).
+
+### Conversational forms (1.3.0, Pro via `conversational_forms` cap)
+
+- One question per screen, built on the Step engine. `Frontend\Conversational`
+  (`expand()`, `sanitize_settings()`, `validate_settings()`, `active()`).
+  Settings: `form.settings.conversational { enabled, auto_advance (true),
+  show_numbers (true), progress bar|none, review, next_label }`, sanitised in
+  `FormSettingsSanitizer::sanitize()` (all-defaults + off → key dropped),
+  locked save → 403 from `FormValidator::validate_settings_logic()`. Builder:
+  Form settings › Conversational (`forms/ConversationalSection.js`).
+- **Render-time only.** `FormRenderer::render_form()` replaces the field tree
+  with `expand()`'s virtual steps (ids `nfcv_*`, `_cv_kind` question |
+  statement | review) when active and ≥ 2 screens; the stored schema is
+  untouched and SubmitEndpoint never sees the virtual steps. Rows are split
+  into one screen per field; sections and content blocks are statement
+  screens; hidden fields ride on the next screen (else the last); screens of
+  a real step inherit its `conditional_logic` and the step title /
+  description go on its first screen. Lapsed Pro → normal layout.
+- Progress is forced to a bar ("%1$d of %2$d", via `data-progress-format`,
+  which also replaced the hard-coded English "Step x of y" in the JS) or
+  none; Next reads "OK" unless the block or `next_label` says otherwise;
+  default transition fade-up 250 ms when the block sets none. `review` adds
+  an empty final screen + `data-review-flat` (one row per question).
+- form-submit.js `initMultiStep()`: `isCv` turns eligibility on; a screen
+  whose content is all hidden by field logic is ineligible but NOT
+  `--skipped` (that class drops inputs, and hidden fields riding on it must
+  still be sent). Keys: Enter = next (last screen submits), plain Enter in a
+  textarea = new line, Cmd/Ctrl+Enter = next, A–Z picks options
+  (`data-cv-key` stamped on the option LABEL on every show, so randomised
+  options stay right). Auto-advance only for a lone radio question, only on
+  trusted change events (URL pre-fill fires synthetic ones). Focus moves to
+  the screen's first control, never on page load.
+- The builder preview shows the normal layout.
+- Tests: `tests/ConversationalFormsTest.php`.
+
+### Lead scoring + routing (1.3.0, Pro via `workflows` cap)
+
+- Lives in Lite (`modules/workflows/LeadRouting.php`, action
+  `Actions/RouteLeadAction.php`), active only when `workflows` is unlocked;
+  Pro needs no code. Changelog line goes in Pro's changelog, not Lite's.
+- **Hot lead** = `ai_score >= LeadRouting::hot_score()` (default 80, filter
+  `neural_forms_hot_lead_score`, clamped 1-100, no settings UI) on a
+  `new`/`read` entry. `hot_where()` feeds the `hot` view
+  (`EntryRepository::VALID_VIEWS`), `/entries/counts.hot` and the inbox
+  smart filter "Hot leads" (cap `workflows`) + red `HotPill` on rows
+  (`neuralFormsAdmin.plugin.hotLeadScore`).
+- **`route_lead`** ("Share between team members"): `user_ids` (type
+  `users`, admins only, max 20, re-checked at run time), `mode`
+  `round_robin` (pointer per workflow `w{id}` in option
+  `neural_forms_route_pointer`; forgotten on workflow delete, removed on
+  uninstall) or `fewest_open` (live, stage not won/lost; ties → earlier
+  user), `skip_if_assigned` (default true). Activity `workflow.assigned`.
+- Tokens for notify/ack: `{ai_score} {ai_priority} {ai_category}
+  {ai_summary} {assigned_to}` (`AbstractAction::token_data()`).
+  `/workflows/meta` adds `hot_score` + `admin_email`.
+- Builder templates in `WorkflowsSection.js` `workflowTemplates()`:
+  hot lead alert, share sales leads, route by an answer.
+- Tests: `tests/LeadRoutingTest.php`.
 
 ### Lead management + activity timeline (1.2.0, A3)
 

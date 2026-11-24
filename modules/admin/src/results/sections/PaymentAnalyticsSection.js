@@ -155,7 +155,7 @@ export default function PaymentAnalyticsSection( { formId } ) {
 
 	const providers = Object.keys( data.providers || {} );
 	const subParts  = [];
-	if ( providers.length ) subParts.push( providers.map( ( p ) => p === 'paypal' ? 'PayPal' : ( p === 'stripe' ? 'Stripe' : p ) ).join( ', ' ) );
+	if ( providers.length ) subParts.push( providers.map( ( p ) => ( { paypal: 'PayPal', stripe: 'Stripe', square: 'Square' }[ p ] || p ) ).join( ', ' ) );
 	subParts.push( sprintf(
 		/* translators: 1: paid entries, 2: entries that started a checkout */
 		__( '%1$d of %2$d checkouts paid', 'neural-forms-lite' ),

@@ -3172,6 +3172,19 @@ CSS;
 				'maxUploadMb'         => function_exists( 'wp_max_upload_size' ) ? round( wp_max_upload_size() / 1048576, 1 ) : 0,
 				// 1.3.0 Address field: default-country dropdown in the builder.
 				'countries'           => \NeuralForms\Forms\Countries::all(),
+				// 1.3.0 lead scoring: AI score at or above this = hot lead.
+				'hotLeadScore'        => \NeuralForms\Workflows\LeadRouting::hot_score(),
+				'frontendSubmissions' => array(
+					'postTypes' => \NeuralForms\Submissions\PostSubmission::post_types(),
+					'roles'     => \NeuralForms\Submissions\UserRegistration::safe_roles(),
+					'authors'   => array_map(
+						static function ( $u ) {
+							return array( 'id' => (int) $u->ID, 'name' => (string) $u->display_name );
+						},
+						get_users( array( 'capability' => 'edit_posts', 'number' => 100, 'fields' => array( 'ID', 'display_name' ), 'orderby' => 'display_name' ) )
+					),
+					'currentUser' => get_current_user_id(),
+				),
 				'aiSpam'         => array(
 					'enabled'   => (bool) \NeuralForms\Core\Config::get( 'ai_spam_enabled' ),
 					'mode'      => (string) \NeuralForms\Core\Config::get( 'ai_spam_mode' ),

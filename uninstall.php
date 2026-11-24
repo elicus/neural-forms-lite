@@ -87,6 +87,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 		delete_option( 'neural_forms_log_token' );
 		delete_option( 'neural_forms_queue_last_run' );
 		delete_option( 'neural_forms_quote_settings' );
+		delete_option( 'neural_forms_route_pointer' ); // 1.3.0 lead routing rotation
 		foreach ( (array) $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'neural\\_forms\\_quote\\_seq\\_%'" ) as $nf_seq_option ) {
 			delete_option( $nf_seq_option );
 		}
@@ -97,13 +98,16 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$wpdb->query(
 				$wpdb->prepare(
-					'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s',
+					'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s',
 					$wpdb->options,
 					$wpdb->esc_like( '_transient_neural_forms_template_catalog_v2_' ) . '%',
 					$wpdb->esc_like( '_transient_timeout_neural_forms_template_catalog_v2_' ) . '%',
 					// 1.3.0 form-view rate-limit counters (FormViewsEndpoint).
 					$wpdb->esc_like( '_transient_neural_forms_view_rl_' ) . '%',
-					$wpdb->esc_like( '_transient_timeout_neural_forms_view_rl_' ) . '%'
+					$wpdb->esc_like( '_transient_timeout_neural_forms_view_rl_' ) . '%',
+					// 1.3.0 drop-off rate-limit counters (FormFunnelEndpoint).
+					$wpdb->esc_like( '_transient_neural_forms_funnel_rl_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_neural_forms_funnel_rl_' ) . '%'
 				)
 			);
 		}
@@ -129,6 +133,7 @@ if ( ! function_exists( 'neural_forms_lite_uninstall' ) ) {
 			$wpdb->prefix . 'neural_forms_payments',
 			$wpdb->prefix . 'neural_forms_payment_events',
 			$wpdb->prefix . 'neural_forms_form_views',
+			$wpdb->prefix . 'neural_forms_form_funnel',
 		);
 		foreach ( $tables as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange

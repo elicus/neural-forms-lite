@@ -233,6 +233,22 @@ class FormValidator {
 		if ( is_wp_error( $payment ) ) {
 			return $payment;
 		}
+		// 1.3.0 front-end posts + user registration.
+		if ( class_exists( '\\NeuralForms\\Submissions\\PostSubmission' ) ) {
+			$_as_form = array( 'form_schema' => $schema );
+			foreach ( array( \NeuralForms\Submissions\PostSubmission::validate_settings( $settings, $_as_form ), \NeuralForms\Submissions\UserRegistration::validate_settings( $settings, $_as_form ) ) as $_check ) {
+				if ( is_wp_error( $_check ) ) {
+					return $_check;
+				}
+			}
+		}
+		// 1.3.0 conversational forms.
+		if ( class_exists( '\\NeuralForms\\Frontend\\Conversational' ) ) {
+			$_cv = \NeuralForms\Frontend\Conversational::validate_settings( $settings );
+			if ( is_wp_error( $_cv ) ) {
+				return $_cv;
+			}
+		}
 		$rules = $settings['on_success']['rules'] ?? null;
 		if ( ! is_array( $rules ) || ! $rules ) {
 			return true;

@@ -4,6 +4,8 @@ namespace NeuralForms\Pricing;
 use NeuralForms\Forms\ConditionEngine;
 use NeuralForms\Forms\SchemaHelper;
 
+require_once __DIR__ . '/Coupons.php'; // also loaded by standalone tests without the autoloader
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -25,7 +27,8 @@ defined( 'ABSPATH' ) || exit;
  *
  * Form settings.pricing:
  *   { currency, discounts: [ { id, label, conditions (ConditionEngine v2), type: percent | fixed, value, max } ],
- *     deposit: { type: none | percent | fixed, value } }
+ *     deposit: { type: none | percent | fixed, value },
+ *     coupons: [ see Coupons ] }
  *
  * Money is integer minor units throughout (Money::to_minor at the
  * edges). Half-up rounding per line and per percentage step.
@@ -41,6 +44,7 @@ final class PriceEngine {
 			'currency'  => 'USD',
 			'discounts' => array(),
 			'deposit'   => array( 'type' => 'none', 'value' => '' ),
+			'coupons'   => array(),
 		);
 	}
 
@@ -86,6 +90,7 @@ final class PriceEngine {
 		if ( $out['deposit']['value'] === '' ) {
 			$out['deposit']['type'] = 'none';
 		}
+		$out['coupons'] = Coupons::normalize( $raw['coupons'] ?? array() );
 		return $out;
 	}
 
@@ -130,9 +135,11 @@ final class PriceEngine {
 	 * @return array {
 	 *   currency, exponent, line_items[], subtotal, discount{id,label,amount}|null, total,
 	 *   deposit{type,value,amount}|null, due_now, remaining, calculated{id:{value,display}}, errors[], formula_revision
+	 *   (+ coupon{id,code,amount} and discount.parts[] when a coupon applied; coupon_error when it could not)
 	 * }
+	 * @param array|null $coupon A coupon already checked by Coupons::check().
 	 */
-	public static function evaluate( array $form, array $data, array $hidden_ids = array() ): array {
+	public static function evaluate( array $form, array $data, array $hidden_ids = array(), ?array $coupon = null ): array {
 		$settings = self::settings( $form );
 		$currency = $settings['currency'];
 		$fields   = SchemaHelper::flatten_fields( is_array( $form['form_schema']['fields'] ?? null ) ? $form['form_schema']['fields'] : array() );
@@ -209,6 +216,39 @@ final class PriceEngine {
 			break;
 		}
 
+		// Coupon: on top of the automatic discount, on what is left.
+		$coupon_line  = null;
+		$coupon_error = null;
+		if ( $coupon ) {
+			$min = $coupon['min'] !== '' ? Money::to_minor( $coupon['min'], $currency ) : null;
+			if ( null !== $min && $subtotal < $min ) {
+				$coupon_error = array( 'code' => 'coupon_min', 'min' => $min );
+			} else {
+				$base   = max( 0, $subtotal - ( $discount['amount'] ?? 0 ) );
+				$amount = $coupon['type'] === 'percent'
+					? Money::percent_of( $base, $coupon['value'] )
+					: (int) ( Money::to_minor( $coupon['value'], $currency ) ?? 0 );
+				$cmax = $coupon['max'] !== '' ? Money::to_minor( $coupon['max'], $currency ) : null;
+				if ( null !== $cmax && $cmax >= 0 ) {
+					$amount = min( $amount, $cmax );
+				}
+				$amount      = max( 0, min( $amount, $base ) );
+				$coupon_line = array( 'kind' => 'coupon', 'id' => $coupon['id'], 'code' => $coupon['code'], 'label' => Coupons::label( $coupon ), 'type' => $coupon['type'], 'value' => $coupon['value'], 'amount' => $amount );
+			}
+		}
+		if ( $coupon_line ) {
+			// One discount figure for quotes / invoices / payments, with the parts kept.
+			$parts = array();
+			if ( $discount ) {
+				$parts[] = array( 'kind' => 'rule' ) + $discount;
+			}
+			$parts[]  = $coupon_line;
+			$combined = (int) ( $discount['amount'] ?? 0 ) + $coupon_line['amount'];
+			$discount = $discount
+				? array( 'id' => $discount['id'] . '+' . $coupon_line['id'], 'label' => __( 'Discounts', 'neural-forms-lite' ), 'type' => 'fixed', 'value' => Money::to_decimal( $combined, $currency ), 'amount' => $combined, 'parts' => $parts )
+				: array( 'id' => $coupon_line['id'], 'label' => $coupon_line['label'], 'type' => $coupon_line['type'], 'value' => $coupon_line['value'], 'amount' => $combined, 'parts' => $parts );
+		}
+
 		$total = max( 0, $subtotal - ( $discount['amount'] ?? 0 ) );
 
 		$deposit = null;
@@ -267,7 +307,7 @@ final class PriceEngine {
 			$calculated[ $id ] = array( 'value' => $rounded, 'display' => $display, 'format' => $format );
 		}
 
-		return array(
+		$result = array(
 			'currency'         => $currency,
 			'exponent'         => Money::exponent( $currency ),
 			'line_items'       => $lines,
@@ -281,6 +321,13 @@ final class PriceEngine {
 			'errors'           => $errors,
 			'formula_revision' => self::formula_revision( $form ),
 		);
+		if ( $coupon_line ) {
+			$result['coupon'] = array( 'id' => $coupon_line['id'], 'code' => $coupon_line['code'], 'amount' => $coupon_line['amount'] );
+		}
+		if ( $coupon_error ) {
+			$result['coupon_error'] = $coupon_error;
+		}
+		return $result;
 	}
 
 	/**
@@ -546,6 +593,7 @@ final class PriceEngine {
 			'calculated' => $calc,
 			'discounts'  => $discounts,
 			'deposit'    => $deposit,
+			'coupons'    => Coupons::form_has_coupons( $form ),
 		);
 	}
 }

@@ -40,6 +40,9 @@ import IntegrationsSection from './IntegrationsSection';
 import api from '../api';
 import ConditionEditor, { describeConditional } from './ConditionEditor';
 import WorkflowsSection from './WorkflowsSection';
+import { CreatePostSection, RegisterUserSection } from './FrontendSubmissionsSections';
+import ConversationalSection from './ConversationalSection';
+import CouponsEditor from './CouponsEditor';
 import { flattenFields, toEditableConditional } from './schemaHelper';
 
 const BASE_SECTIONS = [
@@ -48,10 +51,13 @@ const BASE_SECTIONS = [
 	{ id: 'notifications', label: 'Notifications', hint: 'Choose who hears about new submissions.' },
 	{ id: 'on_success',   label: 'On success',   hint: 'What submitters see after a successful submit.' },
 	{ id: 'on_error',     label: 'On error',     hint: 'What submitters see when a submit fails.' },
+	{ id: 'conversational', label: 'Conversational', hint: 'Ask one question per screen, Typeform-style.' },
 	{ id: 'integrations', label: 'Integrations', hint: 'Send this form\'s submissions to connected third-party services.' },
+	{ id: 'create_post',  label: 'Create post',  hint: 'Turn each submission into a post, page or other post type.' },
+	{ id: 'register_user', label: 'User registration', hint: 'Create a WordPress account for the person who submits.' },
 	{ id: 'workflows',    label: 'Workflows',    hint: 'When → If → Then: act on submissions, AI results, stage changes and overdue follow-ups.' },
 	{ id: 'ai_behaviour', label: 'AI behaviour', hint: 'Tone, language and which business knowledge AI drafts for this form may use.' },
-	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules and deposit for Priced Item fields on this form.' },
+	{ id: 'pricing',      label: 'Pricing',      hint: 'Currency, discount rules, coupon codes and deposit for Priced Item fields on this form.' },
 	{ id: 'payments',     label: 'Payments',     hint: 'Send visitors to a hosted checkout for the amount due right after they submit.' },
 ];
 
@@ -150,7 +156,7 @@ const STARTER_RESULT_MESSAGES = [
  */
 const CURRENCIES = [ 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD', 'NZD', 'SGD', 'AED', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'JPY', 'ZAR', 'BRL', 'MXN' ];
 
-function PricingSection( { value, onChange, fields } ) {
+function PricingSection( { value, onChange, fields, formId } ) {
 	const caps     = readCaps();
 	const unlocked = !! caps.calculations;
 	const v = { currency: 'USD', discounts: [], deposit: { type: 'none', value: '' }, ...( value || {} ) };
@@ -251,6 +257,8 @@ function PricingSection( { value, onChange, fields } ) {
 			<button type="button" className="nf-form-settings__rules-add" onClick={ addDiscount } disabled={ v.discounts.length >= 20 }>
 				{ __( '+ Add discount rule', 'neural-forms-lite' ) }
 			</button>
+
+			<CouponsEditor coupons={ v.coupons } onChange={ ( coupons ) => set( { coupons } ) } formId={ formId } />
 
 			<h4 className="nf-form-settings__subtitle">{ __( 'Deposit', 'neural-forms-lite' ) }</h4>
 			<div className="nf-inspector__row">
@@ -933,6 +941,47 @@ export default function FormSettings( {
 						</div>
 					) }
 
+					{ section === 'conversational' && (
+						<div className="nf-form-settings__body">
+							<ConversationalSection
+								value={ s.conversational && typeof s.conversational === 'object' ? s.conversational : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									copy.conversational = next; // the server drops it when it is all defaults
+									onChange( copy );
+								} }
+							/>
+						</div>
+					) }
+
+					{ section === 'create_post' && (
+						<div className="nf-form-settings__body">
+							<CreatePostSection
+								value={ s.create_post && typeof s.create_post === 'object' ? s.create_post : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									if ( ! next.enabled && ! next.title && ! next.content ) delete copy.create_post; else copy.create_post = next;
+									onChange( copy );
+								} }
+								fields={ fields }
+							/>
+						</div>
+					) }
+
+					{ section === 'register_user' && (
+						<div className="nf-form-settings__body">
+							<RegisterUserSection
+								value={ s.register_user && typeof s.register_user === 'object' ? s.register_user : {} }
+								onChange={ ( next ) => {
+									const copy = { ...s };
+									if ( ! next.enabled && ! next.email ) delete copy.register_user; else copy.register_user = next;
+									onChange( copy );
+								} }
+								fields={ fields }
+							/>
+						</div>
+					) }
+
 					{ section === 'payments' && (
 						<div className="nf-form-settings__body">
 							<PaymentsSection
@@ -954,11 +1003,12 @@ export default function FormSettings( {
 								value={ s.pricing && typeof s.pricing === 'object' ? s.pricing : {} }
 								onChange={ ( next ) => {
 									const copy = { ...s };
-									const isDefault = ( ! next.currency || next.currency === 'USD' ) && ! ( next.discounts && next.discounts.length ) && ( ! next.deposit || ! next.deposit.type || next.deposit.type === 'none' );
+									const isDefault = ( ! next.currency || next.currency === 'USD' ) && ! ( next.discounts && next.discounts.length ) && ! ( next.coupons && next.coupons.length ) && ( ! next.deposit || ! next.deposit.type || next.deposit.type === 'none' );
 									if ( isDefault ) delete copy.pricing; else copy.pricing = next;
 									onChange( copy );
 								} }
 								fields={ fields }
+								formId={ formId }
 							/>
 						</div>
 					) }

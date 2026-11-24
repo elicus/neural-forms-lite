@@ -1061,6 +1061,15 @@
     color: var(--neural-forms-success-text);
 }
 
+/* 1.3.0: shown instead of a registration form to people already logged in. */
+.neural-forms-form__notice--logged-in {
+    padding: 1rem 1.25rem;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    background-color: #f6f8fa;
+    color: inherit;
+}
+
 /* Reset any theme paragraph margins inside the success box. */
 .neural-forms-form__success p {
     margin: 0;
@@ -2331,4 +2340,168 @@ fieldset[data-wp-component="BorderControl"] + .components-base-control {
     .neural-forms-form__parts--name:has( .neural-forms-form__part--middle ) {
         grid-template-columns: minmax( 0, 1fr );
     }
+}
+
+/* ── Conversational forms (1.3.0, Pro) ───────────────────────────────────
+   One question per screen. The screens are ordinary steps
+   (Conversational::expand()), so this only restyles them. Selectors sit
+   inside :where() so the block Style tab and themes still win. */
+
+:where(.neural-forms-form--conversational) .neural-forms-form__step {
+    border-top: 0;
+    min-height: 260px;
+    padding: 24px 0 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+:where(.neural-forms-form--conversational) .neural-forms-form__step-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin: 0 0 6px;
+}
+
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body > .neural-forms-form__field > .neural-forms-form__label,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body > .neural-forms-form__field legend.neural-forms-form__label,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body > .neural-forms-form__section .neural-forms-form__section-title {
+    font-size: 1.375rem;
+    line-height: 1.35;
+    font-weight: 600;
+    margin-bottom: 14px;
+}
+
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__input,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__select,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__textarea {
+    font-size: 1.125rem;
+}
+
+/* Question number: "3 →" before the question. */
+.neural-forms-form__cv-num {
+    display: none;
+}
+.neural-forms-form[data-cv-numbers="1"] .neural-forms-form__cv-num:not(:empty) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--neural-forms-accent);
+    margin-bottom: 6px;
+}
+.neural-forms-form[data-cv-numbers="1"] .neural-forms-form__cv-num:not(:empty)::after {
+    content: "\2192";
+}
+
+/* Choices as large tappable rows with A / B / C keys. */
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__radio-option,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__checkbox-option {
+    position: relative;
+    max-width: 480px;
+    margin-bottom: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--neural-forms-border);
+    border-radius: var(--neural-forms-radius);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__radio-option:hover,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__checkbox-option:hover,
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__radio-option:has(input:checked),
+:where(.neural-forms-form--conversational) .neural-forms-form__step-body .neural-forms-form__checkbox-option:has(input:checked) {
+    border-color: var(--neural-forms-accent);
+}
+.neural-forms-form--conversational label[data-cv-key]::before {
+    content: attr(data-cv-key);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5em;
+    height: 1.5em;
+    margin-right: 8px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 600;
+    opacity: 0.75;
+}
+.neural-forms-form--conversational label[data-cv-key] {
+    cursor: pointer;
+}
+
+/* "press Enter ↵" under the buttons. Hidden on touch screens. */
+.neural-forms-form__cv-hint {
+    flex: 1 0 100%;
+    margin: 0;
+    font-size: 0.8125rem;
+    opacity: 0.65;
+}
+.neural-forms-form__cv-hint kbd {
+    font: inherit;
+    font-weight: 600;
+    padding: 0 4px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+}
+@media (hover: none) {
+    .neural-forms-form__cv-hint {
+        display: none;
+    }
+}
+
+/* Final review screen: the panel IS the screen. */
+:where(.neural-forms-form--conversational) .neural-forms-form__step[data-cv-kind="review"] {
+    min-height: 0;
+    padding: 0;
+}
+.neural-forms-form__review-group--flat .neural-forms-form__review-value,
+.neural-forms-form__review-group--flat .neural-forms-form__review-empty {
+    margin: 2px 0 0;
+    white-space: pre-line;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :where(.neural-forms-form--conversational) .neural-forms-form__radio-option,
+    :where(.neural-forms-form--conversational) .neural-forms-form__checkbox-option {
+        transition: none;
+    }
+}
+
+/* ── Coupon box (1.3.0) ─────────────────────────────────────────────────── */
+.neural-forms-form__coupon {
+    margin-top: var(--neural-forms-field-gap);
+}
+.neural-forms-form__coupon-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.neural-forms-form__coupon-row .neural-forms-form__coupon-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-transform: uppercase;
+}
+.neural-forms-form__coupon-input[readonly] {
+    background: var(--neural-forms-disabled-bg);
+}
+.neural-forms-form__coupon-apply {
+    flex: 0 0 auto;
+}
+.neural-forms-form__coupon-remove {
+    flex: 0 0 auto;
+    background: none;
+    border: 0;
+    padding: 0 4px;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.neural-forms-form__coupon-status {
+    margin: 6px 0 0;
+    font-size: 0.875rem;
+    color: var(--neural-forms-success-text);
 }

@@ -1965,3 +1965,112 @@
 #neural-forms-results-app .nf-pay__pill--test               { background: #e0f2fe; color: #075985; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
 #neural-forms-results-app .nf-pay__foot { margin: 12px 0 0; font-size: 13px; }
 #neural-forms-results-app .nf-pay__foot a { color: var( --nfr-primary ); font-weight: 600; text-decoration: none; }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Drop-off (Pro analytics, 1.3.0) — reuses the .nf-pp card chrome.
+ * ───────────────────────────────────────────────────────────────── */
+#neural-forms-results-app .nf-drop__head {
+	justify-content: space-between;
+	align-items: flex-start;
+}
+#neural-forms-results-app .nf-drop__periods {
+	display: inline-flex;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	overflow: hidden;
+}
+#neural-forms-results-app .nf-drop__period {
+	border: 0;
+	background: #fff;
+	padding: 5px 10px;
+	font-size: 12px;
+	color: #475569;
+	cursor: pointer;
+}
+#neural-forms-results-app .nf-drop__period + .nf-drop__period { border-left: 1px solid #e2e8f0; }
+#neural-forms-results-app .nf-drop__period.is-active {
+	background: var( --nfr-primary );
+	color: #fff;
+}
+#neural-forms-results-app .nf-drop__callout {
+	margin: 0 0 12px;
+	padding: 10px 12px;
+	background: #fff7ed;
+	border: 1px solid #fed7aa;
+	border-radius: 6px;
+	color: #9a3412;
+	font-size: 13px;
+	font-weight: 600;
+}
+#neural-forms-results-app .nf-drop__note,
+#neural-forms-results-app .nf-drop__since {
+	margin: 0 0 12px;
+	color: #64748b;
+	font-size: 12px;
+}
+#neural-forms-results-app .nf-drop__since { margin: 12px 0 0; }
+#neural-forms-results-app .nf-drop__funnel {
+	list-style: none;
+	margin: 0 0 18px;
+	padding: 0;
+	display: grid;
+	gap: 6px;
+}
+#neural-forms-results-app .nf-drop__stage {
+	display: grid;
+	grid-template-columns: minmax( 0, 200px ) minmax( 0, 1fr ) 56px 56px;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+	font-size: 13px;
+}
+#neural-forms-results-app .nf-drop__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #0f172a;
+}
+#neural-forms-results-app .nf-drop__hint {
+	margin-left: 6px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: #f1f5f9;
+	color: #64748b;
+	font-size: 10px;
+}
+#neural-forms-results-app .nf-drop__bar {
+	display: block;
+	height: 14px;
+	background: #f1f5f9;
+	border-radius: 4px;
+	overflow: hidden;
+}
+#neural-forms-results-app .nf-drop__bar-fill {
+	display: block;
+	height: 100%;
+	background: var( --nfr-primary );
+	border-radius: 4px;
+}
+#neural-forms-results-app .nf-drop__count {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+}
+#neural-forms-results-app .nf-drop__loss {
+	text-align: right;
+	color: #b91c1c;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+#neural-forms-results-app .nf-drop__subtitle {
+	margin: 0 0 8px;
+	font-size: 13px;
+	font-weight: 700;
+	color: var( --nfr-primary );
+}
+#neural-forms-results-app .nf-drop__removed { color: #94a3b8; font-style: italic; }
+#neural-forms-results-app .nf-drop__foot { color: #64748b; font-size: 12px; }
+@media ( max-width: 600px ) {
+	#neural-forms-results-app .nf-drop__stage { grid-template-columns: minmax( 0, 1fr ) 48px 48px; }
+	#neural-forms-results-app .nf-drop__bar { grid-column: 1 / -1; grid-row: 2; }
+}

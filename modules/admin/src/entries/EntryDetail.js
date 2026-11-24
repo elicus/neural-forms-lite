@@ -409,7 +409,14 @@ function PricingCard( { pricing, paymentStatus } ) {
 			) }
 			<dl className="neural-forms-entry-detail__pricing-totals">
 				<dt>{ __( 'Subtotal', 'neural-forms-lite' ) }</dt><dd>{ f( pricing.subtotal ) }</dd>
-				{ pricing.discount && pricing.discount.amount > 0 && <><dt>{ pricing.discount.label || __( 'Discount', 'neural-forms-lite' ) }</dt><dd>−{ f( pricing.discount.amount ) }</dd></> }
+				{ pricing.discount && pricing.discount.amount > 0 && ( Array.isArray( pricing.discount.parts ) && pricing.discount.parts.length
+					? pricing.discount.parts.filter( ( p ) => p && p.amount > 0 ).map( ( p, i ) => (
+						<Fragment key={ i }>
+							<dt>{ p.kind === 'coupon' && ! String( p.label ).includes( p.code ) ? `${ p.label } (${ p.code })` : ( p.label || __( 'Discount', 'neural-forms-lite' ) ) }</dt>
+							<dd>−{ f( p.amount ) }</dd>
+						</Fragment>
+					) )
+					: <><dt>{ pricing.discount.label || __( 'Discount', 'neural-forms-lite' ) }</dt><dd>−{ f( pricing.discount.amount ) }</dd></> ) }
 				<dt className="is-total">{ __( 'Total', 'neural-forms-lite' ) }</dt><dd className="is-total">{ f( pricing.total ) }</dd>
 				{ pricing.deposit && pricing.deposit.amount > 0 && <><dt>{ __( 'Due now (deposit)', 'neural-forms-lite' ) }</dt><dd>{ f( pricing.due_now ) }</dd><dt>{ __( 'Remaining balance', 'neural-forms-lite' ) }</dt><dd>{ f( pricing.remaining ) }</dd></> }
 			</dl>

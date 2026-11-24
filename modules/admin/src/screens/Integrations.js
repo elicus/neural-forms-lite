@@ -96,6 +96,13 @@ const PROVIDERS = [
 		icon:  'P',
 		payment: true,
 	},
+	{
+		id:    'square',
+		name:  'Square',
+		blurb: __( 'Take card, Apple Pay and Google Pay payments on a Square checkout page when a priced form is submitted. Confirmed by signed webhooks.', 'neural-forms-lite' ),
+		icon:  'Sq',
+		payment: true,
+	},
 ];
 
 // ─── Icons ──────────────────────────────────────────────────────
@@ -1528,7 +1535,7 @@ function HubSpotPanel( { provider, onStatusChange } ) {
 	);
 }
 
-// ─── Payment providers (Stripe / PayPal) ─────────────────────────
+// ─── Payment providers (Stripe / PayPal / Square) ─────────────────────────
 
 /**
  * One panel serves both payment gateways; `SPEC` lists the per-mode
@@ -1536,7 +1543,7 @@ function HubSpotPanel( { provider, onStatusChange } ) {
  * save → test → status grid. Secrets are type=password, cleared from
  * memory after save, and only ever come back masked.
  *
- * REST (Pro): /neural-forms-pro/v1/integrations/{stripe|paypal}/{status|settings|test|disconnect}
+ * REST (Pro): /neural-forms-pro/v1/integrations/{stripe|paypal|square}/{status|settings|test|disconnect}
  * Webhook URL (Lite): /neural-forms/v1/payments/webhook/{provider} — shown so the admin can paste it into the gateway.
  */
 const PAYMENT_SPEC = {
@@ -1570,6 +1577,22 @@ const PAYMENT_SPEC = {
 			[ __( 'Client ID', 'neural-forms-lite' ), <code>{ s[ s.mode ]?.client_id || '—' }</code> ],
 			[ __( 'Client secret', 'neural-forms-lite' ), <code>{ s[ s.mode ]?.masked_secret || '—' }</code> ],
 			[ __( 'Webhook ID', 'neural-forms-lite' ), s[ s.mode ]?.webhook_id ? <code>{ s[ s.mode ].webhook_id }</code> : <span className="neural-forms-integrations__hs-status-error">{ __( 'Missing — payments cannot be confirmed', 'neural-forms-lite' ) }</span> ],
+		],
+	},
+	square: {
+		modes: [ { id: 'sandbox', label: __( 'Sandbox', 'neural-forms-lite' ) }, { id: 'live', label: __( 'Live', 'neural-forms-lite' ) } ],
+		fields: ( mode ) => [
+			{ key: `${ mode }_access_token`, label: __( 'Access token', 'neural-forms-lite' ), secret: true, placeholder: mode === 'live' ? 'EAAA…' : 'EAAAl…', required: true, hint: __( 'From your application in the Square Developer dashboard (Credentials). Stored encrypted, never shown again.', 'neural-forms-lite' ) },
+			{ key: `${ mode }_location_id`, label: __( 'Location ID', 'neural-forms-lite' ), placeholder: 'L8XXXXXXXXXXX', hint: __( 'Optional. Leave blank to use your first active location; Test connection fills it in. Its currency must match the form currency.', 'neural-forms-lite' ) },
+			{ key: `${ mode }_signature_key`, label: __( 'Webhook signature key', 'neural-forms-lite' ), secret: true, placeholder: '••••••••', hint: __( 'Add a webhook subscription pointing at the URL below and paste its signature key here. Required for payments to be confirmed.', 'neural-forms-lite' ) },
+		],
+		events: 'payment.created, payment.updated',
+		docs: 'https://developer.squareup.com/docs/checkout-api',
+		statusRows: ( s ) => [
+			[ __( 'Mode', 'neural-forms-lite' ), s.mode === 'live' ? __( 'Live', 'neural-forms-lite' ) : __( 'Sandbox', 'neural-forms-lite' ) ],
+			[ __( 'Location', 'neural-forms-lite' ), s[ s.mode ]?.location_name ? `${ s[ s.mode ].location_name } (${ s[ s.mode ].location_id }, ${ s[ s.mode ].currency })` : ( s[ s.mode ]?.location_id || __( 'Run Test connection', 'neural-forms-lite' ) ) ],
+			[ __( 'Access token', 'neural-forms-lite' ), <code>{ s[ s.mode ]?.masked_secret || '—' }</code> ],
+			[ __( 'Signature key', 'neural-forms-lite' ), s[ s.mode ]?.has_webhook_secret ? <code>{ s[ s.mode ].masked_webhook }</code> : <span className="neural-forms-integrations__hs-status-error">{ __( 'Missing — payments cannot be confirmed', 'neural-forms-lite' ) }</span> ],
 		],
 	},
 };

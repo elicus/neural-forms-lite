@@ -86,6 +86,9 @@ final class WorkflowsEndpoint {
 				WorkflowDefinition::meta_sources()
 			),
 			'assignees'    => EntriesEndpoint::assignable_users(),
+			// 1.3.0 lead routing templates.
+			'hot_score'    => \NeuralForms\Workflows\LeadRouting::hot_score(),
+			'admin_email'  => (string) get_option( 'admin_email' ),
 			'limits'       => array( 'max_actions' => WorkflowDefinition::MAX_ACTIONS, 'max_attempts' => WorkflowDefinition::MAX_ATTEMPTS, 'backoff_minutes' => WorkflowDefinition::BACKOFF_MINUTES ),
 		) );
 	}

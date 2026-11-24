@@ -496,6 +496,7 @@ class EntryRepository {
 			'high_priority'  => $count( "ai_priority = 'high' AND status IN ('new','read')" ),
 			'spam_suspected' => $count( "ai_is_spam = 1 AND ai_auto_spam_applied = 0 AND status NOT IN ('spam','trash')" ),
 			'overdue'        => $count( self::OVERDUE_WHERE ),
+			'hot'            => $count( \NeuralForms\Workflows\LeadRouting::hot_where() ),
 			'awaiting_payment' => $count( self::AWAITING_PAYMENT_WHERE ),
 			'paid'             => $count( self::PAID_WHERE ),
 			'stages'         => self::count_by_stage( $scope_clause ),
@@ -828,7 +829,7 @@ class EntryRepository {
 	 * System view identifiers and the WHERE clauses they expand to.
 	 * Used by list() and count_by_view().
 	 */
-	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue', 'awaiting_payment', 'paid' );
+	public const VALID_VIEWS = array( 'inbox', 'unread', 'starred', 'needs_reply', 'spam', 'trash', 'high_priority', 'spam_suspected', 'overdue', 'awaiting_payment', 'paid', 'hot' );
 
 	/** SQL predicate for an open, overdue follow-up on a live entry (1.2.0). */
 	/** 1.2.0 part B smart views (single-column predicates; the aliased form prefixes `e.`). */
@@ -1169,6 +1170,10 @@ class EntryRepository {
 				case 'paid':
 					$plain_parts[]   = self::PAID_WHERE;
 					$aliased_parts[] = 'e.' . str_replace( ' AND ', ' AND e.', self::PAID_WHERE );
+					break;
+				case 'hot':
+					$plain_parts[]   = \NeuralForms\Workflows\LeadRouting::hot_where();
+					$aliased_parts[] = \NeuralForms\Workflows\LeadRouting::hot_where( 'e.' );
 					break;
 				case 'overdue':
 					$plain_parts[]   = self::OVERDUE_WHERE;

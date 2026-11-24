@@ -35,6 +35,66 @@ function emptyWorkflow( formId, firstAction ) {
 	};
 }
 
+/* ── 1.3.0 lead scoring + routing templates ──────────────────────── */
+function actionDefaults( meta, type ) {
+	const am = ( meta?.actions || [] ).find( ( a ) => a.type === type );
+	const out = {};
+	( am?.settings || [] ).forEach( ( f ) => { if ( f.default !== undefined ) out[ f.key ] = f.default; } );
+	return out;
+}
+
+function rule( field, operator, value ) {
+	return { version: 2, enabled: true, action: 'show', match: 'all', rules: [ { field, operator, value: String( value ) } ], groups: [] };
+}
+
+function workflowTemplates( formId, meta ) {
+	const hot = meta?.hot_score || 80;
+	const base = emptyWorkflow( formId );
+	return [
+		{
+			id: 'hot_alert',
+			label: __( 'Alert me about hot leads', 'neural-forms-lite' ),
+			hint: sprintf( __( 'Email your team when the AI scores a lead %d or more.', 'neural-forms-lite' ), hot ),
+			make: () => ( {
+				...base,
+				name: __( 'Hot lead alert', 'neural-forms-lite' ),
+				trigger: 'analysis_completed',
+				conditions: rule( 'ai_score', 'gte', hot ),
+				actions: [ { type: 'notify_internal', continue_on_failure: false, settings: {
+					...actionDefaults( meta, 'notify_internal' ),
+					recipients: meta?.admin_email || '',
+					subject: __( 'Hot lead ({ai_score}/100): {form_name}', 'neural-forms-lite' ),
+					body: __( "A hot lead just came in.\n\nScore: {ai_score}/100\nPriority: {ai_priority}\nCategory: {ai_category}\nOwner: {assigned_to}\n\n{ai_summary}\n\n{entry_url}", 'neural-forms-lite' ),
+				} } ],
+			} ),
+		},
+		{
+			id: 'share_sales',
+			label: __( 'Share sales leads across the team', 'neural-forms-lite' ),
+			hint: __( 'When the AI files a lead under Sales, assign it to your team members in turn.', 'neural-forms-lite' ),
+			make: () => ( {
+				...base,
+				name: __( 'Share sales leads', 'neural-forms-lite' ),
+				trigger: 'analysis_completed',
+				conditions: rule( 'ai_category', 'equals', 'sales' ),
+				actions: [ { type: 'route_lead', continue_on_failure: false, settings: actionDefaults( meta, 'route_lead' ) } ],
+			} ),
+		},
+		{
+			id: 'route_answer',
+			label: __( 'Route by an answer', 'neural-forms-lite' ),
+			hint: __( 'Assign the lead to one person when an answer matches, e.g. Service is "Website".', 'neural-forms-lite' ),
+			make: () => ( {
+				...base,
+				name: __( 'Route by answer', 'neural-forms-lite' ),
+				trigger: 'submission_received',
+				conditions: null,
+				actions: [ { type: 'assign_user', continue_on_failure: false, settings: actionDefaults( meta, 'assign_user' ) } ],
+			} ),
+		},
+	];
+}
+
 function fmt( s ) {
 	if ( ! s ) return '';
 	const d = new Date( String( s ).replace( ' ', 'T' ) + ( /Z$|[+-]\d\d:\d\d$/.test( s ) ? '' : 'Z' ) );
@@ -68,6 +128,22 @@ function SettingField( { field, value, onChange, meta } ) {
 					{ ( meta.assignees || [] ).map( ( u ) => <option key={ u.id } value={ String( u.id ) }>{ u.name }</option> ) }
 				</select>
 			);
+		case 'users': {
+			const chosen = Array.isArray( value ) ? value.map( Number ) : [];
+			const toggle = ( id, on ) => onChange( on ? [ ...chosen, id ] : chosen.filter( ( x ) => x !== id ) );
+			const people = meta.assignees || [];
+			if ( ! people.length ) return <span className="nf-form-settings__hint">{ __( 'No users can manage entries yet.', 'neural-forms-lite' ) }</span>;
+			return (
+				<span className="nf-wf-users">
+					{ people.map( ( u ) => (
+						<label key={ u.id } className="nf-wf-users__item">
+							<input type="checkbox" checked={ chosen.includes( Number( u.id ) ) } onChange={ ( e ) => toggle( Number( u.id ), e.target.checked ) } />
+							<span>{ u.name }</span>
+						</label>
+					) ) }
+				</span>
+			);
+		}
 		case 'stage':
 			return (
 				<select value={ value || '' } onChange={ ( e ) => onChange( e.target.value ) }>
@@ -462,6 +538,19 @@ export default function WorkflowsSection( { formId, fields } ) {
 			<button type="button" className="nf-form-settings__rules-add" onClick={ () => setEditing( emptyWorkflow( formId, meta?.actions?.[ 0 ]?.type ) ) } disabled={ ! meta }>
 				{ __( '+ New workflow', 'neural-forms-lite' ) }
 			</button>
+			{ meta && (
+				<div className="nf-wf-templates">
+					<span className="nf-form-settings__label">{ __( 'Or start from a template', 'neural-forms-lite' ) }</span>
+					<ul>
+						{ workflowTemplates( formId, meta ).map( ( t ) => (
+							<li key={ t.id }>
+								<button type="button" className="nf-wf__btn" onClick={ () => setEditing( t.make() ) }>{ t.label }</button>
+								<span className="nf-form-settings__hint">{ t.hint }</span>
+							</li>
+						) ) }
+					</ul>
+				</div>
+			) }
 		</div>
 	);
 }

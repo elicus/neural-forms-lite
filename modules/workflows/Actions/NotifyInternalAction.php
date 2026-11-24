@@ -9,7 +9,7 @@ final class NotifyInternalAction extends AbstractAction {
 
 	public function type(): string { return 'notify_internal'; }
 	public function label(): string { return __( 'Notify your team', 'neural-forms-lite' ); }
-	public function description(): string { return __( 'Emails fixed addresses. Tokens: {form_name}, {site_name}, {entry_url}, {field_id}, {payment_status}, {payment_amount}, {payment_remaining}, {payment_kind}.', 'neural-forms-lite' ); }
+	public function description(): string { return __( 'Emails fixed addresses. Tokens: {form_name}, {site_name}, {entry_url}, {field_id}, {ai_score}, {ai_priority}, {ai_category}, {ai_summary}, {assigned_to}, {payment_status}, {payment_amount}, {payment_remaining}, {payment_kind}.', 'neural-forms-lite' ); }
 
 	public function settings_schema(): array {
 		return array(

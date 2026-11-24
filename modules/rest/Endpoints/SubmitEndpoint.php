@@ -459,7 +459,7 @@ class SubmitEndpoint {
 		// 1.3.0 Password fields: checked above, never stored. Kept in memory
 		// only until the entry exists, for `neural_forms_password_submitted`.
 		$_passwords = array();
-		foreach ( $schema_fields as $_pwf ) {
+		foreach ( SchemaHelper::flatten_fields( $schema_fields ) as $_pwf ) {
 			$_pwf = (array) $_pwf;
 			$_pid = (string) ( $_pwf['id'] ?? '' );
 			if ( ( $_pwf['type'] ?? '' ) === 'password' && $_pid !== '' && is_array( $raw_data[ $_pid ] ?? null ) ) {
@@ -472,12 +472,40 @@ class SubmitEndpoint {
 
 		$sanitized_data = $this->sanitize_fields( $schema_fields, $raw_data );
 
+		// 1.3.0 user registration: a taken email / username is a field
+		// error BEFORE anything is saved (no half-done submissions).
+		$_reg_check = \NeuralForms\Submissions\UserRegistration::precheck( $form, $sanitized_data );
+		if ( is_wp_error( $_reg_check ) ) {
+			return $_reg_check;
+		}
+
 		// 1.2.0 part B: authoritative totals. Computed from the SAVED form and
 		// the sanitised (post-visibility) data — posted prices/totals are
 		// never read. Stored on the entry as the pricing snapshot.
 		$_pricing = null;
 		if ( Capabilities::can( Capabilities::CALCULATIONS ) && \NeuralForms\Pricing\PriceEngine::form_has_pricing( $form ) ) {
-			$_pricing = \NeuralForms\Pricing\PriceEngine::evaluate( $form, $sanitized_data, $_hidden_ids );
+			// 1.3.0 coupon codes: the typed code is checked again here (the
+			// browser's check is only a preview). A bad code is a field error
+			// on nf_coupon, so nothing is saved and the visitor can fix it.
+			$_coupon      = null;
+			$_coupon_code = \NeuralForms\Pricing\Coupons::clean_code( $request->get_param( 'nf_coupon' ) );
+			if ( $_coupon_code !== '' ) {
+				$_coupon = \NeuralForms\Pricing\Coupons::check( $form, $_coupon_code );
+				if ( is_wp_error( $_coupon ) ) {
+					return self::coupon_error( $_coupon->get_error_code(), $_coupon->get_error_message() );
+				}
+			}
+			$_pricing = \NeuralForms\Pricing\PriceEngine::evaluate( $form, $sanitized_data, $_hidden_ids, $_coupon );
+			if ( ! empty( $_pricing['coupon_error'] ) ) {
+				return self::coupon_error(
+					'coupon_min',
+					sprintf(
+						/* translators: %s: minimum order amount */
+						__( 'Spend at least %s to use this code.', 'neural-forms-lite' ),
+						\NeuralForms\Pricing\Money::format( (int) $_pricing['coupon_error']['min'], $_pricing['currency'] )
+					)
+				);
+			}
 		}
 
 		// ' Step 8: Assemble server-side context '
@@ -578,6 +606,14 @@ class SubmitEndpoint {
 			do_action( 'neural_forms_entry_created', $entry_id, $form_id, $sanitized_data );
 		}
 
+		// 1.3.0 front-end submissions (Pro): register the visitor, then create
+		// the post (authored by the new account when both are on). Never for spam.
+		$_new_user_id = 0;
+		if ( ! $_is_akismet_spam ) {
+			$_new_user_id = \NeuralForms\Submissions\UserRegistration::register( (int) $entry_id, $form, $sanitized_data, $_passwords );
+			\NeuralForms\Submissions\PostSubmission::create( (int) $entry_id, $form, $sanitized_data, $_new_user_id > 0 ? $_new_user_id : get_current_user_id() );
+		}
+
 		// 1.3.0 Password fields are never stored. Developers who need the
 		// value (e.g. to create a user account) get it once, here.
 		if ( ! $_is_akismet_spam ) {
@@ -627,6 +663,11 @@ class SubmitEndpoint {
 			'entry_id' => $entry_id,
 		);
 
+		$_account_pending = $_new_user_id > 0 ? \NeuralForms\Submissions\AccountActivation::pending( $_new_user_id ) : null;
+		if ( $_new_user_id > 0 ) {
+			$body['account'] = array( 'created' => true, 'logged_in' => get_current_user_id() === $_new_user_id, 'pending' => $_account_pending ? $_account_pending['mode'] : false );
+		}
+
 		// 1.2.0 part B: totals for the confirmation (never trusted back).
 		if ( $_pricing ) {
 			$body['pricing'] = array(
@@ -661,6 +702,19 @@ class SubmitEndpoint {
 			} elseif ( is_wp_error( $_checkout ) ) {
 				$body['payment_error'] = __( 'The payment step could not be started. Your submission was saved and we will contact you.', 'neural-forms-lite' );
 			}
+		}
+
+		// 1.3.0: a held account tells the visitor what happens next (unless
+		// a redirect, e.g. a payment checkout, already takes them elsewhere).
+		if ( $_account_pending && ( ( $body['outcome']['mode'] ?? '' ) !== 'redirect' ) ) {
+			$_reg_settings = $form['settings']['register_user'] ?? array();
+			$_pending_text = (string) ( $_reg_settings['pending_message'] ?? '' );
+			if ( $_pending_text === '' ) {
+				$_pending_text = $_account_pending['mode'] === 'admin'
+					? __( 'Thanks! Your account will be active as soon as it has been approved. We will email you.', 'neural-forms-lite' )
+					: __( 'Thanks! Please check your email and click the link to activate your account.', 'neural-forms-lite' );
+			}
+			$body['outcome'] = array( 'mode' => 'message', 'message' => esc_html( $_pending_text ), 'url' => '' );
 		}
 
 		// Poll Phase 3: piggyback poll results on the submit response so
@@ -2416,6 +2470,15 @@ class SubmitEndpoint {
 	 *
 	 * @return string  IPv4 or IPv6 address, or empty string if REMOTE_ADDR is unavailable.
 	 */
+	/** 422 shaped like any field error, on the coupon box (field id nf_coupon). */
+	private static function coupon_error( string $code, string $message ): WP_Error {
+		return new WP_Error(
+			'invalid_submission',
+			__( 'The submission contains errors. Please check the fields below.', 'neural-forms-lite' ),
+			array( 'status' => 422, 'fields' => array( 'nf_coupon' => array( array( 'code' => $code, 'message' => $message ) ) ) )
+		);
+	}
+
 	public function resolve_ip(): string {
 		$remote = isset( $_SERVER['REMOTE_ADDR'] )
 			? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) )

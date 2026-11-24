@@ -91,7 +91,7 @@ $db = file_get_contents( $plugin_root . '/includes/class-database.php' );
 check( 'table: one row per form per day', strpos( $db, 'PRIMARY KEY  (form_id,view_date)' ) !== false && strpos( $db, 'self::sql_form_views( $charset )' ) !== false );
 check( 'table stores no visitor data', ! preg_match( '/neural_forms_form_views[\s\S]{0,300}(ip_address|user_agent|page_url)/', $db ) );
 $main = file_get_contents( $plugin_root . '/neural-forms-lite.php' );
-check( 'DB version bumped', strpos( $main, "define( 'NEURAL_FORMS_DB_VERSION', '1.3.0' );" ) !== false );
+check( 'DB version is 1.3.0 or later', preg_match( "/define\\( 'NEURAL_FORMS_DB_VERSION', '([0-9.]+)' \\);/", $main, $m ) === 1 && version_compare( $m[1], '1.3.0', '>=' ) );
 check( 'uninstall drops the table', strpos( file_get_contents( $plugin_root . '/uninstall.php' ), "'neural_forms_form_views'" ) !== false );
 check( 'hard delete removes counts', strpos( file_get_contents( $plugin_root . '/modules/forms/FormRepository.php' ), 'FormViews::delete_for_form( $id )' ) !== false );
 

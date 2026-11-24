@@ -24,6 +24,7 @@ final class ActionRegistry {
 		}
 		$built_in = array(
 			new AssignUserAction(),
+			new RouteLeadAction(),
 			new SetStageAction(),
 			new CreateFollowUpAction(),
 			new NotifyInternalAction(),

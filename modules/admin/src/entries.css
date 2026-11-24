@@ -817,6 +817,8 @@
 .neural-forms-entries-pill--low      { background: var( --f-gray-100 );  color: var( --f-gray-600 );  }
 .neural-forms-entries-pill--medium   { background: var( --f-amber-50 );  color: var( --f-amber-600 ); }
 .neural-forms-entries-pill--high     { background: var( --f-red-50 );    color: var( --f-red-600 );   }
+/* 1.3.0 hot lead: solid, so it reads before the priority tint next to it. */
+.neural-forms-entries-pill--hot      { background: var( --f-red-600 );   color: #fff; margin-right: 4px; font-weight: 600; }
 .neural-forms-entries-pill--neutral  { background: var( --f-gray-100 ); color: var( --f-gray-500 ); }
 .neural-forms-entries-pill--tier     { background: var( --f-blue-50 );  color: var( --f-blue-600 ); }
 

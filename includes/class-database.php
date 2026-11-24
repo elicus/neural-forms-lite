@@ -42,6 +42,7 @@ class Database {
 			self::sql_payments( $charset ),
 			self::sql_payment_events( $charset ),
 			self::sql_form_views( $charset ),
+			self::sql_form_funnel( $charset ),
 		);
 
 		foreach ( $tables as $sql ) {
@@ -518,6 +519,24 @@ class Database {
   view_date date NOT NULL,
   views int(10) UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY  (form_id,view_date)
+) {$charset};";
+	}
+
+	/**
+	 * 1.3.1: drop-off counters per form (FormFunnel). A number per form,
+	 * day, kind and step / field id — no visitor data.
+	 */
+	private static function sql_form_funnel( string $charset ): string {
+		global $wpdb;
+		$table = $wpdb->prefix . 'neural_forms_form_funnel';
+
+		return "CREATE TABLE {$table} (
+  form_id bigint(20) UNSIGNED NOT NULL,
+  day date NOT NULL,
+  kind varchar(12) NOT NULL,
+  node varchar(64) NOT NULL DEFAULT '',
+  count int(10) UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY  (form_id,day,kind,node)
 ) {$charset};";
 	}
 }

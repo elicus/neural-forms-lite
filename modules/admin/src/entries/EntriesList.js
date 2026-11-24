@@ -16,7 +16,7 @@
  *   focusedId       number|null — row the keyboard shortcuts act on (j/k, r/u/s/#/!)
  */
 
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { formatDate, previewSummary, pickSubmitterEmail } from './helpers';
 
 function StatusPill( { entry } ) {
@@ -42,6 +42,20 @@ const PAYMENT_PILL_LABELS = {
 function PaymentPill( { status } ) {
 	if ( ! status || ! PAYMENT_PILL_LABELS[ status ] ) return null;
 	return <span className={ 'neural-forms-entries-pill neural-forms-entries-pill--pay neural-forms-entries-pill--pay-' + status }>{ PAYMENT_PILL_LABELS[ status ] }</span>;
+}
+
+/** 1.3.0: hot lead = AI score at or above the site's hot-lead score (Pro: workflows). */
+function HotPill( { entry } ) {
+	const plugin = ( typeof window !== 'undefined' && window.neuralFormsAdmin?.plugin ) || {};
+	if ( ! plugin.capabilities?.workflows ) return null;
+	const min   = Number( plugin.hotLeadScore || 80 );
+	const score = entry.ai_score === null || entry.ai_score === undefined || entry.ai_score === '' ? NaN : Number( entry.ai_score );
+	if ( ! ( score >= min ) || ! [ 'new', 'read' ].includes( entry.status ) ) return null;
+	return (
+		<span className="neural-forms-entries-pill neural-forms-entries-pill--hot" title={ sprintf( __( 'AI lead score %d', 'neural-forms-lite' ), score ) }>
+			{ __( 'Hot', 'neural-forms-lite' ) }
+		</span>
+	);
 }
 
 function PriorityPill( { p } ) {
@@ -136,7 +150,7 @@ export default function EntriesList( {
 							<td className="neural-forms-entries-row__submitter">{ submitter }</td>
 							<td className="neural-forms-entries-row__preview">{ previewCell }</td>
 							<td><StatusPill entry={ e } /><PaymentPill status={ e.payment_status } /></td>
-							<td><PriorityPill p={ e.ai_priority } /></td>
+							<td><HotPill entry={ e } /><PriorityPill p={ e.ai_priority } /></td>
 							<td className="neural-forms-entries-row__date">{ formatDate( e.submitted_at || e.created_at ) }</td>
 						</tr>
 					);

@@ -25,6 +25,8 @@ export const SMART_FILTERS = [
 	// 1.2.0: open follow-ups past their due time. Only listed when the
 	// `workflows` capability is unlocked (Pro) — see visibleSmartFilters().
 	{ id: 'overdue',        label: 'Overdue follow-ups', cap: 'workflows' },
+	// 1.3.0: AI score at or above the hot-lead score (LeadRouting::hot_where()).
+	{ id: 'hot',            label: 'Hot leads',          cap: 'workflows' },
 	// 1.2.0 part B: payment aggregate views (server-side views, see EntryRepository::AWAITING_PAYMENT_WHERE / PAID_WHERE).
 	{ id: 'awaiting_payment', label: 'Awaiting payment', cap: 'payments' },
 	{ id: 'paid',             label: 'Paid',             cap: 'payments' },

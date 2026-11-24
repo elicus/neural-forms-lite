@@ -73,6 +73,7 @@ final class WorkflowRepository {
 
 	public static function delete( int $id ): bool {
 		global $wpdb;
+		LeadRouting::forget( $id );
 		return false !== $wpdb->delete( self::table(), array( 'id' => $id ), array( '%d' ) );
 	}
 

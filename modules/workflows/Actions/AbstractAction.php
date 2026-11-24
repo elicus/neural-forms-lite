@@ -82,6 +82,16 @@ abstract class AbstractAction implements WorkflowAction {
 		$data['payment_kind']      = $kind === 'deposit' ? __( 'deposit', 'neural-forms-lite' ) : ( $kind === 'full' ? __( 'full payment', 'neural-forms-lite' ) : '' );
 		$data['payment_currency']  = $currency;
 		$data['payment_provider']  = $provider;
+
+		// 1.3.0 lead scoring tokens: {ai_score}, {ai_priority}, {ai_category},
+		// {ai_summary}, {assigned_to}. Server-side AI results, never visitor input.
+		$data['ai_score']    = isset( $entry['ai_score'] ) && null !== $entry['ai_score'] ? (string) (int) $entry['ai_score'] : '';
+		$data['ai_priority'] = (string) ( $entry['ai_priority'] ?? '' );
+		$data['ai_category'] = ucwords( str_replace( '_', ' ', (string) ( $entry['ai_category'] ?? '' ) ) );
+		$data['ai_summary']  = (string) ( $entry['ai_summary'] ?? '' );
+		$owner               = (int) ( $entry['assigned_to'] ?? 0 );
+		$owner_user          = $owner > 0 && function_exists( 'get_userdata' ) ? get_userdata( $owner ) : null;
+		$data['assigned_to'] = $owner_user ? (string) $owner_user->display_name : '';
 		return $data;
 	}
 

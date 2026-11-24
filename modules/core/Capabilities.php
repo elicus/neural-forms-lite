@@ -190,6 +190,22 @@ final class Capabilities {
 	 */
 	const PAYMENTS = 'payments';
 
+	/** 1.3.0: create posts (any public post type) from a form. */
+	const FRONTEND_POSTS = 'frontend_posts';
+
+	/** 1.3.0: register WordPress users from a form. */
+	const USER_REGISTRATION = 'user_registration';
+
+	/** 1.3.0: conversational forms (one question per screen). */
+	const CONVERSATIONAL_FORMS = 'conversational_forms';
+
+	/**
+	 * 1.3.0: drop-off report (where visitors quit a form). Recording is
+	 * free; only GET /forms/{id}/analytics/dropoff + the Analytics section
+	 * are gated.
+	 */
+	const FORM_DROPOFF_ANALYTICS = 'form_dropoff_analytics';
+
 	/**
 	 * True when the given premium capability is unlocked in this install.
 	 *
@@ -229,6 +245,10 @@ final class Capabilities {
 			self::CALCULATIONS                    => self::can( self::CALCULATIONS ),
 			self::QUOTES                          => self::can( self::QUOTES ),
 			self::PAYMENTS                        => self::can( self::PAYMENTS ),
+			self::FRONTEND_POSTS                  => self::can( self::FRONTEND_POSTS ),
+			self::USER_REGISTRATION               => self::can( self::USER_REGISTRATION ),
+			self::CONVERSATIONAL_FORMS            => self::can( self::CONVERSATIONAL_FORMS ),
+			self::FORM_DROPOFF_ANALYTICS          => self::can( self::FORM_DROPOFF_ANALYTICS ),
 		);
 	}
 

@@ -30,6 +30,7 @@ import PollAnalyticsSection from './PollAnalyticsSection';
 import QuizAnalyticsSection from './QuizAnalyticsSection';
 import PagePerformanceSection from './PagePerformanceSection';
 import PaymentAnalyticsSection from './PaymentAnalyticsSection';
+import DropoffSection from './DropoffSection';
 import FutureInsightsSection from './FutureInsightsSection';
 
 /**
@@ -116,6 +117,18 @@ export default function buildSections( ctx ) {
 		chrome:      false, // Component renders its own card chrome.
 		data:        { formId: a.form.id },
 		render:      ( d ) => <PaymentAnalyticsSection formId={ d.formId } />,
+	} );
+
+	// 1c. Drop-off — Pro analytics: where visitors quit (funnel + last
+	//     field touched). Right after the Views / Conversion cards it
+	//     explains. Upsell card when locked.
+	descriptors.push( {
+		id:          'dropoff',
+		isAvailable: a.form.id > 0,
+		isEmpty:     false,
+		chrome:      false, // Component renders its own card chrome.
+		data:        { formId: a.form.id },
+		render:      ( d ) => <DropoffSection formId={ d.formId } />,
 	} );
 
 	// 2. Submission Analytics — for simple forms only, this is the

@@ -49,6 +49,8 @@ final class NeuralForms {
 		$this->boot_ai();
 		$this->boot_notifications();
 		\NeuralForms\Privacy\PrivacyTools::register();
+		// 1.3.0 held form registrations (email confirmation / admin approval).
+		\NeuralForms\Submissions\AccountActivation::boot();
 
 		/**
 		 * Fires once Lite has finished booting all built-in modules.

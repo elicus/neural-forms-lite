@@ -37,6 +37,7 @@ namespace {
 		'/modules/workflows/Actions/WorkflowAction.php', '/modules/workflows/Actions/ActionResult.php', '/modules/workflows/Actions/AbstractAction.php',
 		'/modules/workflows/Actions/AssignUserAction.php', '/modules/workflows/Actions/SetStageAction.php', '/modules/workflows/Actions/CreateFollowUpAction.php',
 		'/modules/workflows/Actions/NotifyInternalAction.php', '/modules/workflows/Actions/SendAcknowledgementAction.php', '/modules/workflows/Actions/PrepareAiDraftAction.php', '/modules/workflows/Actions/CreateQuoteDraftAction.php',
+		'/modules/workflows/LeadRouting.php', '/modules/workflows/Actions/RouteLeadAction.php',
 		'/modules/workflows/Actions/ActionRegistry.php', '/modules/workflows/WorkflowDefinition.php',
 	) as $f ) {
 		require_once $plugin_root . $f;
@@ -73,9 +74,9 @@ namespace NeuralForms\Tests {
 
 	// ── registry ──────────────────────────────────────────────────────
 	$types = array_keys( ActionRegistry::all() );
-	check( 'registry: seven built-ins', $types, array( 'assign_user', 'set_stage', 'create_follow_up', 'notify_internal', 'send_acknowledgement', 'prepare_ai_draft', 'create_quote_draft' ), $passed, $failed );
+	check( 'registry: eight built-ins', $types, array( 'assign_user', 'route_lead', 'set_stage', 'create_follow_up', 'notify_internal', 'send_acknowledgement', 'prepare_ai_draft', 'create_quote_draft' ), $passed, $failed );
 	$script = ActionRegistry::for_script();
-	check( 'registry: for_script carries settings schema', isset( $script[3]['settings'][0]['key'] ) && $script[3]['settings'][0]['key'] === 'recipients', true, $passed, $failed );
+	check( 'registry: for_script carries settings schema', isset( $script[4]['settings'][0]['key'] ) && $script[4]['settings'][0]['key'] === 'recipients', true, $passed, $failed );
 
 	// ── normalize ─────────────────────────────────────────────────────
 	$raw = array(
